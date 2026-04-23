@@ -56,6 +56,7 @@ wukongim_prod-wukongim-1      registry.cn-shanghai.aliyuncs.com/wukongim/wukongi
 - rollback directory: /opt/wukongim-prod/rollback_snapshots/task2_connection_capacity_20260423_192620
 - backed up:
   - /opt/wukongim-prod/src/deploy/production/docker-compose.yaml
+  - /etc/sysctl.conf -> /opt/wukongim-prod/rollback_snapshots/task2_connection_capacity_20260423_192620/sysctl.conf.bak
   - /etc/sysctl.d/99-wukongim-connection-capacity.conf (if it existed)
   - observed during backup: existing /etc/sysctl.d/99-wukongim-connection-capacity.conf was not present
 
@@ -76,7 +77,9 @@ net.netfilter.nf_conntrack_max = 524288
 
 ### Apply Notes
 - Ran `sudo sysctl --system` first per task instructions.
-- `/etc/sysctl.conf` re-applied `net.core.somaxconn = 4096` afterward, so I then ran `sudo sysctl -p /etc/sysctl.d/99-wukongim-connection-capacity.conf` to ensure task target values are live.
+- `/etc/sysctl.conf` contained an overriding `net.core.somaxconn = 4096` entry, which overrode the new `/etc/sysctl.d/99-wukongim-connection-capacity.conf` value.
+- Backed up and corrected `/etc/sysctl.conf` to `net.core.somaxconn = 65535` for persistence, then re-ran `sudo sysctl --system`.
+- Verified `net.core.somaxconn = 65535` still holds after `sysctl --system`.
 
 ## Post-Change Verification
 ```text
