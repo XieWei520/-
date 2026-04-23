@@ -5,6 +5,7 @@ import 'package:wukongimfluttersdk/entity/msg.dart';
 import '../../realtime/session/session_event_frame.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import 'api_client.dart';
+import 'im_route_info.dart';
 
 class IMSyncApi {
   IMSyncApi._();
@@ -128,17 +129,17 @@ class IMSyncApi {
     );
   }
 
-  Future<String> fetchUserConnectAddr({required String uid}) async {
+  Future<ImRouteInfo> fetchUserConnectRoute({required String uid}) async {
     final normalizedUid = uid.trim();
     if (normalizedUid.isEmpty) {
-      return '';
+      return const ImRouteInfo.empty();
     }
 
     final response = await _client.get(
       '/v1/users/${Uri.encodeComponent(normalizedUid)}/im',
     );
     final data = _unwrapMap(response.data);
-    return _readString(data['tcp_addr']);
+    return ImRouteInfo.fromMap(data);
   }
 
   Future<void> ackConversationSync({

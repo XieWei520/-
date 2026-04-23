@@ -41,6 +41,7 @@ import '../../wukong_base/msg/msg_content_type.dart';
 import '../../wukong_base/db/db_helper.dart';
 import '../api/file_api.dart';
 import '../api/conversation_draft_api.dart';
+import '../api/im_route_info.dart';
 import '../api/im_sync_api.dart';
 import '../api/message_api.dart';
 import '../api/reminder_api.dart';
@@ -208,6 +209,14 @@ Uri buildSessionGatewayUri({
     path: '/v1/realtime/session/events/ws',
     queryParameters: queryParameters,
   );
+}
+
+@visibleForTesting
+String selectImConnectAddr(
+  ImRouteInfo route, {
+  required String fallbackAddr,
+}) {
+  return route.resolvePreferredAddr(fallbackAddr: fallbackAddr);
 }
 
 class _RecoveredCallingKey {
@@ -1632,12 +1641,8 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   Future<String> _resolveConnectAddr(String uid) async {
-    final connectAddr = await IMSyncApi.instance.fetchUserConnectAddr(uid: uid);
-    final normalized = connectAddr.trim();
-    if (normalized.isNotEmpty) {
-      return normalized;
-    }
-    return IMConfig.connectAddr;
+    final routeInfo = await IMSyncApi.instance.fetchUserConnectRoute(uid: uid);
+    return selectImConnectAddr(routeInfo, fallbackAddr: IMConfig.connectAddr);
   }
 
   Future<void> _ackConversationSync({

@@ -65,21 +65,26 @@ void main() {
       },
     );
 
-    test('fetchUserConnectAddr reads Android tcp_addr route payload', () async {
+    test('fetchUserConnectRoute parses preferred transport contract', () async {
       final adapter = _RecordingPlainAdapter(
         payload: const <String, dynamic>{
-          'tcp_addr': '42.194.218.158:5100',
-          'ws_addr': 'ws://42.194.218.158:5200',
-          'wss_addr': '',
+          'tcp_addr': 'wemx.cc:5100',
+          'ws_addr': 'ws://wemx.cc:5200',
+          'wss_addr': 'wss://wemx.cc/ws',
+          'preferred_transport': 'wss',
+          'preferred_addr': 'wss://wemx.cc/ws',
         },
       );
       ApiClient.instance.dio.httpClientAdapter = adapter;
-      final dynamic api = IMSyncApi.instance;
 
-      final addr = await api.fetchUserConnectAddr(uid: 'u_self');
+      final route = await IMSyncApi.instance.fetchUserConnectRoute(uid: 'u_self');
 
       expect(adapter.lastRequestOptions?.path, '/v1/users/u_self/im');
-      expect(addr, '42.194.218.158:5100');
+      expect(route.tcpAddr, 'wemx.cc:5100');
+      expect(route.wsAddr, 'ws://wemx.cc:5200');
+      expect(route.wssAddr, 'wss://wemx.cc/ws');
+      expect(route.preferredTransport, 'wss');
+      expect(route.preferredAddr, 'wss://wemx.cc/ws');
     });
 
     test('ackConversationSync posts cmd_version and device_uuid', () async {
