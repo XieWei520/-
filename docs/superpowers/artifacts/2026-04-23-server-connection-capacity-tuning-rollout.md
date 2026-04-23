@@ -93,3 +93,25 @@ net.ipv4.ip_local_port_range = 10240	65535
 ```
 
 ## Rollback Notes
+
+### Compose `ulimits`
+- `nginx`: `nofile soft/hard 1048576`
+- `wukongim`: `nofile soft/hard 1048576`
+- `tsdd-api`: `nofile soft/hard 1048576`
+- `callgateway`: `nofile soft/hard 1048576`
+
+## Post-Change Verification
+
+### Service Health
+```text
+NAME                          IMAGE                                                                                 COMMAND                  SERVICE       CREATED          STATUS                    PORTS
+wukongim_prod-callgateway-1   wukongim/tsdd-api:production-local                                                    "/home/app callgatew…"   callgateway   52 seconds ago   Up 48 seconds (healthy)   
+wukongim_prod-coturn-1        coturn/coturn:4.7.0-r2                                                                "docker-entrypoint.s…"   coturn        2 weeks ago      Up 2 weeks                0.0.0.0:3478->3478/tcp, [::]:3478->3478/tcp, 0.0.0.0:3478->3478/udp, [::]:3478->3478/udp, 0.0.0.0:5349->5349/tcp, 0.0.0.0:49160-49220->49160-49220/udp, [::]:5349->5349/tcp, [::]:49160-49220->49160-49220/udp, 5349/udp
+wukongim_prod-livekit-1       livekit/livekit-server:v1.9.8                                                         "/livekit-server --c…"   livekit       2 weeks ago      Up 2 weeks                0.0.0.0:7881->7881/tcp, [::]:7881->7881/tcp, 0.0.0.0:50000-50100->50000-50100/udp, [::]:50000-50100->50000-50100/udp
+wukongim_prod-minio-1         minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e   "/usr/bin/docker-ent…"   minio         2 weeks ago      Up 2 weeks (healthy)      9000/tcp
+wukongim_prod-mysql-1         mysql:8.0                                                                             "docker-entrypoint.s…"   mysql         2 weeks ago      Up 2 weeks (healthy)      3306/tcp, 33060/tcp
+wukongim_prod-nginx-1         nginx:1.27-alpine                                                                     "/docker-entrypoint.…"   nginx         50 seconds ago   Up 22 seconds             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+wukongim_prod-redis-1         redis:7-alpine                                                                        "docker-entrypoint.s…"   redis         2 weeks ago      Up 2 weeks (healthy)      6379/tcp
+wukongim_prod-tsdd-api-1      wukongim/tsdd-api:production-local                                                    "/home/app api"          tsdd-api      50 seconds ago   Up 38 seconds (healthy)   
+wukongim_prod-wukongim-1      registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2                                "/home/app --config=…"   wukongim      52 seconds ago   Up 49 seconds (healthy)   0.0.0.0:5100->5100/tcp, [::]:5100->5100/tcp, 127.0.0.1:5001->5001/tcp, 0.0.0.0:5200->5200/tcp, [::]:5200->5200/tcp
+```
