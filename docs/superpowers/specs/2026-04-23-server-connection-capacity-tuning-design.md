@@ -14,6 +14,8 @@ gateway:
 - `net.ipv4.tcp_keepalive_time = 7200`
 - `net.ipv4.ip_local_port_range = 32768 60999`
 - `docker inspect ...HostConfig.Ulimits` for `wukongim` is `null`
+- runtime container `ulimit -n` is already `1048576` for `wukongim`,
+  `nginx`, and `tsdd-api`
 - `wukongim` is running single-node, standalone, with `1 event-loop`
 - host swap is fully allocated even though RAM headroom still exists
 
@@ -24,10 +26,11 @@ descriptor pressure.
 
 The implementation will make three coordinated changes:
 
-1. Add explicit `nofile` limits to the network-facing Docker services in
-   `deploy/production/docker-compose.yaml`
-2. Add a dedicated host sysctl tuning file for socket backlog, conntrack,
+1. Add a dedicated host sysctl tuning file for socket backlog, conntrack,
    keepalive, and port-range settings
+2. Add explicit `nofile` limits to the network-facing Docker services in
+   `deploy/production/docker-compose.yaml` so the current high runtime ceiling
+   is declared rather than implicit
 3. Apply the new settings with backup-first safety steps and verify the before
    and after values on the production host
 
@@ -67,13 +70,15 @@ Why this approach:
 ### Rejected: Host-only tuning
 
 This improves backlog and keepalive behavior, but leaves container process
-limits implicit and potentially too low. For an IM service, that is incomplete.
+limits implicit and daemon-dependent. Runtime inspection shows the current
+containers already have a high ceiling, but that safety is not declared in
+Compose and could drift on rebuild or daemon changes.
 
 ### Rejected: Container-only tuning
 
-This raises descriptor ceilings inside the containers, but still leaves
+This preserves the current high container descriptor ceiling, but still leaves
 `tcp_max_syn_backlog`, `somaxconn`, keepalive, and port-range settings at weak
-defaults.
+host defaults.
 
 ### Rejected: Skip tuning and jump directly to cluster scaling
 
