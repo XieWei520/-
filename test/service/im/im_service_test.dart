@@ -20,7 +20,7 @@ void main() {
 
   test('builds session gateway uri without introducing port zero', () {
     final uri = buildSessionGatewayUri(
-      baseUrl: 'http://42.194.218.158',
+      baseUrl: 'https://wemx.cc',
       deviceSessionId: 'device_session_01',
       lastAckedSeq: 0,
     );
@@ -28,7 +28,7 @@ void main() {
     expect(uri.toString(), isNot(contains(':0/')));
     expect(
       uri.toString(),
-      'ws://42.194.218.158/v1/realtime/session/events/ws?device_session_id=device_session_01&last_acked_seq=0',
+      'wss://wemx.cc/v1/realtime/session/events/ws?device_session_id=device_session_01&last_acked_seq=0',
     );
   });
 
