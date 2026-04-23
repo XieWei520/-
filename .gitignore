@@ -77,4 +77,5 @@ app.*.map.json
 /20108
 /27960
 /32272
+.worktrees/
 *.env
