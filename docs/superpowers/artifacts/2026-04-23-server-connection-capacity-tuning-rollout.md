@@ -53,9 +53,40 @@ wukongim_prod-wukongim-1      registry.cn-shanghai.aliyuncs.com/wukongim/wukongi
 ```
 
 ## Backups
+- rollback directory: /opt/wukongim-prod/rollback_snapshots/task2_connection_capacity_20260423_192620
+- backed up:
+  - /opt/wukongim-prod/src/deploy/production/docker-compose.yaml
+  - /etc/sysctl.d/99-wukongim-connection-capacity.conf (if it existed)
+  - observed during backup: existing /etc/sysctl.d/99-wukongim-connection-capacity.conf was not present
 
 ## Applied Changes
 
+### Host Sysctl File
+```text
+fs.file-max = 1048576
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 16384
+net.ipv4.ip_local_port_range = 10240 65535
+net.ipv4.tcp_fin_timeout = 15
+net.ipv4.tcp_keepalive_time = 120
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_keepalive_probes = 5
+net.netfilter.nf_conntrack_max = 524288
+```
+
+### Apply Notes
+- Ran `sudo sysctl --system` first per task instructions.
+- `/etc/sysctl.conf` re-applied `net.core.somaxconn = 4096` afterward, so I then ran `sudo sysctl -p /etc/sysctl.d/99-wukongim-connection-capacity.conf` to ensure task target values are live.
+
 ## Post-Change Verification
+```text
+net.core.somaxconn = 65535
+net.ipv4.tcp_max_syn_backlog = 16384
+net.netfilter.nf_conntrack_max = 524288
+net.ipv4.tcp_keepalive_time = 120
+net.ipv4.tcp_keepalive_intvl = 30
+net.ipv4.tcp_keepalive_probes = 5
+net.ipv4.ip_local_port_range = 10240	65535
+```
 
 ## Rollback Notes
