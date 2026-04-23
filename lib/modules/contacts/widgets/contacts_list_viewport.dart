@@ -275,10 +275,10 @@ class _ContactRow extends StatelessWidget {
           borderColor: WKColors.reminderColor,
         ),
       );
-    } else if (category == 'customer_service' || category == 'service') {
+    } else if (friend.isCustomerService) {
       tags.add(
         const _ContactTag(
-          label: '官方',
+          label: '客服',
           backgroundColor: WKColors.brand500,
           textColor: WKColors.white,
         ),

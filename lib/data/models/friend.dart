@@ -1,4 +1,5 @@
 import '../../core/utils/avatar_utils.dart';
+import '../../modules/customer_service/customer_service_identity.dart';
 
 class Friend {
   final String uid;
@@ -16,6 +17,7 @@ class Friend {
   final int vipLevel;
 
   bool get isVip => vipLevel == 1;
+  bool get isCustomerService => isCustomerServiceCategory(category);
 
   Friend({
     required this.uid,
@@ -51,7 +53,7 @@ class Friend {
       ),
       remark: json['remark'] ?? json['to_remark'],
       status: _parseTimestamp(json['status']),
-      category: json['category']?.toString(),
+      category: normalizeCustomerServiceCategory(json['category']?.toString()),
       robot: _parseTimestamp(json['robot']),
       beDeleted: _parseTimestamp(json['be_deleted']),
       beBlacklist: _parseTimestamp(json['be_blacklist']),

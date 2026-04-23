@@ -16,6 +16,16 @@ void main() {
       expect(friend.vipLevel, 1);
       expect(friend.toJson()['vip_level'], 1);
     });
+
+    test('normalizes customer service category aliases', () {
+      final friend = Friend.fromJson({
+        'uid': 'u_test',
+        'category': 'customerService',
+      });
+
+      expect(friend.category, 'customer_service');
+      expect(friend.isCustomerService, isTrue);
+    });
   });
 
   group('FriendRequest model', () {

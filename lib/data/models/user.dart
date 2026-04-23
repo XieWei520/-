@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../core/utils/avatar_utils.dart';
+import '../../modules/customer_service/customer_service_identity.dart';
 
 class UserInfo {
   final String uid;
@@ -31,9 +32,11 @@ class UserInfo {
   final int? flameSecond;
   final String? chatPwd;
   final int? chatPwdOn;
+  final String? category;
   final int vipLevel;
 
   bool get isVip => vipLevel == 1;
+  bool get isCustomerService => isCustomerServiceCategory(category);
 
   UserInfo({
     required this.uid,
@@ -64,6 +67,7 @@ class UserInfo {
     this.flameSecond,
     this.chatPwd,
     this.chatPwdOn,
+    this.category,
     this.vipLevel = 0,
   });
 
@@ -103,6 +107,7 @@ class UserInfo {
       flameSecond: _parseInt(json['flame_second'] ?? json['flameSecond']),
       chatPwd: json['chat_pwd']?.toString(),
       chatPwdOn: _parseInt(json['chat_pwd_on']),
+      category: normalizeCustomerServiceCategory(json['category']?.toString()),
       vipLevel: _parseInt(json['vip_level']) ?? 0,
     );
   }
@@ -137,6 +142,7 @@ class UserInfo {
       'flame_second': flameSecond,
       'chat_pwd': chatPwd,
       'chat_pwd_on': chatPwdOn,
+      'category': category,
       'vip_level': vipLevel,
     };
   }
@@ -176,6 +182,7 @@ class UserInfo {
     int? flameSecond,
     String? chatPwd,
     int? chatPwdOn,
+    String? category,
     int? vipLevel,
   }) {
     return UserInfo(
@@ -207,6 +214,7 @@ class UserInfo {
       flameSecond: flameSecond ?? this.flameSecond,
       chatPwd: chatPwd ?? this.chatPwd,
       chatPwdOn: chatPwdOn ?? this.chatPwdOn,
+      category: category ?? this.category,
       vipLevel: vipLevel ?? this.vipLevel,
     );
   }

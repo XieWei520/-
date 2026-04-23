@@ -91,6 +91,27 @@ void main() {
   );
 
   testWidgets(
+    'conversation item normalizes customer service aliases to 客服 tag',
+    (tester) async {
+      await tester.pumpWidget(
+        wrapWithApp(
+          const WKConversationItem(
+            data: WKConversationItemData(
+              channelId: 'u_cs',
+              channelType: 1,
+              title: '客服 Alice',
+              category: 'customerService',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('客服'), findsOneWidget);
+      expect(find.text('官方'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'conversation item renders Android reminder prefixes separately and keeps preview text gray',
     (tester) async {
       await tester.pumpWidget(

@@ -10,6 +10,7 @@ import '../../data/models/user_relationship.dart';
 import '../../data/models/user.dart';
 import '../../data/providers/user_provider.dart';
 import '../../modules/chat/chat_page.dart';
+import '../../modules/customer_service/customer_service_badge.dart';
 import '../../modules/vip/vip_badge.dart';
 import '../../modules/vip/vip_guard.dart';
 import '../../service/api/friend_api.dart';
@@ -605,6 +606,10 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
                         if (isVipUser) ...[
                           const SizedBox(width: 6),
                           const VipBadge(),
+                        ],
+                        if (_user?.isCustomerService ?? false) ...[
+                          const SizedBox(width: 6),
+                          const CustomerServiceBadge(),
                         ],
                         if (sexAsset.isNotEmpty) ...[
                           const SizedBox(width: 6),

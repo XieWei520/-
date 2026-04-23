@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../modules/customer_service/customer_service_identity.dart';
 import '../modules/vip/vip_badge.dart';
 import 'wk_avatar.dart';
 import 'wk_colors.dart';
@@ -323,7 +324,7 @@ class WKConversationItem extends StatelessWidget {
           borderColor: WKColors.reminderColor,
         ),
       );
-    } else if (category == 'customer_service' || category == 'service') {
+    } else if (isCustomerServiceCategory(data.category)) {
       tags.add(
         const _ConversationTag(
           label: '客服',
