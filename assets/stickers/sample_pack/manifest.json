@@ -1,0 +1,63 @@
+{
+  "packId": "android_sample_motion",
+  "packVersion": 1,
+  "title": "Android Motion",
+  "cover": "assets/stickers/sample_pack/group.webp",
+  "stickers": [
+    {
+      "stickerId": "group",
+      "title": "Group",
+      "preview": "assets/stickers/sample_pack/group.webp",
+      "animation": "assets/stickers/sample_pack/group.webp",
+      "mimeType": "image/webp",
+      "width": 512,
+      "height": 512,
+      "loopCount": 0,
+      "fallbackText": "[\u8d34\u7eb8]"
+    },
+    {
+      "stickerId": "other",
+      "title": "Other",
+      "preview": "assets/stickers/sample_pack/other.webp",
+      "animation": "assets/stickers/sample_pack/other.webp",
+      "mimeType": "image/webp",
+      "width": 512,
+      "height": 512,
+      "loopCount": 0,
+      "fallbackText": "[\u8d34\u7eb8]"
+    },
+    {
+      "stickerId": "reply",
+      "title": "Reply",
+      "preview": "assets/stickers/sample_pack/reply.webp",
+      "animation": "assets/stickers/sample_pack/reply.webp",
+      "mimeType": "image/webp",
+      "width": 512,
+      "height": 512,
+      "loopCount": 0,
+      "fallbackText": "[\u8d34\u7eb8]"
+    },
+    {
+      "stickerId": "typing",
+      "title": "Typing",
+      "preview": "assets/stickers/sample_pack/typing.webp",
+      "animation": "assets/stickers/sample_pack/typing.webp",
+      "mimeType": "image/webp",
+      "width": 512,
+      "height": 512,
+      "loopCount": 0,
+      "fallbackText": "[\u8d34\u7eb8]"
+    },
+    {
+      "stickerId": "voice",
+      "title": "Voice",
+      "preview": "assets/stickers/sample_pack/voice.webp",
+      "animation": "assets/stickers/sample_pack/voice.webp",
+      "mimeType": "image/webp",
+      "width": 512,
+      "height": 512,
+      "loopCount": 0,
+      "fallbackText": "[\u8d34\u7eb8]"
+    }
+  ]
+}

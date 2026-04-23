@@ -1,0 +1,41 @@
+mode: "debug"
+addr: ":8090"
+rootDir: "/home/data"
+messageSaveAcrossDevice: true
+welcomeMessage: "欢迎使用{{appName}}"
+phoneSearchOff: false
+onlineStatusOn: true
+
+# WuKongIM config
+wukongIM:
+  apiURL: "http://fullstack_wukongim_1:5001"
+  managerToken: ""
+
+# Database config
+db:
+  mysqlAddr: "root:wukongim123@tcp(fullstack_mysql_1:3306)/wukongim?charset=utf8mb4&parseTime=true"
+  redisAddr: "fullstack_redis_1:6379"
+  redisPass: ""
+  asynctaskRedisAddr: ""
+
+# External config
+external:
+  ip: "103.207.68.33"
+  baseURL: "http://103.207.68.33:8090"
+  webLoginURL: ""
+
+# Logger config
+logger:
+  level: 2
+  dir: "/home/logs"
+  lineNum: true
+
+# SMS config (use test code)
+smsCode: "123456"
+
+# File service config
+fileService: "minio"
+minio:
+  url: "http://fullstack_minio_1:9000"
+  accessKeyID: "wukongim"
+  secretAccessKey: "wukongim123"
