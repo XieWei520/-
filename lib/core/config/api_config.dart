@@ -20,11 +20,11 @@ class ApiConfig {
 
   static const String devBaseUrl = String.fromEnvironment(
     'WK_DEV_BASE_URL',
-    defaultValue: 'http://42.194.218.158',
+    defaultValue: 'https://wemx.cc',
   );
   static const String prodBaseUrl = String.fromEnvironment(
     'WK_PROD_BASE_URL',
-    defaultValue: 'http://42.194.218.158',
+    defaultValue: 'https://wemx.cc',
   );
 
   static String get baseUrl {
@@ -39,11 +39,11 @@ class ApiConfig {
 
   static const String devWsAddr = String.fromEnvironment(
     'WK_DEV_WS_ADDR',
-    defaultValue: '42.194.218.158:5100',
+    defaultValue: 'wemx.cc:5100',
   );
   static const String prodWsAddr = String.fromEnvironment(
     'WK_PROD_WS_ADDR',
-    defaultValue: '42.194.218.158:5100',
+    defaultValue: 'wemx.cc:5100',
   );
 
   static String get wsAddr => AppConfig.isDevelopment ? devWsAddr : prodWsAddr;
