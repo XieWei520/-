@@ -85,6 +85,35 @@ void main() {
 
       expect(first, second);
     });
+
+    test('preferred category changes the request key', () {
+      final first = buildConversationListItemRequestKey(
+        channelId: 'u_alice',
+        channelType: 1,
+        clientMsgNo: 'client_1',
+        unreadCount: 0,
+        lastMsgTimestamp: 100,
+        preferredTitle: 'Alice',
+        preferredAvatarUrl: 'https://example.com/a.png',
+        preferredCategory: 'customer_service',
+        preferredVipLevel: 1,
+        refreshToken: 7,
+      );
+      final second = buildConversationListItemRequestKey(
+        channelId: 'u_alice',
+        channelType: 1,
+        clientMsgNo: 'client_1',
+        unreadCount: 0,
+        lastMsgTimestamp: 100,
+        preferredTitle: 'Alice',
+        preferredAvatarUrl: 'https://example.com/a.png',
+        preferredCategory: 'system',
+        preferredVipLevel: 1,
+        refreshToken: 7,
+      );
+
+      expect(first, isNot(second));
+    });
   });
 }
 

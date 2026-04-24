@@ -31,6 +31,20 @@ void main() {
       expect(info!.vipLevel, 1);
     });
 
+    test('carries normalized friend category into personal conversation info', () {
+      final infos = buildPreferredPersonalConversationInfoMap([
+        Friend(
+          uid: 'u_system',
+          name: 'System Friend',
+          category: ' SYSTEM ',
+        ),
+      ]);
+
+      final info = infos['u_system'];
+      expect(info, isNotNull);
+      expect(info!.category, 'system');
+    });
+
     test('prefers group remark over name when building conversation info', () {
       final infos = buildPreferredGroupConversationInfoMap([
         GroupInfo(
