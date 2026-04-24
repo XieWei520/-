@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/models/group.dart';
 import 'package:wukong_im_app/data/models/user.dart';
@@ -67,6 +68,53 @@ void main() {
       expect(calls, 2);
     });
 
+    test('does not cache synchronously thrown personal loads', () async {
+      var calls = 0;
+      final resolver = ConversationMetadataResolver(
+        personalLoader: (uid) {
+          calls += 1;
+          if (calls == 1) {
+            throw StateError('temporary sync failure');
+          }
+          return Future<UserInfo?>.value(
+            UserInfo(uid: uid, name: 'Recovered Alice'),
+          );
+        },
+        groupLoader: (_) async => null,
+      );
+
+      expect(await resolver.loadPersonal('u_alice'), isNull);
+      expect((await resolver.loadPersonal('u_alice'))?.name, 'Recovered Alice');
+      expect(calls, 2);
+    });
+
+    test('synchronous futures complete safely and cache values', () async {
+      var personalCalls = 0;
+      var groupCalls = 0;
+      final resolver = ConversationMetadataResolver(
+        personalLoader: (uid) {
+          personalCalls += 1;
+          return SynchronousFuture<UserInfo?>(
+            UserInfo(uid: uid, name: 'Sync Alice $personalCalls'),
+          );
+        },
+        groupLoader: (groupNo) {
+          groupCalls += 1;
+          return SynchronousFuture<GroupInfo?>(
+            GroupInfo(groupNo: groupNo, name: 'Sync Group $groupCalls'),
+          );
+        },
+      );
+
+      expect((await resolver.loadPersonal('u_alice'))?.name, 'Sync Alice 1');
+      expect((await resolver.loadPersonal(' u_alice '))?.name, 'Sync Alice 1');
+      expect(personalCalls, 1);
+
+      expect((await resolver.loadGroup('g_demo'))?.name, 'Sync Group 1');
+      expect((await resolver.loadGroup(' g_demo '))?.name, 'Sync Group 1');
+      expect(groupCalls, 1);
+    });
+
     test(
       'clear while personal load is in-flight prevents stale cache writes',
       () async {
@@ -109,12 +157,12 @@ void main() {
           groupLoader: (_) async => null,
         );
 
-        resolver.loadPersonal('u_alice');
+        final first = resolver.loadPersonal('u_alice');
         resolver.clear();
         final second = resolver.loadPersonal('u_alice');
 
         firstCompleter.complete(null);
-        await firstCompleter.future;
+        expect(await first, isNull);
 
         final third = resolver.loadPersonal('u_alice');
 

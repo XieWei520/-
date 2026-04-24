@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../data/models/group.dart';
 import '../../data/models/user.dart';
 
@@ -20,12 +22,12 @@ class ConversationMetadataResolver {
   final ConversationMetadataClock _now;
   final Duration ttl;
 
-  final Map<String, Future<UserInfo?>> _personalInFlight =
-      <String, Future<UserInfo?>>{};
+  final Map<String, _InFlight<UserInfo>> _personalInFlight =
+      <String, _InFlight<UserInfo>>{};
   final Map<String, _CacheEntry<UserInfo>> _personalCache =
       <String, _CacheEntry<UserInfo>>{};
-  final Map<String, Future<GroupInfo?>> _groupInFlight =
-      <String, Future<GroupInfo?>>{};
+  final Map<String, _InFlight<GroupInfo>> _groupInFlight =
+      <String, _InFlight<GroupInfo>>{};
   final Map<String, _CacheEntry<GroupInfo>> _groupCache =
       <String, _CacheEntry<GroupInfo>>{};
   int _generation = 0;
@@ -35,32 +37,12 @@ class ConversationMetadataResolver {
   /// Successful non-null values are cached until [ttl] expires or [clear] is
   /// called.
   Future<UserInfo?> loadPersonal(String uid) {
-    final normalized = uid.trim();
-    if (normalized.isEmpty) return Future<UserInfo?>.value(null);
-    final cached = _readCache(_personalCache, normalized);
-    if (cached != null) return Future<UserInfo?>.value(cached);
-    final existing = _personalInFlight[normalized];
-    if (existing != null) return existing;
-    final generation = _generation;
-    late final Future<UserInfo?> future;
-    future = _personalLoader(normalized)
-        .then((value) {
-          if (generation == _generation && value != null) {
-            _personalCache[normalized] = _CacheEntry<UserInfo>(
-              value: value,
-              expiresAt: _now().add(ttl),
-            );
-          }
-          return value;
-        }, onError: (_, _) => null)
-        .whenComplete(() {
-          if (generation == _generation &&
-              identical(_personalInFlight[normalized], future)) {
-            _personalInFlight.remove(normalized);
-          }
-        });
-    _personalInFlight[normalized] = future;
-    return future;
+    return _loadMetadata<UserInfo>(
+      id: uid,
+      cache: _personalCache,
+      inFlight: _personalInFlight,
+      loader: _personalLoader,
+    );
   }
 
   /// Loads group metadata, resolving loader failures to null.
@@ -68,32 +50,12 @@ class ConversationMetadataResolver {
   /// Successful non-null values are cached until [ttl] expires or [clear] is
   /// called.
   Future<GroupInfo?> loadGroup(String groupNo) {
-    final normalized = groupNo.trim();
-    if (normalized.isEmpty) return Future<GroupInfo?>.value(null);
-    final cached = _readCache(_groupCache, normalized);
-    if (cached != null) return Future<GroupInfo?>.value(cached);
-    final existing = _groupInFlight[normalized];
-    if (existing != null) return existing;
-    final generation = _generation;
-    late final Future<GroupInfo?> future;
-    future = _groupLoader(normalized)
-        .then((value) {
-          if (generation == _generation && value != null) {
-            _groupCache[normalized] = _CacheEntry<GroupInfo>(
-              value: value,
-              expiresAt: _now().add(ttl),
-            );
-          }
-          return value;
-        }, onError: (_, _) => null)
-        .whenComplete(() {
-          if (generation == _generation &&
-              identical(_groupInFlight[normalized], future)) {
-            _groupInFlight.remove(normalized);
-          }
-        });
-    _groupInFlight[normalized] = future;
-    return future;
+    return _loadMetadata<GroupInfo>(
+      id: groupNo,
+      cache: _groupCache,
+      inFlight: _groupInFlight,
+      loader: _groupLoader,
+    );
   }
 
   void clear() {
@@ -113,10 +75,64 @@ class ConversationMetadataResolver {
     }
     return entry.value;
   }
+
+  Future<T?> _loadMetadata<T>({
+    required String id,
+    required Map<String, _CacheEntry<T>> cache,
+    required Map<String, _InFlight<T>> inFlight,
+    required Future<T?> Function(String id) loader,
+  }) {
+    final normalized = id.trim();
+    if (normalized.isEmpty) return Future<T?>.value(null);
+    final cached = _readCache(cache, normalized);
+    if (cached != null) return Future<T?>.value(cached);
+    final existing = inFlight[normalized];
+    if (existing != null) return existing.future;
+
+    final generation = _generation;
+    final entry = _InFlight<T>();
+    inFlight[normalized] = entry;
+
+    Future<T?>.sync(() => loader(normalized))
+        .then<void>(
+          (value) {
+            if (generation == _generation && value != null) {
+              cache[normalized] = _CacheEntry<T>(
+                value: value,
+                expiresAt: _now().add(ttl),
+              );
+            }
+            entry.complete(value);
+          },
+          onError: (_, _) {
+            entry.complete(null);
+          },
+        )
+        .whenComplete(() {
+          if (generation == _generation &&
+              identical(inFlight[normalized], entry)) {
+            inFlight.remove(normalized);
+          }
+        });
+
+    return entry.future;
+  }
 }
 
 class _CacheEntry<T> {
   const _CacheEntry({required this.value, required this.expiresAt});
   final T value;
   final DateTime expiresAt;
+}
+
+class _InFlight<T> {
+  _InFlight() : _completer = Completer<T?>();
+
+  final Completer<T?> _completer;
+
+  Future<T?> get future => _completer.future;
+
+  void complete(T? value) {
+    _completer.complete(value);
+  }
 }
