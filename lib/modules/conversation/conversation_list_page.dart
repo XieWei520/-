@@ -16,11 +16,13 @@ import '../../core/utils/avatar_utils.dart';
 import '../../data/models/chat_session.dart';
 import '../../data/models/friend.dart';
 import '../../data/models/group.dart';
+import '../../data/models/user.dart';
 import '../../data/models/wk_custom_content.dart';
 import '../../data/providers/channel_provider.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../data/providers/user_provider.dart';
 import '../../service/api/group_api.dart';
+import '../../service/api/user_api.dart';
 import '../../service/im/im_service.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_conversation_item.dart';
@@ -49,6 +51,7 @@ import '../vip/vip_guard.dart';
 import 'conversation_activity_registry.dart';
 import 'conversation_list_item_loader.dart';
 import 'conversation_list_refresh_controller.dart';
+import 'conversation_metadata_resolver.dart';
 import 'widgets/conversation_action_sheet.dart';
 
 @immutable
@@ -222,16 +225,35 @@ final conversationListItemLoaderProvider =
       return loader;
     });
 
+final conversationMetadataResolverProvider =
+    Provider.autoDispose<ConversationMetadataResolver>((ref) {
+      final resolver = ConversationMetadataResolver(
+        personalLoader: (uid) => UserApi.instance
+            .getUserInfo(uid)
+            .then<UserInfo?>((user) => user, onError: (_, _) => null),
+        groupLoader: (groupNo) => GroupApi.instance
+            .getGroupInfo(groupNo)
+            .then<GroupInfo?>((group) => group, onError: (_, _) => null),
+      );
+      ref.onDispose(resolver.clear);
+      return resolver;
+    });
+
 final conversationListItemDataProvider = FutureProvider.autoDispose
     .family<WKConversationItemData, ConversationListItemRequest>((
       ref,
       request,
     ) {
       final loader = ref.watch(conversationListItemLoaderProvider);
+      final metadataResolver = ref.watch(conversationMetadataResolverProvider);
       final currentUid = WKIM.shared.options.uid?.trim() ?? '';
       return loader.load(
         request.requestKey,
-        () => resolveConversationListItemData(request, currentUid: currentUid),
+        () => resolveConversationListItemData(
+          request,
+          currentUid: currentUid,
+          metadataResolver: metadataResolver,
+        ),
       );
     });
 
@@ -987,12 +1009,30 @@ WKConversationItemData _buildConversationTileFallback(
           )
         : null,
     isGroup: conversation.channelType == WKChannelType.group,
+    category: request.preferredCategory,
   );
+}
+
+@visibleForTesting
+bool shouldFetchPersonalConversationUserInfo({
+  required WKUIConversationMsg conversation,
+  required String currentUid,
+  required String resolvedTitle,
+}) {
+  final normalizedChannelId = conversation.channelID.trim();
+  final normalizedCurrentUid = currentUid.trim();
+  return conversation.channelType == WKChannelType.personal &&
+      normalizedChannelId.isNotEmpty &&
+      normalizedCurrentUid.isNotEmpty &&
+      normalizedChannelId != normalizedCurrentUid &&
+      resolvedTitle.trim() == normalizedChannelId;
 }
 
 Future<WKConversationItemData> resolveConversationListItemData(
   ConversationListItemRequest request, {
   required String currentUid,
+  Future<UserInfo?> Function(String uid)? personalUserInfoLoader,
+  ConversationMetadataResolver? metadataResolver,
 }) async {
   final conversation = request.conversation;
   final channelFuture = conversation.getWkChannel();
@@ -1025,13 +1065,39 @@ Future<WKConversationItemData> resolveConversationListItemData(
   if (title.isEmpty) {
     title = conversation.channelID;
   }
+  var vipLevel = request.preferredVipLevel;
+
+  Future<UserInfo?> personalInfoFuture = Future<UserInfo?>.value(null);
+  if (shouldFetchPersonalConversationUserInfo(
+    conversation: conversation,
+    currentUid: currentUid,
+    resolvedTitle: title,
+  )) {
+    if (personalUserInfoLoader != null) {
+      personalInfoFuture = personalUserInfoLoader(
+        conversation.channelID,
+      ).then<UserInfo?>((user) => user, onError: (_, _) => null);
+    } else if (metadataResolver != null) {
+      personalInfoFuture = metadataResolver.loadPersonal(
+        conversation.channelID,
+      );
+    } else {
+      personalInfoFuture = UserApi.instance
+          .getUserInfo(conversation.channelID)
+          .then<UserInfo?>((user) => user, onError: (_, _) => null);
+    }
+  }
 
   Future<GroupInfo?> groupInfoFuture = Future<GroupInfo?>.value(null);
   if (conversation.channelType == WKChannelType.group &&
       title == conversation.channelID) {
-    groupInfoFuture = GroupApi.instance
-        .getGroupInfo(conversation.channelID)
-        .then((group) => group, onError: (_, stackTrace) => null);
+    if (metadataResolver != null) {
+      groupInfoFuture = metadataResolver.loadGroup(conversation.channelID);
+    } else {
+      groupInfoFuture = GroupApi.instance
+          .getGroupInfo(conversation.channelID)
+          .then((group) => group, onError: (_, stackTrace) => null);
+    }
   }
 
   Future<WKChannelMember?> currentMemberFuture = Future<WKChannelMember?>.value(
@@ -1045,6 +1111,24 @@ Future<WKConversationItemData> resolveConversationListItemData(
       conversation.channelType,
       currentUid,
     );
+  }
+
+  final personalInfo = await personalInfoFuture;
+  if (personalInfo != null) {
+    final resolvedTitle = _firstNonEmptyText([
+      personalInfo.remark,
+      personalInfo.name,
+    ]);
+    final resolvedAvatar = (personalInfo.avatar ?? '').trim();
+    if (resolvedTitle.isNotEmpty) {
+      title = resolvedTitle;
+    }
+    if (resolvedAvatar.isNotEmpty) {
+      avatarUrl = _resolveConversationAvatar(resolvedAvatar) ?? avatarUrl;
+    }
+    if (personalInfo.vipLevel != 0) {
+      vipLevel = personalInfo.vipLevel;
+    }
   }
 
   final group = await groupInfoFuture;
@@ -1111,7 +1195,7 @@ Future<WKConversationItemData> resolveConversationListItemData(
     channelType: conversation.channelType,
     title: title,
     avatarUrl: avatarUrl,
-    vipLevel: request.preferredVipLevel,
+    vipLevel: vipLevel,
     lastMsgContent: resolvedPreview,
     lastMsgTime: resolvedTime,
     unreadCount: conversation.unreadCount,
@@ -1135,7 +1219,10 @@ Future<WKConversationItemData> resolveConversationListItemData(
     ),
     isRobot: channel?.robot == 1,
     isCalling: activityState.isCalling,
-    category: channel?.category,
+    category: _firstNonEmptyText([
+      request.preferredCategory,
+      channel?.category,
+    ]),
     showSingleTick: sendStatus.showSingleTick,
     showDoubleTick: sendStatus.showDoubleTick,
     showSending: sendStatus.showSending,

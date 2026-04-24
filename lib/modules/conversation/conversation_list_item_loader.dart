@@ -11,6 +11,7 @@ class ConversationListItemRequest {
     required this.conversation,
     this.preferredTitle,
     this.preferredAvatarUrl,
+    this.preferredCategory,
     this.preferredVipLevel = 0,
     required this.refreshToken,
   });
@@ -18,6 +19,7 @@ class ConversationListItemRequest {
   final WKUIConversationMsg conversation;
   final String? preferredTitle;
   final String? preferredAvatarUrl;
+  final String? preferredCategory;
   final int preferredVipLevel;
   final int refreshToken;
 
@@ -29,6 +31,7 @@ class ConversationListItemRequest {
     lastMsgTimestamp: conversation.lastMsgTimestamp,
     preferredTitle: preferredTitle,
     preferredAvatarUrl: preferredAvatarUrl,
+    preferredCategory: preferredCategory,
     preferredVipLevel: preferredVipLevel,
     refreshToken: refreshToken,
   );
@@ -55,6 +58,7 @@ String buildConversationListItemRequestKey({
   required int lastMsgTimestamp,
   String? preferredTitle,
   String? preferredAvatarUrl,
+  String? preferredCategory,
   int preferredVipLevel = 0,
   required int refreshToken,
 }) {
@@ -66,6 +70,7 @@ String buildConversationListItemRequestKey({
     lastMsgTimestamp,
     preferredTitle?.trim() ?? '',
     preferredAvatarUrl?.trim() ?? '',
+    preferredCategory?.trim().toLowerCase() ?? '',
     preferredVipLevel,
     refreshToken,
   ].join('|');
