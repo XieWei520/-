@@ -122,11 +122,13 @@ bool resolveConversationForbiddenState({
 class ConversationPreferredInfo {
   final String title;
   final String? avatarUrl;
+  final String? category;
   final int vipLevel;
 
   const ConversationPreferredInfo({
     required this.title,
     required this.avatarUrl,
+    this.category,
     this.vipLevel = 0,
   });
 }
@@ -143,6 +145,7 @@ buildPreferredPersonalConversationInfoMap(Iterable<Friend> friends) {
     infos[uid] = ConversationPreferredInfo(
       title: _resolveFriendTitle(friend),
       avatarUrl: _resolveConversationAvatar(friend.avatar),
+      category: _normalizeConversationCategory(friend.category),
       vipLevel: friend.vipLevel,
     );
   }
@@ -938,6 +941,7 @@ class _ConversationTile extends ConsumerWidget {
       conversation: conversation,
       preferredTitle: preferredInfo?.title,
       preferredAvatarUrl: preferredInfo?.avatarUrl,
+      preferredCategory: preferredInfo?.category,
       preferredVipLevel: preferredInfo?.vipLevel ?? 0,
       refreshToken: refreshToken,
     );
@@ -1388,4 +1392,9 @@ String _firstNonEmptyText(List<String?> values) {
     }
   }
   return '';
+}
+
+String? _normalizeConversationCategory(String? value) {
+  final normalized = value?.trim().toLowerCase() ?? '';
+  return normalized.isEmpty ? null : normalized;
 }
