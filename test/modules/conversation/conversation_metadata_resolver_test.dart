@@ -67,7 +67,29 @@ void main() {
       expect(calls, 2);
     });
 
-    test('coalesces and clears group loads', () async {
+    test('coalesces duplicate in-flight group loads', () async {
+      final completer = Completer<GroupInfo?>();
+      var calls = 0;
+      final resolver = ConversationMetadataResolver(
+        personalLoader: (_) async => null,
+        groupLoader: (groupNo) {
+          calls += 1;
+          return completer.future;
+        },
+      );
+
+      final first = resolver.loadGroup('g_demo');
+      final second = resolver.loadGroup(' g_demo ');
+
+      expect(identical(first, second), isTrue);
+      expect(calls, 1);
+
+      completer.complete(GroupInfo(groupNo: 'g_demo', name: 'Group 1'));
+      expect((await second)?.name, 'Group 1');
+      expect(calls, 1);
+    });
+
+    test('serves cached group loads until cleared', () async {
       var calls = 0;
       final resolver = ConversationMetadataResolver(
         personalLoader: (_) async => null,
