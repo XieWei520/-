@@ -28,7 +28,12 @@ class ConversationMetadataResolver {
       <String, Future<GroupInfo?>>{};
   final Map<String, _CacheEntry<GroupInfo>> _groupCache =
       <String, _CacheEntry<GroupInfo>>{};
+  int _generation = 0;
 
+  /// Loads personal metadata, resolving loader failures to null.
+  ///
+  /// Successful non-null values are cached until [ttl] expires or [clear] is
+  /// called.
   Future<UserInfo?> loadPersonal(String uid) {
     final normalized = uid.trim();
     if (normalized.isEmpty) return Future<UserInfo?>.value(null);
@@ -36,9 +41,11 @@ class ConversationMetadataResolver {
     if (cached != null) return Future<UserInfo?>.value(cached);
     final existing = _personalInFlight[normalized];
     if (existing != null) return existing;
-    final future = _personalLoader(normalized)
+    final generation = _generation;
+    late final Future<UserInfo?> future;
+    future = _personalLoader(normalized)
         .then((value) {
-          if (value != null) {
+          if (generation == _generation && value != null) {
             _personalCache[normalized] = _CacheEntry<UserInfo>(
               value: value,
               expiresAt: _now().add(ttl),
@@ -47,12 +54,19 @@ class ConversationMetadataResolver {
           return value;
         }, onError: (_, _) => null)
         .whenComplete(() {
-          _personalInFlight.remove(normalized);
+          if (generation == _generation &&
+              identical(_personalInFlight[normalized], future)) {
+            _personalInFlight.remove(normalized);
+          }
         });
     _personalInFlight[normalized] = future;
     return future;
   }
 
+  /// Loads group metadata, resolving loader failures to null.
+  ///
+  /// Successful non-null values are cached until [ttl] expires or [clear] is
+  /// called.
   Future<GroupInfo?> loadGroup(String groupNo) {
     final normalized = groupNo.trim();
     if (normalized.isEmpty) return Future<GroupInfo?>.value(null);
@@ -60,9 +74,11 @@ class ConversationMetadataResolver {
     if (cached != null) return Future<GroupInfo?>.value(cached);
     final existing = _groupInFlight[normalized];
     if (existing != null) return existing;
-    final future = _groupLoader(normalized)
+    final generation = _generation;
+    late final Future<GroupInfo?> future;
+    future = _groupLoader(normalized)
         .then((value) {
-          if (value != null) {
+          if (generation == _generation && value != null) {
             _groupCache[normalized] = _CacheEntry<GroupInfo>(
               value: value,
               expiresAt: _now().add(ttl),
@@ -71,13 +87,17 @@ class ConversationMetadataResolver {
           return value;
         }, onError: (_, _) => null)
         .whenComplete(() {
-          _groupInFlight.remove(normalized);
+          if (generation == _generation &&
+              identical(_groupInFlight[normalized], future)) {
+            _groupInFlight.remove(normalized);
+          }
         });
     _groupInFlight[normalized] = future;
     return future;
   }
 
   void clear() {
+    _generation += 1;
     _personalInFlight.clear();
     _personalCache.clear();
     _groupInFlight.clear();

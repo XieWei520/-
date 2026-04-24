@@ -67,6 +67,67 @@ void main() {
       expect(calls, 2);
     });
 
+    test(
+      'clear while personal load is in-flight prevents stale cache writes',
+      () async {
+        final firstCompleter = Completer<UserInfo?>();
+        var calls = 0;
+        final resolver = ConversationMetadataResolver(
+          personalLoader: (uid) {
+            calls += 1;
+            if (calls == 1) return firstCompleter.future;
+            return Future<UserInfo?>.value(
+              UserInfo(uid: uid, name: 'Fresh Alice'),
+            );
+          },
+          groupLoader: (_) async => null,
+        );
+
+        final first = resolver.loadPersonal('u_alice');
+        resolver.clear();
+
+        firstCompleter.complete(UserInfo(uid: 'u_alice', name: 'Stale Alice'));
+        await first;
+
+        expect((await resolver.loadPersonal('u_alice'))?.name, 'Fresh Alice');
+        expect(calls, 2);
+      },
+    );
+
+    test(
+      'stale personal completion does not remove newer in-flight load',
+      () async {
+        final firstCompleter = Completer<UserInfo?>();
+        final secondCompleter = Completer<UserInfo?>();
+        var calls = 0;
+        final resolver = ConversationMetadataResolver(
+          personalLoader: (_) {
+            calls += 1;
+            if (calls == 1) return firstCompleter.future;
+            return secondCompleter.future;
+          },
+          groupLoader: (_) async => null,
+        );
+
+        resolver.loadPersonal('u_alice');
+        resolver.clear();
+        final second = resolver.loadPersonal('u_alice');
+
+        firstCompleter.complete(null);
+        await firstCompleter.future;
+
+        final third = resolver.loadPersonal('u_alice');
+
+        expect(identical(second, third), isTrue);
+        expect(calls, 2);
+
+        secondCompleter.complete(
+          UserInfo(uid: 'u_alice', name: 'Current Alice'),
+        );
+        expect((await third)?.name, 'Current Alice');
+      },
+    );
+
     test('coalesces duplicate in-flight group loads', () async {
       final completer = Completer<GroupInfo?>();
       var calls = 0;
