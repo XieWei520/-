@@ -359,6 +359,28 @@ void main() {
       expect(ChatMessageMatchIndex.findMessageIndex(existing, candidate), 0);
     });
 
+    test('can index newly acquired keys at an existing position', () {
+      final pending = WKMsg()
+        ..clientMsgNO = 'client_1'
+        ..status = WKSendMsgResult.sendLoading
+        ..contentType = WkMessageContentType.text;
+      final delivered = WKMsg()
+        ..clientMsgNO = 'client_1'
+        ..messageID = 'm1'
+        ..status = WKSendMsgResult.sendSuccess
+        ..contentType = WkMessageContentType.text;
+      final refresh = WKMsg()
+        ..messageID = 'm1'
+        ..status = WKSendMsgResult.sendSuccess
+        ..contentType = WkMessageContentType.text;
+
+      final index = ChatMessageMatchIndex(<WKMsg>[pending]);
+
+      expect(index.find(delivered), 0);
+      index.indexMessage(delivered, 0);
+      expect(index.find(refresh), 0);
+    });
+
     test(
       'chat viewport refresh does not duplicate delivered pending message',
       () {
@@ -391,6 +413,74 @@ void main() {
           controller.state.items.single.message.status,
           WKSendMsgResult.sendSuccess,
         );
+      },
+    );
+
+    test(
+      'chat viewport batch upsert matches identity-only head insertions',
+      () {
+        final controller = ChatViewportController(
+          mapper: ChatMessageMapper(),
+          currentUid: 'u_self',
+        );
+        final existing = WKMsg()
+          ..messageID = 'existing'
+          ..contentType = WkMessageContentType.text;
+        final first = WKMsg()
+          ..clientMsgNO = ''
+          ..timestamp = 1700000001
+          ..status = WKSendMsgResult.sendLoading
+          ..contentType = WkMessageContentType.text;
+        final second = WKMsg()
+          ..clientMsgNO = ''
+          ..timestamp = 1700000001
+          ..status = WKSendMsgResult.sendSuccess
+          ..contentType = WkMessageContentType.text;
+
+        controller.replaceAll(<WKMsg>[existing]);
+        controller.applyIncoming(<WKMsg>[first, second]);
+
+        expect(controller.state.items, hasLength(2));
+        expect(controller.state.items.first.identity, 'seq:0:0:1700000001');
+        expect(
+          controller.state.items.first.message.status,
+          WKSendMsgResult.sendSuccess,
+        );
+        expect(controller.state.items.last.identity, 'mid:existing');
+      },
+    );
+
+    test(
+      'chat timeline batch upsert matches identity-only head insertions',
+      () {
+        final controller = ChatTimelineController(
+          mapper: ChatMessageMapper(),
+          currentUid: 'u_self',
+        );
+        final existing = WKMsg()
+          ..messageID = 'existing'
+          ..contentType = WkMessageContentType.text;
+        final first = WKMsg()
+          ..clientMsgNO = ''
+          ..timestamp = 1700000002
+          ..status = WKSendMsgResult.sendLoading
+          ..contentType = WkMessageContentType.text;
+        final second = WKMsg()
+          ..clientMsgNO = ''
+          ..timestamp = 1700000002
+          ..status = WKSendMsgResult.sendSuccess
+          ..contentType = WkMessageContentType.text;
+
+        controller.replaceAll(<WKMsg>[existing]);
+        controller.applyIncoming(<WKMsg>[first, second]);
+
+        expect(controller.state.items, hasLength(2));
+        expect(controller.state.items.first.identity, 'seq:0:0:1700000002');
+        expect(
+          controller.state.items.first.message.status,
+          WKSendMsgResult.sendSuccess,
+        );
+        expect(controller.state.items.last.identity, 'mid:existing');
       },
     );
   });

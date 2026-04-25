@@ -841,16 +841,20 @@ final currentChatProvider = StateProvider<ChatSession?>((ref) => null);
 
 List<WKMsg> mergeConversationMessages(Iterable<WKMsg> messages) {
   final merged = <WKMsg>[];
+  final index = ChatMessageMatchIndex.empty();
   for (final message in messages) {
     if (!shouldDisplayConversationMessage(message)) {
       continue;
     }
-    final index = findConversationMessageIndex(merged, message);
-    if (index == -1) {
+    final existingIndex = index.find(message);
+    if (existingIndex == -1) {
       merged.add(message);
+      index.indexMessage(message, merged.length - 1);
       continue;
     }
-    merged[index] = preferConversationMessage(merged[index], message);
+    final preferred = preferConversationMessage(merged[existingIndex], message);
+    merged[existingIndex] = preferred;
+    index.indexMessage(preferred, existingIndex);
   }
   return merged;
 }

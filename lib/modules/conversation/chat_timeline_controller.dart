@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 
-import '../chat/chat_message_match_index.dart';
 import '../chat/chat_message_mapper.dart';
 import '../chat/chat_message_view_model.dart';
 import '../chat/chat_viewport_controller.dart';
@@ -37,11 +36,13 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
 
   void applyIncoming(Iterable<WKMsg> messages) {
     final next = <ChatMessageViewModel>[...state.items];
+    final upsertIndex = ChatViewportUpsertIndex(next);
     for (final message in messages) {
       _upsert(
         next,
         _mapper.map(message, currentUid: _currentUid),
         insertAtHead: true,
+        upsertIndex: upsertIndex,
       );
     }
     _replace(next, isLoadingMore: false);
@@ -49,21 +50,25 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
 
   void applyRefresh(WKMsg message) {
     final next = <ChatMessageViewModel>[...state.items];
+    final upsertIndex = ChatViewportUpsertIndex(next);
     _upsert(
       next,
       _mapper.map(message, currentUid: _currentUid),
       insertAtHead: true,
+      upsertIndex: upsertIndex,
     );
     _replace(next, isLoadingMore: false);
   }
 
   void appendOlder(Iterable<WKMsg> messages) {
     final next = <ChatMessageViewModel>[...state.items];
+    final upsertIndex = ChatViewportUpsertIndex(next);
     for (final message in messages) {
       _upsert(
         next,
         _mapper.map(message, currentUid: _currentUid),
         insertAtHead: false,
+        upsertIndex: upsertIndex,
       );
     }
     _replace(next, isLoadingMore: false);
@@ -131,7 +136,7 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
   Map<String, int> _index(List<ChatMessageViewModel> items) {
     final map = <String, int>{};
     for (var i = 0; i < items.length; i++) {
-      map[items[i].identity] = i;
+      map.putIfAbsent(items[i].identity, () => i);
     }
     return map;
   }
@@ -140,33 +145,22 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
     List<ChatMessageViewModel> items,
     ChatMessageViewModel model, {
     required bool insertAtHead,
+    required ChatViewportUpsertIndex upsertIndex,
   }) {
-    final existingIndex = _findExistingIndex(items, model);
+    final existingIndex = upsertIndex.find(model);
     if (existingIndex != -1) {
       items[existingIndex] = model;
+      upsertIndex.replaceAt(existingIndex, model);
       return;
     }
     if (insertAtHead) {
       items.insert(0, model);
+      upsertIndex.insertAt(0, model);
     } else {
+      final index = items.length;
       items.add(model);
+      upsertIndex.appendAt(index, model);
     }
-  }
-
-  int _findExistingIndex(
-    List<ChatMessageViewModel> items,
-    ChatMessageViewModel model,
-  ) {
-    final identityIndex = state.identityToIndex[model.identity];
-    if (identityIndex != null &&
-        identityIndex >= 0 &&
-        identityIndex < items.length &&
-        items[identityIndex].identity == model.identity) {
-      return identityIndex;
-    }
-
-    final messages = items.map((item) => item.message).toList(growable: false);
-    return ChatMessageMatchIndex.findMessageIndex(messages, model.message);
   }
 }
 

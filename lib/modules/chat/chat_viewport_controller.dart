@@ -103,6 +103,53 @@ class ChatViewportState {
   final bool isLoadingMore;
 }
 
+class ChatViewportUpsertIndex {
+  ChatViewportUpsertIndex(Iterable<ChatMessageViewModel> items)
+    : _messageIndex = ChatMessageMatchIndex.empty() {
+    var index = 0;
+    for (final item in items) {
+      _indexAt(item, index);
+      index++;
+    }
+  }
+
+  final Map<String, int> _identityToIndex = <String, int>{};
+  final ChatMessageMatchIndex _messageIndex;
+
+  int find(ChatMessageViewModel model) {
+    final identityIndex = _identityToIndex[model.identity];
+    if (identityIndex != null) {
+      return identityIndex;
+    }
+    return _messageIndex.find(model.message);
+  }
+
+  void replaceAt(int index, ChatMessageViewModel model) {
+    _indexAt(model, index);
+  }
+
+  void insertAt(int index, ChatMessageViewModel model) {
+    _shiftIndexesAtOrAfter(index);
+    _indexAt(model, index);
+  }
+
+  void appendAt(int index, ChatMessageViewModel model) {
+    _indexAt(model, index);
+  }
+
+  void _indexAt(ChatMessageViewModel model, int index) {
+    _identityToIndex.putIfAbsent(model.identity, () => index);
+    _messageIndex.indexMessage(model.message, index);
+  }
+
+  void _shiftIndexesAtOrAfter(int insertionIndex) {
+    _identityToIndex.updateAll(
+      (_, value) => value >= insertionIndex ? value + 1 : value,
+    );
+    _messageIndex.shiftIndexesAtOrAfter(insertionIndex);
+  }
+}
+
 @immutable
 class ChatViewportRestoreAnchor {
   const ChatViewportRestoreAnchor({
@@ -147,11 +194,13 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
 
   void applyIncoming(Iterable<WKMsg> messages) {
     final next = <ChatMessageViewModel>[...state.items];
+    final upsertIndex = ChatViewportUpsertIndex(next);
     for (final message in messages) {
       _upsert(
         next,
         _mapper.map(message, currentUid: _currentUid),
         insertAtHead: true,
+        upsertIndex: upsertIndex,
       );
     }
     state = ChatViewportState(items: next, identityToIndex: _index(next));
@@ -159,10 +208,12 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
 
   void applyRefresh(WKMsg message) {
     final next = <ChatMessageViewModel>[...state.items];
+    final upsertIndex = ChatViewportUpsertIndex(next);
     _upsert(
       next,
       _mapper.map(message, currentUid: _currentUid),
       insertAtHead: true,
+      upsertIndex: upsertIndex,
     );
     state = ChatViewportState(items: next, identityToIndex: _index(next));
   }
@@ -191,7 +242,7 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
   Map<String, int> _index(List<ChatMessageViewModel> items) {
     final map = <String, int>{};
     for (var i = 0; i < items.length; i++) {
-      map[items[i].identity] = i;
+      map.putIfAbsent(items[i].identity, () => i);
     }
     return map;
   }
@@ -200,32 +251,21 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
     List<ChatMessageViewModel> items,
     ChatMessageViewModel model, {
     required bool insertAtHead,
+    required ChatViewportUpsertIndex upsertIndex,
   }) {
-    final existingIndex = _findExistingIndex(items, model);
+    final existingIndex = upsertIndex.find(model);
     if (existingIndex != -1) {
       items[existingIndex] = model;
+      upsertIndex.replaceAt(existingIndex, model);
       return;
     }
     if (insertAtHead) {
       items.insert(0, model);
+      upsertIndex.insertAt(0, model);
     } else {
+      final index = items.length;
       items.add(model);
+      upsertIndex.appendAt(index, model);
     }
-  }
-
-  int _findExistingIndex(
-    List<ChatMessageViewModel> items,
-    ChatMessageViewModel model,
-  ) {
-    final identityIndex = state.identityToIndex[model.identity];
-    if (identityIndex != null &&
-        identityIndex >= 0 &&
-        identityIndex < items.length &&
-        items[identityIndex].identity == model.identity) {
-      return identityIndex;
-    }
-
-    final messages = items.map((item) => item.message).toList(growable: false);
-    return ChatMessageMatchIndex.findMessageIndex(messages, model.message);
   }
 }

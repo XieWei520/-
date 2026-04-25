@@ -4,10 +4,12 @@ class ChatMessageMatchIndex {
   ChatMessageMatchIndex(Iterable<WKMsg> messages) {
     var index = 0;
     for (final message in messages) {
-      _index(message, index);
+      indexMessage(message, index);
       index++;
     }
   }
+
+  ChatMessageMatchIndex.empty();
 
   final Map<int, int> _clientSeqToIndex = <int, int>{};
   final Map<String, int> _clientMsgNoToIndex = <String, int>{};
@@ -17,7 +19,7 @@ class ChatMessageMatchIndex {
   final Map<_ScopedSequenceKey, int> _orderSeqToIndex =
       <_ScopedSequenceKey, int>{};
 
-  static int findMessageIndex(List<WKMsg> messages, WKMsg target) {
+  static int findMessageIndex(Iterable<WKMsg> messages, WKMsg target) {
     return ChatMessageMatchIndex(messages).find(target);
   }
 
@@ -103,7 +105,7 @@ class ChatMessageMatchIndex {
         leftOrderSeqKey == rightOrderSeqKey;
   }
 
-  void _index(WKMsg message, int index) {
+  void indexMessage(WKMsg message, int index) {
     final clientSeq = message.clientSeq;
     if (clientSeq > 0) {
       _clientSeqToIndex.putIfAbsent(clientSeq, () => index);
@@ -128,6 +130,18 @@ class ChatMessageMatchIndex {
     if (orderSeqKey != null) {
       _orderSeqToIndex.putIfAbsent(orderSeqKey, () => index);
     }
+  }
+
+  void shiftIndexesAtOrAfter(int insertionIndex) {
+    _shiftIndexes(_clientSeqToIndex, insertionIndex);
+    _shiftIndexes(_clientMsgNoToIndex, insertionIndex);
+    _shiftIndexes(_messageIdToIndex, insertionIndex);
+    _shiftIndexes(_messageSeqToIndex, insertionIndex);
+    _shiftIndexes(_orderSeqToIndex, insertionIndex);
+  }
+
+  static void _shiftIndexes<K>(Map<K, int> index, int insertionIndex) {
+    index.updateAll((_, value) => value >= insertionIndex ? value + 1 : value);
   }
 
   static String? _trimmedNonEmpty(String value) {
