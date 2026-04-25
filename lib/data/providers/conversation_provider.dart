@@ -13,6 +13,7 @@ import '../models/chat_session.dart';
 import '../../core/utils/storage_utils.dart';
 import 'chat_history_gateway.dart';
 import '../../modules/chat/chat_composer_controller.dart';
+import '../../modules/chat/chat_message_match_index.dart';
 import '../../modules/chat/chat_message_mapper.dart';
 import '../../modules/settings/chat_history_reset_service.dart';
 import '../../modules/chat/chat_viewport_controller.dart';
@@ -882,37 +883,7 @@ bool shouldDisplayConversationMessage(WKMsg message) {
 }
 
 int findConversationMessageIndex(List<WKMsg> messages, WKMsg target) {
-  for (var index = 0; index < messages.length; index++) {
-    if (_sameClientSeq(messages[index], target)) {
-      return index;
-    }
-  }
-
-  for (var index = 0; index < messages.length; index++) {
-    if (_sameClientMsgNo(messages[index], target)) {
-      return index;
-    }
-  }
-
-  for (var index = 0; index < messages.length; index++) {
-    if (_sameMessageId(messages[index], target)) {
-      return index;
-    }
-  }
-
-  for (var index = 0; index < messages.length; index++) {
-    if (_sameMessageSeq(messages[index], target)) {
-      return index;
-    }
-  }
-
-  for (var index = 0; index < messages.length; index++) {
-    if (_sameOrderSeq(messages[index], target)) {
-      return index;
-    }
-  }
-
-  return -1;
+  return ChatMessageMatchIndex.findMessageIndex(messages, target);
 }
 
 WKMsg preferConversationMessage(WKMsg current, WKMsg candidate) {
@@ -937,47 +908,6 @@ WKMsg preferConversationMessage(WKMsg current, WKMsg candidate) {
     return candidate;
   }
   return current;
-}
-
-bool _sameClientSeq(WKMsg left, WKMsg right) {
-  return left.clientSeq > 0 &&
-      right.clientSeq > 0 &&
-      left.clientSeq == right.clientSeq;
-}
-
-bool _sameClientMsgNo(WKMsg left, WKMsg right) {
-  final leftClientMsgNo = left.clientMsgNO.trim();
-  final rightClientMsgNo = right.clientMsgNO.trim();
-  return leftClientMsgNo.isNotEmpty &&
-      rightClientMsgNo.isNotEmpty &&
-      leftClientMsgNo == rightClientMsgNo;
-}
-
-bool _sameMessageId(WKMsg left, WKMsg right) {
-  final leftMessageId = left.messageID.trim();
-  final rightMessageId = right.messageID.trim();
-  return leftMessageId.isNotEmpty &&
-      rightMessageId.isNotEmpty &&
-      leftMessageId == rightMessageId;
-}
-
-bool _sameMessageSeq(WKMsg left, WKMsg right) {
-  return _sameConversation(left, right) &&
-      left.messageSeq > 0 &&
-      right.messageSeq > 0 &&
-      left.messageSeq == right.messageSeq;
-}
-
-bool _sameOrderSeq(WKMsg left, WKMsg right) {
-  return _sameConversation(left, right) &&
-      left.orderSeq > 0 &&
-      right.orderSeq > 0 &&
-      left.orderSeq == right.orderSeq;
-}
-
-bool _sameConversation(WKMsg left, WKMsg right) {
-  return left.channelType == right.channelType &&
-      left.channelID.trim() == right.channelID.trim();
 }
 
 int _conversationMessageScore(WKMsg message) {

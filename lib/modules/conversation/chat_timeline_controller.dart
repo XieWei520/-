@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 
+import '../chat/chat_message_match_index.dart';
 import '../chat/chat_message_mapper.dart';
 import '../chat/chat_message_view_model.dart';
 import '../chat/chat_viewport_controller.dart';
@@ -156,10 +157,16 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
     List<ChatMessageViewModel> items,
     ChatMessageViewModel model,
   ) {
-    return items.indexWhere(
-      (item) =>
-          ChatViewportMessageMatcher.equivalent(item.message, model.message),
-    );
+    final identityIndex = state.identityToIndex[model.identity];
+    if (identityIndex != null &&
+        identityIndex >= 0 &&
+        identityIndex < items.length &&
+        items[identityIndex].identity == model.identity) {
+      return identityIndex;
+    }
+
+    final messages = items.map((item) => item.message).toList(growable: false);
+    return ChatMessageMatchIndex.findMessageIndex(messages, model.message);
   }
 }
 

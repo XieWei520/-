@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/modules/chat/chat_message_match_index.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_mapper.dart';
 import 'package:wukong_im_app/modules/chat/chat_viewport_controller.dart';
 import 'package:wukong_im_app/modules/conversation/chat_timeline_controller.dart';
@@ -340,5 +341,57 @@ void main() {
       expect(decision.refreshed, isNotNull);
       expect(decision.refreshed!.messageID, 'm1');
     });
+  });
+
+  group('ChatMessageMatchIndex', () {
+    test('finds equivalent message by client message number', () {
+      final existing = <WKMsg>[
+        WKMsg()
+          ..messageID = 'm_existing'
+          ..clientMsgNO = 'client_1'
+          ..contentType = WkMessageContentType.text,
+      ];
+      final candidate = WKMsg()
+        ..clientMsgNO = 'client_1'
+        ..messageID = 'm_delivered'
+        ..contentType = WkMessageContentType.text;
+
+      expect(ChatMessageMatchIndex.findMessageIndex(existing, candidate), 0);
+    });
+
+    test(
+      'chat viewport refresh does not duplicate delivered pending message',
+      () {
+        final controller = ChatViewportController(
+          mapper: ChatMessageMapper(),
+          currentUid: 'u_self',
+        );
+        final pending = WKMsg()
+          ..channelID = 'u_alice'
+          ..channelType = 1
+          ..clientMsgNO = 'client_1'
+          ..status = WKSendMsgResult.sendLoading
+          ..contentType = WkMessageContentType.text;
+        final delivered = WKMsg()
+          ..channelID = 'u_alice'
+          ..channelType = 1
+          ..clientMsgNO = 'client_1'
+          ..messageID = 'm1'
+          ..messageSeq = 1
+          ..orderSeq = 1000
+          ..status = WKSendMsgResult.sendSuccess
+          ..contentType = WkMessageContentType.text;
+
+        controller.replaceAll(<WKMsg>[pending]);
+        controller.applyIncoming(<WKMsg>[delivered]);
+
+        expect(controller.state.items, hasLength(1));
+        expect(controller.state.items.single.identity, 'mid:m1');
+        expect(
+          controller.state.items.single.message.status,
+          WKSendMsgResult.sendSuccess,
+        );
+      },
+    );
   });
 }

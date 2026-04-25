@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 
+import 'chat_message_match_index.dart';
 import 'chat_message_mapper.dart';
 import 'chat_message_view_model.dart';
 
@@ -12,11 +13,7 @@ class ChatViewportMessageMatcher {
 
   static bool equivalent(WKMsg left, WKMsg right) {
     return chatMessageIdentity(left) == chatMessageIdentity(right) ||
-        _sameClientSeq(left, right) ||
-        _sameClientMsgNo(left, right) ||
-        _sameMessageId(left, right) ||
-        _sameMessageSeq(left, right) ||
-        _sameOrderSeq(left, right);
+        ChatMessageMatchIndex.equivalent(left, right);
   }
 
   static bool snapshotEquals(WKMsg left, WKMsg right) {
@@ -91,47 +88,6 @@ class ChatViewportMessageMatcher {
     }
     return value.hashCode;
   }
-
-  static bool _sameClientSeq(WKMsg left, WKMsg right) {
-    return left.clientSeq > 0 &&
-        right.clientSeq > 0 &&
-        left.clientSeq == right.clientSeq;
-  }
-
-  static bool _sameClientMsgNo(WKMsg left, WKMsg right) {
-    final leftClientMsgNo = left.clientMsgNO.trim();
-    final rightClientMsgNo = right.clientMsgNO.trim();
-    return leftClientMsgNo.isNotEmpty &&
-        rightClientMsgNo.isNotEmpty &&
-        leftClientMsgNo == rightClientMsgNo;
-  }
-
-  static bool _sameMessageId(WKMsg left, WKMsg right) {
-    final leftMessageId = left.messageID.trim();
-    final rightMessageId = right.messageID.trim();
-    return leftMessageId.isNotEmpty &&
-        rightMessageId.isNotEmpty &&
-        leftMessageId == rightMessageId;
-  }
-
-  static bool _sameMessageSeq(WKMsg left, WKMsg right) {
-    return _sameConversation(left, right) &&
-        left.messageSeq > 0 &&
-        right.messageSeq > 0 &&
-        left.messageSeq == right.messageSeq;
-  }
-
-  static bool _sameOrderSeq(WKMsg left, WKMsg right) {
-    return _sameConversation(left, right) &&
-        left.orderSeq > 0 &&
-        right.orderSeq > 0 &&
-        left.orderSeq == right.orderSeq;
-  }
-
-  static bool _sameConversation(WKMsg left, WKMsg right) {
-    return left.channelType == right.channelType &&
-        left.channelID.trim() == right.channelID.trim();
-  }
 }
 
 @immutable
@@ -159,7 +115,8 @@ class ChatViewportRestoreAnchor {
   final int keepOffsetY;
   final int browseTo;
 
-  int get keepMessageSeq => aroundOrderSeq ~/ ChatViewportController.orderSeqFactor;
+  int get keepMessageSeq =>
+      aroundOrderSeq ~/ ChatViewportController.orderSeqFactor;
 }
 
 class ChatViewportController extends StateNotifier<ChatViewportState> {
@@ -224,7 +181,7 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
     if (extra == null || extra.keepMessageSeq <= 0) {
       return null;
     }
-      return ChatViewportRestoreAnchor(
+    return ChatViewportRestoreAnchor(
       aroundOrderSeq: extra.keepMessageSeq * orderSeqFactor,
       keepOffsetY: extra.keepOffsetY,
       browseTo: extra.browseTo,
@@ -260,9 +217,15 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
     List<ChatMessageViewModel> items,
     ChatMessageViewModel model,
   ) {
-    return items.indexWhere(
-      (item) =>
-          ChatViewportMessageMatcher.equivalent(item.message, model.message),
-    );
+    final identityIndex = state.identityToIndex[model.identity];
+    if (identityIndex != null &&
+        identityIndex >= 0 &&
+        identityIndex < items.length &&
+        items[identityIndex].identity == model.identity) {
+      return identityIndex;
+    }
+
+    final messages = items.map((item) => item.message).toList(growable: false);
+    return ChatMessageMatchIndex.findMessageIndex(messages, model.message);
   }
 }
