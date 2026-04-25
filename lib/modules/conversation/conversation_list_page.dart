@@ -1027,6 +1027,7 @@ bool shouldFetchPersonalConversationUserInfo({
   final normalizedCurrentUid = currentUid.trim();
   return conversation.channelType == WKChannelType.personal &&
       normalizedChannelId.isNotEmpty &&
+      !_isBuiltInPersonalConversationId(normalizedChannelId) &&
       normalizedCurrentUid.isNotEmpty &&
       normalizedChannelId != normalizedCurrentUid &&
       resolvedTitle.trim() == normalizedChannelId;
@@ -1070,6 +1071,9 @@ Future<WKConversationItemData> resolveConversationListItemData(
     title = conversation.channelID;
   }
   var vipLevel = request.preferredVipLevel;
+  final hasPreferredAvatar =
+      request.preferredAvatarUrl?.trim().isNotEmpty == true;
+  final hasPreferredVipLevel = request.preferredVipLevel != 0;
 
   Future<UserInfo?> personalInfoFuture = Future<UserInfo?>.value(null);
   if (shouldFetchPersonalConversationUserInfo(
@@ -1127,10 +1131,10 @@ Future<WKConversationItemData> resolveConversationListItemData(
     if (resolvedTitle.isNotEmpty) {
       title = resolvedTitle;
     }
-    if (resolvedAvatar.isNotEmpty) {
+    if (!hasPreferredAvatar && resolvedAvatar.isNotEmpty) {
       avatarUrl = _resolveConversationAvatar(resolvedAvatar) ?? avatarUrl;
     }
-    if (personalInfo.vipLevel != 0) {
+    if (!hasPreferredVipLevel && personalInfo.vipLevel != 0) {
       vipLevel = personalInfo.vipLevel;
     }
   }
@@ -1397,4 +1401,8 @@ String _firstNonEmptyText(List<String?> values) {
 String? _normalizeConversationCategory(String? value) {
   final normalized = value?.trim().toLowerCase() ?? '';
   return normalized.isEmpty ? null : normalized;
+}
+
+bool _isBuiltInPersonalConversationId(String channelId) {
+  return channelId == 'u_10000' || channelId == 'fileHelper';
 }
