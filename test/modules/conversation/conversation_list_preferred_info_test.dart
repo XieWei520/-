@@ -4,6 +4,7 @@ import 'package:wukong_im_app/data/models/group.dart';
 import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_list_item_loader.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_list_page.dart';
+import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
@@ -114,6 +115,42 @@ void main() {
       expect(data.title, 'Loaded Alice');
       expect(data.avatarUrl, 'https://example.com/preferred.png');
       expect(data.vipLevel, 1);
+    });
+
+    test('resolved item category prefers request category', () async {
+      final conversation = _buildPersonalConversation('u_service')
+        ..setWkChannel(
+          WKChannel('u_service', WKChannelType.personal)
+            ..category = 'channel_category',
+        )
+        ..setReminderList([]);
+
+      final data = await resolveConversationListItemData(
+        ConversationListItemRequest(
+          conversation: conversation,
+          preferredCategory: 'preferred_category',
+          refreshToken: 0,
+        ),
+        currentUid: 'u_self',
+      );
+
+      expect(data.category, 'preferred_category');
+    });
+
+    test('resolved item category falls back to channel category', () async {
+      final conversation = _buildPersonalConversation('u_service')
+        ..setWkChannel(
+          WKChannel('u_service', WKChannelType.personal)
+            ..category = 'channel_category',
+        )
+        ..setReminderList([]);
+
+      final data = await resolveConversationListItemData(
+        ConversationListItemRequest(conversation: conversation, refreshToken: 0),
+        currentUid: 'u_self',
+      );
+
+      expect(data.category, 'channel_category');
     });
   });
 }
