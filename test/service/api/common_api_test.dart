@@ -30,12 +30,15 @@ void main() {
 
     test('parses short number edit switch from appconfig body', () {
       final capabilities = AppRuntimeCapabilities.fromAppConfigBody(
-        body: {'web_url': 'http://103.207.68.33:82', 'shortno_edit_off': 1},
+        body: {
+          'web_url': 'https://infoequity.qingyunshe.top',
+          'shortno_edit_off': 1,
+        },
         webLoginReachable: false,
         webLoginStatusMessage: 'Web disabled',
       );
 
-      expect(capabilities.webLoginUrl, 'http://103.207.68.33:82');
+      expect(capabilities.webLoginUrl, 'https://infoequity.qingyunshe.top');
       expect(capabilities.shortNoEditable, isFalse);
       expect(capabilities.phoneSearchEnabled, isTrue);
       expect(capabilities.pcWebLoginEntryEnabled, isFalse);
@@ -43,7 +46,10 @@ void main() {
 
     test('treats short number editing as enabled when switch is off', () {
       final capabilities = AppRuntimeCapabilities.fromAppConfigBody(
-        body: {'web_url': 'http://103.207.68.33:82', 'shortno_edit_off': 0},
+        body: {
+          'web_url': 'https://infoequity.qingyunshe.top',
+          'shortno_edit_off': 0,
+        },
         webLoginReachable: true,
         webLoginStatusMessage: 'Web enabled',
       );
@@ -63,22 +69,25 @@ void main() {
     });
   });
 
-  test('getChatBackgrounds parses server-backed chat background list', () async {
-    final originalAdapter = ApiClient.instance.dio.httpClientAdapter;
-    ApiClient.instance.dio.httpClientAdapter = _ChatBackgroundAdapter();
-    addTearDown(() {
-      ApiClient.instance.dio.httpClientAdapter = originalAdapter;
-    });
+  test(
+    'getChatBackgrounds parses server-backed chat background list',
+    () async {
+      final originalAdapter = ApiClient.instance.dio.httpClientAdapter;
+      ApiClient.instance.dio.httpClientAdapter = _ChatBackgroundAdapter();
+      addTearDown(() {
+        ApiClient.instance.dio.httpClientAdapter = originalAdapter;
+      });
 
-    final options = await CommonApi.instance.getChatBackgrounds();
+      final options = await CommonApi.instance.getChatBackgrounds();
 
-    expect(options, hasLength(2));
-    expect(options.first.url, 'file/preview/common/chatbg/default/1_b.svg');
-    expect(options.first.isSvg, isTrue);
-    expect(options.first.lightColors, <String>['a6B0CDEB', 'a69FB0EA']);
-    expect(options.last.url, 'file/preview/common/chatbg/default/14_b.jpg');
-    expect(options.last.isSvg, isFalse);
-  });
+      expect(options, hasLength(2));
+      expect(options.first.url, 'file/preview/common/chatbg/default/1_b.svg');
+      expect(options.first.isSvg, isTrue);
+      expect(options.first.lightColors, <String>['a6B0CDEB', 'a69FB0EA']);
+      expect(options.last.url, 'file/preview/common/chatbg/default/14_b.jpg');
+      expect(options.last.isSvg, isFalse);
+    },
+  );
 }
 
 class _ChatBackgroundAdapter implements HttpClientAdapter {

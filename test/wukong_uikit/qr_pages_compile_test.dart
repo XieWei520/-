@@ -11,7 +11,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: UserQrPage(
-          qrData: 'http://103.207.68.33:8090/v1/qrcode/vercode_demo',
+          qrData: 'https://infoequity.qingyunshe.top/v1/qrcode/vercode_demo',
           username: '测试用户',
         ),
       ),

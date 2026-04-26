@@ -11,13 +11,13 @@ void main() {
         final engine = LiveKitCallMediaEngine(roomFactory: () => room);
 
         await engine.connect(
-          url: 'wss://wemx.cc/livekit',
+          url: 'wss://infoequity.qingyunshe.top/livekit',
           token: 'lk-token',
           enableVideo: true,
         );
 
         expect(room.connectCalls, 1);
-        expect(room.connectedUrl, 'wss://wemx.cc/livekit');
+        expect(room.connectedUrl, 'wss://infoequity.qingyunshe.top/livekit');
         expect(room.connectedToken, 'lk-token');
         expect(room.connectedRoomOptions, isNotNull);
         expect(room.connectedRoomOptions!.adaptiveStream, isTrue);
@@ -33,7 +33,7 @@ void main() {
       final engine = LiveKitCallMediaEngine(roomFactory: () => room);
 
       await engine.connect(
-        url: 'wss://wemx.cc/livekit',
+        url: 'wss://infoequity.qingyunshe.top/livekit',
         token: 'lk-token',
         enableVideo: false,
       );
@@ -47,7 +47,7 @@ void main() {
       final engine = LiveKitCallMediaEngine(roomFactory: () => room);
 
       await engine.connect(
-        url: 'wss://wemx.cc/livekit',
+        url: 'wss://infoequity.qingyunshe.top/livekit',
         token: 'lk-token',
         enableVideo: true,
       );
@@ -69,7 +69,7 @@ void main() {
 
         await expectLater(
           engine.connect(
-            url: 'wss://wemx.cc/livekit',
+            url: 'wss://infoequity.qingyunshe.top/livekit',
             token: 'lk-token',
             enableVideo: true,
           ),
@@ -86,7 +86,7 @@ void main() {
       final engine = LiveKitCallMediaEngine(roomFactory: () => room);
 
       await engine.connect(
-        url: 'wss://wemx.cc/livekit',
+        url: 'wss://infoequity.qingyunshe.top/livekit',
         token: 'lk-token',
         enableVideo: true,
       );
@@ -106,7 +106,7 @@ void main() {
       final engine = LiveKitCallMediaEngine(roomFactory: () => room);
 
       await engine.connect(
-        url: 'wss://wemx.cc/livekit',
+        url: 'wss://infoequity.qingyunshe.top/livekit',
         token: 'lk-token',
         enableVideo: true,
       );

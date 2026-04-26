@@ -16,7 +16,7 @@ void main() {
         GroupMember(groupNo: 'group_001', uid: 'uid_002', name: 'Member'),
       ],
       qrRawContent:
-          'http://42.194.218.158/join_group.html?group_no=group_001&auth_code=auth_001',
+          'https://infoequity.qingyunshe.top/join_group.html?group_no=group_001&auth_code=auth_001',
       internalJoinGroupNo: 'group_001',
       internalJoinAuthCode: 'auth_001',
       usedSyntheticInternalJoin: false,
@@ -113,7 +113,9 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('phase3_probe_open_group_detail')));
+    await tester.tap(
+      find.byKey(const ValueKey('phase3_probe_open_group_detail')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('group-detail-destination'), findsOneWidget);
 

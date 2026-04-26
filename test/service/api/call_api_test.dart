@@ -40,8 +40,9 @@ void main() {
               'participant': 'u_self',
             },
             'join': <String, dynamic>{
-              'control_url': 'wss://wemx.cc/v1/callgateway/ws',
-              'livekit_url': 'wss://wemx.cc/livekit',
+              'control_url':
+                  'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
+              'livekit_url': 'wss://infoequity.qingyunshe.top/livekit',
               'room_name': 'room_bootstrap_01',
             },
             'capabilities': <String, dynamic>{

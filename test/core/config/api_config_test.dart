@@ -9,12 +9,12 @@ void main() {
 
   group('ApiConfig defaults', () {
     test('point to the new deployment target by default', () {
-      expect(ApiConfig.devBaseUrl, 'http://42.194.218.158');
-      expect(ApiConfig.prodBaseUrl, 'http://42.194.218.158');
-      expect(ApiConfig.devWsAddr, '42.194.218.158:5100');
-      expect(ApiConfig.prodWsAddr, '42.194.218.158:5100');
-      expect(ApiConfig.baseUrl, 'http://42.194.218.158');
-      expect(ApiConfig.wsAddr, '42.194.218.158:5100');
+      expect(ApiConfig.devBaseUrl, 'https://infoequity.qingyunshe.top');
+      expect(ApiConfig.prodBaseUrl, 'https://infoequity.qingyunshe.top');
+      expect(ApiConfig.devWsAddr, 'infoequity.qingyunshe.top:5100');
+      expect(ApiConfig.prodWsAddr, 'infoequity.qingyunshe.top:5100');
+      expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
+      expect(ApiConfig.wsAddr, 'infoequity.qingyunshe.top:5100');
     });
 
     test(
@@ -23,7 +23,7 @@ void main() {
         SharedPreferences.setMockInitialValues(<String, Object>{});
         await StorageUtils.init();
 
-        expect(ApiConfig.baseUrl, 'http://42.194.218.158');
+        expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
 
         await StorageUtils.setString(
           AppConstants.keyAuthLoginApiBaseUrl,
@@ -32,7 +32,7 @@ void main() {
         expect(ApiConfig.baseUrl, 'http://127.0.0.1:5001');
 
         await StorageUtils.remove(AppConstants.keyAuthLoginApiBaseUrl);
-        expect(ApiConfig.baseUrl, 'http://42.194.218.158');
+        expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
       },
     );
   });
@@ -62,7 +62,7 @@ void main() {
       () {
         expect(
           ApiConfig.resolveMediaUrl(
-            'https://wemx.cc/minio/chat/1/u_self/demo.png?download=0',
+            'https://infoequity.qingyunshe.top/minio/chat/1/u_self/demo.png?download=0',
           ),
           '${ApiConfig.baseUrl}/minio/chat/1/u_self/demo.png?download=0',
         );
@@ -76,7 +76,7 @@ void main() {
       () {
         expect(
           ApiConfig.normalizeUploadUrl(
-            'https://wemx.cc/v1/file/upload?type=chat&path=/1/u_self/demo.png',
+            'https://infoequity.qingyunshe.top/v1/file/upload?type=chat&path=/1/u_self/demo.png',
           ),
           '${ApiConfig.baseUrl}/v1/file/upload?type=chat&path=/1/u_self/demo.png',
         );

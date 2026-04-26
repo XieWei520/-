@@ -262,7 +262,8 @@ class _ScanPageState extends State<ScanPage> {
           maxLines: 6,
           decoration: const InputDecoration(
             labelText: '二维码内容',
-            hintText: '粘贴 http://103.207.68.33:8090/v1/qrcode/... 或其他二维码文本',
+            hintText:
+                '粘贴 https://infoequity.qingyunshe.top/v1/qrcode/... 或其他二维码文本',
             border: OutlineInputBorder(),
             alignLabelWithHint: true,
           ),
