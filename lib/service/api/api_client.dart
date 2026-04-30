@@ -92,6 +92,26 @@ class ApiClient {
     );
   }
 
+  Future<Response<T>> uploadBytes<T>(
+    String path,
+    List<int> bytes, {
+    required String filename,
+    String name = 'file',
+    Map<String, dynamic>? data,
+    void Function(int, int)? onSendProgress,
+    CancelToken? cancelToken,
+  }) {
+    return _client.uploadBytes<T>(
+      path,
+      bytes,
+      filename: filename,
+      name: name,
+      data: data,
+      onSendProgress: onSendProgress,
+      cancelToken: cancelToken,
+    );
+  }
+
   void setToken(String token) => _client.setToken(token);
 
   void clearToken() => _client.clearToken();

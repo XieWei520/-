@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../wukong_base/emoji/android_emoji_catalog.dart';
 import '../../../wukong_base/emoji/emoji_manager.dart';
 import '../../../widgets/wk_colors.dart';
+import '../../../widgets/wk_design_tokens.dart';
 
 class ChatEmojiPanel extends StatefulWidget {
   const ChatEmojiPanel({
@@ -48,13 +49,13 @@ class _ChatEmojiPanelState extends State<ChatEmojiPanel> {
   String _labelForGroup(String groupId) {
     switch (groupId) {
       case '0':
-        return 'Smileys';
+        return '表情';
       case '1':
-        return 'Gestures';
+        return '手势';
       case '2':
-        return 'Symbols';
+        return '符号';
       default:
-        return 'Group $groupId';
+        return '第 $groupId 组';
     }
   }
 
@@ -84,7 +85,11 @@ class _ChatEmojiPanelState extends State<ChatEmojiPanel> {
         maxLines: 1,
         overflow: TextOverflow.fade,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 12, color: WKColors.colorDark),
+        style: TextStyle(
+          fontSize: 12,
+          color: WKColors.colorDark,
+          fontFamilyFallback: WKTypography.fontFamilyFallback,
+        ),
       ),
     );
   }
@@ -97,11 +102,7 @@ class _ChatEmojiPanelState extends State<ChatEmojiPanel> {
         .toList(growable: false);
     if (recentEntries.isNotEmpty) {
       tabs.add(
-        _EmojiTabModel(
-          id: _recentTabId,
-          label: 'Recent',
-          entries: recentEntries,
-        ),
+        _EmojiTabModel(id: _recentTabId, label: '最近', entries: recentEntries),
       );
     }
     for (final groupId in androidEmojiCatalog.groupIds) {
@@ -201,7 +202,7 @@ class _ChatEmojiPanelState extends State<ChatEmojiPanel> {
                 alignment: Alignment.centerRight,
                 child: IconButton(
                   key: const ValueKey<String>('chat-emoji-delete'),
-                  tooltip: 'Delete',
+                  tooltip: '删除',
                   onPressed: widget.onBackspaceTap,
                   icon: const Icon(
                     Icons.backspace_outlined,
@@ -335,14 +336,15 @@ class ChatEmojiGridBody extends StatelessWidget {
                       width: 28,
                       height: 28,
                       fit: BoxFit.contain,
-                      errorBuilder: (context, _, __) => Text(
+                      errorBuilder: (context, error, stackTrace) => Text(
                         entry.tag,
                         maxLines: 1,
                         overflow: TextOverflow.fade,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           color: WKColors.colorDark,
+                          fontFamilyFallback: WKTypography.fontFamilyFallback,
                         ),
                       ),
                     ),

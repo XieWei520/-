@@ -73,9 +73,7 @@ void main() {
     () {
       final plan = buildForegroundNotificationPlan(
         PushMessageEvent(
-          payload: PushPayload(
-            raw: const <String, dynamic>{},
-          ),
+          payload: PushPayload(raw: const <String, dynamic>{}),
           data: const <String, dynamic>{},
           trigger: PushMessageTrigger.foreground,
         ),
@@ -84,4 +82,33 @@ void main() {
       expect(plan, isNull);
     },
   );
+
+  test('buildForegroundNotificationPlan compacts very long display text', () {
+    final longTitle = 'T' * 120;
+    final longBody = 'B' * 320;
+
+    final plan = buildForegroundNotificationPlan(
+      PushMessageEvent(
+        payload: PushPayload(
+          raw: const <String, dynamic>{'channel_id': 'u_long'},
+          channelId: 'u_long',
+          channelType: 1,
+          title: longTitle,
+          body: longBody,
+        ),
+        data: const <String, dynamic>{'channel_id': 'u_long'},
+        trigger: PushMessageTrigger.foreground,
+      ),
+    );
+
+    expect(plan, isNotNull);
+    expect(plan!.title, hasLength(80));
+    expect(plan.body, hasLength(240));
+    expect(plan.title.endsWith('...'), isTrue);
+    expect(plan.body.endsWith('...'), isTrue);
+
+    final payload = jsonDecode(plan.payload) as Map<String, dynamic>;
+    expect(payload['title'], plan.title);
+    expect(payload['body'], plan.body);
+  });
 }

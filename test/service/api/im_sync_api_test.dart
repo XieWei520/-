@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
+import 'package:wukong_im_app/service/api/im_route_info.dart';
 import 'package:wukong_im_app/service/api/im_sync_api.dart';
 
 void main() {
@@ -82,6 +83,31 @@ void main() {
       expect(addr, '42.194.218.158:5100');
     });
 
+    test('fetchUserConnectRoute parses preferred transport contract', () async {
+      final adapter = _RecordingPlainAdapter(
+        payload: const <String, dynamic>{
+          'tcp_addr': 'infoequity.qingyunshe.top:5100',
+          'ws_addr': 'ws://infoequity.qingyunshe.top:5200',
+          'wss_addr': 'wss://infoequity.qingyunshe.top/ws',
+          'preferred_transport': 'wss',
+          'preferred_addr': 'wss://infoequity.qingyunshe.top/ws',
+        },
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+
+      final route = await IMSyncApi.instance.fetchUserConnectRoute(
+        uid: 'u_self',
+      );
+
+      expect(adapter.lastRequestOptions?.path, '/v1/users/u_self/im');
+      expect(route, isA<ImRouteInfo>());
+      expect(route.tcpAddr, 'infoequity.qingyunshe.top:5100');
+      expect(route.wsAddr, 'ws://infoequity.qingyunshe.top:5200');
+      expect(route.wssAddr, 'wss://infoequity.qingyunshe.top/ws');
+      expect(route.preferredTransport, 'wss');
+      expect(route.preferredAddr, 'wss://infoequity.qingyunshe.top/ws');
+    });
+
     test('ackConversationSync posts cmd_version and device_uuid', () async {
       final adapter = _RecordingPlainAdapter(
         payload: const <String, dynamic>{'code': 0},
@@ -148,6 +174,47 @@ void main() {
             },
           ],
         });
+      },
+    );
+
+    test(
+      'pullAfterSeq parses wrapped event lists and clamps query bounds',
+      () async {
+        final adapter = _RecordingPlainAdapter(
+          payload: <String, dynamic>{
+            'data': <String, dynamic>{
+              'events': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'event_id': 'evt_delta_01',
+                  'user_seq': 9,
+                  'server_ts': 1712000009,
+                  'kind': 'conversation.updated',
+                  'aggregate_id': '1:u_1001',
+                  'payload': <String, dynamic>{'channel_id': 'u_1001'},
+                },
+              ],
+            },
+          },
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+
+        final frames = await IMSyncApi.instance.pullAfterSeq(
+          afterSeq: -10,
+          limit: 999,
+        );
+
+        expect(
+          adapter.lastRequestOptions?.path,
+          '/v1/realtime/session/events/pull_after_seq',
+        );
+        expect(adapter.lastRequestOptions?.queryParameters, <String, dynamic>{
+          'after_seq': 0,
+          'limit': 200,
+        });
+        expect(frames, hasLength(1));
+        expect(frames.single.eventId, 'evt_delta_01');
+        expect(frames.single.userSeq, 9);
+        expect(frames.single.payload['channel_id'], 'u_1001');
       },
     );
   });

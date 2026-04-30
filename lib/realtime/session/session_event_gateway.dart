@@ -2,26 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:web_socket_channel/io.dart';
-
 import '../../service/api/api_client.dart';
-import '../../wk_foundation/net/wk_http_client_proxy_io.dart';
 import '../control/control_proto_codec.dart';
 import '../telemetry/realtime_rollout_telemetry.dart';
 import 'session_event_frame.dart';
+import 'session_socket.dart';
+import 'session_socket_connector.dart';
 
 export '../control/control_event.dart';
+export 'session_socket.dart';
 
-abstract class SessionSocket {
-  Stream<Object?> get stream;
-
-  Future<void> ready();
-
-  Future<void> close([int? code, String? reason]);
-}
-
-typedef SessionSocketConnector =
-    SessionSocket Function(Uri uri, {Map<String, String>? headers});
 typedef SessionAckWriter = Future<void> Function(int lastAckedSeq);
 
 class SessionEventGateway {
@@ -86,15 +76,7 @@ class SessionEventGateway {
     Uri uri, {
     Map<String, String>? headers,
   }) {
-    return _WebSocketSessionSocket(
-      IOWebSocketChannel.connect(
-        uri,
-        headers: headers,
-        pingInterval: const Duration(seconds: 20),
-        connectTimeout: const Duration(seconds: 10),
-        customClient: createNativeProxyAwareHttpClient(),
-      ),
-    );
+    return createDefaultSessionSocket(uri, headers: headers);
   }
 
   static Future<void> _defaultAck(int lastAckedSeq) {
@@ -156,19 +138,4 @@ class SessionEventGateway {
     }
     _telemetry?.bindSessionId(sessionId);
   }
-}
-
-class _WebSocketSessionSocket implements SessionSocket {
-  _WebSocketSessionSocket(this._channel);
-
-  final IOWebSocketChannel _channel;
-
-  @override
-  Stream<Object?> get stream => _channel.stream.cast<Object?>();
-
-  @override
-  Future<void> ready() => _channel.ready;
-
-  @override
-  Future<void> close([int? code, String? reason]) => _channel.sink.close();
 }

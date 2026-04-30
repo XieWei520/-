@@ -177,7 +177,11 @@ class _AuthRegisterPageState extends ConsumerState<AuthRegisterPage> {
             },
           ),
           const SizedBox(width: 8),
-          Container(width: 1, height: 20, color: AuthExperienceTokens.fieldBorder),
+          Container(
+            width: 1,
+            height: 20,
+            color: AuthExperienceTokens.fieldBorder,
+          ),
         ],
       ),
     );
@@ -225,14 +229,19 @@ class _AuthRegisterPageState extends ConsumerState<AuthRegisterPage> {
     required bool canSendCode,
   }) {
     final enabled = !isLoading && canSendCode;
-    return AuthActionButton.secondary(
-      key: const ValueKey<String>('auth-register-send-code-action'),
-      label: _countdownSeconds > 0
-          ? '$_countdownSeconds'
-          : AuthCopy.getCodeButton,
-      height: 34,
-      fullWidth: false,
-      onPressed: enabled ? _handleSendCode : null,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 96),
+      child: AuthActionButton.secondary(
+        key: const ValueKey<String>('auth-register-send-code-action'),
+        label: _countdownSeconds > 0
+            ? '$_countdownSeconds'
+            : AuthCopy.getCodeButton,
+        height: 40,
+        fullWidth: false,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        labelFontSize: 14,
+        onPressed: enabled ? _handleSendCode : null,
+      ),
     );
   }
 

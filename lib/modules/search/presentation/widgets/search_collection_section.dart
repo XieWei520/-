@@ -1,9 +1,8 @@
-import 'dart:io';
-
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../domain/search_models.dart';
+import '../../../../core/cache/media_cache_manager.dart';
+import '../../../../widgets/local_media_image_provider.dart';
 
 Map<String, List<SearchMediaItem>> groupCollectionItems(
   List<SearchMediaItem> items,
@@ -17,10 +16,7 @@ Map<String, List<SearchMediaItem>> groupCollectionItems(
 }
 
 class SearchCollectionSectionHeader extends StatelessWidget {
-  const SearchCollectionSectionHeader({
-    super.key,
-    required this.sectionKey,
-  });
+  const SearchCollectionSectionHeader({super.key, required this.sectionKey});
 
   final String sectionKey;
 
@@ -90,6 +86,9 @@ class SearchCollectionImageTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final mediaUrl = item.mediaUrl?.trim() ?? '';
     final isLocalImage = mediaUrl.isNotEmpty && _isLocalImagePath(mediaUrl);
+    final localImageProvider = isLocalImage
+        ? resolveLocalMediaImageProvider(mediaUrl)
+        : null;
 
     return InkWell(
       key: ValueKey<String>('search-collection-item-${item.hit.messageSeq}'),
@@ -103,35 +102,67 @@ class SearchCollectionImageTile extends StatelessWidget {
         child: mediaUrl.isNotEmpty
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(6),
-                child: isLocalImage
-                    ? Image.file(
-                        _resolveLocalFile(mediaUrl),
+                child: localImageProvider != null
+                    ? Image(
+                        image: localImageProvider,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
                             const Center(
                               child: Icon(Icons.broken_image_outlined),
                             ),
                       )
-                    : CachedNetworkImage(
-                        imageUrl: mediaUrl,
-                        fit: BoxFit.cover,
-                        fadeInDuration: Duration.zero,
-                        fadeOutDuration: Duration.zero,
-                        errorWidget: (context, url, error) => const Center(
-                          child: Icon(Icons.broken_image_outlined),
-                        ),
-                        placeholder: (context, url) => const ColoredBox(
-                          color: Color(0xFFF1F1F1),
-                          child: Center(
-                            child: Icon(Icons.image_outlined),
-                          ),
-                        ),
-                      ),
+                    : isLocalImage
+                    ? const Center(child: Icon(Icons.broken_image_outlined))
+                    : _SearchCollectionNetworkThumbnail(mediaUrl: mediaUrl),
               )
             : const Icon(Icons.image_outlined),
       ),
     );
   }
+}
+
+class _SearchCollectionNetworkThumbnail extends StatelessWidget {
+  const _SearchCollectionNetworkThumbnail({required this.mediaUrl});
+
+  final String mediaUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+        final maxWidth = _resolveDecodeBound(
+          constraints.maxWidth,
+          devicePixelRatio,
+        );
+        final maxHeight = _resolveDecodeBound(
+          constraints.maxHeight,
+          devicePixelRatio,
+        );
+
+        return CachedMediaImage(
+          imageUrl: mediaUrl,
+          cacheKey: mediaUrl,
+          maxWidth: maxWidth,
+          maxHeight: maxHeight,
+          fit: BoxFit.cover,
+          errorWidget: (context, url, error) =>
+              const Center(child: Icon(Icons.broken_image_outlined)),
+          placeholder: (context, url) => const ColoredBox(
+            color: Color(0xFFF1F1F1),
+            child: Center(child: Icon(Icons.image_outlined)),
+          ),
+        );
+      },
+    );
+  }
+}
+
+int? _resolveDecodeBound(double logicalSize, double devicePixelRatio) {
+  if (!logicalSize.isFinite || logicalSize <= 0 || devicePixelRatio <= 0) {
+    return null;
+  }
+  return (logicalSize * devicePixelRatio).ceil();
 }
 
 bool _isLocalImagePath(String mediaUrl) {
@@ -146,21 +177,6 @@ bool _isLocalImagePath(String mediaUrl) {
     return true;
   }
   return RegExp(r'^[a-zA-Z]:[\\/]').hasMatch(mediaUrl);
-}
-
-File _resolveLocalFile(String mediaUrl) {
-  if (mediaUrl.startsWith('file://')) {
-    final uri = Uri.tryParse(mediaUrl);
-    if (uri != null) {
-      return File.fromUri(uri);
-    }
-    return File(mediaUrl.substring('file://'.length));
-  }
-  final uri = Uri.tryParse(mediaUrl);
-  if (uri != null && uri.scheme == 'file') {
-    return File.fromUri(uri);
-  }
-  return File(mediaUrl);
 }
 
 class SearchCollectionSection extends StatelessWidget {
@@ -208,34 +224,36 @@ class SearchCollectionSection extends StatelessWidget {
           )
         else
           Column(
-            children: items.map((item) {
-              final icon = scope == SearchCollectionScope.file
-                  ? Icons.insert_drive_file_outlined
-                  : Icons.link_outlined;
-              final title = item.fileName?.trim().isNotEmpty == true
-                  ? item.fileName!.trim()
-                  : item.hit.previewText;
-              final subtitle = scope == SearchCollectionScope.link
-                  ? (item.linkUrl ?? item.hit.previewText)
-                  : item.hit.fromName;
-              return ListTile(
-                key: ValueKey<String>(
-                  'search-collection-item-${item.hit.messageSeq}',
-                ),
-                leading: Icon(icon),
-                title: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () => onTapItem(item),
-              );
-            }).toList(growable: false),
+            children: items
+                .map((item) {
+                  final icon = scope == SearchCollectionScope.file
+                      ? Icons.insert_drive_file_outlined
+                      : Icons.link_outlined;
+                  final title = item.fileName?.trim().isNotEmpty == true
+                      ? item.fileName!.trim()
+                      : item.hit.previewText;
+                  final subtitle = scope == SearchCollectionScope.link
+                      ? (item.linkUrl ?? item.hit.previewText)
+                      : item.hit.fromName;
+                  return ListTile(
+                    key: ValueKey<String>(
+                      'search-collection-item-${item.hit.messageSeq}',
+                    ),
+                    leading: Icon(icon),
+                    title: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () => onTapItem(item),
+                  );
+                })
+                .toList(growable: false),
           ),
       ],
     );

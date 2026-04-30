@@ -105,7 +105,7 @@ class _GlobalSearchPageState extends ConsumerState<GlobalSearchPage> {
                             vertical: 10,
                           ),
                           child: Text(
-                            'Cancel',
+                            '取消',
                             style: TextStyle(
                               fontFamily: WKFontFamily.primary,
                               fontSize: 16,
@@ -171,7 +171,7 @@ class _GlobalSearchPageState extends ConsumerState<GlobalSearchPage> {
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 isCollapsed: true,
-                hintText: 'Search',
+                hintText: '搜索',
                 hintStyle: TextStyle(
                   fontFamily: WKFontFamily.primary,
                   fontSize: 14,
@@ -230,7 +230,7 @@ class _GlobalSearchPageState extends ConsumerState<GlobalSearchPage> {
             FilledButton(
               key: const ValueKey<String>('global-search-initial-retry'),
               onPressed: onRetryInitial,
-              child: const Text('Retry'),
+              child: const Text('重试'),
             ),
           ],
         ),
@@ -261,14 +261,14 @@ class _GlobalSearchPageState extends ConsumerState<GlobalSearchPage> {
       if (state.users.isNotEmpty) ...[
         _buildSectionHeader(
           key: const ValueKey<String>('global-search-section-users'),
-          title: 'Contacts',
+          title: '联系人',
         ),
         ...state.users.map(_buildUserRow),
       ],
       if (state.groups.isNotEmpty) ...[
         _buildSectionHeader(
           key: const ValueKey<String>('global-search-section-groups'),
-          title: 'Groups',
+          title: '群聊',
         ),
         ...state.groups.map(_buildGroupRow),
       ],
@@ -279,7 +279,7 @@ class _GlobalSearchPageState extends ConsumerState<GlobalSearchPage> {
       if (state.messages.isNotEmpty) ...[
         _buildSectionHeader(
           key: const ValueKey<String>('global-search-section-messages'),
-          title: 'Messages',
+          title: '消息',
         ),
         ...state.messages.map(_buildMessageRow),
       ],
@@ -295,12 +295,12 @@ class _GlobalSearchPageState extends ConsumerState<GlobalSearchPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Load more failed'),
+                const Text('加载更多失败'),
                 const SizedBox(height: 12),
                 FilledButton(
                   key: const ValueKey<String>('global-search-load-more-retry'),
                   onPressed: onRetryLoadMore,
-                  child: const Text('Retry'),
+                  child: const Text('重试'),
                 ),
               ],
             ),

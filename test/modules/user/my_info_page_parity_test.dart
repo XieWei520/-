@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/models/user.dart';
+import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_badge.dart';
 import 'package:wukong_im_app/service/api/common_api.dart';
 import 'package:wukong_im_app/widgets/wk_avatar.dart';
@@ -200,5 +201,29 @@ void main() {
 
     expect(find.text('\u8EAB\u4EFD'), findsOneWidget);
     expect(find.byType(VipBadge), findsOneWidget);
+  });
+
+  testWidgets('my info page shows customer service identity row', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithApp(
+        MyInfoPage(
+          skipInitialLoad: true,
+          initialUserOverride: UserInfo(
+            uid: 'cs_self',
+            name: 'Support',
+            category: 'customerService',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('\u8eab\u4efd'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('my-info-customer-service-badge')),
+      findsOneWidget,
+    );
+    expect(find.byType(CustomerServiceBadge), findsOneWidget);
   });
 }

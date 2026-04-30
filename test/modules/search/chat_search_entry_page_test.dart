@@ -77,7 +77,7 @@ void main() {
         find.byKey(const ValueKey<String>('chat-search-menu-hint')),
         findsOneWidget,
       );
-      expect(find.text('Search specified content'), findsOneWidget);
+      expect(find.text('搜索指定内容'), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('chat-search-field')),
         findsOneWidget,

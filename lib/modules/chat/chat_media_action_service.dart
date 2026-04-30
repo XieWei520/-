@@ -1,18 +1,19 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:path/path.dart' as path;
 import 'package:wukongimfluttersdk/model/wk_image_content.dart';
+import 'package:wukongimfluttersdk/model/wk_message_content.dart';
 import 'package:wukongimfluttersdk/model/wk_rich_text_content.dart';
 
-import '../../core/utils/platform_utils.dart';
+import '../../core/platform/local_image_picker.dart';
 import '../../data/models/wk_custom_content.dart';
+import '../../service/api/file_api.dart';
 import '../location/location_map_page.dart';
 import 'chat_contact_picker_dialog.dart';
+import 'chat_file_picker.dart';
+import 'chat_image_bytes_loader.dart';
 import 'chat_rich_text_compose_dialog.dart';
 
 @immutable
@@ -44,11 +45,28 @@ class ChatFileSelection {
     required this.localPath,
     required this.name,
     required this.size,
+    this.bytes,
   });
 
   final String localPath;
   final String name;
   final int size;
+  final Uint8List? bytes;
+}
+
+@immutable
+class ChatDroppedFileSelection {
+  const ChatDroppedFileSelection({
+    required this.localPath,
+    required this.name,
+    required this.size,
+    this.mimeType,
+  });
+
+  final String localPath;
+  final String name;
+  final int size;
+  final String? mimeType;
 }
 
 @immutable
@@ -64,9 +82,11 @@ class ChatMediaContentFactory {
     required String localPath,
     required int width,
     required int height,
+    String remoteUrl = '',
   }) {
     final content = WKImageContent(width, height);
     content.localPath = localPath;
+    content.url = remoteUrl.trim();
     return content;
   }
 
@@ -74,12 +94,16 @@ class ChatMediaContentFactory {
     required String localPath,
     required String name,
     required int size,
+    String remoteUrl = '',
   }) {
+    final normalizedPath = localPath.trim();
+    final safeName = _safeFileName(name, fallbackPath: normalizedPath);
     final content = WKFileContent()
-      ..localPath = localPath
-      ..name = name.trim().isEmpty ? path.basename(localPath) : name.trim()
-      ..size = size
-      ..suffix = _normalizedSuffix(localPath: localPath, name: name);
+      ..localPath = normalizedPath
+      ..name = safeName
+      ..size = size < 0 ? 0 : size
+      ..url = remoteUrl.trim()
+      ..suffix = _normalizedSuffix(localPath: normalizedPath, name: safeName);
     return content;
   }
 
@@ -99,20 +123,129 @@ class ChatMediaContentFactory {
     return WKRichTextContent(title: selection.title, body: selection.body);
   }
 
-  String _normalizedSuffix({
+  Future<WKMessageContent?> buildDroppedFileContent(
+    ChatDroppedFileSelection selection, {
+    ChatImageDimensionsLoader? loadImageDimensions,
+  }) async {
+    final localPath = selection.localPath.trim();
+    if (localPath.isEmpty) {
+      return null;
+    }
+
+    final name = _safeFileName(selection.name, fallbackPath: localPath);
+    if (_isImageLikeDrop(
+      localPath: localPath,
+      name: name,
+      mimeType: selection.mimeType,
+    )) {
+      final dimensions = await _safeLoadDroppedImageDimensions(
+        localPath,
+        loadImageDimensions: loadImageDimensions,
+      );
+      return buildImageContent(
+        localPath: localPath,
+        width: dimensions.width,
+        height: dimensions.height,
+      );
+    }
+
+    return buildFileContent(
+      localPath: localPath,
+      name: name,
+      size: selection.size,
+    );
+  }
+
+  String _normalizedSuffix({required String localPath, required String name}) {
+    final source = _safeFileName(name, fallbackPath: localPath);
+    final dotIndex = source.lastIndexOf('.');
+    final extension = dotIndex <= 0 || dotIndex == source.length - 1
+        ? ''
+        : source.substring(dotIndex + 1).trim();
+    return extension.toLowerCase();
+  }
+
+  String _safeFileName(String name, {required String fallbackPath}) {
+    final fromName = _lastSafePathSegment(name);
+    if (fromName.isNotEmpty) {
+      return fromName;
+    }
+    final fromPath = _lastSafePathSegment(fallbackPath);
+    if (fromPath.isNotEmpty) {
+      return fromPath;
+    }
+    return 'file';
+  }
+
+  String _lastSafePathSegment(String value) {
+    final cleaned = value.trim().replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '');
+    if (cleaned.isEmpty) {
+      return '';
+    }
+    final segments = cleaned
+        .split(RegExp(r'[\\/]+'))
+        .map((segment) => segment.trim())
+        .where((segment) => segment.isNotEmpty)
+        .where((segment) => segment != '.' && segment != '..')
+        .toList(growable: false);
+    if (segments.isEmpty) {
+      return '';
+    }
+    return segments.last;
+  }
+
+  bool _isImageLikeDrop({
     required String localPath,
     required String name,
+    String? mimeType,
   }) {
-    final source = name.trim().isNotEmpty ? name.trim() : localPath.trim();
-    final extension = path.extension(source).replaceFirst('.', '').trim();
-    return extension.toLowerCase();
+    final normalizedMime = mimeType?.trim().toLowerCase() ?? '';
+    if (normalizedMime.startsWith('image/')) {
+      return true;
+    }
+    final suffix = _normalizedSuffix(localPath: localPath, name: name);
+    return const <String>{
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'bmp',
+      'heic',
+      'heif',
+    }.contains(suffix);
+  }
+
+  Future<ChatImageDimensions> _safeLoadDroppedImageDimensions(
+    String localPath, {
+    ChatImageDimensionsLoader? loadImageDimensions,
+  }) async {
+    try {
+      return await (loadImageDimensions ?? _loadDroppedImageDimensions)(
+        localPath,
+      );
+    } catch (_) {
+      return const ChatImageDimensions(width: 0, height: 0);
+    }
   }
 }
 
 abstract class ChatMediaActionService {
-  Future<WKImageContent?> pickImage(BuildContext context);
+  Future<WKImageContent?> pickImage(
+    BuildContext context, {
+    String channelId = '',
+    int channelType = 0,
+  });
 
-  Future<WKFileContent?> pickFile(BuildContext context);
+  Future<WKFileContent?> pickFile(
+    BuildContext context, {
+    String channelId = '',
+    int channelType = 0,
+  });
+
+  Future<WKMessageContent?> buildDroppedFile(
+    ChatDroppedFileSelection selection,
+  );
 
   Future<WKLocationContent?> pickLocation(BuildContext context);
 
@@ -122,10 +255,19 @@ abstract class ChatMediaActionService {
 }
 
 typedef ChatImagePathPicker = Future<String?> Function();
+typedef ChatImageFilePicker = Future<ChatFileSelection?> Function();
 typedef ChatFilePicker = Future<ChatFileSelection?> Function();
+typedef ChatPickedFileBytesUploader =
+    Future<String> Function({
+      required Uint8List bytes,
+      required String fileName,
+      required String channelId,
+      required int channelType,
+    });
 typedef ChatLocationPicker =
     Future<ChatLocationSelection?> Function(BuildContext context);
-typedef ChatCardPicker = Future<ChatCardSelection?> Function(BuildContext context);
+typedef ChatCardPicker =
+    Future<ChatCardSelection?> Function(BuildContext context);
 typedef ChatRichTextComposer =
     Future<ChatRichTextSelection?> Function(BuildContext context);
 typedef ChatImageDimensionsLoader =
@@ -134,26 +276,29 @@ typedef ChatImageDimensionsLoader =
 class PlatformChatMediaActionService implements ChatMediaActionService {
   PlatformChatMediaActionService({
     ChatMediaContentFactory? factory,
-    ImagePicker? imagePicker,
     ChatImagePathPicker? pickImagePath,
+    ChatImageFilePicker? pickImageFile,
     ChatFilePicker? pickFile,
+    ChatPickedFileBytesUploader? uploadPickedFileBytes,
     ChatLocationPicker? pickLocation,
     ChatCardPicker? pickCard,
     ChatRichTextComposer? pickRichText,
     ChatImageDimensionsLoader? loadImageDimensions,
   }) : _factory = factory ?? ChatMediaContentFactory(),
-       _imagePicker = imagePicker ?? ImagePicker(),
        _pickImagePath = pickImagePath,
+       _pickImageFile = pickImageFile,
        _pickFile = pickFile,
+       _uploadPickedFileBytes = uploadPickedFileBytes,
        _pickLocation = pickLocation,
        _pickCard = pickCard,
        _pickRichText = pickRichText,
-        _loadImageDimensions = loadImageDimensions;
+       _loadImageDimensions = loadImageDimensions;
 
   final ChatMediaContentFactory _factory;
-  final ImagePicker _imagePicker;
   final ChatImagePathPicker? _pickImagePath;
+  final ChatImageFilePicker? _pickImageFile;
   final ChatFilePicker? _pickFile;
+  final ChatPickedFileBytesUploader? _uploadPickedFileBytes;
   final ChatLocationPicker? _pickLocation;
   final ChatCardPicker? _pickCard;
   final ChatRichTextComposer? _pickRichText;
@@ -161,8 +306,9 @@ class PlatformChatMediaActionService implements ChatMediaActionService {
 
   @override
   Future<WKCardContent?> pickCard(BuildContext context) async {
-    final selection =
-        await (_pickCard ?? _defaultPickCardSelection).call(context);
+    final selection = await (_pickCard ?? _defaultPickCardSelection).call(
+      context,
+    );
     if (selection == null) {
       return null;
     }
@@ -170,10 +316,29 @@ class PlatformChatMediaActionService implements ChatMediaActionService {
   }
 
   @override
-  Future<WKFileContent?> pickFile(BuildContext context) async {
+  Future<WKFileContent?> pickFile(
+    BuildContext context, {
+    String channelId = '',
+    int channelType = 0,
+  }) async {
     final selection = await (_pickFile ?? _defaultPickFileSelection).call();
     if (selection == null) {
       return null;
+    }
+    final bytes = selection.bytes;
+    if (bytes != null && bytes.isNotEmpty) {
+      final remoteUrl = await _uploadPickedBytes(
+        bytes: bytes,
+        fileName: selection.name,
+        channelId: channelId,
+        channelType: channelType,
+      );
+      return _factory.buildFileContent(
+        localPath: '',
+        name: selection.name,
+        size: selection.size,
+        remoteUrl: remoteUrl,
+      );
     }
     return _factory.buildFileContent(
       localPath: selection.localPath,
@@ -183,7 +348,32 @@ class PlatformChatMediaActionService implements ChatMediaActionService {
   }
 
   @override
-  Future<WKImageContent?> pickImage(BuildContext context) async {
+  Future<WKMessageContent?> buildDroppedFile(
+    ChatDroppedFileSelection selection,
+  ) {
+    return _factory.buildDroppedFileContent(
+      selection,
+      loadImageDimensions: _loadImageDimensions ?? _defaultLoadImageDimensions,
+    );
+  }
+
+  @override
+  Future<WKImageContent?> pickImage(
+    BuildContext context, {
+    String channelId = '',
+    int channelType = 0,
+  }) async {
+    final pickImageFile = _pickImageFile;
+    if (pickImageFile != null || kIsWeb) {
+      final selection = await (pickImageFile ?? _defaultPickImageFileSelection)
+          .call();
+      return _buildPickedImageContent(
+        selection,
+        channelId: channelId,
+        channelType: channelType,
+      );
+    }
+
     final localPath = await (_pickImagePath ?? _defaultPickImagePath).call();
     if (localPath == null || localPath.trim().isEmpty) {
       return null;
@@ -202,8 +392,8 @@ class PlatformChatMediaActionService implements ChatMediaActionService {
 
   @override
   Future<WKLocationContent?> pickLocation(BuildContext context) async {
-    final selection =
-        await (_pickLocation ?? _defaultPickLocationSelection).call(context);
+    final selection = await (_pickLocation ?? _defaultPickLocationSelection)
+        .call(context);
     if (selection == null) {
       return null;
     }
@@ -212,8 +402,8 @@ class PlatformChatMediaActionService implements ChatMediaActionService {
 
   @override
   Future<WKRichTextContent?> pickRichText(BuildContext context) async {
-    final selection =
-        await (_pickRichText ?? _defaultComposeRichTextSelection).call(context);
+    final selection = await (_pickRichText ?? _defaultComposeRichTextSelection)
+        .call(context);
     if (selection == null) {
       return null;
     }
@@ -221,46 +411,36 @@ class PlatformChatMediaActionService implements ChatMediaActionService {
   }
 
   Future<String?> _defaultPickImagePath() async {
-    if (PlatformUtils.isDesktop) {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const <String>[
-          'png',
-          'jpg',
-          'jpeg',
-          'webp',
-          'gif',
-          'bmp',
-        ],
-        allowMultiple: false,
-        withData: false,
-      );
-      return result?.files.single.path;
-    }
-
-    final file = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
+    return pickSingleLocalImagePath(
       imageQuality: 85,
       maxWidth: 1920,
       maxHeight: 1920,
     );
-    return file?.path;
   }
 
   Future<ChatFileSelection?> _defaultPickFileSelection() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: false,
-      withData: false,
-    );
-    final file = result?.files.single;
-    final localPath = file?.path?.trim() ?? '';
-    if (file == null || localPath.isEmpty) {
+    final file = await pickSingleChatFile();
+    if (file == null) {
       return null;
     }
     return ChatFileSelection(
-      localPath: localPath,
+      localPath: file.localPath,
       name: file.name,
       size: file.size,
+      bytes: file.bytes,
+    );
+  }
+
+  Future<ChatFileSelection?> _defaultPickImageFileSelection() async {
+    final file = await pickSingleChatImageFile();
+    if (file == null) {
+      return null;
+    }
+    return ChatFileSelection(
+      localPath: file.localPath,
+      name: file.name,
+      size: file.size,
+      bytes: file.bytes,
     );
   }
 
@@ -314,25 +494,97 @@ class PlatformChatMediaActionService implements ChatMediaActionService {
   Future<ChatImageDimensions> _defaultLoadImageDimensions(
     String localPath,
   ) async {
-    try {
-      final bytes = await File(localPath).readAsBytes();
-      return _decodeImageDimensions(bytes);
-    } catch (_) {
-      return const ChatImageDimensions(width: 0, height: 0);
-    }
+    return _loadDroppedImageDimensions(localPath);
   }
 
-  Future<ChatImageDimensions> _decodeImageDimensions(Uint8List bytes) async {
-    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
-    final descriptor = await ui.ImageDescriptor.encoded(buffer);
-    try {
-      return ChatImageDimensions(
-        width: descriptor.width,
-        height: descriptor.height,
-      );
-    } finally {
-      descriptor.dispose();
-      buffer.dispose();
+  Future<WKImageContent?> _buildPickedImageContent(
+    ChatFileSelection? selection, {
+    required String channelId,
+    required int channelType,
+  }) async {
+    if (selection == null) {
+      return null;
     }
+
+    final bytes = selection.bytes;
+    if (bytes != null && bytes.isNotEmpty) {
+      final remoteUrl = await _uploadPickedBytes(
+        bytes: bytes,
+        fileName: selection.name,
+        channelId: channelId,
+        channelType: channelType,
+      );
+      final dimensions = await _safeDecodeImageDimensions(bytes);
+      return _factory.buildImageContent(
+        localPath: '',
+        width: dimensions.width,
+        height: dimensions.height,
+        remoteUrl: remoteUrl,
+      );
+    }
+
+    final localPath = selection.localPath.trim();
+    if (localPath.isEmpty) {
+      return null;
+    }
+    final dimensions =
+        await (_loadImageDimensions ?? _defaultLoadImageDimensions)(localPath);
+    return _factory.buildImageContent(
+      localPath: localPath,
+      width: dimensions.width,
+      height: dimensions.height,
+    );
+  }
+
+  Future<String> _uploadPickedBytes({
+    required Uint8List bytes,
+    required String fileName,
+    required String channelId,
+    required int channelType,
+  }) {
+    final uploader =
+        _uploadPickedFileBytes ?? FileApi.instance.uploadChatFileBytes;
+    return uploader(
+      bytes: bytes,
+      fileName: fileName,
+      channelId: channelId,
+      channelType: channelType,
+    );
+  }
+}
+
+Future<ChatImageDimensions> _loadDroppedImageDimensions(
+  String localPath,
+) async {
+  try {
+    final bytes = await loadChatImageBytes(localPath);
+    if (bytes == null || bytes.isEmpty) {
+      return const ChatImageDimensions(width: 0, height: 0);
+    }
+    return _decodeImageDimensions(bytes);
+  } catch (_) {
+    return const ChatImageDimensions(width: 0, height: 0);
+  }
+}
+
+Future<ChatImageDimensions> _decodeImageDimensions(Uint8List bytes) async {
+  final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+  final descriptor = await ui.ImageDescriptor.encoded(buffer);
+  try {
+    return ChatImageDimensions(
+      width: descriptor.width,
+      height: descriptor.height,
+    );
+  } finally {
+    descriptor.dispose();
+    buffer.dispose();
+  }
+}
+
+Future<ChatImageDimensions> _safeDecodeImageDimensions(Uint8List bytes) async {
+  try {
+    return await _decodeImageDimensions(bytes);
+  } catch (_) {
+    return const ChatImageDimensions(width: 0, height: 0);
   }
 }

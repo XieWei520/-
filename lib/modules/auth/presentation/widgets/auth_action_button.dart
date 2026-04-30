@@ -15,6 +15,8 @@ class AuthActionButton extends StatelessWidget {
     this.leading,
     this.height = AuthExperienceTokens.actionButtonHeight,
     this.fullWidth = true,
+    this.padding,
+    this.labelFontSize = 16,
   });
 
   const AuthActionButton.secondary({
@@ -25,6 +27,8 @@ class AuthActionButton extends StatelessWidget {
     this.leading,
     this.height = AuthExperienceTokens.actionButtonHeight,
     this.fullWidth = true,
+    this.padding,
+    this.labelFontSize = 16,
   }) : variant = AuthActionButtonVariant.secondary;
 
   final String label;
@@ -34,6 +38,8 @@ class AuthActionButton extends StatelessWidget {
   final Widget? leading;
   final double height;
   final bool fullWidth;
+  final EdgeInsetsGeometry? padding;
+  final double labelFontSize;
 
   bool get _isPrimary => variant == AuthActionButtonVariant.primary;
 
@@ -43,9 +49,9 @@ class AuthActionButton extends StatelessWidget {
     final borderRadius = BorderRadius.circular(
       AuthExperienceTokens.actionButtonRadius,
     );
-    final labelStyle = const TextStyle(
+    final labelStyle = TextStyle(
       fontFamily: WKFontFamily.primary,
-      fontSize: 16,
+      fontSize: labelFontSize,
       fontWeight: FontWeight.w600,
     );
     final content = isLoading
@@ -77,7 +83,9 @@ class AuthActionButton extends StatelessWidget {
               disabledBackgroundColor: AuthExperienceTokens.brandMuted,
               foregroundColor: Colors.white,
               disabledForegroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              padding:
+                  padding ??
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: borderRadius),
             ),
             child: content,
@@ -85,14 +93,16 @@ class AuthActionButton extends StatelessWidget {
         : OutlinedButton(
             onPressed: onTap,
             style: OutlinedButton.styleFrom(
-              backgroundColor: AuthExperienceTokens.stageShellTop.withOpacity(
-                0.88,
+              backgroundColor: AuthExperienceTokens.stageShellTop.withValues(
+                alpha: 0.88,
               ),
               foregroundColor: AuthExperienceTokens.brandAccentStrong,
               side: const BorderSide(
                 color: AuthExperienceTokens.stageShellBorder,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              padding:
+                  padding ??
+                  const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: borderRadius),
             ),
             child: content,

@@ -10,6 +10,7 @@ import 'package:wukongimfluttersdk/type/const.dart';
 import '../../data/models/wk_custom_content.dart';
 import '../../data/models/wk_robot_card_content.dart';
 import '../../wukong_base/msg/msg_content_type.dart';
+import '../../wukong_crypto/e2ee/e2ee_message_codec.dart';
 import 'message_forwarding.dart';
 
 const String _messageFallback = '[\u6d88\u606f]';
@@ -533,6 +534,11 @@ MessagePreviewData? _resolveUnknownStructuredPreview(
 }
 
 String _resolveTypedPayloadText(Map<String, dynamic> payload) {
+  if (E2eeMessageCodec.isEncryptedPayload(payload)) {
+    final fallback = payload['fallback']?.toString().trim() ?? '';
+    return fallback.isNotEmpty ? fallback : E2eeMessageCodec.fallbackText;
+  }
+
   final type = int.tryParse(payload['type']?.toString() ?? '');
   if (type == MsgContentType.richText) {
     final text = (payload['content'] ?? payload['body'] ?? '')

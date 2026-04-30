@@ -52,12 +52,18 @@ List<Widget> buildSettingsSectionWidgets({
   required Widget Function(SettingsCellItem cell) buildCell,
 }) {
   return <Widget>[
-    for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) ...[
+    for (
+      var sectionIndex = 0;
+      sectionIndex < sections.length;
+      sectionIndex++
+    ) ...[
       WKSettingsGroup(
         children: [
-          for (var cellIndex = 0;
-              cellIndex < sections[sectionIndex].cells.length;
-              cellIndex++) ...[
+          for (
+            var cellIndex = 0;
+            cellIndex < sections[sectionIndex].cells.length;
+            cellIndex++
+          ) ...[
             buildCell(sections[sectionIndex].cells[cellIndex]),
             if (shouldInsertSettingsGap(
               sectionId: sections[sectionIndex].id,
@@ -393,7 +399,7 @@ class _SettingPageState extends ConsumerState<SettingPage> {
                   ),
                 ),
               ),
-              if (trailing != null) trailing,
+              ?trailing,
             ],
           ),
         ),
@@ -495,7 +501,8 @@ class _SettingPageState extends ConsumerState<SettingPage> {
                   _buildUnifiedSettingsCell(cell),
               ],
             ),
-            if (index != sections.length - 1) const SizedBox(height: WKSpace.md),
+            if (index != sections.length - 1)
+              const SizedBox(height: WKSpace.md),
           ],
         ],
       ),

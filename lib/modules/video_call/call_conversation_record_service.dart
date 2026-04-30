@@ -18,6 +18,7 @@ const String _missedPrefix = '\u672a\u63a5\u542c';
 const String _rejectedPrefix = '\u5df2\u62d2\u7edd';
 const String _endedSuffix = '\u7ed3\u675f';
 const String _systemUid = 'u_10000';
+final Set<String> _ephemeralRecordClientMsgNos = <String>{};
 
 String buildCallConversationRecordText({
   required CallType callType,
@@ -64,6 +65,36 @@ class CallConversationRecordPayload {
   final String text;
   final Map<String, dynamic> payload;
   final String clientMsgNo;
+}
+
+@visibleForTesting
+bool shouldUseEphemeralCallConversationRecord({
+  required bool isWeb,
+  required bool sdkAppMode,
+}) {
+  return isWeb || !sdkAppMode;
+}
+
+@visibleForTesting
+WKMsg buildCallConversationRecordMessage(
+  CallConversationRecordPayload payload, {
+  required String fromUid,
+  DateTime? now,
+}) {
+  final resolvedNow = now ?? DateTime.now();
+  final timestamp = resolvedNow.millisecondsSinceEpoch ~/ 1000;
+  final message = WKMsg()
+    ..clientMsgNO = payload.clientMsgNo
+    ..channelID = payload.payload['channel_id']?.toString().trim() ?? ''
+    ..channelType = _readChannelType(payload.payload['channel_type'])
+    ..fromUID = fromUid.trim().isEmpty ? _systemUid : fromUid.trim()
+    ..contentType = WkMessageContentType.unknown
+    ..content = jsonEncode(payload.payload)
+    ..status = WKSendMsgResult.sendSuccess
+    ..timestamp = timestamp
+    ..orderSeq = resolvedNow.millisecondsSinceEpoch
+    ..header.redDot = false;
+  return message;
 }
 
 class CallConversationRecordService {
@@ -128,6 +159,14 @@ class CallConversationRecordService {
     CallConversationRecordPayload payload,
   ) async {
     try {
+      if (shouldUseEphemeralCallConversationRecord(
+        isWeb: kIsWeb,
+        sdkAppMode: WKIM.shared.isApp(),
+      )) {
+        _publishEphemeralRecord(payload);
+        return;
+      }
+
       final existing = await WKIM.shared.messageManager.getWithClientMsgNo(
         payload.clientMsgNo,
       );
@@ -138,15 +177,10 @@ class CallConversationRecordService {
         return;
       }
 
-      final message = WKMsg()
-        ..clientMsgNO = payload.clientMsgNo
-        ..channelID = payload.payload['channel_id']?.toString().trim() ?? ''
-        ..channelType = _readChannelType(payload.payload['channel_type'])
-        ..fromUID = _resolveFromUid()
-        ..contentType = WkMessageContentType.unknown
-        ..content = jsonEncode(payload.payload)
-        ..status = WKSendMsgResult.sendSuccess
-        ..header.redDot = false;
+      final message = buildCallConversationRecordMessage(
+        payload,
+        fromUid: _resolveFromUid(),
+      );
       if (message.channelID.isEmpty) {
         return;
       }
@@ -180,6 +214,27 @@ class CallConversationRecordService {
       debugPrint('[call/chat-record] insert failed: $error');
       debugPrint('$stackTrace');
     }
+  }
+
+  static void _publishEphemeralRecord(CallConversationRecordPayload payload) {
+    if (!_ephemeralRecordClientMsgNos.add(payload.clientMsgNo)) {
+      debugPrint(
+        '[call/chat-record] skip duplicate ephemeral clientMsgNo=${payload.clientMsgNo}',
+      );
+      return;
+    }
+    final message = buildCallConversationRecordMessage(
+      payload,
+      fromUid: _resolveFromUid(),
+    );
+    if (message.channelID.isEmpty) {
+      return;
+    }
+    WKIM.shared.messageManager.pushNewMsg(<WKMsg>[message]);
+    debugPrint(
+      '[call/chat-record] published ephemeral roomId=${payload.payload['room_id']} '
+      'status=${payload.payload['status']} text=${payload.text}',
+    );
   }
 }
 

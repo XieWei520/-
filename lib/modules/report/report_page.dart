@@ -1,12 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../core/constants/im_constants.dart';
+import '../../core/platform/local_image_picker.dart';
 import '../../data/models/report.dart';
 import '../../service/api/file_api.dart';
 import '../../service/api/report_api.dart';
+import '../../widgets/local_media_image_provider.dart';
 
 class ReportPage extends StatefulWidget {
   final String channelId;
@@ -27,11 +26,10 @@ class ReportPage extends StatefulWidget {
 }
 
 class _ReportPageState extends State<ReportPage> {
-  final ImagePicker _picker = ImagePicker();
   final TextEditingController _remarkController = TextEditingController();
 
   List<ReportCategory> _categories = const <ReportCategory>[];
-  List<XFile> _evidenceImages = const <XFile>[];
+  List<String> _evidenceImages = const <String>[];
   bool _isLoading = true;
   bool _isSubmitting = false;
   String? _errorMessage;
@@ -142,7 +140,7 @@ class _ReportPageState extends State<ReportPage> {
     }
 
     try {
-      final images = await _picker.pickMultiImage(
+      final images = await pickMultipleLocalImagePaths(
         imageQuality: 85,
         maxWidth: 1600,
       );
@@ -153,7 +151,7 @@ class _ReportPageState extends State<ReportPage> {
       final remainingSlots = 9 - _evidenceImages.length;
       final appendedImages = images.take(remainingSlots).toList();
       setState(() {
-        _evidenceImages = <XFile>[..._evidenceImages, ...appendedImages];
+        _evidenceImages = <String>[..._evidenceImages, ...appendedImages];
       });
 
       if (images.length > remainingSlots) {
@@ -170,7 +168,7 @@ class _ReportPageState extends State<ReportPage> {
     }
 
     setState(() {
-      _evidenceImages = <XFile>[
+      _evidenceImages = <String>[
         for (var i = 0; i < _evidenceImages.length; i++)
           if (i != index) _evidenceImages[i],
       ];
@@ -192,7 +190,7 @@ class _ReportPageState extends State<ReportPage> {
       final imageUrls = <String>[];
       for (var i = 0; i < _evidenceImages.length; i++) {
         final uploadedUrl = await FileApi.instance.uploadReportImage(
-          _evidenceImages[i].path,
+          _evidenceImages[i],
         );
         if (uploadedUrl.trim().isEmpty) {
           throw Exception('第 ${i + 1} 张证据图片上传失败');
@@ -429,7 +427,7 @@ class _ReportPageState extends State<ReportPage> {
                   children: [
                     for (var i = 0; i < _evidenceImages.length; i++)
                       _EvidenceImageTile(
-                        filePath: _evidenceImages[i].path,
+                        filePath: _evidenceImages[i],
                         onRemove: _isSubmitting
                             ? null
                             : () => _removeEvidenceImage(i),
@@ -499,23 +497,21 @@ class _EvidenceImageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageProvider = resolveLocalMediaImageProvider(filePath);
     return Stack(
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.file(
-            File(filePath),
-            width: 88,
-            height: 88,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => Container(
-              width: 88,
-              height: 88,
-              color: Colors.grey[200],
-              alignment: Alignment.center,
-              child: const Icon(Icons.broken_image_outlined),
-            ),
-          ),
+          child: imageProvider == null
+              ? _buildFallback()
+              : Image(
+                  image: imageProvider,
+                  width: 88,
+                  height: 88,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      _buildFallback(),
+                ),
         ),
         Positioned(
           top: 4,
@@ -533,6 +529,16 @@ class _EvidenceImageTile extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFallback() {
+    return Container(
+      width: 88,
+      height: 88,
+      color: Colors.grey[200],
+      alignment: Alignment.center,
+      child: const Icon(Icons.broken_image_outlined),
     );
   }
 }

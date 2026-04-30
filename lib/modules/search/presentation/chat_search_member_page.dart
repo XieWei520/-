@@ -35,7 +35,7 @@ class ChatSearchMemberPage extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Search Members')),
+      appBar: AppBar(title: const Text('搜索成员')),
       body: SafeArea(
         child: state.isLoadingMembers && state.members.isEmpty
             ? const Center(child: CircularProgressIndicator())
@@ -48,7 +48,7 @@ class ChatSearchMemberPage extends ConsumerWidget {
                     const SizedBox(height: 12),
                     FilledButton(
                       onPressed: controller.loadMembers,
-                      child: const Text('Retry'),
+                      child: const Text('重试'),
                     ),
                   ],
                 ),
@@ -250,13 +250,13 @@ class _MemberResultsBody extends StatelessWidget {
           children: [
             Text(state.error!),
             const SizedBox(height: 12),
-            FilledButton(onPressed: onRetryInitial, child: const Text('Retry')),
+            FilledButton(onPressed: onRetryInitial, child: const Text('重试')),
           ],
         ),
       );
     }
     if (state.results.isEmpty) {
-      return const Center(child: Text('No results'));
+      return const Center(child: Text('暂无结果'));
     }
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
@@ -284,14 +284,14 @@ class _MemberResultsBody extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Load more failed'),
+                    const Text('加载更多失败'),
                     const SizedBox(height: 12),
                     FilledButton(
                       key: const ValueKey<String>(
                         'chat-member-search-load-more-retry',
                       ),
                       onPressed: onRetryLoadMore,
-                      child: const Text('Retry'),
+                      child: const Text('重试'),
                     ),
                   ],
                 ),

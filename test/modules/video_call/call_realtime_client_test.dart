@@ -8,20 +8,20 @@ void main() {
   group('CallRealtimeClient helpers', () {
     test('builds browser-safe realtime URL with ticket query parameter', () {
       final url = buildCallRealtimeUri(
-        controlUrl: 'wss://wemx.cc/v1/callgateway/ws',
+        controlUrl: 'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
         ticket: 'jwt-token',
         roomId: 'room_01',
       );
 
       expect(
         url.toString(),
-        'wss://wemx.cc/v1/callgateway/ws?ticket=jwt-token&room_id=room_01',
+        'wss://infoequity.qingyunshe.top/v1/callgateway/ws?ticket=jwt-token&room_id=room_01',
       );
     });
 
     test('preserves existing query parameters when building realtime URL', () {
       final url = buildCallRealtimeUri(
-        controlUrl: 'wss://wemx.cc/v1/callgateway/ws?client=flutter',
+        controlUrl: 'wss://infoequity.qingyunshe.top/v1/callgateway/ws?client=flutter',
         ticket: 'jwt-token',
         roomId: 'room_01',
       );
@@ -54,7 +54,7 @@ void main() {
           connect: (_, {headers}) => socket,
         );
 
-        await client.connect(uri: Uri.parse('wss://wemx.cc/v1/callgateway/ws'));
+        await client.connect(uri: Uri.parse('wss://infoequity.qingyunshe.top/v1/callgateway/ws'));
         final nextEvent = client.events.first;
         socket.emit('{"type":"accept","room_id":"room_01","accepted":true}');
 
@@ -83,7 +83,7 @@ void main() {
       );
 
       await expectLater(
-        client.connect(uri: Uri.parse('wss://wemx.cc/v1/callgateway/ws')),
+        client.connect(uri: Uri.parse('wss://infoequity.qingyunshe.top/v1/callgateway/ws')),
         throwsA(isA<StateError>()),
       );
 
@@ -104,7 +104,7 @@ void main() {
           connect: (_, {headers}) => socket,
         );
 
-        await client.connect(uri: Uri.parse('wss://wemx.cc/v1/callgateway/ws'));
+        await client.connect(uri: Uri.parse('wss://infoequity.qingyunshe.top/v1/callgateway/ws'));
         await socket.finish();
         await Future<void>.delayed(Duration.zero);
 

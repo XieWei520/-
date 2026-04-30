@@ -6,7 +6,6 @@ import 'package:wukongimfluttersdk/entity/channel_member.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/entity/reminder.dart';
-import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
@@ -16,12 +15,14 @@ import '../../core/utils/avatar_utils.dart';
 import '../../data/models/chat_session.dart';
 import '../../data/models/friend.dart';
 import '../../data/models/group.dart';
+import '../../data/models/user.dart';
 import '../../data/models/wk_custom_content.dart';
 import '../../data/providers/channel_provider.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../data/providers/user_provider.dart';
 import '../../service/api/group_api.dart';
 import '../../service/im/im_service.dart';
+import '../../service/api/user_api.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_conversation_item.dart';
 import '../../widgets/wk_design_tokens.dart';
@@ -29,6 +30,7 @@ import '../../widgets/wk_main_top_bar.dart';
 import '../../widgets/wk_reference_assets.dart';
 import '../../widgets/wk_screen_popup_menu.dart';
 import '../../widgets/wk_status_view.dart';
+import '../../widgets/wk_web_ui_tokens.dart';
 import '../../wk_endpoint/providers/slot_registry_provider.dart';
 import '../../wk_endpoint/slots/home_slots.dart';
 import '../../wukong_base/msg/draft_manager.dart';
@@ -41,6 +43,7 @@ import '../chat/chat_page.dart';
 import '../chat/chat_password_runtime.dart';
 import '../chat/message_content_preview.dart';
 import '../chat/robot_message_identity.dart';
+import '../customer_service/customer_service_identity.dart';
 import '../contacts/create_group_page.dart';
 import '../home/home_surface_contract.dart';
 import '../home/home_surface_kernel.dart';
@@ -48,8 +51,12 @@ import '../home/home_top_menu_slot_assembly.dart';
 import '../vip/vip_guard.dart';
 import 'conversation_activity_registry.dart';
 import 'conversation_list_item_loader.dart';
+import 'conversation_metadata_resolver.dart';
 import 'conversation_list_refresh_controller.dart';
 import 'widgets/conversation_action_sheet.dart';
+
+const String _androidSystemTeamId = 'u_10000';
+const String _androidFileHelperId = 'fileHelper';
 
 @immutable
 class ConversationSendStatus {
@@ -120,17 +127,25 @@ class ConversationPreferredInfo {
   final String title;
   final String? avatarUrl;
   final int vipLevel;
+  final String? category;
+  final bool personalInfoKnown;
 
   const ConversationPreferredInfo({
     required this.title,
     required this.avatarUrl,
     this.vipLevel = 0,
+    this.category,
+    this.personalInfoKnown = false,
   });
 }
 
 @visibleForTesting
 Map<String, ConversationPreferredInfo>
-buildPreferredPersonalConversationInfoMap(Iterable<Friend> friends) {
+buildPreferredPersonalConversationInfoMap(
+  Iterable<Friend> friends, {
+  Iterable<CustomerServiceAccount> customerServices =
+      const <CustomerServiceAccount>[],
+}) {
   final infos = <String, ConversationPreferredInfo>{};
   for (final friend in friends) {
     final uid = friend.uid.trim();
@@ -141,6 +156,32 @@ buildPreferredPersonalConversationInfoMap(Iterable<Friend> friends) {
       title: _resolveFriendTitle(friend),
       avatarUrl: _resolveConversationAvatar(friend.avatar),
       vipLevel: friend.vipLevel,
+      category: normalizePublicAccountCategory(friend.category),
+      personalInfoKnown: true,
+    );
+  }
+  for (final service in customerServices) {
+    final uid = service.uid.trim();
+    if (uid.isEmpty) {
+      continue;
+    }
+    final existing = infos[uid];
+    final existingTitle = existing?.title.trim() ?? '';
+    final serviceName = service.name.trim();
+    infos[uid] = ConversationPreferredInfo(
+      title: _firstNonEmptyText([
+        (existingTitle.isNotEmpty && existingTitle != uid)
+            ? existingTitle
+            : null,
+        serviceName,
+        existingTitle,
+        uid,
+      ]),
+      avatarUrl:
+          existing?.avatarUrl ?? _resolveConversationAvatar(service.avatar),
+      vipLevel: existing?.vipLevel ?? 0,
+      category: customerServiceCategory,
+      personalInfoKnown: true,
     );
   }
   return infos;
@@ -170,12 +211,12 @@ String resolveConversationHeaderTitle(int connectionStatus) {
     case WKConnectStatus.connecting:
       return '连接中...';
     case WKConnectStatus.syncMsg:
-      return '同步消息中...';
+      return '同步中...';
     case WKConnectStatus.noNetwork:
     case WKConnectStatus.fail:
-      return '连接已断开';
+      return '未连接';
     default:
-      return '消息';
+      return '聊天';
   }
 }
 
@@ -202,7 +243,24 @@ final preferredPersonalConversationInfoProvider =
           (state) => state.valueOrNull ?? const <Friend>[],
         ),
       );
-      return buildPreferredPersonalConversationInfoMap(friends);
+      final customerServices = ref.watch(
+        customerServiceConversationAccountsProvider.select(
+          (state) => state.valueOrNull ?? const <CustomerServiceAccount>[],
+        ),
+      );
+      return buildPreferredPersonalConversationInfoMap(
+        friends,
+        customerServices: customerServices,
+      );
+    });
+
+final customerServiceConversationAccountsProvider =
+    FutureProvider<List<CustomerServiceAccount>>((ref) async {
+      try {
+        return await UserApi.instance.getCustomerServices();
+      } catch (_) {
+        return const <CustomerServiceAccount>[];
+      }
     });
 
 final preferredGroupConversationInfoProvider =
@@ -222,22 +280,63 @@ final conversationListItemLoaderProvider =
       return loader;
     });
 
+final conversationMetadataResolverProvider =
+    Provider.autoDispose<ConversationMetadataResolver>((ref) {
+      final resolver = ConversationMetadataResolver();
+      ref.onDispose(resolver.clear);
+      return resolver;
+    });
+
 final conversationListItemDataProvider = FutureProvider.autoDispose
     .family<WKConversationItemData, ConversationListItemRequest>((
       ref,
       request,
     ) {
       final loader = ref.watch(conversationListItemLoaderProvider);
+      final metadataResolver = ref.watch(conversationMetadataResolverProvider);
       final currentUid = WKIM.shared.options.uid?.trim() ?? '';
       return loader.load(
         request.requestKey,
-        () => resolveConversationListItemData(request, currentUid: currentUid),
+        () => resolveConversationListItemData(
+          request,
+          currentUid: currentUid,
+          personalUserInfoLoader: (uid) => metadataResolver.loadPersonalInfo(
+            uid,
+            (resolvedUid) => UserApi.instance
+                .getUserInfo(resolvedUid)
+                .then<UserInfo?>((user) => user, onError: (_, _) => null),
+          ),
+          groupInfoLoader: (groupNo) => metadataResolver.loadGroupInfo(
+            groupNo,
+            (resolvedGroupNo) => GroupApi.instance
+                .getGroupInfo(resolvedGroupNo)
+                .then<GroupInfo?>((group) => group, onError: (_, _) => null),
+          ),
+        ),
+        cacheKey: conversationRowKey(
+          request.conversation.channelID,
+          request.conversation.channelType,
+        ),
       );
     });
 
 @visibleForTesting
 String conversationRowKey(String channelId, int channelType) {
   return '$channelType:$channelId';
+}
+
+String conversationKeyFor(WKUIConversationMsg conversation) {
+  return '${conversation.channelID}:${conversation.channelType}';
+}
+
+String conversationSelectionKeyFromRowKey(String rowKey) {
+  final separatorIndex = rowKey.indexOf(':');
+  if (separatorIndex < 0) {
+    return rowKey;
+  }
+  final channelType = rowKey.substring(0, separatorIndex);
+  final channelId = rowKey.substring(separatorIndex + 1);
+  return '$channelId:$channelType';
 }
 
 String _conversationRowKeyOf(WKUIConversationMsg conversation) {
@@ -251,6 +350,15 @@ String _conversationRowOrderSignature(List<WKUIConversationMsg> conversations) {
   return conversations.map(_conversationRowKeyOf).join('|');
 }
 
+Map<String, WKUIConversationMsg> _conversationRowMap(
+  List<WKUIConversationMsg> conversations,
+) {
+  return <String, WKUIConversationMsg>{
+    for (final conversation in conversations)
+      _conversationRowKeyOf(conversation): conversation,
+  };
+}
+
 final conversationRowOrderProvider = Provider<List<String>>((ref) {
   final signature = ref.watch(
     conversationProvider.select(_conversationRowOrderSignature),
@@ -261,20 +369,17 @@ final conversationRowOrderProvider = Provider<List<String>>((ref) {
   return signature.split('|');
 });
 
+final conversationRowMapProvider = Provider<Map<String, WKUIConversationMsg>>((
+  ref,
+) {
+  return ref.watch(conversationProvider.select(_conversationRowMap));
+});
+
 final conversationRowProvider = Provider.family<WKUIConversationMsg?, String>((
   ref,
   key,
 ) {
-  return ref.watch(
-    conversationProvider.select((conversations) {
-      for (final item in conversations) {
-        if (_conversationRowKeyOf(item) == key) {
-          return item;
-        }
-      }
-      return null;
-    }),
-  );
+  return ref.watch(conversationRowMapProvider.select((rows) => rows[key]));
 });
 
 final conversationSurfaceContractProvider = Provider<HomeSurfaceContract>((
@@ -297,8 +402,24 @@ final conversationSurfaceContractProvider = Provider<HomeSurfaceContract>((
   );
 });
 
+typedef ConversationOpenHandler =
+    void Function(
+      WKUIConversationMsg conversation,
+      ConversationPreferredInfo? preferredInfo,
+      WKConversationItemData displayData,
+    );
+
 class ConversationListPage extends ConsumerStatefulWidget {
-  const ConversationListPage({super.key});
+  const ConversationListPage({
+    super.key,
+    this.embedded = false,
+    this.selectedConversationKey,
+    this.onOpenConversation,
+  });
+
+  final bool embedded;
+  final String? selectedConversationKey;
+  final ConversationOpenHandler? onOpenConversation;
 
   @override
   ConsumerState<ConversationListPage> createState() =>
@@ -350,7 +471,10 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
     final conversationRowKeys = ref.watch(conversationRowOrderProvider);
     final personalInfos = ref.watch(preferredPersonalConversationInfoProvider);
     final groupInfos = ref.watch(preferredGroupConversationInfoProvider);
-    final availableKeys = conversationRowKeys.toSet();
+    final availableKeys = {
+      for (final rowKey in conversationRowKeys)
+        conversationSelectionKeyFromRowKey(rowKey),
+    };
     if (_selectedKeys.any((key) => !availableKeys.contains(key))) {
       _selectedKeys = _selectedKeys.where(availableKeys.contains).toSet();
       if (_selectedKeys.isEmpty && _selectionMode) {
@@ -358,96 +482,119 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
       }
     }
 
-    return Scaffold(
-      backgroundColor: WKColors.homeBg,
-      body: Column(
-        children: [
-          _ConversationListHeader(
-            selectionMode: _selectionMode,
-            selectedCount: _selectedKeys.length,
-            canDeleteSelection: _selectedKeys.isNotEmpty,
-            onClearSelection: _clearSelection,
-            onDeleteSelected: () =>
-                _deleteSelected(ref.read(conversationProvider)),
-            onOpenDeviceManager: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const PCLoginManagementPage(),
-                ),
-              );
-            },
-            onOpenGlobalSearch: () => _openGlobalSearch(context),
-            onShowTopMenu: (anchorContext) => _showTopMenu(
-              context,
-              anchorContext,
-              ref.read(conversationProvider),
-            ),
+    final content = Column(
+      children: [
+        _ConversationListHeader(
+          selectionMode: _selectionMode,
+          selectedCount: _selectedKeys.length,
+          canDeleteSelection: _selectedKeys.isNotEmpty,
+          onClearSelection: _clearSelection,
+          onDeleteSelected: () =>
+              _deleteSelected(ref.read(conversationProvider)),
+          onOpenDeviceManager: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PCLoginManagementPage()),
+            );
+          },
+          onOpenGlobalSearch: () => _openGlobalSearch(context),
+          onShowTopMenu: (anchorContext) => _showTopMenu(
+            context,
+            anchorContext,
+            ref.read(conversationProvider),
           ),
-          Expanded(
-            child: conversationRowKeys.isEmpty
-                ? const WKEmptyView(
-                    icon: Icons.forum_outlined,
-                    message: '暂时还没有会话',
-                    subMessage: '登录并开始聊天后，会话会显示在这里。',
-                  )
-                : RefreshIndicator(
-                    onRefresh: () async {
-                      await ref
-                          .read(conversationProvider.notifier)
-                          .refreshNow();
-                    },
-                    child: ListView.separated(
-                      padding: const EdgeInsets.only(bottom: WKSpace.xl),
-                      itemCount: conversationRowKeys.length,
-                      separatorBuilder: (_, _) => Container(
-                        height: 1,
-                        margin: const EdgeInsets.only(left: 75),
-                        color: WKColors.homeBg,
-                      ),
-                      itemBuilder: (context, index) {
-                        final conversationKey = conversationRowKeys[index];
-                        final selected = _selectedKeys.contains(
-                          conversationKey,
-                        );
-                        return _ConversationTile(
-                          key: ValueKey(conversationKey),
-                          conversationKey: conversationKey,
-                          personalInfos: personalInfos,
-                          groupInfos: groupInfos,
-                          selectionMode: _selectionMode,
-                          selected: selected,
-                          onTap: (conversation, preferredInfo) {
-                            if (_selectionMode) {
-                              _toggleConversationSelection(conversation);
-                              return;
-                            }
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ChatPage(
-                                  channelId: conversation.channelID,
-                                  channelType: conversation.channelType,
-                                  channelName: preferredInfo?.title,
-                                ),
-                              ),
-                            );
-                          },
-                          onLongPress: (conversation) {
-                            if (_selectionMode) {
-                              _toggleConversationSelection(conversation);
-                              return;
-                            }
-                            unawaited(
-                              _showConversationMenu(context, ref, conversation),
-                            );
-                          },
-                        );
-                      },
+        ),
+        Expanded(
+          child: conversationRowKeys.isEmpty
+              ? const WKEmptyView(
+                  icon: Icons.forum_outlined,
+                  message: '暂时还没有会话',
+                  subMessage: '登录并开始聊天后，会话会显示在这里。',
+                )
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    await ref.read(conversationProvider.notifier).refreshNow();
+                  },
+                  child: ListView.separated(
+                    padding: const EdgeInsets.only(bottom: WKSpace.xl),
+                    itemCount: conversationRowKeys.length,
+                    separatorBuilder: (_, _) => Container(
+                      height: 1,
+                      margin: const EdgeInsets.only(left: 75),
+                      color: WKColors.homeBg,
                     ),
+                    itemBuilder: (context, index) {
+                      final conversationKey = conversationRowKeys[index];
+                      return _ConversationTile(
+                        key: ValueKey(conversationKey),
+                        conversationKey: conversationKey,
+                        personalInfos: personalInfos,
+                        groupInfos: groupInfos,
+                        selectionMode: _selectionMode,
+                        selectedConversationKeys: _selectedKeys,
+                        webSelectedConversationKey:
+                            widget.selectedConversationKey,
+                        webStyle: widget.embedded,
+                        onTap: (conversation, preferredInfo, displayData) {
+                          if (_selectionMode) {
+                            _toggleConversationSelection(conversation);
+                            return;
+                          }
+                          if (widget.onOpenConversation != null) {
+                            widget.onOpenConversation!(
+                              conversation,
+                              preferredInfo,
+                              displayData,
+                            );
+                            return;
+                          }
+                          final displayTitle = displayData.title.trim();
+                          final fallbackTitle =
+                              displayTitle.isEmpty ||
+                                  displayTitle == conversation.channelID ||
+                                  displayTitle == 'Loading conversation...'
+                              ? null
+                              : displayTitle;
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ChatPage(
+                                channelId: conversation.channelID,
+                                channelType: conversation.channelType,
+                                channelName:
+                                    preferredInfo?.title ?? fallbackTitle,
+                                channelCategory:
+                                    preferredInfo?.category ??
+                                    displayData.category,
+                                initialVipLevel: displayData.vipLevel,
+                              ),
+                            ),
+                          );
+                        },
+                        onLongPress: (conversation) {
+                          if (_selectionMode) {
+                            _toggleConversationSelection(conversation);
+                            return;
+                          }
+                          unawaited(
+                            _showConversationMenu(context, ref, conversation),
+                          );
+                        },
+                      );
+                    },
                   ),
-          ),
-        ],
-      ),
+                ),
+        ),
+      ],
     );
+
+    if (widget.embedded) {
+      return Material(
+        key: const ValueKey<String>('conversation-list-embedded'),
+        color: WKWebColors.surface,
+        child: content,
+      );
+    }
+
+    return Scaffold(backgroundColor: WKColors.homeBg, body: content);
   }
 
   Future<void> _showTopMenu(
@@ -576,23 +723,18 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(WKRadius.lg),
           ),
-          title: const Text('Delete selected conversations'),
-          content: Text(
-            'Delete ${targets.length} selected conversations? This will also remove local drafts.',
-          ),
+          title: const Text('删除选中的会话'),
+          content: Text('确定删除选中的 ${targets.length} 个会话吗？本地草稿也会一并删除。'),
           contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
           actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
+              child: const Text('取消'),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text(
-                'Delete',
-                style: TextStyle(color: WKColors.danger),
-              ),
+              child: const Text('删除', style: TextStyle(color: WKColors.danger)),
             ),
           ],
         );
@@ -625,23 +767,18 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(WKRadius.lg),
           ),
-          title: const Text('Clear all conversations'),
-          content: const Text(
-            'Clear all conversations? This will also remove local drafts.',
-          ),
+          title: const Text('清空全部会话'),
+          content: const Text('确定清空全部会话吗？本地草稿也会一并删除。'),
           contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
           actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
+              child: const Text('取消'),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text(
-                'Clear',
-                style: TextStyle(color: WKColors.danger),
-              ),
+              child: const Text('清空', style: TextStyle(color: WKColors.danger)),
             ),
           ],
         );
@@ -714,7 +851,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
   }
 
   static String _conversationKey(WKUIConversationMsg conversation) {
-    return _conversationRowKeyOf(conversation);
+    return conversationKeyFor(conversation);
   }
 }
 
@@ -861,6 +998,51 @@ String _resolveFriendTitle(Friend friend) {
   return friend.uid;
 }
 
+ConversationPreferredInfo? _mergePersonalPreferredInfo(
+  ConversationPreferredInfo? base,
+  WKConversationItemData? cached, {
+  required String channelId,
+}) {
+  if (cached == null) {
+    return base;
+  }
+
+  final cachedTitle = cached.title.trim();
+  final cachedAvatar = cached.avatarUrl?.trim() ?? '';
+  final cachedCategory = normalizePublicAccountCategory(cached.category);
+  final baseTitle = base?.title.trim() ?? '';
+  final baseAvatar = base?.avatarUrl?.trim() ?? '';
+  final baseCategory = normalizePublicAccountCategory(base?.category);
+  final title = _firstNonEmptyText([
+    baseTitle,
+    cachedTitle == channelId.trim() ? null : cachedTitle,
+    cachedTitle,
+  ]);
+  final avatarUrl = _firstNonEmptyText([baseAvatar, cachedAvatar]);
+  final vipLevel = (base?.vipLevel ?? 0) != 0
+      ? base!.vipLevel
+      : cached.vipLevel;
+  final category = _firstNonEmptyText([baseCategory, cachedCategory]);
+  final personalInfoKnown =
+      (base?.personalInfoKnown ?? false) || cached.personalInfoKnown;
+
+  if (title.isEmpty &&
+      avatarUrl.isEmpty &&
+      vipLevel == 0 &&
+      category.isEmpty &&
+      !personalInfoKnown) {
+    return base;
+  }
+
+  return ConversationPreferredInfo(
+    title: title.isEmpty ? channelId : title,
+    avatarUrl: avatarUrl.isEmpty ? null : avatarUrl,
+    vipLevel: vipLevel,
+    category: category.isEmpty ? null : category,
+    personalInfoKnown: personalInfoKnown,
+  );
+}
+
 String _resolveGroupTitle(GroupInfo group) {
   final remark = (group.remark ?? '').trim();
   if (remark.isNotEmpty) {
@@ -880,11 +1062,14 @@ class _ConversationTile extends ConsumerWidget {
   final void Function(
     WKUIConversationMsg conversation,
     ConversationPreferredInfo? preferredInfo,
+    WKConversationItemData displayData,
   )
   onTap;
   final void Function(WKUIConversationMsg conversation) onLongPress;
   final bool selectionMode;
-  final bool selected;
+  final Set<String> selectedConversationKeys;
+  final String? webSelectedConversationKey;
+  final bool webStyle;
 
   const _ConversationTile({
     super.key,
@@ -894,7 +1079,9 @@ class _ConversationTile extends ConsumerWidget {
     required this.onTap,
     required this.onLongPress,
     required this.selectionMode,
-    required this.selected,
+    required this.selectedConversationKeys,
+    this.webSelectedConversationKey,
+    this.webStyle = false,
   });
 
   @override
@@ -903,9 +1090,23 @@ class _ConversationTile extends ConsumerWidget {
     if (conversation == null) {
       return const SizedBox.shrink();
     }
-    final preferredInfo = conversation.channelType == WKChannelType.group
+    final conversationSelectionKey = conversationKeyFor(conversation);
+    final selected = selectedConversationKeys.contains(
+      conversationSelectionKey,
+    );
+    final webSelected = webSelectedConversationKey == conversationSelectionKey;
+    final loader = ref.watch(conversationListItemLoaderProvider);
+    final cachedData = loader.cachedDataFor(conversationKey);
+    final basePreferredInfo = conversation.channelType == WKChannelType.group
         ? groupInfos[conversation.channelID]
         : personalInfos[conversation.channelID];
+    final preferredInfo = conversation.channelType == WKChannelType.personal
+        ? _mergePersonalPreferredInfo(
+            basePreferredInfo,
+            cachedData,
+            channelId: conversation.channelID,
+          )
+        : basePreferredInfo;
     final refreshToken = ref.watch(
       conversationListRefreshProvider.select(
         (state) =>
@@ -916,15 +1117,21 @@ class _ConversationTile extends ConsumerWidget {
       conversation: conversation,
       preferredTitle: preferredInfo?.title,
       preferredAvatarUrl: preferredInfo?.avatarUrl,
+      preferredCategory: preferredInfo?.category,
       preferredVipLevel: preferredInfo?.vipLevel ?? 0,
+      preferredPersonalInfoKnown: preferredInfo?.personalInfoKnown ?? false,
       refreshToken: refreshToken,
     );
     final data = ref
         .watch(conversationListItemDataProvider(request))
         .valueOrNull;
+    final displayData =
+        data ?? cachedData ?? _buildConversationTileFallback(request);
     final child = WKConversationItem(
-      data: data ?? _buildConversationTileFallback(request),
-      onTap: () => onTap(conversation, preferredInfo),
+      data: displayData,
+      selected: webSelected,
+      webStyle: webStyle,
+      onTap: () => onTap(conversation, preferredInfo, displayData),
       onLongPress: () => onLongPress(conversation),
     );
 
@@ -978,7 +1185,9 @@ WKConversationItemData _buildConversationTileFallback(
         ? request.preferredTitle!.trim()
         : conversation.channelID,
     avatarUrl: request.preferredAvatarUrl,
+    category: request.preferredCategory,
     vipLevel: request.preferredVipLevel,
+    personalInfoKnown: request.preferredPersonalInfoKnown,
     lastMsgContent: 'Loading conversation...',
     unreadCount: conversation.unreadCount,
     lastMsgTime: conversation.lastMsgTimestamp > 0
@@ -990,9 +1199,36 @@ WKConversationItemData _buildConversationTileFallback(
   );
 }
 
+@visibleForTesting
+bool shouldFetchPersonalConversationUserInfo({
+  required WKUIConversationMsg conversation,
+  required String currentUid,
+  required String resolvedTitle,
+  int resolvedVipLevel = 0,
+  bool preferredPersonalInfoKnown = false,
+}) {
+  if (conversation.channelType != WKChannelType.personal) {
+    return false;
+  }
+  final channelId = conversation.channelID.trim();
+  if (channelId.isEmpty || channelId == currentUid.trim()) {
+    return false;
+  }
+  if (channelId == _androidSystemTeamId || channelId == _androidFileHelperId) {
+    return false;
+  }
+  if (!preferredPersonalInfoKnown && resolvedVipLevel == 0) {
+    return true;
+  }
+  final title = resolvedTitle.trim();
+  return title.isEmpty || title == channelId;
+}
+
 Future<WKConversationItemData> resolveConversationListItemData(
   ConversationListItemRequest request, {
   required String currentUid,
+  Future<UserInfo?> Function(String uid)? personalUserInfoLoader,
+  Future<GroupInfo?> Function(String groupNo)? groupInfoLoader,
 }) async {
   final conversation = request.conversation;
   final channelFuture = conversation.getWkChannel();
@@ -1025,13 +1261,54 @@ Future<WKConversationItemData> resolveConversationListItemData(
   if (title.isEmpty) {
     title = conversation.channelID;
   }
+  var category = _firstNonEmptyText([
+    request.preferredCategory,
+    channel?.category,
+  ]);
+  var vipLevel = request.preferredVipLevel;
+  if (vipLevel == 0) {
+    vipLevel =
+        _readChannelExtraInt(channel?.remoteExtraMap, const [
+          'vip_level',
+          'vipLevel',
+        ]) ??
+        _readChannelExtraInt(channel?.localExtra, const [
+          'vip_level',
+          'vipLevel',
+        ]) ??
+        0;
+  }
+  var personalInfoKnown = request.preferredPersonalInfoKnown;
+
+  Future<UserInfo?> personalInfoFuture = Future<UserInfo?>.value(null);
+  if (shouldFetchPersonalConversationUserInfo(
+    conversation: conversation,
+    currentUid: currentUid,
+    resolvedTitle: title,
+    resolvedVipLevel: vipLevel,
+    preferredPersonalInfoKnown: personalInfoKnown,
+  )) {
+    final loader =
+        personalUserInfoLoader ??
+        (String uid) => UserApi.instance
+            .getUserInfo(uid)
+            .then<UserInfo?>((user) => user, onError: (_, _) => null);
+    personalInfoFuture = loader(
+      conversation.channelID,
+    ).then<UserInfo?>((user) => user, onError: (_, _) => null);
+  }
 
   Future<GroupInfo?> groupInfoFuture = Future<GroupInfo?>.value(null);
   if (conversation.channelType == WKChannelType.group &&
       title == conversation.channelID) {
-    groupInfoFuture = GroupApi.instance
-        .getGroupInfo(conversation.channelID)
-        .then((group) => group, onError: (_, stackTrace) => null);
+    final loader =
+        groupInfoLoader ??
+        (String groupNo) => GroupApi.instance
+            .getGroupInfo(groupNo)
+            .then<GroupInfo?>((group) => group, onError: (_, _) => null);
+    groupInfoFuture = loader(
+      conversation.channelID,
+    ).then<GroupInfo?>((group) => group, onError: (_, _) => null);
   }
 
   Future<WKChannelMember?> currentMemberFuture = Future<WKChannelMember?>.value(
@@ -1056,6 +1333,32 @@ Future<WKConversationItemData> resolveConversationListItemData(
     }
     if (resolvedAvatar.isNotEmpty) {
       avatarUrl = _resolveConversationAvatar(resolvedAvatar) ?? avatarUrl;
+    }
+  }
+  final personalInfo = await personalInfoFuture;
+  if (personalInfo != null) {
+    personalInfoKnown = true;
+    final resolvedName = _firstNonEmptyText([
+      personalInfo.remark,
+      personalInfo.name,
+      personalInfo.username,
+    ]);
+    if (resolvedName.isNotEmpty) {
+      title = resolvedName;
+    }
+    final resolvedAvatar = (personalInfo.avatar ?? '').trim();
+    if (resolvedAvatar.isNotEmpty &&
+        (request.preferredAvatarUrl?.trim().isEmpty ?? true)) {
+      avatarUrl = _resolveConversationAvatar(resolvedAvatar) ?? avatarUrl;
+    }
+    final resolvedCategory = normalizePublicAccountCategory(
+      personalInfo.category,
+    );
+    if (resolvedCategory != null && resolvedCategory.isNotEmpty) {
+      category = resolvedCategory;
+    }
+    if (vipLevel == 0 && personalInfo.vipLevel != 0) {
+      vipLevel = personalInfo.vipLevel;
     }
   }
 
@@ -1111,7 +1414,7 @@ Future<WKConversationItemData> resolveConversationListItemData(
     channelType: conversation.channelType,
     title: title,
     avatarUrl: avatarUrl,
-    vipLevel: request.preferredVipLevel,
+    vipLevel: vipLevel,
     lastMsgContent: resolvedPreview,
     lastMsgTime: resolvedTime,
     unreadCount: conversation.unreadCount,
@@ -1135,7 +1438,8 @@ Future<WKConversationItemData> resolveConversationListItemData(
     ),
     isRobot: channel?.robot == 1,
     isCalling: activityState.isCalling,
-    category: channel?.category,
+    category: category.isEmpty ? null : category,
+    personalInfoKnown: personalInfoKnown,
     showSingleTick: sendStatus.showSingleTick,
     showDoubleTick: sendStatus.showDoubleTick,
     showSending: sendStatus.showSending,
@@ -1206,7 +1510,7 @@ String resolveConversationPreviewText(
   int? conversationChannelType,
 }) {
   if (msg == null) {
-    return 'No message';
+    return '';
   }
 
   final content = resolveVisibleMessageContent(msg);
@@ -1214,46 +1518,46 @@ String resolveConversationPreviewText(
   switch (msg.contentType) {
     case WkMessageContentType.text:
       final resolved = resolveVisibleTextMessage(msg, fallback: '').trim();
-      preview = resolved.isEmpty ? 'Text message' : resolved;
+      preview = resolved.isEmpty ? '文字消息' : resolved;
       break;
     case WkMessageContentType.image:
-      preview = '[Image]';
+      preview = '[图片]';
       break;
     case WkMessageContentType.voice:
       if (content is WKVoiceContent && content.timeTrad > 0) {
-        preview = '[Voice] ${content.timeTrad}"';
+        preview = '[语音] ${content.timeTrad}"';
         break;
       }
-      preview = '[Voice]';
+      preview = '[语音]';
       break;
     case WkMessageContentType.video:
-      preview = '[Video]';
+      preview = '[视频]';
       break;
     case WkMessageContentType.location:
-      preview = '[Location]';
+      preview = '[位置]';
       break;
     case WkMessageContentType.file:
       if (content is WKFileContent && content.name.trim().isNotEmpty) {
-        preview = '[File] ${content.name.trim()}';
+        preview = '[文件] ${content.name.trim()}';
         break;
       }
-      preview = '[File]';
+      preview = '[文件]';
       break;
     case WkMessageContentType.card:
       if (content is WKCardContent && content.name.trim().isNotEmpty) {
-        preview = '[Card] ${content.name.trim()}';
+        preview = '[名片] ${content.name.trim()}';
         break;
       }
-      preview = '[Card]';
+      preview = '[名片]';
       break;
     case MsgContentType.robotCard:
       final robotCardPreview = resolveRobotCardPlainText(msg, content: content);
-      preview = robotCardPreview.isEmpty ? 'New message' : robotCardPreview;
+      preview = robotCardPreview.isEmpty ? '新消息' : robotCardPreview;
       break;
     default:
       final raw = msg.content.trim();
       final resolved = resolveStructuredMessagePreview(raw).text.trim();
-      preview = resolved.isEmpty ? 'New message' : resolved;
+      preview = resolved.isEmpty ? '新消息' : resolved;
       break;
   }
 
@@ -1277,9 +1581,9 @@ String _resolveConversationDraftPreview(MessageDraft draft) {
   }
   final replyContent = draft.replyContent?.trim() ?? '';
   if (replyContent.isNotEmpty) {
-    return 'Reply: $replyContent';
+    return '回复：$replyContent';
   }
-  return 'Unsent draft';
+  return '未发送草稿';
 }
 
 String? _resolveConversationAvatar(String? rawAvatar) {
@@ -1301,4 +1605,26 @@ String _firstNonEmptyText(List<String?> values) {
     }
   }
   return '';
+}
+
+int? _readChannelExtraInt(dynamic map, List<String> keys) {
+  if (map is! Map) {
+    return null;
+  }
+  for (final key in keys) {
+    final value = map[key];
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      final parsed = int.tryParse(value);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+  }
+  return null;
 }

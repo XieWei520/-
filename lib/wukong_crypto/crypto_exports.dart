@@ -6,6 +6,12 @@
 // Models
 export 'models/signal_data.dart';
 
+// E2EE preview scaffold
+export 'e2ee/e2ee_cipher.dart';
+export 'e2ee/e2ee_envelope.dart';
+export 'e2ee/e2ee_message_codec.dart';
+export 'e2ee/e2ee_rollout_policy.dart';
+
 // Service (to be implemented)
 // export 'crypto_service.dart';
 

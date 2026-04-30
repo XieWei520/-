@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'app/app.dart';
 import 'app/bootstrap/app_startup.dart';
 import 'app/bootstrap/error_reporting.dart';
+import 'app/bootstrap/wkim_runtime_mode.dart';
 import 'core/config/im_config.dart';
 import 'core/utils/storage_utils.dart';
 import 'wk_foundation/logging/app_logger.dart';
@@ -20,6 +21,7 @@ export 'app/app.dart' show WuKongApp, WuKongIMApp;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final environment = AppEnvironment.detect();
+  configureWkImRuntimeMode(environment);
   const debugDeviceFlagOverride = int.fromEnvironment(
     'WK_DEBUG_OVERRIDE_DEVICE_FLAG',
     defaultValue: -1,
@@ -27,9 +29,9 @@ Future<void> main() async {
 
   if (kDebugMode && IMConfig.isSupportedDeviceFlag(debugDeviceFlagOverride)) {
     IMConfig.setDebugDeviceFlagOverride(debugDeviceFlagOverride);
-    const AppLogger('startup').info(
-      'debug device flag override enabled: $debugDeviceFlagOverride',
-    );
+    const AppLogger(
+      'startup',
+    ).info('debug device flag override enabled: $debugDeviceFlagOverride');
   }
 
   if (environment.usesSqfliteFfi) {
@@ -43,10 +45,18 @@ Future<void> main() async {
     databaseFactory = databaseFactoryFfi;
   }
 
+  const startupLogger = AppLogger('startup');
   final startup = AppStartupRunner(
-    logger: const AppLogger('startup'),
-    steps: <AppStartupStep>[
-      AppStartupStep('storage', StorageUtils.init),
+    logger: startupLogger,
+    onStepMetric: (metric) {
+      startupLogger.info(
+        'startup:metric ${metric.background ? 'background' : 'foreground'} '
+        '${metric.label} ${metric.elapsed.inMilliseconds}ms '
+        '${metric.succeeded ? 'ok' : 'failed'}',
+      );
+    },
+    steps: <AppStartupStep>[AppStartupStep('storage', StorageUtils.init)],
+    backgroundSteps: <AppStartupStep>[
       AppStartupStep(
         'drafts',
         () => DraftManager().loadAllDrafts(syncRemote: false),

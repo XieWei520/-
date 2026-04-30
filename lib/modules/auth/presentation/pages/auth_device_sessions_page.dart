@@ -31,7 +31,7 @@ class AuthDeviceSessionsPage extends ConsumerWidget {
         key: const ValueKey<String>('auth-device-sessions-back'),
         onPressed: () => Navigator.of(context).maybePop(),
         icon: const Icon(Icons.arrow_back_rounded),
-        tooltip: 'Back',
+        tooltip: '返回',
       ),
       title: '登录设备管理',
       subtitle: '查看当前账号最近登录过的设备和会话',
@@ -91,7 +91,7 @@ class AuthDeviceSessionsPage extends ConsumerWidget {
       ),
       primaryAction: AuthActionButton(
         key: quitAllActionKey ?? const ValueKey<String>('auth-device-quit-all'),
-        label: '退出全部 PC/Web 登录',
+        label: '退出全部电脑端/网页端登录',
         isLoading: state.isQuittingAll,
         onPressed: state.isQuittingAll
             ? null

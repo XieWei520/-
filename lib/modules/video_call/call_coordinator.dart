@@ -39,7 +39,9 @@ class PendingCallRecoveryLoop {
     required PendingCallsFetcher fetchPendingCalls,
     required String Function() currentUidReader,
     this.onAcceptedRoom,
+    this.enableSafetyPolling = true,
     this.degradedThreshold = const Duration(seconds: 6),
+    this.safetyPollingInterval = const Duration(seconds: 2),
     List<Duration> backoffSchedule = const <Duration>[
       Duration(seconds: 2),
       Duration(seconds: 4),
@@ -58,7 +60,9 @@ class PendingCallRecoveryLoop {
   final String Function() _currentUidReader;
   final Future<void> Function(Duration delay) _delay;
   final void Function(CallRoom room, CallEvent event)? onAcceptedRoom;
+  final bool enableSafetyPolling;
   final Duration degradedThreshold;
+  final Duration safetyPollingInterval;
   final List<Duration> backoffSchedule;
 
   bool _started = false;
@@ -69,11 +73,16 @@ class PendingCallRecoveryLoop {
   bool Function(Duration threshold)? _isGatewayDegradedFor;
 
   bool get shouldPoll {
+    return _canPoll &&
+        (enableSafetyPolling ||
+            (_isGatewayDegradedFor?.call(degradedThreshold) ?? false));
+  }
+
+  bool get _canPoll {
     return _started &&
         _isForeground &&
         !_callStore.state.isActive &&
-        _currentUidReader().isNotEmpty &&
-        (_isGatewayDegradedFor?.call(degradedThreshold) ?? false);
+        _currentUidReader().isNotEmpty;
   }
 
   void start() {
@@ -208,10 +217,7 @@ class PendingCallRecoveryLoop {
           }
         }
 
-        final delay = backoffSchedule[_attempt];
-        if (_attempt < backoffSchedule.length - 1) {
-          _attempt++;
-        }
+        final delay = _nextDelay();
         await _delay(delay);
       }
     } finally {
@@ -222,6 +228,19 @@ class PendingCallRecoveryLoop {
         _ensureLoop();
       }
     }
+  }
+
+  Duration _nextDelay() {
+    final isDegraded = _isGatewayDegradedFor?.call(degradedThreshold) ?? false;
+    if (!isDegraded && enableSafetyPolling) {
+      _attempt = 0;
+      return safetyPollingInterval;
+    }
+    final delay = backoffSchedule[_attempt];
+    if (_attempt < backoffSchedule.length - 1) {
+      _attempt++;
+    }
+    return delay;
   }
 }
 

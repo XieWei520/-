@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../data/models/chat_background_option.dart';
 import 'api_client.dart';
@@ -97,7 +98,7 @@ class CommonApi {
       return AppRuntimeCapabilities.fromAppConfigBody(
         body: body,
         webLoginReachable: false,
-        webLoginStatusMessage: '服务端未返回 Web 登录地址',
+        webLoginStatusMessage: '服务端未返回网页端登录地址',
       );
     }
 
@@ -110,8 +111,9 @@ class CommonApi {
   }
 
   Future<AppVersionInfo?> getAppNewVersion(String version) async {
+    final platform = _appVersionPlatformSegment();
     final response = await _client.get(
-      '/v1/common/appversion/android/$version',
+      '/v1/common/appversion/$platform/$version',
       options: _plainTextOptions,
     );
     final body = _normalizeResponseData(response.data);
@@ -119,6 +121,20 @@ class CommonApi {
       return null;
     }
     return AppVersionInfo.fromJson(body);
+  }
+
+  String _appVersionPlatformSegment() {
+    if (kIsWeb) {
+      return 'web';
+    }
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android => 'android',
+      TargetPlatform.iOS => 'ios',
+      TargetPlatform.macOS => 'macos',
+      TargetPlatform.windows => 'windows',
+      TargetPlatform.linux => 'linux',
+      TargetPlatform.fuchsia => 'fuchsia',
+    };
   }
 
   Future<List<AppModuleInfo>> getAppModules() async {
@@ -142,7 +158,7 @@ class CommonApi {
   Future<_UrlProbeResult> _probeUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null || !uri.hasScheme || uri.host.trim().isEmpty) {
-      return const _UrlProbeResult(reachable: false, message: 'Web 登录地址格式无效');
+      return const _UrlProbeResult(reachable: false, message: '网页端登录地址格式无效');
     }
 
     final dio = Dio(
@@ -162,20 +178,20 @@ class CommonApi {
       if (statusCode >= 200 && statusCode < 400) {
         return _UrlProbeResult(
           reachable: true,
-          message: 'Web 登录地址可达（HTTP $statusCode）',
+          message: '网页端登录地址可达（HTTP $statusCode）',
         );
       }
       return _UrlProbeResult(
         reachable: false,
-        message: 'Web 登录地址不可用（HTTP $statusCode）',
+        message: '网页端登录地址不可用（HTTP $statusCode）',
       );
     } on DioException catch (error) {
       return _UrlProbeResult(
         reachable: false,
-        message: 'Web 登录地址不可达：${error.message ?? error.type.name}',
+        message: '网页端登录地址不可达：${error.message ?? error.type.name}',
       );
     } catch (error) {
-      return _UrlProbeResult(reachable: false, message: 'Web 登录地址不可达：$error');
+      return _UrlProbeResult(reachable: false, message: '网页端登录地址不可达：$error');
     } finally {
       dio.close(force: true);
     }
@@ -278,7 +294,7 @@ class AppRuntimeCapabilities {
       return null;
     }
     if (!hasWebLoginUrl) {
-      return '服务端未开放 Web 登录地址';
+      return '服务端未开放网页端登录地址';
     }
     return webLoginStatusMessage;
   }

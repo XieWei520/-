@@ -13,7 +13,7 @@ void main() {
         ChatExpressionCategory(
           id: 'recent',
           kind: ChatExpressionKind.emoji,
-          label: 'Recent',
+          label: '最近',
           iconKey: 'recent',
           emojiTags: <String>[],
           stickers: <ChatStickerDefinition>[],
@@ -31,14 +31,14 @@ void main() {
         ChatExpressionCategory(
           id: 'sticker:android_sample_motion',
           kind: ChatExpressionKind.sticker,
-          label: 'Android Motion',
+          label: '示例动效',
           iconKey: 'assets/stickers/sample_pack/group.webp',
           emojiTags: <String>[],
           stickers: <ChatStickerDefinition>[
             ChatStickerDefinition(
               packId: 'android_sample_motion',
               stickerId: 'typing',
-              title: 'Typing',
+              title: '输入中',
               previewKey: 'assets/stickers/sample_pack/typing.webp',
               animationKey: 'assets/stickers/sample_pack/typing.webp',
               mimeType: 'image/webp',
@@ -53,7 +53,7 @@ void main() {
         ChatExpressionCategory(
           id: 'gif',
           kind: ChatExpressionKind.gif,
-          label: 'GIF',
+          label: '动图',
           iconKey: 'gif',
           emojiTags: <String>[],
           stickers: <ChatStickerDefinition>[],
@@ -95,5 +95,72 @@ void main() {
       find.byKey(const ValueKey<String>('chat-expression-emoji-grid')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('sticker grid decodes lightweight previews at bounded size', (
+    tester,
+  ) async {
+    const previewKey =
+        'assets/stickers/sample_pack/previews/typing-preview.webp';
+    const snapshot = ChatExpressionRegistrySnapshot(
+      categories: <ChatExpressionCategory>[
+        ChatExpressionCategory(
+          id: 'sticker:android_sample_motion',
+          kind: ChatExpressionKind.sticker,
+          label: 'sample',
+          iconKey: previewKey,
+          emojiTags: <String>[],
+          stickers: <ChatStickerDefinition>[
+            ChatStickerDefinition(
+              packId: 'android_sample_motion',
+              stickerId: 'typing',
+              title: 'typing',
+              previewKey: previewKey,
+              animationKey: 'assets/stickers/sample_pack/typing.webp',
+              mimeType: 'image/webp',
+              width: 512,
+              height: 512,
+              loopCount: 0,
+              fallbackText: '[\u8d34\u7eb8]',
+            ),
+          ],
+          recents: <ChatExpressionRecentRecord>[],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatExpressionPanel(
+            snapshot: snapshot,
+            activeCategoryId: 'sticker:android_sample_motion',
+            gifResults: const <ChatGifPanelResult>[],
+            gifErrorText: null,
+            onCategorySelected: (_) {},
+            onRecentSelected: (_) {},
+            onEmojiSelected: (_) {},
+            onStickerSelected: (_, _) {},
+            onGifQueryChanged: (_) {},
+            onGifSelected: (_) {},
+            onBackspaceTap: () {},
+          ),
+        ),
+      ),
+    );
+
+    final image = tester.widget<Image>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('chat-expression-sticker-typing')),
+        matching: find.byType(Image),
+      ),
+    );
+
+    expect(image.image, isA<ResizeImage>());
+    final resizedImage = image.image as ResizeImage;
+    expect(resizedImage.imageProvider, isA<AssetImage>());
+    expect((resizedImage.imageProvider as AssetImage).assetName, previewKey);
+    expect(resizedImage.width, 128);
+    expect(resizedImage.height, 128);
   });
 }

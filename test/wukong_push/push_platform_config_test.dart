@@ -30,4 +30,10 @@ void main() {
       contains('CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'),
     );
   });
+
+  test('PushService source does not import dart io directly', () {
+    final source = File('lib/wukong_push/push_service.dart').readAsStringSync();
+
+    expect(source, isNot(contains("import 'dart:io'")));
+  });
 }

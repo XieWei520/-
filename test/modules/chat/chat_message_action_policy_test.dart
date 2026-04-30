@@ -22,7 +22,6 @@ void main() {
           ChatSceneAction.edit,
           ChatSceneAction.favorite,
           ChatSceneAction.select,
-          ChatSceneAction.delete,
           ChatSceneAction.recall,
           ChatSceneAction.react,
         ],
@@ -36,14 +35,13 @@ void main() {
           '\u7f16\u8f91',
           '\u6536\u85cf',
           '\u591a\u9009',
-          '\u5220\u9664',
           '\u64a4\u56de',
           '\u8868\u60c5\u56de\u5e94',
         ],
       );
       expect(
         actions.map((entry) => entry.order).toList(growable: false),
-        const <int>[0, 1, 2, 3, 4, 5, 6, 7, 8],
+        const <int>[0, 1, 2, 3, 4, 5, 7, 8],
       );
     });
 
@@ -98,7 +96,6 @@ void main() {
           ChatSceneAction.edit,
           ChatSceneAction.favorite,
           ChatSceneAction.select,
-          ChatSceneAction.delete,
           ChatSceneAction.recall,
           ChatSceneAction.react,
         ],
@@ -112,14 +109,13 @@ void main() {
           '\u7f16\u8f91',
           '\u6536\u85cf',
           '\u591a\u9009',
-          '\u5220\u9664',
           '\u64a4\u56de',
           '\u8868\u60c5\u56de\u5e94',
         ],
       );
       expect(
         legacyActions.map((entry) => entry.order).toList(growable: false),
-        const <int>[0, 1, 2, 3, 4, 5, 6, 7, 8],
+        const <int>[0, 1, 2, 3, 4, 5, 7, 8],
       );
     });
 
@@ -139,7 +135,6 @@ void main() {
           ChatSceneAction.edit,
           ChatSceneAction.favorite,
           ChatSceneAction.select,
-          ChatSceneAction.delete,
           ChatSceneAction.react,
         ],
       );
@@ -221,7 +216,6 @@ void main() {
           ChatSceneAction.edit,
           ChatSceneAction.favorite,
           ChatSceneAction.select,
-          ChatSceneAction.delete,
           ChatSceneAction.recall,
           ChatSceneAction.react,
         ],

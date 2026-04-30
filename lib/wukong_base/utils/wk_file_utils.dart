@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'wk_file_exists_probe.dart';
 
 /// File utilities
 class WKFileUtils {
@@ -10,12 +10,24 @@ class WKFileUtils {
   }
 
   /// Check if file exists
-  static Future<bool> fileExists(String path) async {
-    return File(path).exists();
+  static Future<bool> fileExists(String path) {
+    return wkFileExists(path);
   }
 
   /// Get file name from path
   static String getFileName(String path) {
-    return path.split('/').last.split('\\').last;
+    final normalized = path
+        .trim()
+        .split('?')
+        .first
+        .split('#')
+        .first
+        .replaceAll('\\', '/');
+    final segments = normalized
+        .split('/')
+        .map((segment) => segment.trim())
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    return segments.isEmpty ? '' : segments.last;
   }
 }

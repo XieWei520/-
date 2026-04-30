@@ -7,62 +7,62 @@ import 'package:wukong_im_app/realtime/session/session_runtime.dart';
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
 
 void main() {
-  test('runtime reconnects after stream error with latest ack sequence', () async {
-    final firstController = StreamController<Object?>.broadcast();
-    final secondController = StreamController<Object?>.broadcast();
-    final controllers = <StreamController<Object?>>[
-      firstController,
-      secondController,
-    ];
-    final connectedUris = <Uri>[];
-    var connectCount = 0;
-    final runtime = SessionRuntime(
-      gateway: SessionEventGateway(
-        connect: (uri, {headers}) {
-          connectedUris.add(uri);
-          final controller = controllers[connectCount++];
-          return _FakeSessionSocket(controller.stream);
-        },
-        ack: (_) async {},
-      ),
-      onDeviceInvalidated: () {},
-      retryDelay: (_) => Duration.zero,
-      delay: (_) async {},
-    );
-    addTearDown(() async {
-      await runtime.stop();
-      await firstController.close();
-      await secondController.close();
-    });
+  test(
+    'runtime reconnects after stream error with latest ack sequence',
+    () async {
+      final firstController = StreamController<Object?>.broadcast();
+      final secondController = StreamController<Object?>.broadcast();
+      final controllers = <StreamController<Object?>>[
+        firstController,
+        secondController,
+      ];
+      final connectedUris = <Uri>[];
+      var connectCount = 0;
+      final runtime = SessionRuntime(
+        gateway: SessionEventGateway(
+          connect: (uri, {headers}) {
+            connectedUris.add(uri);
+            final controller = controllers[connectCount++];
+            return _FakeSessionSocket(controller.stream);
+          },
+          ack: (_) async {},
+        ),
+        onDeviceInvalidated: () {},
+        retryDelay: (_) => Duration.zero,
+        delay: (_) async {},
+      );
+      addTearDown(() async {
+        await runtime.stop();
+        await firstController.close();
+        await secondController.close();
+      });
 
-    await runtime.start(
-      Uri.parse(
-        'ws://example.com/v1/realtime/session/events/ws?device_session_id=device_01&last_acked_seq=0',
-      ),
-    );
-    await runtime.handleFrame(
-      const SessionEventFrame(
-        eventId: 'evt_ack',
-        userSeq: 1,
-        serverTs: 1712000003,
-        kind: 'call.invite',
-        aggregateId: 'room_11',
-        payload: <String, dynamic>{},
-      ),
-    );
+      await runtime.start(
+        Uri.parse(
+          'ws://example.com/v1/realtime/session/events/ws?device_session_id=device_01&last_acked_seq=0',
+        ),
+      );
+      await runtime.handleFrame(
+        const SessionEventFrame(
+          eventId: 'evt_ack',
+          userSeq: 1,
+          serverTs: 1712000003,
+          kind: 'call.invite',
+          aggregateId: 'room_11',
+          payload: <String, dynamic>{},
+        ),
+      );
 
-    firstController.addError(StateError('socket closed'));
-    await Future<void>.delayed(Duration.zero);
-    await Future<void>.delayed(Duration.zero);
+      firstController.addError(StateError('socket closed'));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-    expect(connectCount, 2);
-    expect(runtime.isRunning, isTrue);
-    expect(runtime.isGatewayDegraded, isFalse);
-    expect(
-      connectedUris.last.queryParameters['last_acked_seq'],
-      '1',
-    );
-  });
+      expect(connectCount, 2);
+      expect(runtime.isRunning, isTrue);
+      expect(runtime.isGatewayDegraded, isFalse);
+      expect(connectedUris.last.queryParameters['last_acked_seq'], '1');
+    },
+  );
 
   test('runtime retries again when reconnect handshake fails', () async {
     final firstController = StreamController<Object?>.broadcast();
@@ -243,10 +243,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(runtime.isGatewayDegraded, isTrue);
-    expect(
-      runtime.isGatewayDegradedFor(const Duration(seconds: 10)),
-      isFalse,
-    );
+    expect(runtime.isGatewayDegradedFor(const Duration(seconds: 10)), isFalse);
 
     now = now.add(const Duration(seconds: 11));
     expect(runtime.isGatewayDegradedFor(const Duration(seconds: 10)), isTrue);
@@ -387,113 +384,173 @@ void main() {
     },
   );
 
-  test('runtime does not call delta pull for contiguous or duplicate seq', () async {
-    final controller = StreamController<Object?>.broadcast();
-    final pulled = <(int afterSeq, int limit)>[];
-    final acked = <int>[];
-    final handled = <String>[];
-    final gateway = SessionEventGateway(
-      connect: (uri, {headers}) => _FakeSessionSocket(controller.stream),
-      ack: (lastAckedSeq) async {
-        acked.add(lastAckedSeq);
-      },
-    );
-    gateway.lastAckedSeq = 5;
-    gateway.lastReceivedSeq = 8;
-    final runtime = SessionRuntime(
-      gateway: gateway,
-      onDeviceInvalidated: () {},
-      pullAfterSeq: ({required afterSeq, required limit}) async {
-        pulled.add((afterSeq, limit));
-        return const <SessionEventFrame>[];
-      },
-      onFrame: (frame) async {
-        handled.add(frame.eventId);
-      },
-    );
-    addTearDown(() async {
-      await runtime.stop();
-      await controller.close();
-    });
+  test(
+    'runtime stops replay when a pulled delta invalidates the session',
+    () async {
+      final controller = StreamController<Object?>.broadcast();
+      final handledSeqs = <int>[];
+      final ackedSeqs = <int>[];
+      var invalidatedCount = 0;
+      final gateway = SessionEventGateway(
+        connect: (uri, {headers}) => _FakeSessionSocket(controller.stream),
+        ack: (lastAckedSeq) async {
+          ackedSeqs.add(lastAckedSeq);
+        },
+      );
+      gateway.lastAckedSeq = 10;
+      gateway.lastReceivedSeq = 10;
+      final runtime = SessionRuntime(
+        gateway: gateway,
+        onDeviceInvalidated: () {
+          invalidatedCount += 1;
+        },
+        pullAfterSeq: ({required afterSeq, required limit}) async {
+          return <SessionEventFrame>[
+            const SessionEventFrame(
+              eventId: 'evt_kicked_11',
+              userSeq: 11,
+              serverTs: 1712000011,
+              kind: 'session.kicked',
+              aggregateId: 'u_self',
+              payload: <String, dynamic>{},
+            ),
+            _frame(seq: 12, eventId: 'evt_should_not_replay'),
+          ];
+        },
+        onFrame: (frame) async {
+          handledSeqs.add(frame.userSeq);
+        },
+      );
+      addTearDown(() async {
+        await runtime.stop();
+        await controller.close();
+      });
 
-    await runtime.start(Uri.parse('ws://example.com'));
-    await runtime.handleFrame(_frame(seq: 6, eventId: 'evt_contiguous'));
-    await runtime.handleFrame(_frame(seq: 6, eventId: 'evt_duplicate'));
+      await runtime.start(Uri.parse('ws://example.com'));
+      await runtime.handleFrame(_frame(seq: 13, eventId: 'evt_live_13'));
 
-    expect(pulled, isEmpty);
-    expect(handled, <String>['evt_contiguous']);
-    expect(acked, <int>[6]);
-  });
+      expect(runtime.isRunning, isFalse);
+      expect(invalidatedCount, 1);
+      expect(handledSeqs, isEmpty);
+      expect(ackedSeqs, isEmpty);
+      expect(gateway.lastAckedSeq, 10);
+    },
+  );
 
-  test('runtime does not ack jumped frame when delta pull fails or is incomplete', () async {
-    final failureController = StreamController<Object?>.broadcast();
-    final failureAcked = <int>[];
-    final failureGateway = SessionEventGateway(
-      connect: (uri, {headers}) => _FakeSessionSocket(failureController.stream),
-      ack: (lastAckedSeq) async {
-        failureAcked.add(lastAckedSeq);
-      },
-    );
-    failureGateway.lastAckedSeq = 10;
-    final failingRuntime = SessionRuntime(
-      gateway: failureGateway,
-      onDeviceInvalidated: () {},
-      pullAfterSeq: ({required afterSeq, required limit}) async {
-        throw StateError('pull failed');
-      },
-      onFrame: (_) async {},
-    );
-    addTearDown(() async {
-      await failingRuntime.stop();
-      await failureController.close();
-    });
+  test(
+    'runtime does not call delta pull for contiguous or duplicate seq',
+    () async {
+      final controller = StreamController<Object?>.broadcast();
+      final pulled = <(int afterSeq, int limit)>[];
+      final acked = <int>[];
+      final handled = <String>[];
+      final gateway = SessionEventGateway(
+        connect: (uri, {headers}) => _FakeSessionSocket(controller.stream),
+        ack: (lastAckedSeq) async {
+          acked.add(lastAckedSeq);
+        },
+      );
+      gateway.lastAckedSeq = 5;
+      gateway.lastReceivedSeq = 8;
+      final runtime = SessionRuntime(
+        gateway: gateway,
+        onDeviceInvalidated: () {},
+        pullAfterSeq: ({required afterSeq, required limit}) async {
+          pulled.add((afterSeq, limit));
+          return const <SessionEventFrame>[];
+        },
+        onFrame: (frame) async {
+          handled.add(frame.eventId);
+        },
+      );
+      addTearDown(() async {
+        await runtime.stop();
+        await controller.close();
+      });
 
-    await failingRuntime.start(Uri.parse('ws://example.com'));
-    await expectLater(
-      failingRuntime.handleFrame(_frame(seq: 13, eventId: 'evt_jump_fail')),
-      throwsStateError,
-    );
-    expect(failureAcked, isEmpty);
-    expect(failureGateway.lastAckedSeq, 10);
+      await runtime.start(Uri.parse('ws://example.com'));
+      await runtime.handleFrame(_frame(seq: 6, eventId: 'evt_contiguous'));
+      await runtime.handleFrame(_frame(seq: 6, eventId: 'evt_duplicate'));
 
-    final incompleteController = StreamController<Object?>.broadcast();
-    final incompleteAcked = <int>[];
-    final incompleteGateway = SessionEventGateway(
-      connect: (uri, {headers}) =>
-          _FakeSessionSocket(incompleteController.stream),
-      ack: (lastAckedSeq) async {
-        incompleteAcked.add(lastAckedSeq);
-      },
-    );
-    incompleteGateway.lastAckedSeq = 10;
-    final incompleteHandled = <int>[];
-    final incompleteRuntime = SessionRuntime(
-      gateway: incompleteGateway,
-      onDeviceInvalidated: () {},
-      pullAfterSeq: ({required afterSeq, required limit}) async {
-        return <SessionEventFrame>[_frame(seq: 11, eventId: 'evt_11_only')];
-      },
-      onFrame: (frame) async {
-        incompleteHandled.add(frame.userSeq);
-      },
-    );
-    addTearDown(() async {
-      await incompleteRuntime.stop();
-      await incompleteController.close();
-    });
+      expect(pulled, isEmpty);
+      expect(handled, <String>['evt_contiguous']);
+      expect(acked, <int>[6]);
+    },
+  );
 
-    await incompleteRuntime.start(Uri.parse('ws://example.com'));
-    await expectLater(
-      incompleteRuntime.handleFrame(
-        _frame(seq: 13, eventId: 'evt_jump_incomplete'),
-      ),
-      throwsStateError,
-    );
-    expect(incompleteHandled, <int>[11]);
-    expect(incompleteAcked, <int>[11]);
-    expect(incompleteGateway.lastAckedSeq, 11);
-    expect(incompleteAcked.contains(13), isFalse);
-  });
+  test(
+    'runtime does not ack jumped frame when delta pull fails or is incomplete',
+    () async {
+      final failureController = StreamController<Object?>.broadcast();
+      final failureAcked = <int>[];
+      final failureGateway = SessionEventGateway(
+        connect: (uri, {headers}) =>
+            _FakeSessionSocket(failureController.stream),
+        ack: (lastAckedSeq) async {
+          failureAcked.add(lastAckedSeq);
+        },
+      );
+      failureGateway.lastAckedSeq = 10;
+      final failingRuntime = SessionRuntime(
+        gateway: failureGateway,
+        onDeviceInvalidated: () {},
+        pullAfterSeq: ({required afterSeq, required limit}) async {
+          throw StateError('pull failed');
+        },
+        onFrame: (_) async {},
+      );
+      addTearDown(() async {
+        await failingRuntime.stop();
+        await failureController.close();
+      });
+
+      await failingRuntime.start(Uri.parse('ws://example.com'));
+      await expectLater(
+        failingRuntime.handleFrame(_frame(seq: 13, eventId: 'evt_jump_fail')),
+        throwsStateError,
+      );
+      expect(failureAcked, isEmpty);
+      expect(failureGateway.lastAckedSeq, 10);
+
+      final incompleteController = StreamController<Object?>.broadcast();
+      final incompleteAcked = <int>[];
+      final incompleteGateway = SessionEventGateway(
+        connect: (uri, {headers}) =>
+            _FakeSessionSocket(incompleteController.stream),
+        ack: (lastAckedSeq) async {
+          incompleteAcked.add(lastAckedSeq);
+        },
+      );
+      incompleteGateway.lastAckedSeq = 10;
+      final incompleteHandled = <int>[];
+      final incompleteRuntime = SessionRuntime(
+        gateway: incompleteGateway,
+        onDeviceInvalidated: () {},
+        pullAfterSeq: ({required afterSeq, required limit}) async {
+          return <SessionEventFrame>[_frame(seq: 11, eventId: 'evt_11_only')];
+        },
+        onFrame: (frame) async {
+          incompleteHandled.add(frame.userSeq);
+        },
+      );
+      addTearDown(() async {
+        await incompleteRuntime.stop();
+        await incompleteController.close();
+      });
+
+      await incompleteRuntime.start(Uri.parse('ws://example.com'));
+      await expectLater(
+        incompleteRuntime.handleFrame(
+          _frame(seq: 13, eventId: 'evt_jump_incomplete'),
+        ),
+        throwsStateError,
+      );
+      expect(incompleteHandled, <int>[11]);
+      expect(incompleteAcked, <int>[11]);
+      expect(incompleteGateway.lastAckedSeq, 11);
+      expect(incompleteAcked.contains(13), isFalse);
+    },
+  );
 
   test(
     'runtime serializes frame processing so async handlers cannot invert order',
@@ -534,65 +591,65 @@ void main() {
       await secondStarted.future.timeout(const Duration(seconds: 1));
       await Future<void>.delayed(Duration.zero);
 
-      expect(
-        callOrder,
-        <String>['start_1', 'end_1', 'start_2', 'end_2'],
-      );
+      expect(callOrder, <String>['start_1', 'end_1', 'start_2', 'end_2']);
     },
   );
 
-  test('runtime pulls multiple delta pages until the gap is fully repaired', () async {
-    final controller = StreamController<Object?>.broadcast();
-    final pulled = <(int afterSeq, int limit)>[];
-    final acked = <int>[];
-    final handled = <int>[];
-    final gateway = SessionEventGateway(
-      connect: (uri, {headers}) => _FakeSessionSocket(controller.stream),
-      ack: (lastAckedSeq) async {
-        acked.add(lastAckedSeq);
-      },
-    );
-    gateway.lastAckedSeq = 10;
-    final runtime = SessionRuntime(
-      gateway: gateway,
-      onDeviceInvalidated: () {},
-      pullAfterSeq: ({required afterSeq, required limit}) async {
-        pulled.add((afterSeq, limit));
-        if (afterSeq == 10) {
-          return List<SessionEventFrame>.generate(
-            200,
-            (index) => _frame(seq: 11 + index, eventId: 'evt_${11 + index}'),
-          );
-        }
-        if (afterSeq == 210) {
-          return <SessionEventFrame>[
-            _frame(seq: 211, eventId: 'evt_211'),
-            _frame(seq: 212, eventId: 'evt_212'),
-          ];
-        }
-        return const <SessionEventFrame>[];
-      },
-      onFrame: (frame) async {
-        handled.add(frame.userSeq);
-      },
-    );
-    addTearDown(() async {
-      await runtime.stop();
-      await controller.close();
-    });
+  test(
+    'runtime pulls multiple delta pages until the gap is fully repaired',
+    () async {
+      final controller = StreamController<Object?>.broadcast();
+      final pulled = <(int afterSeq, int limit)>[];
+      final acked = <int>[];
+      final handled = <int>[];
+      final gateway = SessionEventGateway(
+        connect: (uri, {headers}) => _FakeSessionSocket(controller.stream),
+        ack: (lastAckedSeq) async {
+          acked.add(lastAckedSeq);
+        },
+      );
+      gateway.lastAckedSeq = 10;
+      final runtime = SessionRuntime(
+        gateway: gateway,
+        onDeviceInvalidated: () {},
+        pullAfterSeq: ({required afterSeq, required limit}) async {
+          pulled.add((afterSeq, limit));
+          if (afterSeq == 10) {
+            return List<SessionEventFrame>.generate(
+              200,
+              (index) => _frame(seq: 11 + index, eventId: 'evt_${11 + index}'),
+            );
+          }
+          if (afterSeq == 210) {
+            return <SessionEventFrame>[
+              _frame(seq: 211, eventId: 'evt_211'),
+              _frame(seq: 212, eventId: 'evt_212'),
+            ];
+          }
+          return const <SessionEventFrame>[];
+        },
+        onFrame: (frame) async {
+          handled.add(frame.userSeq);
+        },
+      );
+      addTearDown(() async {
+        await runtime.stop();
+        await controller.close();
+      });
 
-    await runtime.start(Uri.parse('ws://example.com'));
-    await runtime.handleFrame(_frame(seq: 213, eventId: 'evt_live_213'));
+      await runtime.start(Uri.parse('ws://example.com'));
+      await runtime.handleFrame(_frame(seq: 213, eventId: 'evt_live_213'));
 
-    expect(pulled, <(int afterSeq, int limit)>[(10, 200), (210, 200)]);
-    expect(handled.first, 11);
-    expect(handled.last, 213);
-    expect(handled.length, 203);
-    expect(acked.first, 11);
-    expect(acked.last, 213);
-    expect(acked.length, 203);
-    expect(gateway.lastAckedSeq, 213);
-  });
+      expect(pulled, <(int afterSeq, int limit)>[(10, 200), (210, 200)]);
+      expect(handled.first, 11);
+      expect(handled.last, 213);
+      expect(handled.length, 203);
+      expect(acked.first, 11);
+      expect(acked.last, 213);
+      expect(acked.length, 203);
+      expect(gateway.lastAckedSeq, 213);
+    },
+  );
 
   test(
     'runtime records reconnect and gap-repair telemetry while tracking running state',
@@ -606,7 +663,8 @@ void main() {
       final telemetry = _RecordingRuntimeTelemetry();
       var connectCount = 0;
       final gateway = SessionEventGateway(
-        connect: (uri, {headers}) => _FakeSessionSocket(controllers[connectCount++].stream),
+        connect: (uri, {headers}) =>
+            _FakeSessionSocket(controllers[connectCount++].stream),
         ack: (_) async {},
       );
       gateway.lastAckedSeq = 10;

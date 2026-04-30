@@ -67,11 +67,32 @@ class WKFileContent extends WKMessageContent {
 
   @override
   WKMessageContent decodeJson(Map<String, dynamic> json) {
-    name = json['name']?.toString() ?? '';
-    size = json['size'] is int ? json['size'] : int.tryParse(json['size']?.toString() ?? '0') ?? 0;
-    url = json['url']?.toString() ?? '';
-    localPath = json['localPath']?.toString() ?? '';
-    suffix = json['suffix']?.toString() ?? '';
+    name = _firstNonEmptyString(json, const [
+      'name',
+      'fileName',
+      'file_name',
+      'filename',
+    ]);
+    size = _readIntField(json, const ['size', 'fileSize', 'file_size']);
+    url = _firstNonEmptyString(json, const [
+      'url',
+      'download_url',
+      'downloadUrl',
+      'file_url',
+      'fileUrl',
+    ]);
+    localPath = _firstNonEmptyString(json, const [
+      'localPath',
+      'local_path',
+      'file_path',
+      'filePath',
+    ]);
+    suffix = _firstNonEmptyString(json, const [
+      'suffix',
+      'file_ext',
+      'fileExt',
+      'ext',
+    ]);
     return this;
   }
 
@@ -84,6 +105,30 @@ class WKFileContent extends WKMessageContent {
   String searchableWord() {
     return name;
   }
+}
+
+String _firstNonEmptyString(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    final value = json[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) {
+      return value;
+    }
+  }
+  return '';
+}
+
+int _readIntField(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    final value = json[key];
+    if (value is int) {
+      return value;
+    }
+    final parsed = int.tryParse(value?.toString().trim() ?? '');
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+  return 0;
 }
 
 /// 名片消息内容

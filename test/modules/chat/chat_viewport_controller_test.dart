@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_mapper.dart';
+import 'package:wukong_im_app/modules/chat/chat_message_view_model.dart';
 import 'package:wukong_im_app/modules/chat/chat_viewport_controller.dart';
 import 'package:wukong_im_app/modules/conversation/chat_timeline_controller.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
@@ -8,6 +9,34 @@ import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
   group('ChatViewportController', () {
+    test(
+      'match index resolves all stable message identities in constant time',
+      () {
+        final pending = WKMsg()
+          ..clientSeq = 7
+          ..clientMsgNO = 'c1'
+          ..channelID = 'ch1'
+          ..channelType = 1
+          ..orderSeq = 9000
+          ..messageSeq = 9
+          ..contentType = WkMessageContentType.text;
+        final delivered = WKMsg()
+          ..clientMsgNO = 'c1'
+          ..messageID = 'm1'
+          ..channelID = 'ch1'
+          ..channelType = 1
+          ..orderSeq = 9000
+          ..messageSeq = 9
+          ..contentType = WkMessageContentType.text;
+
+        final index = ChatViewportMessageMatchIndex([
+          ChatMessageMapper().map(pending, currentUid: 'u_self'),
+        ]);
+
+        expect(index.find(delivered), 0);
+      },
+    );
+
     test('inserts new messages without rebuilding unrelated identities', () {
       final controller = ChatViewportController(
         mapper: ChatMessageMapper(),
@@ -146,6 +175,83 @@ void main() {
   });
 
   group('ChatTimelineController', () {
+    test('applies large incoming batches without scanning visible items', () {
+      final probe = _MessageFieldReadProbe();
+      final controller = ChatTimelineController(
+        mapper: _ProbeChatMessageMapper(),
+        currentUid: 'u_self',
+      );
+      controller.replaceAll(_buildProbeMessages(count: 2000));
+      final incoming = _buildProbeMessages(
+        count: 50,
+        startSeq: 2001,
+        probe: probe,
+      );
+
+      controller.applyIncoming(incoming);
+
+      expect(controller.state.items, hasLength(2050));
+      expect(controller.state.items.first.identity, 'mid:m2050');
+      expect(
+        probe.messageIdReads,
+        lessThan(500),
+        reason:
+            'Large incoming batches should use an indexed upsert path instead '
+            'of re-reading the incoming message identity for every visible row.',
+      );
+    });
+
+    test('appends large older batches without scanning visible items', () {
+      final probe = _MessageFieldReadProbe();
+      final controller = ChatTimelineController(
+        mapper: _ProbeChatMessageMapper(),
+        currentUid: 'u_self',
+      );
+      controller.replaceAll(_buildProbeMessages(count: 2000, startSeq: 51));
+      final older = _buildProbeMessages(count: 50, probe: probe);
+
+      controller.appendOlder(older);
+
+      expect(controller.state.items, hasLength(2050));
+      expect(controller.state.items.last.identity, 'mid:m50');
+      expect(
+        probe.messageIdReads,
+        lessThan(500),
+        reason:
+            'Older-page append should use an indexed upsert path instead of '
+            'checking every visible row for every historical message.',
+      );
+    });
+
+    test('applies refresh patches without scanning visible items', () {
+      final probe = _MessageFieldReadProbe();
+      final controller = ChatTimelineController(
+        mapper: _ProbeChatMessageMapper(),
+        currentUid: 'u_self',
+      );
+      controller.replaceAll(_buildProbeMessages(count: 2000));
+      final refreshed = _ProbeWKMsg(probe)
+        ..messageID = 'm1999'
+        ..channelID = 'c1'
+        ..channelType = 1
+        ..messageSeq = 1999
+        ..orderSeq = 1999 * ChatViewportController.orderSeqFactor
+        ..status = WKSendMsgResult.sendSuccess
+        ..contentType = WkMessageContentType.text;
+
+      controller.applyRefresh(refreshed);
+
+      expect(controller.state.items, hasLength(2000));
+      expect(controller.state.items[1998].identity, 'mid:m1999');
+      expect(
+        probe.messageIdReads,
+        lessThan(100),
+        reason:
+            'Refresh patches should use the viewport match index instead of '
+            're-reading the refreshed message for every visible row.',
+      );
+    });
+
     test(
       'appends older page items to tail without remapping existing items',
       () {
@@ -341,4 +447,59 @@ void main() {
       expect(decision.refreshed!.messageID, 'm1');
     });
   });
+}
+
+class _MessageFieldReadProbe {
+  int messageIdReads = 0;
+}
+
+class _ProbeWKMsg extends WKMsg {
+  _ProbeWKMsg(this._probe);
+
+  final _MessageFieldReadProbe? _probe;
+  String _messageId = '';
+
+  @override
+  String get messageID {
+    _probe?.messageIdReads += 1;
+    return _messageId;
+  }
+
+  @override
+  set messageID(String value) {
+    _messageId = value;
+  }
+}
+
+class _ProbeChatMessageMapper extends ChatMessageMapper {
+  @override
+  ChatMessageViewModel map(WKMsg message, {required String currentUid}) {
+    final identity = chatMessageIdentity(message);
+    return ChatMessageViewModel(
+      identity: identity,
+      message: message,
+      preview: identity,
+      system: false,
+      self: message.fromUID == currentUid,
+      structured: null,
+      revision: '$identity|${message.status}',
+    );
+  }
+}
+
+List<WKMsg> _buildProbeMessages({
+  required int count,
+  int startSeq = 1,
+  _MessageFieldReadProbe? probe,
+}) {
+  return <WKMsg>[
+    for (var seq = startSeq; seq < startSeq + count; seq += 1)
+      _ProbeWKMsg(probe)
+        ..messageID = 'm$seq'
+        ..channelID = 'c1'
+        ..channelType = 1
+        ..messageSeq = seq
+        ..orderSeq = seq * ChatViewportController.orderSeqFactor
+        ..contentType = WkMessageContentType.text,
+  ];
 }

@@ -11,6 +11,9 @@ class RealtimeEnvelope {
     required this.ackSeq,
     this.deviceId = '',
     this.issuedAtMs = 0,
+    this.eventId = '',
+    this.aggregateId = '',
+    this.schemaVersion = 0,
   });
 
   final int eventSeq;
@@ -19,6 +22,9 @@ class RealtimeEnvelope {
   final int ackSeq;
   final String deviceId;
   final int issuedAtMs;
+  final String eventId;
+  final String aggregateId;
+  final int schemaVersion;
 }
 
 class ControlProtoCodec {
@@ -35,11 +41,17 @@ class ControlProtoCodec {
     int ackSeq = 0,
     String? deviceId,
     int? issuedAtMs,
+    String? eventId,
+    String? aggregateId,
+    int? schemaVersion,
   }) {
     _ensureUint64(value: eventSeq, fieldName: 'event_seq');
     _ensureUint64(value: ackSeq, fieldName: 'ack_seq');
     if (issuedAtMs != null) {
       _ensureUint64(value: issuedAtMs, fieldName: 'issued_at_ms');
+    }
+    if (schemaVersion != null) {
+      _ensureUint64(value: schemaVersion, fieldName: 'schema_version');
     }
 
     final buffer = BytesBuilder(copy: false);
@@ -53,6 +65,17 @@ class ControlProtoCodec {
     }
     if (issuedAtMs != null && issuedAtMs > 0) {
       _writeVarintField(buffer, 6, issuedAtMs);
+    }
+    final normalizedEventId = eventId?.trim() ?? '';
+    if (normalizedEventId.isNotEmpty) {
+      _writeBytesField(buffer, 7, utf8.encode(normalizedEventId));
+    }
+    final normalizedAggregateId = aggregateId?.trim() ?? '';
+    if (normalizedAggregateId.isNotEmpty) {
+      _writeBytesField(buffer, 8, utf8.encode(normalizedAggregateId));
+    }
+    if (schemaVersion != null && schemaVersion > 0) {
+      _writeVarintField(buffer, 9, schemaVersion);
     }
     return buffer.toBytes();
   }
@@ -69,6 +92,9 @@ class ControlProtoCodec {
     var ackSeq = 0;
     var deviceId = '';
     var issuedAtMs = 0;
+    var eventId = '';
+    var aggregateId = '';
+    var schemaVersion = 0;
 
     while (cursor.hasRemaining) {
       final tag = cursor.readVarint();
@@ -133,6 +159,37 @@ class ControlProtoCodec {
           issuedAtMs = cursor.readVarint();
           sawKnownField = true;
           break;
+        case 7:
+          if (wireType != _wireLengthDelimited) {
+            throw const FormatException(
+              'event_id field has invalid wire type.',
+            );
+          }
+          eventId = utf8
+              .decode(cursor.readLengthDelimited(), allowMalformed: true)
+              .trim();
+          sawKnownField = true;
+          break;
+        case 8:
+          if (wireType != _wireLengthDelimited) {
+            throw const FormatException(
+              'aggregate_id field has invalid wire type.',
+            );
+          }
+          aggregateId = utf8
+              .decode(cursor.readLengthDelimited(), allowMalformed: true)
+              .trim();
+          sawKnownField = true;
+          break;
+        case 9:
+          if (wireType != _wireVarint) {
+            throw const FormatException(
+              'schema_version field has invalid wire type.',
+            );
+          }
+          schemaVersion = cursor.readVarint();
+          sawKnownField = true;
+          break;
         default:
           cursor.skipField(wireType);
       }
@@ -149,21 +206,26 @@ class ControlProtoCodec {
       ackSeq: ackSeq,
       deviceId: deviceId,
       issuedAtMs: issuedAtMs,
+      eventId: eventId,
+      aggregateId: aggregateId,
+      schemaVersion: schemaVersion,
     );
   }
 
   static SessionEventFrame toSessionEventFrame(RealtimeEnvelope envelope) {
     final payload = _decodePayloadMap(envelope.payload);
-    final aggregateId =
-        _readStringValue(payload, 'aggregate_id', 'aggregateId') ?? '';
+    final aggregateId = envelope.aggregateId.isNotEmpty
+        ? envelope.aggregateId
+        : _readStringValue(payload, 'aggregate_id', 'aggregateId') ?? '';
     final issuedAtSeconds = envelope.issuedAtMs > 0
         ? envelope.issuedAtMs ~/ 1000
         : 0;
     final serverTs =
         _readIntValue(payload, 'server_ts', 'serverTs') ?? issuedAtSeconds;
-    final eventId =
-        _readStringValue(payload, 'event_id', 'eventId') ??
-        'proto_${envelope.eventSeq}_${envelope.eventType}';
+    final eventId = envelope.eventId.isNotEmpty
+        ? envelope.eventId
+        : _readStringValue(payload, 'event_id', 'eventId') ??
+              'proto_${envelope.eventSeq}_${envelope.eventType}';
 
     return SessionEventFrame(
       eventId: eventId,

@@ -122,14 +122,16 @@ List<ForwardTarget> filterForwardTargets(
     return List<ForwardTarget>.from(targets, growable: false);
   }
 
-  return targets.where((target) {
-    final haystack = [
-      target.displayName,
-      target.subtitle,
-      target.channelId,
-    ].join(' ').toLowerCase();
-    return haystack.contains(query);
-  }).toList(growable: false);
+  return targets
+      .where((target) {
+        final haystack = [
+          target.displayName,
+          target.subtitle,
+          target.channelId,
+        ].join(' ').toLowerCase();
+        return haystack.contains(query);
+      })
+      .toList(growable: false);
 }
 
 String targetAvatarLabel(String? name, {String fallback = '?'}) {
@@ -162,7 +164,7 @@ Future<List<ForwardTarget>> buildForwardTargetsFromConversations(
         channelId: conversation.channelID,
         channelType: conversation.channelType,
         name: _resolveForwardTargetTitle(conversation, channel),
-        subtitle: isGroup ? 'Group chat' : 'Direct chat',
+        subtitle: isGroup ? '群聊' : '单聊',
         avatarUrl: _resolveForwardTargetAvatar(conversation, channel),
         isGroup: isGroup,
       ),

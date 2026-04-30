@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
+import '../../widgets/local_media_image_provider.dart';
 import '../../widgets/wk_button.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
@@ -28,7 +27,7 @@ class PublishMomentPage extends StatefulWidget {
 
 class _PublishMomentPageState extends State<PublishMomentPage> {
   final TextEditingController _contentController = TextEditingController();
-  final List<File> _selectedImages = <File>[];
+  final List<String> _selectedImages = <String>[];
   final MomentsService _momentsService = MomentsService.instance;
 
   Map<String, dynamic>? _selectedLocation;
@@ -239,20 +238,20 @@ class _PublishMomentPageState extends State<PublishMomentPage> {
                   ),
                 ),
                 const SizedBox(height: WKSpace.md),
-                Row(
+                Wrap(
+                  spacing: WKSpace.sm,
+                  runSpacing: WKSpace.sm,
                   children: [
                     _ActionButton(
                       icon: Icons.photo_library_outlined,
                       label: '相册',
                       onTap: _pickImages,
                     ),
-                    const SizedBox(width: WKSpace.sm),
                     _ActionButton(
                       icon: Icons.camera_alt_outlined,
                       label: '拍照',
                       onTap: _takePhoto,
                     ),
-                    const SizedBox(width: WKSpace.sm),
                     _ActionButton(
                       key: const ValueKey<String>(
                         'moment-pick-location-button',
@@ -261,7 +260,6 @@ class _PublishMomentPageState extends State<PublishMomentPage> {
                       label: '位置',
                       onTap: _pickLocation,
                     ),
-                    const SizedBox(width: WKSpace.sm),
                     _ActionButton(
                       key: const ValueKey<String>('moment-pick-mention-button'),
                       icon: Icons.alternate_email_rounded,
@@ -316,15 +314,22 @@ class _PublishMomentPageState extends State<PublishMomentPage> {
                 crossAxisSpacing: 8,
               ),
               itemBuilder: (context, index) {
+                final imageProvider = resolveLocalMediaImageProvider(
+                  _selectedImages[index],
+                );
                 return Stack(
                   fit: StackFit.expand,
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(WKRadius.lg),
-                      child: Image.file(
-                        _selectedImages[index],
-                        fit: BoxFit.cover,
-                      ),
+                      child: imageProvider == null
+                          ? const _MomentImagePreviewFallback()
+                          : Image(
+                              image: imageProvider,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) =>
+                                  const _MomentImagePreviewFallback(),
+                            ),
                     ),
                     Positioned(
                       top: 6,
@@ -369,6 +374,22 @@ class _PublishMomentPageState extends State<PublishMomentPage> {
   }
 }
 
+class _MomentImagePreviewFallback extends StatelessWidget {
+  const _MomentImagePreviewFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: WKColors.surfaceSoft,
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.image_not_supported_outlined,
+        color: WKColors.textSecondary,
+      ),
+    );
+  }
+}
+
 class _ActionButton extends StatelessWidget {
   const _ActionButton({
     super.key,
@@ -401,7 +422,7 @@ class _ActionButton extends StatelessWidget {
           children: [
             Icon(icon, size: 18, color: WKColors.textSecondary),
             const SizedBox(width: WKSpace.xs),
-            Text(label),
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         ),
       ),

@@ -25,6 +25,7 @@ class ChatActionCapabilityPolicy {
       chatChooseFileAction,
       chatSendLocationAction,
       chatChooseCardAction,
+      chatComposeRichTextAction,
     ];
     if (context.isMobile) {
       actions.insert(1, chatCaptureImageAction);

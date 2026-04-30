@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -15,6 +14,7 @@ import 'package:wukongimfluttersdk/model/wk_video_content.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
+import '../core/cache/media_cache_manager.dart';
 import '../core/config/api_config.dart';
 import '../core/utils/avatar_utils.dart';
 import '../data/models/link_preview.dart';
@@ -25,14 +25,16 @@ import '../modules/chat/message_content_preview.dart';
 import '../modules/chat/robot_card_message.dart';
 import '../modules/chat/robot_message_identity.dart';
 import '../wukong_base/msg/msg_content_type.dart';
+import '../wukong_base/msg/widget/wk_message_reaction.dart' as reaction_widget;
 import '../wukong_base/utils/time_utils.dart';
+import 'local_media_image_provider.dart';
 import 'robot_message_card.dart';
 import 'wk_avatar.dart';
 import 'wk_colors.dart';
 import 'wk_design_tokens.dart';
 import 'wk_emoji_text.dart';
 import 'wk_reference_assets.dart';
-import '../wukong_base/msg/widget/wk_message_reaction.dart' as reaction_widget;
+import 'wk_web_ui_tokens.dart';
 
 class MessageParticipantInfo {
   final String displayName;
@@ -63,38 +65,52 @@ class MessageStatusInfo {
 MessageParticipantInfo resolveMessageParticipantInfo(
   WKMsg message, {
   WKChannelMember? fallbackGroupMember,
+  WKChannel? fallbackSenderChannel,
   Map<String, dynamic>? structuredPayload,
+  String? currentUid,
+  String? currentUserDisplayName,
+  String? currentUserAvatarUrl,
 }) {
-  final member = message.getMemberOfFrom();
-  final from = message.getFrom();
-  final channelInfo = message.getChannelInfo();
+  final member = _senderGroupMember(message, message.getMemberOfFrom());
+  final fallbackMember = _senderGroupMember(message, fallbackGroupMember);
+  final fallbackChannel = _senderChannel(message, fallbackSenderChannel);
+  final from = _senderChannel(message, message.getFrom());
+  final channelInfo = _senderChannel(message, message.getChannelInfo());
+  final senderUid = message.fromUID.trim();
+  final normalizedCurrentUid = currentUid?.trim() ?? '';
   final robotIdentity = message.channelType == WKChannelType.group
       ? resolveRobotMessageIdentityFromMessage(
           message,
           structuredPayload: structuredPayload,
         )
       : null;
+  final isCurrentUserSender =
+      normalizedCurrentUid.isNotEmpty && senderUid == normalizedCurrentUid;
 
   final displayName = _firstNonEmpty([
+    if (isCurrentUserSender) currentUserDisplayName,
     robotIdentity?.displayName,
+    _resolveGroupMemberName(fallbackMember),
     _resolveGroupMemberName(member),
-    _resolveGroupMemberName(fallbackGroupMember),
+    _resolveChannelName(fallbackChannel),
     _resolveChannelName(from),
     _resolveChannelName(channelInfo),
-    message.fromUID.trim(),
+    senderUid,
     message.channelID.trim(),
     '未知用户',
   ]);
 
   final avatarUrl = _resolveParticipantAvatarUrl(
     _firstNonEmpty([
+      if (isCurrentUserSender) currentUserAvatarUrl,
       robotIdentity?.displayAvatar,
+      _resolveGroupMemberAvatar(fallbackMember),
       _resolveGroupMemberAvatar(member),
-      _resolveGroupMemberAvatar(fallbackGroupMember),
+      fallbackChannel?.avatar.trim(),
       from?.avatar.trim(),
       channelInfo?.avatar.trim(),
     ]),
-    message.fromUID,
+    senderUid,
   );
 
   return MessageParticipantInfo(displayName: displayName, avatarUrl: avatarUrl);
@@ -185,6 +201,8 @@ typedef MessageVoiceContentBuilder =
       bool isSelf,
     );
 
+const Color _warmWebBubbleMetaColor = Color(0xFF475569);
+
 class MessageBubble extends StatelessWidget {
   final ChatMessageViewModel model;
   final MessageParticipantInfo? participant;
@@ -192,10 +210,12 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
   final void Function(TapDownDetails details)? onSecondaryTapDown;
+  final VoidCallback? onRetrySend;
   final List<reaction_widget.WKMessageReaction> reactions;
   final VoidCallback? onAddReaction;
   final void Function(String emoji)? onReactionTap;
   final MessageVoiceContentBuilder? voiceContentBuilder;
+  final bool webStyle;
 
   const MessageBubble({
     super.key,
@@ -205,10 +225,12 @@ class MessageBubble extends StatelessWidget {
     this.onLongPress,
     this.onTap,
     this.onSecondaryTapDown,
+    this.onRetrySend,
     this.reactions = const [],
     this.onAddReaction,
     this.onReactionTap,
     this.voiceContentBuilder,
+    this.webStyle = false,
   });
 
   WKMsg get message => model.message;
@@ -253,6 +275,8 @@ class MessageBubble extends StatelessWidget {
         resolvedParticipant.displayName.trim().isNotEmpty;
     final bubblePadding = _bubblePaddingFor(effectiveContentType);
     final bubbleDecoration = _bubbleDecoration(effectiveContentType);
+    final useWarmTextColors =
+        webStyle && isSelf && _isTextLikeContent(effectiveContentType);
     final bubble = GestureDetector(
       onTap: effectiveContentType == MsgContentType.robotCard ? null : onTap,
       onLongPress: onLongPress,
@@ -271,13 +295,17 @@ class MessageBubble extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (showPinnedIndicator) ...[
-              _PinnedMessageIndicator(isSelf: isSelf),
+              _PinnedMessageIndicator(
+                isSelf: isSelf,
+                useWarmTextColors: useWarmTextColors,
+              ),
               const SizedBox(height: 6),
             ],
             _buildContent(
               context: context,
               previewText: model.previewText,
               effectiveContentType: effectiveContentType,
+              useWarmTextColors: useWarmTextColors,
             ),
             if (showInlineMeta) ...[
               const SizedBox(height: 10),
@@ -286,6 +314,8 @@ class MessageBubble extends StatelessWidget {
                 isSelf: isSelf,
                 timeText: timeText,
                 insideBubble: true,
+                useWarmTextColors: useWarmTextColors,
+                onRetrySend: onRetrySend,
               ),
             ],
           ],
@@ -364,9 +394,25 @@ class MessageBubble extends StatelessWidget {
     return const EdgeInsets.fromLTRB(14, 10, 14, 9);
   }
 
+  bool _isTextLikeContent(int contentType) {
+    return contentType == WkMessageContentType.text ||
+        contentType == WkMessageContentType.unknown ||
+        contentType == MsgContentType.robotCard;
+  }
+
   BoxDecoration _bubbleDecoration(int effectiveContentType) {
     if (effectiveContentType == MsgContentType.robotCard) {
       return const BoxDecoration(color: Colors.transparent);
+    }
+
+    if (webStyle && _isTextLikeContent(effectiveContentType)) {
+      return BoxDecoration(
+        color: isSelf ? WKWebColors.actionSoft : WKWebColors.surface,
+        borderRadius: BorderRadius.circular(WKWebRadius.control),
+        border: Border.all(
+          color: isSelf ? WKWebColors.borderWarm : const Color(0xFFFFEDD5),
+        ),
+      );
     }
 
     final borderRadius = BorderRadius.only(
@@ -413,16 +459,20 @@ class MessageBubble extends StatelessWidget {
     required BuildContext context,
     required String previewText,
     int? effectiveContentType,
+    bool useWarmTextColors = false,
   }) {
     final reply = message.messageContent?.reply;
     final resolvedContentType =
         effectiveContentType ?? _resolveEffectiveContentType();
     Widget content = switch (resolvedContentType) {
       MsgContentType.robotCard => _buildRobotCardContent(),
-      WkMessageContentType.text => _buildTextContent(previewText),
+      WkMessageContentType.text => _buildTextContent(
+        previewText,
+        useWarmTextColors: useWarmTextColors,
+      ),
       WkMessageContentType.image => _buildImageContent(context),
       WkMessageContentType.gif => _buildGifContent(context),
-      WkMessageContentType.sticker => _buildStickerContent(),
+      WkMessageContentType.sticker => _buildStickerContent(context),
       WkMessageContentType.voice =>
         voiceContentBuilder?.call(context, model, isSelf) ??
             _buildVoiceContent(),
@@ -431,7 +481,7 @@ class MessageBubble extends StatelessWidget {
       WkMessageContentType.file => _buildFileContent(),
       WkMessageContentType.card => _buildInteractiveCardContent(),
       MsgContentType.richText => _buildRichTextContent(context),
-      _ => _buildTextContent(previewText),
+      _ => _buildTextContent(previewText, useWarmTextColors: useWarmTextColors),
     };
 
     if (reply != null) {
@@ -439,7 +489,7 @@ class MessageBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildReplyPreview(reply),
+          _buildReplyPreview(reply, useWarmTextColors: useWarmTextColors),
           const SizedBox(height: 8),
           content,
         ],
@@ -617,7 +667,7 @@ class MessageBubble extends StatelessWidget {
     return '消息包含敏感词，仅自己可见';
   }
 
-  Widget _buildReplyPreview(WKReply reply) {
+  Widget _buildReplyPreview(WKReply reply, {bool useWarmTextColors = false}) {
     final author = (reply.fromName).trim().isNotEmpty
         ? reply.fromName.trim()
         : (reply.fromUID).trim().isNotEmpty
@@ -629,12 +679,16 @@ class MessageBubble extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isSelf
+        color: useWarmTextColors
+            ? WKWebColors.surfaceSoft
+            : isSelf
             ? WKColors.white.withValues(alpha: 0.18)
             : const Color(0xFFF3F6FA),
         borderRadius: BorderRadius.circular(WKRadius.sm),
         border: Border.all(
-          color: isSelf
+          color: useWarmTextColors
+              ? WKWebColors.borderWarm
+              : isSelf
               ? WKColors.white.withValues(alpha: 0.2)
               : const Color(0xFFE0E6EE),
         ),
@@ -648,18 +702,24 @@ class MessageBubble extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: isSelf ? WKColors.sendText : const Color(0xFF3567C8),
+              color: useWarmTextColors
+                  ? WKWebColors.textPrimary
+                  : isSelf
+                  ? WKColors.sendText
+                  : const Color(0xFF3567C8),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 2),
-          Text(
+          _buildEmojiAwareText(
             summary,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: isSelf
+              color: useWarmTextColors
+                  ? _warmWebBubbleMetaColor
+                  : isSelf
                   ? WKColors.white.withValues(alpha: 0.78)
                   : const Color(0xFF707A8D),
               fontSize: 12,
@@ -671,9 +731,30 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildTextContent(String text) {
+  Widget _buildEmojiAwareText(
+    String text, {
+    required TextStyle style,
+    int? maxLines,
+    TextOverflow? overflow,
+  }) {
+    if (WKEmojiText.containsAndroidEmoji(text)) {
+      return WKEmojiText(
+        text: text,
+        style: style,
+        maxLines: maxLines,
+        overflow: overflow,
+      );
+    }
+    return Text(text, maxLines: maxLines, overflow: overflow, style: style);
+  }
+
+  Widget _buildTextContent(String text, {bool useWarmTextColors = false}) {
     final textStyle = TextStyle(
-      color: isSelf ? WKColors.sendText : WKColors.receiveText,
+      color: useWarmTextColors
+          ? WKWebColors.textPrimary
+          : isSelf
+          ? WKColors.sendText
+          : WKColors.receiveText,
       fontSize: 16.5,
       height: 1.45,
       fontWeight: FontWeight.w500,
@@ -756,6 +837,10 @@ class MessageBubble extends StatelessWidget {
       intrinsicWidth = content.width;
       intrinsicHeight = content.height;
     }
+    if (url.isEmpty && _isRemoteMediaPath(localPath)) {
+      url = ApiConfig.resolveMediaUrl(localPath);
+      localPath = '';
+    }
     if (url.isEmpty && !_isLocalMediaPath(localPath)) {
       return _mediaFallback(
         icon: Icons.broken_image_outlined,
@@ -779,41 +864,39 @@ class MessageBubble extends StatelessWidget {
           height: 200,
         );
       }
-      return Image(
-        image: ResizeImage.resizeIfNeeded(
-          decodeRequest.cacheWidth,
-          decodeRequest.cacheHeight,
-          NetworkImage(url),
-        ),
+      return CachedMediaImage(
+        imageUrl: url,
+        cacheKey: url,
         width: 200,
         height: 200,
+        maxWidth: decodeRequest.cacheWidth,
+        maxHeight: decodeRequest.cacheHeight,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => _mediaFallback(
+        errorWidget: (context, url, error) => _mediaFallback(
           icon: Icons.broken_image_outlined,
           width: 200,
           height: 200,
         ),
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) {
-            return child;
-          }
-          return _mediaFallback(
-            width: 200,
-            height: 200,
-            child: const CircularProgressIndicator(),
-          );
-        },
+        placeholder: (context, url) => _mediaFallback(
+          width: 200,
+          height: 200,
+          child: const CircularProgressIndicator(),
+        ),
       );
     }
 
+    final localImageProvider = _isLocalMediaPath(localPath)
+        ? resolveLocalMediaImageProvider(localPath)
+        : null;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(WKRadius.md),
-      child: _isLocalMediaPath(localPath)
+      child: localImageProvider != null
           ? Image(
               image: ResizeImage.resizeIfNeeded(
                 decodeRequest.cacheWidth,
                 decodeRequest.cacheHeight,
-                FileImage(_resolveLocalMediaFile(localPath)),
+                localImageProvider,
               ),
               width: 200,
               height: 200,
@@ -854,28 +937,24 @@ class MessageBubble extends StatelessWidget {
       child: Stack(
         alignment: Alignment.bottomRight,
         children: [
-          Image.network(
-            url,
+          CachedMediaImage(
+            imageUrl: url,
+            cacheKey: url,
             width: 200,
             height: 200,
+            maxWidth: decodeRequest.cacheWidth,
+            maxHeight: decodeRequest.cacheHeight,
             fit: BoxFit.cover,
-            cacheWidth: decodeRequest.cacheWidth,
-            cacheHeight: decodeRequest.cacheHeight,
-            errorBuilder: (context, error, stackTrace) => _mediaFallback(
+            errorWidget: (context, url, error) => _mediaFallback(
               icon: Icons.gif_box_outlined,
               width: 200,
               height: 200,
             ),
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) {
-                return child;
-              }
-              return _mediaFallback(
-                width: 200,
-                height: 200,
-                child: const CircularProgressIndicator(),
-              );
-            },
+            placeholder: (context, url) => _mediaFallback(
+              width: 200,
+              height: 200,
+              child: const CircularProgressIndicator(),
+            ),
           ),
           Container(
             margin: const EdgeInsets.all(4),
@@ -885,7 +964,7 @@ class MessageBubble extends StatelessWidget {
               borderRadius: BorderRadius.circular(4),
             ),
             child: const Text(
-              'GIF',
+              '\u52a8\u56fe',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 10,
@@ -898,7 +977,7 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildStickerContent() {
+  Widget _buildStickerContent(BuildContext context) {
     final typedContent = message.messageContent;
     final payload = model.structuredPayload;
     final animationKey = typedContent is WKStickerContent
@@ -907,6 +986,23 @@ class MessageBubble extends StatelessWidget {
     final previewKey = typedContent is WKStickerContent
         ? typedContent.previewKey.trim()
         : _readStructuredString(payload, const ['previewKey', 'preview']);
+    final localPath = typedContent is WKStickerContent
+        ? typedContent.localPath.trim()
+        : _readStructuredString(payload, const ['localPath', 'local_path']);
+    final url = typedContent is WKStickerContent
+        ? typedContent.url.trim()
+        : _readStructuredString(payload, const [
+            'url',
+            'remoteUrl',
+            'remote_url',
+            'download_url',
+            'file_url',
+          ]);
+    final decodeRequest = resolveMediaDecodeRequest(
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+      logicalWidth: 160,
+      logicalHeight: 160,
+    );
     final fallbackText = typedContent is WKStickerContent
         ? (typedContent.fallbackText.trim().isEmpty
               ? '[贴纸]'
@@ -922,7 +1018,10 @@ class MessageBubble extends StatelessWidget {
         child: _buildStickerAsset(
           animationKey: animationKey,
           previewKey: previewKey,
+          localPath: localPath,
+          url: url,
           fallbackText: fallbackText,
+          decodeRequest: decodeRequest,
         ),
       ),
     );
@@ -931,38 +1030,92 @@ class MessageBubble extends StatelessWidget {
   Widget _buildStickerAsset({
     required String animationKey,
     required String previewKey,
+    required String localPath,
+    required String url,
     required String fallbackText,
+    required MediaDecodeRequest decodeRequest,
   }) {
-    if (animationKey.isNotEmpty) {
-      return Image.asset(
-        animationKey,
-        fit: BoxFit.contain,
-        errorBuilder: (_, _, __) => _buildStickerPreviewOrPlaceholder(
-          previewKey: previewKey,
-          fallbackText: fallbackText,
-        ),
-      );
-    }
-
-    return _buildStickerPreviewOrPlaceholder(
-      previewKey: previewKey,
+    final sources = _dedupeStickerSources([
+      previewKey,
+      localPath,
+      url,
+      animationKey,
+    ]);
+    return _buildStickerMediaCandidate(
+      sources: sources,
+      index: 0,
       fallbackText: fallbackText,
+      decodeRequest: decodeRequest,
     );
   }
 
-  Widget _buildStickerPreviewOrPlaceholder({
-    required String previewKey,
+  List<String> _dedupeStickerSources(List<String> rawSources) {
+    final seen = <String>{};
+    final sources = <String>[];
+    for (final rawSource in rawSources) {
+      final source = rawSource.trim();
+      if (source.isEmpty || !seen.add(source)) {
+        continue;
+      }
+      sources.add(source);
+    }
+    return sources;
+  }
+
+  Widget _buildStickerMediaCandidate({
+    required List<String> sources,
+    required int index,
     required String fallbackText,
+    required MediaDecodeRequest decodeRequest,
   }) {
-    if (previewKey.isNotEmpty) {
+    if (index >= sources.length) {
+      return _buildStickerPlaceholder(fallbackText);
+    }
+
+    final source = sources[index];
+    Widget next() => _buildStickerMediaCandidate(
+      sources: sources,
+      index: index + 1,
+      fallbackText: fallbackText,
+      decodeRequest: decodeRequest,
+    );
+
+    if (_isBundledAssetPath(source)) {
       return Image.asset(
-        previewKey,
+        source,
         fit: BoxFit.contain,
-        errorBuilder: (_, _, __) => _buildStickerPlaceholder(fallbackText),
+        cacheWidth: decodeRequest.cacheWidth,
+        cacheHeight: decodeRequest.cacheHeight,
+        errorBuilder: (context, error, stackTrace) => next(),
       );
     }
 
-    return _buildStickerPlaceholder(fallbackText);
+    final localImageProvider = _isLocalMediaPath(source)
+        ? resolveLocalMediaImageProvider(source)
+        : null;
+    if (localImageProvider != null) {
+      return Image(
+        image: localImageProvider,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) => next(),
+      );
+    }
+    if (_isLocalMediaPath(source)) {
+      return next();
+    }
+
+    final resolvedUrl = ApiConfig.resolveMediaUrl(source);
+    if (resolvedUrl.isEmpty) {
+      return next();
+    }
+    return CachedMediaImage(
+      imageUrl: resolvedUrl,
+      cacheKey: resolvedUrl,
+      maxWidth: decodeRequest.cacheWidth,
+      maxHeight: decodeRequest.cacheHeight,
+      fit: BoxFit.contain,
+      errorWidget: (context, url, error) => next(),
+    );
   }
 
   Widget _buildStickerPlaceholder(String fallbackText) {
@@ -1040,15 +1193,27 @@ class MessageBubble extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(WKRadius.md),
           child: cover.isNotEmpty
-              ? Image(
-                  image: ResizeImage.resizeIfNeeded(
-                    decodeRequest.cacheWidth,
-                    decodeRequest.cacheHeight,
-                    NetworkImage(cover),
-                  ),
+              ? CachedMediaImage(
+                  imageUrl: cover,
+                  cacheKey: cover,
                   width: 200,
                   height: 150,
+                  maxWidth: decodeRequest.cacheWidth,
+                  maxHeight: decodeRequest.cacheHeight,
                   fit: BoxFit.cover,
+                  errorWidget: (context, url, error) => _mediaFallback(
+                    icon: Icons.videocam_rounded,
+                    width: 200,
+                    height: 150,
+                    backgroundColor: WKColors.textSecondary,
+                    iconColor: WKColors.white.withValues(alpha: 0.72),
+                  ),
+                  placeholder: (context, url) => _mediaFallback(
+                    width: 200,
+                    height: 150,
+                    backgroundColor: WKColors.textSecondary,
+                    child: const CircularProgressIndicator(),
+                  ),
                 )
               : _mediaFallback(
                   icon: Icons.videocam_rounded,
@@ -1257,6 +1422,7 @@ class MessageBubble extends StatelessWidget {
                 isSelf: isSelf,
                 timeText: timeText,
                 insideBubble: true,
+                onRetrySend: onRetrySend,
               ),
           ],
         ),
@@ -1427,8 +1593,16 @@ MediaDecodeRequest resolveMediaDecodeRequest({
   return MediaDecodeRequest(cacheWidth: cacheWidth, cacheHeight: cacheHeight);
 }
 
+bool _isBundledAssetPath(String source) {
+  final normalized = source.replaceAll('\\', '/');
+  return normalized.startsWith('assets/');
+}
+
 bool _isLocalMediaPath(String mediaUrl) {
   if (mediaUrl.isEmpty) {
+    return false;
+  }
+  if (_isRemoteMediaPath(mediaUrl)) {
     return false;
   }
   final uri = Uri.tryParse(mediaUrl);
@@ -1444,19 +1618,37 @@ bool _isLocalMediaPath(String mediaUrl) {
   return RegExp(r'^[a-zA-Z]:[\\/]').hasMatch(mediaUrl);
 }
 
-File _resolveLocalMediaFile(String mediaUrl) {
-  if (mediaUrl.startsWith('file://')) {
-    final uri = Uri.tryParse(mediaUrl);
-    if (uri != null) {
-      return File.fromUri(uri);
+bool _isRemoteMediaPath(String mediaUrl) {
+  final value = mediaUrl.trim();
+  if (value.isEmpty) {
+    return false;
+  }
+  final lowerValue = value.toLowerCase().replaceAll('\\', '/');
+  if (lowerValue.startsWith('http://') || lowerValue.startsWith('https://')) {
+    return true;
+  }
+  final normalized = lowerValue.replaceFirst(RegExp(r'^/+'), '');
+  if (normalized.startsWith('v1/file/preview/') ||
+      normalized.startsWith('v1/file/download/') ||
+      normalized.startsWith('minio/')) {
+    return true;
+  }
+  for (final prefix in <String>[
+    'chat/',
+    'common/',
+    'avatar/',
+    'group/',
+    'moment/',
+    'report/',
+    'download/',
+    'sticker/',
+    'chatbg/',
+  ]) {
+    if (normalized.startsWith(prefix)) {
+      return true;
     }
-    return File(mediaUrl.substring('file://'.length));
   }
-  final uri = Uri.tryParse(mediaUrl);
-  if (uri != null && uri.scheme == 'file') {
-    return File.fromUri(uri);
-  }
-  return File(mediaUrl);
+  return false;
 }
 
 class _CompactMessageStatusBadge extends StatelessWidget {
@@ -1464,12 +1656,16 @@ class _CompactMessageStatusBadge extends StatelessWidget {
   final bool isSelf;
   final String timeText;
   final bool insideBubble;
+  final bool useWarmTextColors;
+  final VoidCallback? onRetrySend;
 
   const _CompactMessageStatusBadge({
     required this.status,
     required this.isSelf,
     required this.timeText,
     this.insideBubble = false,
+    this.useWarmTextColors = false,
+    this.onRetrySend,
   });
 
   @override
@@ -1478,62 +1674,99 @@ class _CompactMessageStatusBadge extends StatelessWidget {
         ? 'message status'
         : status!.label;
     final timeColor = insideBubble
-        ? (isSelf
+        ? (useWarmTextColors
+              ? _warmWebBubbleMetaColor
+              : isSelf
               ? WKColors.white.withValues(alpha: 0.72)
               : const Color(0xFF8B94A5))
         : WKColors.color999;
     final statusColor = status == null
         ? null
+        : insideBubble && useWarmTextColors
+        ? (status!.icon == Icons.error_outline_rounded
+              ? status!.foregroundColor
+              : _warmWebBubbleMetaColor)
         : insideBubble && isSelf
         ? (status!.icon == Icons.error_outline_rounded
               ? status!.foregroundColor
               : WKColors.white.withValues(alpha: 0.82))
         : status!.foregroundColor;
 
+    final canRetry =
+        isSelf &&
+        onRetrySend != null &&
+        status?.icon == Icons.error_outline_rounded;
+    final badge = Row(
+      key: const ValueKey<String>('message-status-badge'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (timeText.isNotEmpty)
+          Text(
+            timeText,
+            style: TextStyle(
+              fontFamily: WKFontFamily.primary,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: timeColor,
+            ),
+          ),
+        if (status != null) ...[
+          const SizedBox(width: 4),
+          if (status!.isLoading)
+            SizedBox(
+              width: 13,
+              height: 13,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.8,
+                valueColor: AlwaysStoppedAnimation<Color>(statusColor!),
+              ),
+            )
+          else if (_statusAssetIcon(status!) != null)
+            WKReferenceAssets.image(
+              _statusAssetIcon(status!)!,
+              width: 14,
+              height: 14,
+              tint: statusColor!,
+            )
+          else if (status!.icon != null)
+            Icon(status!.icon, size: 13, color: statusColor),
+        ],
+      ],
+    );
+    final shouldShake =
+        isSelf &&
+        status?.icon == Icons.error_outline_rounded &&
+        !(MediaQuery.maybeOf(context)?.disableAnimations ?? false);
+    final shouldPulse =
+        isSelf &&
+        status?.isLoading == true &&
+        !(MediaQuery.maybeOf(context)?.disableAnimations ?? false);
+    final effectiveBadge = shouldShake
+        ? _SendFailureShake(child: badge)
+        : shouldPulse
+        ? _SendPendingPulse(child: badge)
+        : badge;
+    final child = Semantics(
+      label: semanticsLabel,
+      button: canRetry,
+      child: canRetry
+          ? GestureDetector(
+              key: const ValueKey<String>('message-retry-send-button'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onRetrySend,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: effectiveBadge,
+              ),
+            )
+          : effectiveBadge,
+    );
+
     return Align(
       alignment: insideBubble
           ? Alignment.centerRight
           : (isSelf ? Alignment.centerRight : Alignment.centerLeft),
-      child: Semantics(
-        label: semanticsLabel,
-        child: Row(
-          key: const ValueKey<String>('message-status-badge'),
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (timeText.isNotEmpty)
-              Text(
-                timeText,
-                style: TextStyle(
-                  fontFamily: WKFontFamily.primary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: timeColor,
-                ),
-              ),
-            if (status != null) ...[
-              const SizedBox(width: 4),
-              if (status!.isLoading)
-                SizedBox(
-                  width: 13,
-                  height: 13,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.8,
-                    valueColor: AlwaysStoppedAnimation<Color>(statusColor!),
-                  ),
-                )
-              else if (_statusAssetIcon(status!) != null)
-                WKReferenceAssets.image(
-                  _statusAssetIcon(status!)!,
-                  width: 14,
-                  height: 14,
-                  tint: statusColor!,
-                )
-              else if (status!.icon != null)
-                Icon(status!.icon, size: 13, color: statusColor),
-            ],
-          ],
-        ),
-      ),
+      child: child,
     );
   }
 
@@ -1555,14 +1788,93 @@ class _CompactMessageStatusBadge extends StatelessWidget {
   }
 }
 
-class _PinnedMessageIndicator extends StatelessWidget {
-  const _PinnedMessageIndicator({required this.isSelf});
+class _SendFailureShake extends StatelessWidget {
+  const _SendFailureShake({required this.child});
 
-  final bool isSelf;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final color = isSelf
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      tween: Tween<double>(begin: 0, end: 1),
+      child: child,
+      builder: (context, progress, child) {
+        final amplitude = (1 - progress) * 4;
+        final dx = math.sin(progress * math.pi * 4.5) * amplitude;
+        return Transform.translate(
+          key: const ValueKey<String>('message-send-failure-shake'),
+          offset: Offset(dx, 0),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+class _SendPendingPulse extends StatefulWidget {
+  const _SendPendingPulse({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SendPendingPulse> createState() => _SendPendingPulseState();
+}
+
+class _SendPendingPulseState extends State<_SendPendingPulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 1, end: 0.72).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _opacity,
+      child: widget.child,
+      builder: (context, child) {
+        return Opacity(
+          key: const ValueKey<String>('message-send-pending-pulse'),
+          opacity: _opacity.value,
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+class _PinnedMessageIndicator extends StatelessWidget {
+  const _PinnedMessageIndicator({
+    required this.isSelf,
+    this.useWarmTextColors = false,
+  });
+
+  final bool isSelf;
+  final bool useWarmTextColors;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = useWarmTextColors
+        ? _warmWebBubbleMetaColor
+        : isSelf
         ? WKColors.white.withValues(alpha: 0.82)
         : WKColors.brand500;
     return Row(
@@ -1600,6 +1912,29 @@ extension on MessageStatusInfo {
       isLoading: isLoading ?? this.isLoading,
     );
   }
+}
+
+WKChannelMember? _senderGroupMember(WKMsg message, WKChannelMember? member) {
+  if (member == null) {
+    return null;
+  }
+  final senderUid = message.fromUID.trim();
+  final memberUid = member.memberUID.trim();
+  if (senderUid.isEmpty || memberUid.isEmpty || senderUid == memberUid) {
+    return member;
+  }
+  return null;
+}
+
+WKChannel? _senderChannel(WKMsg message, WKChannel? channel) {
+  if (channel == null) {
+    return null;
+  }
+  final senderUid = message.fromUID.trim();
+  if (senderUid.isEmpty || channel.channelType != WKChannelType.personal) {
+    return null;
+  }
+  return channel.channelID.trim() == senderUid ? channel : null;
 }
 
 String _resolveGroupMemberName(WKChannelMember? member) {
@@ -1701,6 +2036,13 @@ class _LinkPreviewCardState extends State<_LinkPreviewCard> {
         final secondaryColor = widget.isSelf
             ? WKColors.white.withValues(alpha: 0.75)
             : WKColors.textSecondary;
+        final imageDecodeRequest = preview.hasImage
+            ? resolveMediaDecodeRequest(
+                devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+                logicalWidth: 260,
+                logicalHeight: 132,
+              )
+            : null;
 
         return Material(
           color: Colors.transparent,
@@ -1723,28 +2065,17 @@ class _LinkPreviewCardState extends State<_LinkPreviewCard> {
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(WKRadius.md),
                       ),
-                      child: Image(
-                        image: ResizeImage.resizeIfNeeded(
-                          resolveMediaDecodeRequest(
-                            devicePixelRatio: MediaQuery.devicePixelRatioOf(
-                              context,
-                            ),
-                            logicalWidth: 260,
-                            logicalHeight: 132,
-                          ).cacheWidth,
-                          resolveMediaDecodeRequest(
-                            devicePixelRatio: MediaQuery.devicePixelRatioOf(
-                              context,
-                            ),
-                            logicalWidth: 260,
-                            logicalHeight: 132,
-                          ).cacheHeight,
-                          NetworkImage(preview.imageUrl!),
-                        ),
+                      child: CachedMediaImage(
+                        imageUrl: preview.imageUrl!,
+                        cacheKey: preview.imageUrl!,
+                        maxWidth: imageDecodeRequest?.cacheWidth,
+                        maxHeight: imageDecodeRequest?.cacheHeight,
+                        errorWidget: (_, _, _) => const SizedBox.shrink(),
+                        placeholder: (_, _) =>
+                            const SizedBox(height: 132, width: double.infinity),
                         height: 132,
                         width: double.infinity,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
                       ),
                     ),
                   Padding(

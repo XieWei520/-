@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,18 +18,20 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0EA5E9">
+  <meta name="description" content="信息平权">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="wukong_im_app">
+  <meta name="apple-mobile-web-app-title" content="信息平权">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>wukong_im_app</title>
+  <title>信息平权</title>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -41,6 +43,84 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    window.flutterConfiguration = Object.assign({}, window.flutterConfiguration || {}, {
+      // Keep Flutter Web font fallback requests on this host. The bundled
+      // app fonts cover the UI text, and local 404s are fast if the engine
+      // probes extra fallback shards.
+      fontFallbackBaseUrl: 'assets/flutter-font-fallback/',
+    });
+
+    (function wkMaybeClearLegacyFlutterServiceWorkers() {
+      var bootstrapLoaded = false;
+      function wkRegisterPwaServiceWorker() {
+        if (!('serviceWorker' in navigator)) {
+          return;
+        }
+        function registerWorker() {
+          navigator.serviceWorker.register('wk_pwa_service_worker.js')
+            .catch(function (error) {
+              console.debug('WK PWA service worker registration failed', error);
+            });
+        }
+        if (document.readyState === 'complete') {
+          registerWorker();
+          return;
+        }
+        window.addEventListener('load', registerWorker, { once: true });
+      }
+
+      function loadBootstrap() {
+        if (bootstrapLoaded) {
+          return;
+        }
+        bootstrapLoaded = true;
+        var script = document.createElement('script');
+        script.src = 'flutter_bootstrap.js';
+        script.async = true;
+        document.body.appendChild(script);
+        wkRegisterPwaServiceWorker();
+      }
+
+      var searchParams = new URLSearchParams(window.location.search);
+      var shouldResetLegacyWorkers = searchParams.get('wk_reset_sw') === '1';
+      if (!shouldResetLegacyWorkers) {
+        loadBootstrap();
+        return;
+      }
+
+      if (!('serviceWorker' in navigator)) {
+        loadBootstrap();
+        return;
+      }
+
+      var unregister = navigator.serviceWorker.getRegistrations()
+        .then(function (registrations) {
+          return Promise.all(registrations.map(function (registration) {
+            return registration.unregister();
+          }));
+        });
+      var clearCaches = window.caches
+        ? caches.keys().then(function (keys) {
+            return Promise.all(keys.map(function (key) {
+              return caches.delete(key);
+            }));
+          })
+        : Promise.resolve();
+
+      Promise.all([unregister, clearCaches])
+        .then(function () {
+          if (navigator.serviceWorker.controller &&
+              sessionStorage.getItem('wk_sw_reset_reloaded') !== '1') {
+            sessionStorage.setItem('wk_sw_reset_reloaded', '1');
+            window.location.reload();
+            return;
+          }
+          sessionStorage.removeItem('wk_sw_reset_reloaded');
+          loadBootstrap();
+        })
+        .catch(loadBootstrap);
+    })();
+  </script>
 </body>
 </html>

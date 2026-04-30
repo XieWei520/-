@@ -2,92 +2,87 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wukong_im_app/modules/settings/message_backup/backup_restore_message_service.dart';
+import 'package:path/path.dart' as p;
+import 'package:wukong_im_app/modules/settings/message_backup/backup_restore_message_service_io.dart';
 
 void main() {
-  test(
-    'backup payload matches TangSeng Android row schema exactly',
-    () async {
-      final tempDir = await Directory.systemTemp.createTemp(
-        'wk_message_backup_test_',
-      );
-      addTearDown(() async {
-        if (await tempDir.exists()) {
-          await tempDir.delete(recursive: true);
-        }
-      });
+  test('backup payload matches TangSeng Android row schema exactly', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'wk_message_backup_test_',
+    );
+    addTearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
 
-      String? uploadedPath;
-      String? uploadedFilePath;
-      final service = BackupRestoreMessageService(
-        uidReader: () => 'u_backup',
-        resolveBackupDirectory: () async => tempDir,
-        loadMessages: () async => <BackupRestoreMessageRecord>[
-          const BackupRestoreMessageRecord(
-            channelId: 'g1',
-            channelType: 2,
-            messageId: 'm1',
-            messageSeq: 11,
-            orderSeq: 11000,
-            clientMsgNo: 'c1',
-            fromUid: 'u1',
-            payload: '{"type":1,"content":"hello"}',
-            timestamp: 1712000001,
-            isDeleted: 0,
-          ),
-          const BackupRestoreMessageRecord(
-            channelId: 'g1',
-            channelType: 2,
-            messageId: 'm2',
-            messageSeq: 12,
-            orderSeq: 12000,
-            clientMsgNo: 'c2',
-            fromUid: 'u2',
-            payload: '{"type":1,"content":"deleted"}',
-            timestamp: 1712000002,
-            isDeleted: 1,
-          ),
-        ],
-        uploadBackupFile: (path, filePath) async {
-          uploadedPath = path;
-          uploadedFilePath = filePath;
-        },
-      );
+    String? uploadedPath;
+    String? uploadedFilePath;
+    final service = BackupRestoreMessageService(
+      uidReader: () => 'u_backup',
+      resolveBackupDirectory: () async => tempDir,
+      loadMessages: () async => <BackupRestoreMessageRecord>[
+        const BackupRestoreMessageRecord(
+          channelId: 'g1',
+          channelType: 2,
+          messageId: 'm1',
+          messageSeq: 11,
+          orderSeq: 11000,
+          clientMsgNo: 'c1',
+          fromUid: 'u1',
+          payload: '{"type":1,"content":"hello"}',
+          timestamp: 1712000001,
+          isDeleted: 0,
+        ),
+        const BackupRestoreMessageRecord(
+          channelId: 'g1',
+          channelType: 2,
+          messageId: 'm2',
+          messageSeq: 12,
+          orderSeq: 12000,
+          clientMsgNo: 'c2',
+          fromUid: 'u2',
+          payload: '{"type":1,"content":"deleted"}',
+          timestamp: 1712000002,
+          isDeleted: 1,
+        ),
+      ],
+      uploadBackupFile: (path, filePath) async {
+        uploadedPath = path;
+        uploadedFilePath = filePath;
+      },
+    );
 
-      final result = await service.backup();
+    final result = await service.backup();
 
-      expect(uploadedPath, '/v1/message/backup');
-      expect(uploadedFilePath, result.localPath);
-      expect(result.exportedCount, 1);
+    expect(uploadedPath, '/v1/message/backup');
+    expect(uploadedFilePath, result.localPath);
+    expect(result.exportedCount, 1);
 
-      final raw = await File(result.localPath).readAsString();
-      final messages = jsonDecode(raw) as List<dynamic>;
-      expect(messages, hasLength(1));
-      expect(
-        (messages.single as Map).keys.toSet(),
-        <String>{
-          'channel_id',
-          'channel_type',
-          'message_id',
-          'message_seq',
-          'client_msg_no',
-          'from_uid',
-          'payload',
-          'timestamp',
-        },
-      );
-      expect(messages.single, <String, dynamic>{
-        'channel_id': 'g1',
-        'channel_type': 2,
-        'message_id': 'm1',
-        'message_seq': 11,
-        'client_msg_no': 'c1',
-        'from_uid': 'u1',
-        'payload': '{"type":1,"content":"hello"}',
-        'timestamp': 1712000001,
-      });
-    },
-  );
+    final raw = await File(result.localPath).readAsString();
+    final messages = jsonDecode(raw) as List<dynamic>;
+    expect(messages, hasLength(1));
+    expect((messages.single as Map).keys.toSet(), <String>{
+      'channel_id',
+      'channel_type',
+      'message_id',
+      'message_seq',
+      'client_msg_no',
+      'from_uid',
+      'payload',
+      'timestamp',
+    });
+    expect(messages.single, <String, dynamic>{
+      'channel_id': 'g1',
+      'channel_type': 2,
+      'message_id': 'm1',
+      'message_seq': 11,
+      'client_msg_no': 'c1',
+      'from_uid': 'u1',
+      'payload': '{"type":1,"content":"hello"}',
+      'timestamp': 1712000001,
+    });
+  });
 
   test(
     'restore downloads recovery json and imports archive into local sqlite',
@@ -141,4 +136,30 @@ void main() {
       expect(result.conversationCount, 2);
     },
   );
+
+  test('backup sanitizes uid before using it as a local file name', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'wk_message_backup_sanitize_test_',
+    );
+    addTearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    final service = BackupRestoreMessageService(
+      uidReader: () => '../evil/user',
+      resolveBackupDirectory: () async => tempDir,
+      loadMessages: () async => const <BackupRestoreMessageRecord>[],
+      uploadBackupFile: (_, _) async {},
+    );
+
+    final result = await service.backup();
+    final normalizedRoot = p.normalize(tempDir.path);
+    final normalizedBackupPath = p.normalize(result.localPath);
+
+    expect(p.isWithin(normalizedRoot, normalizedBackupPath), isTrue);
+    expect(p.basename(result.localPath), 'evil_user.json');
+    expect(result.localPath, isNot(contains('..')));
+  });
 }

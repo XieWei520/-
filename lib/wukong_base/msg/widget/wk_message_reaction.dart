@@ -84,7 +84,11 @@ class WKMessageReactions extends StatelessWidget {
           children: [
             Text(
               reaction.emoji,
-              style: const TextStyle(fontSize: 15, height: 1),
+              style: TextStyle(
+                fontSize: 15,
+                height: 1,
+                fontFamilyFallback: WKTypography.fontFamilyFallback,
+              ),
             ),
             const SizedBox(width: 4),
             Text(
@@ -194,7 +198,10 @@ class WKReactionPicker extends StatelessWidget {
                   ),
                   child: Text(
                     emoji,
-                    style: TextStyle(fontSize: emojiFontSize),
+                    style: TextStyle(
+                      fontSize: emojiFontSize,
+                      fontFamilyFallback: WKTypography.fontFamilyFallback,
+                    ),
                   ),
                 ),
               );

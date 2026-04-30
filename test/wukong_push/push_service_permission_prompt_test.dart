@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/wukong_push/handlers/push_handler.dart'
     as handler;
 import 'package:wukong_im_app/wukong_push/models/push_models.dart';
+import 'package:wukong_im_app/wukong_push/notification/foreground_notification_plan.dart';
 import 'package:wukong_im_app/wukong_push/push_service.dart';
 
 void main() {
@@ -86,13 +89,84 @@ void main() {
       );
     },
   );
+
+  test(
+    'push registration stays non-fatal when handler initialization fails',
+    () async {
+      final fakeHandler = _FakePushHandler(
+        permissionGranted: true,
+        initializeError: StateError('Firebase not configured'),
+        tokenError: StateError('No Firebase App has been created'),
+      );
+
+      final service = PushService(
+        isPushSupported: () => true,
+        handlerSelector: () async => fakeHandler,
+        initializeNotifications:
+            ({void Function(String payload)? onNotificationTap}) async {},
+        onPermissionDenied: () async {},
+      );
+
+      await service.handleLogin();
+
+      expect(fakeHandler.getTokenCallCount, 0);
+    },
+  );
+
+  test(
+    'push service sends foreground events through the injected notification presenter',
+    () async {
+      final deliveredPlan = Completer<ForegroundNotificationPlan>();
+      final fakeHandler = _FakePushHandler(
+        permissionGranted: true,
+        initialForegroundEvent: PushMessageEvent(
+          payload: PushPayload(
+            raw: const <String, dynamic>{'message_id': 'msg-web-01'},
+            messageId: 'msg-web-01',
+            title: 'Alice',
+            body: 'Hello Web',
+          ),
+          data: const <String, dynamic>{'message_id': 'msg-web-01'},
+          trigger: PushMessageTrigger.foreground,
+        ),
+      );
+
+      final service = PushService(
+        isPushSupported: () => true,
+        handlerSelector: () async => fakeHandler,
+        initializeNotifications:
+            ({void Function(String payload)? onNotificationTap}) async {},
+        onPermissionDenied: () async {},
+        showForegroundNotification: (plan, event) async {
+          deliveredPlan.complete(plan);
+        },
+      );
+
+      await service.ensureInitialized();
+
+      final plan = await deliveredPlan.future.timeout(
+        const Duration(seconds: 1),
+      );
+      expect(plan.title, 'Alice');
+      expect(plan.body, 'Hello Web');
+    },
+  );
 }
 
 class _FakePushHandler implements handler.PushHandler {
-  _FakePushHandler({required this.permissionGranted});
+  _FakePushHandler({
+    required this.permissionGranted,
+    this.initializeError,
+    this.tokenError,
+    this.initialForegroundEvent,
+  });
 
   final bool permissionGranted;
+  final Object? initializeError;
+  final Object? tokenError;
+  final PushMessageEvent? initialForegroundEvent;
   int initializeCallCount = 0;
+  int getTokenCallCount = 0;
 
   @override
   Future<bool> ensurePermission() async => permissionGranted;
@@ -108,7 +182,14 @@ class _FakePushHandler implements handler.PushHandler {
   }
 
   @override
-  Future<String?> getToken() async => null;
+  Future<String?> getToken() async {
+    getTokenCallCount += 1;
+    final error = tokenError;
+    if (error != null) {
+      throw error;
+    }
+    return null;
+  }
 
   @override
   Future<void> initialize({
@@ -116,6 +197,14 @@ class _FakePushHandler implements handler.PushHandler {
     required void Function(PushMessageEvent event) onMessageReceived,
   }) async {
     initializeCallCount += 1;
+    final error = initializeError;
+    if (error != null) {
+      throw error;
+    }
+    final event = initialForegroundEvent;
+    if (event != null) {
+      onMessageReceived(event);
+    }
   }
 
   @override

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../motion/chat_motion.dart';
+
 /// Reusable page transition helpers for the app.
 ///
 /// Provides shared-element (Hero) transitions, fade transitions,
@@ -9,8 +11,11 @@ import 'package:flutter/material.dart';
 Future<T?> pushWithFadeThrough<T>(
   BuildContext context,
   Widget page, {
-  Duration duration = const Duration(milliseconds: 300),
+  Duration? duration,
 }) {
+  final motion = ChatMotion.of(context);
+  final transitionDuration =
+      duration ?? motion.duration(ChatMotionDurations.pageStandard);
   return Navigator.of(context).push<T>(
     PageRouteBuilder<T>(
       pageBuilder: (context, animation, secondaryAnimation) => page,
@@ -20,8 +25,8 @@ Future<T?> pushWithFadeThrough<T>(
           child: child,
         );
       },
-      transitionDuration: duration,
-      reverseTransitionDuration: duration,
+      transitionDuration: transitionDuration,
+      reverseTransitionDuration: transitionDuration,
     ),
   );
 }
@@ -30,15 +35,18 @@ Future<T?> pushWithFadeThrough<T>(
 Future<T?> pushWithSlideUp<T>(
   BuildContext context,
   Widget page, {
-  Duration duration = const Duration(milliseconds: 350),
+  Duration? duration,
 }) {
+  final motion = ChatMotion.of(context);
+  final transitionDuration =
+      duration ?? motion.duration(ChatMotionDurations.pageEmphasized);
   return Navigator.of(context).push<T>(
     PageRouteBuilder<T>(
       pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
           parent: animation,
-          curve: Curves.easeOutCubic,
+          curve: ChatMotionCurves.emphasized,
         );
         return SlideTransition(
           position: Tween<Offset>(
@@ -48,8 +56,10 @@ Future<T?> pushWithSlideUp<T>(
           child: FadeTransition(opacity: curved, child: child),
         );
       },
-      transitionDuration: duration,
-      reverseTransitionDuration: const Duration(milliseconds: 250),
+      transitionDuration: transitionDuration,
+      reverseTransitionDuration: motion.duration(
+        ChatMotionDurations.pageReverse,
+      ),
     ),
   );
 }
@@ -58,15 +68,18 @@ Future<T?> pushWithSlideUp<T>(
 Future<T?> pushWithSharedAxisX<T>(
   BuildContext context,
   Widget page, {
-  Duration duration = const Duration(milliseconds: 300),
+  Duration? duration,
 }) {
+  final motion = ChatMotion.of(context);
+  final transitionDuration =
+      duration ?? motion.duration(ChatMotionDurations.pageStandard);
   return Navigator.of(context).push<T>(
     PageRouteBuilder<T>(
       pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
           parent: animation,
-          curve: Curves.easeInOutCubic,
+          curve: ChatMotionCurves.sharedAxis,
         );
         return SlideTransition(
           position: Tween<Offset>(
@@ -76,8 +89,10 @@ Future<T?> pushWithSharedAxisX<T>(
           child: FadeTransition(opacity: curved, child: child),
         );
       },
-      transitionDuration: duration,
-      reverseTransitionDuration: const Duration(milliseconds: 250),
+      transitionDuration: transitionDuration,
+      reverseTransitionDuration: motion.duration(
+        ChatMotionDurations.pageReverse,
+      ),
     ),
   );
 }
@@ -87,8 +102,11 @@ Future<T?> pushWithSharedAxisX<T>(
 Future<T?> pushWithScaleFade<T>(
   BuildContext context,
   Widget page, {
-  Duration duration = const Duration(milliseconds: 350),
+  Duration? duration,
 }) {
+  final motion = ChatMotion.of(context);
+  final transitionDuration =
+      duration ?? motion.duration(ChatMotionDurations.pageEmphasized);
   return Navigator.of(context).push<T>(
     PageRouteBuilder<T>(
       opaque: false,
@@ -96,7 +114,7 @@ Future<T?> pushWithScaleFade<T>(
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         final curved = CurvedAnimation(
           parent: animation,
-          curve: Curves.easeOutCubic,
+          curve: ChatMotionCurves.emphasized,
           reverseCurve: Curves.easeInCubic,
         );
         return FadeTransition(
@@ -107,8 +125,10 @@ Future<T?> pushWithScaleFade<T>(
           ),
         );
       },
-      transitionDuration: duration,
-      reverseTransitionDuration: const Duration(milliseconds: 250),
+      transitionDuration: transitionDuration,
+      reverseTransitionDuration: motion.duration(
+        ChatMotionDurations.pageReverse,
+      ),
     ),
   );
 }

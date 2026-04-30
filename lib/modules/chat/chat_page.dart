@@ -19,6 +19,8 @@ class ChatPage extends ConsumerStatefulWidget {
   final String channelId;
   final int channelType;
   final String? channelName;
+  final String? channelCategory;
+  final int initialVipLevel;
   final int? initialAroundOrderSeq;
   final int? initialLocateMessageSeq;
 
@@ -27,6 +29,8 @@ class ChatPage extends ConsumerStatefulWidget {
     required this.channelId,
     required this.channelType,
     this.channelName,
+    this.channelCategory,
+    this.initialVipLevel = 0,
     this.initialAroundOrderSeq,
     this.initialLocateMessageSeq,
   });
@@ -112,6 +116,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       channelId: widget.channelId,
       channelType: widget.channelType,
       channelName: widget.channelName,
+      channelCategory: widget.channelCategory,
+      initialVipLevel: widget.initialVipLevel,
       initialAroundOrderSeq: widget.initialAroundOrderSeq,
       initialLocateMessageSeq: widget.initialLocateMessageSeq,
     );
@@ -140,43 +146,28 @@ class _ChatPasswordGateDialogState
   bool _isSubmitting = false;
   String? _errorMessage;
 
-  bool get _useEnglish =>
-      Localizations.localeOf(context).languageCode.toLowerCase() == 'en';
-
-  String get _title => _useEnglish ? 'Chat Password' : '聊天密码';
+  String get _title => '聊天密码';
 
   String get _description {
     final channelName = widget.channelName?.trim();
     if (channelName != null && channelName.isNotEmpty) {
-      return _useEnglish
-          ? 'Enter the chat password to open "$channelName".'
-          : '请输入聊天密码以打开“$channelName”。';
+      return '请输入聊天密码以打开“$channelName”。';
     }
-    return _useEnglish
-        ? 'Enter the chat password to open this conversation.'
-        : '请输入聊天密码以打开当前会话。';
+    return '请输入聊天密码以打开当前会话。';
   }
 
-  String get _passwordLabel => _useEnglish ? 'Chat Password' : '聊天密码';
-  String get _unlockAction => _useEnglish ? 'Unlock' : '解锁';
-  String get _resetAction => _useEnglish ? 'Reset Password' : '重置密码';
-  String get _cancelAction => _useEnglish ? 'Cancel' : '取消';
-  String get _emptyPasswordError =>
-      _useEnglish ? 'Please enter the chat password.' : '请输入聊天密码。';
-  String get _missingPasswordError => _useEnglish
-      ? 'No chat password is available for the current account yet. Reset it first.'
-      : '当前账号还没有可用的聊天密码，请先重置。';
+  String get _passwordLabel => '聊天密码';
+  String get _unlockAction => '解锁';
+  String get _resetAction => '重置密码';
+  String get _cancelAction => '取消';
+  String get _emptyPasswordError => '请输入聊天密码。';
+  String get _missingPasswordError => '当前账号还没有可用的聊天密码，请先重置。';
 
   String _incorrectPasswordError(int remainingAttempts) {
-    if (_useEnglish) {
-      return 'Password incorrect. Remaining attempts: $remainingAttempts.';
-    }
     return '密码错误，剩余尝试次数：$remainingAttempts。';
   }
 
-  String get _attemptsExhaustedError => _useEnglish
-      ? 'Attempts exhausted. Local chat history has been cleared. Reset the password before retrying.'
-      : '尝试次数已耗尽，当前会话本地消息已清空，请先重置密码。';
+  String get _attemptsExhaustedError => '尝试次数已耗尽，当前会话本地消息已清空，请先重置密码。';
 
   @override
   void dispose() {
@@ -199,7 +190,8 @@ class _ChatPasswordGateDialogState
             controller: _passwordController,
             obscureText: true,
             decoration: InputDecoration(labelText: _passwordLabel),
-            onSubmitted: (_) => _isSubmitting ? null : unawaited(_handleUnlock()),
+            onSubmitted: (_) =>
+                _isSubmitting ? null : unawaited(_handleUnlock()),
           ),
           if ((_errorMessage ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -213,7 +205,9 @@ class _ChatPasswordGateDialogState
       actions: [
         TextButton(
           key: const ValueKey<String>('chat-password-gate-cancel'),
-          onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(false),
+          onPressed: _isSubmitting
+              ? null
+              : () => Navigator.of(context).pop(false),
           child: Text(_cancelAction),
         ),
         TextButton(
@@ -271,10 +265,10 @@ class _ChatPasswordGateDialogState
       _errorMessage = switch (result.failure) {
         ChatPasswordUnlockFailure.emptyPassword => _emptyPasswordError,
         ChatPasswordUnlockFailure.missingPassword => _missingPasswordError,
-        ChatPasswordUnlockFailure.incorrectPassword =>
-          _incorrectPasswordError(result.remainingAttempts),
-        ChatPasswordUnlockFailure.attemptsExhausted =>
-          _attemptsExhaustedError,
+        ChatPasswordUnlockFailure.incorrectPassword => _incorrectPasswordError(
+          result.remainingAttempts,
+        ),
+        ChatPasswordUnlockFailure.attemptsExhausted => _attemptsExhaustedError,
         null => _incorrectPasswordError(result.remainingAttempts),
       };
     });

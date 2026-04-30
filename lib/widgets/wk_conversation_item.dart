@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../modules/customer_service/customer_service_badge.dart';
+import '../modules/customer_service/customer_service_identity.dart';
 import '../modules/vip/vip_badge.dart';
 import 'wk_avatar.dart';
 import 'wk_colors.dart';
 import 'wk_design_tokens.dart';
+import 'wk_emoji_text.dart';
 import 'wk_reference_assets.dart';
+import 'wk_web_ui_tokens.dart';
 
 class WKConversationItemData {
   final String channelId;
@@ -32,6 +36,7 @@ class WKConversationItemData {
   final bool showSending;
   final bool showSendFailed;
   final int vipLevel;
+  final bool personalInfoKnown;
 
   const WKConversationItemData({
     required this.channelId,
@@ -59,6 +64,7 @@ class WKConversationItemData {
     this.showSending = false,
     this.showSendFailed = false,
     this.vipLevel = 0,
+    this.personalInfoKnown = false,
   });
 }
 
@@ -66,12 +72,16 @@ class WKConversationItem extends StatelessWidget {
   final WKConversationItemData data;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final bool selected;
+  final bool webStyle;
 
   const WKConversationItem({
     super.key,
     required this.data,
     this.onTap,
     this.onLongPress,
+    this.selected = false,
+    this.webStyle = false,
   });
 
   @override
@@ -99,190 +109,254 @@ class WKConversationItem extends StatelessWidget {
         ? WKColors.textSecondary
         : WKColors.reminderColor;
     final tags = _buildTags();
+    const subtitleStyle = TextStyle(
+      fontFamily: WKFontFamily.primary,
+      fontSize: 13,
+      fontWeight: FontWeight.w400,
+      color: WKColors.textSecondary,
+    );
 
-    return Material(
-      color: rowBackground,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        highlightColor: WKColors.screenBgSelected,
-        splashColor: WKColors.screenBgSelected,
-        child: Container(
-          color: rowBackground,
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 60,
-                height: 60,
-                child: Center(
-                  child: WKAvatar(
-                    url: data.avatarUrl,
-                    name: data.title,
-                    size: 50,
-                    isGroup: data.isGroup,
-                  ),
-                ),
+    final effectiveRowBackground = webStyle
+        ? (selected ? WKWebColors.actionSoft : WKWebColors.surface)
+        : rowBackground;
+    final effectivePadding = webStyle
+        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
+        : const EdgeInsets.symmetric(horizontal: 15, vertical: 5);
+    final rowBorderRadius = BorderRadius.circular(
+      webStyle ? WKWebRadius.control : 0,
+    );
+    final hitbox = Container(
+      key: const ValueKey<String>('wk-conversation-item-hitbox'),
+      height: webStyle ? WKWebSizes.conversationRowHeight : null,
+      padding: effectivePadding,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 60,
+            height: 60,
+            child: Center(
+              child: WKAvatar(
+                url: data.avatarUrl,
+                name: data.title,
+                size: 50,
+                isGroup: data.isGroup,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              if (data.isGroup) ...[
-                                WKReferenceAssets.image(
-                                  WKReferenceAssets.groupTag,
-                                  width: 14,
-                                  height: 14,
-                                  tint: WKColors.colorDark,
-                                ),
-                                const SizedBox(width: 3),
-                              ],
-                              Flexible(
-                                child: Text(
-                                  data.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontFamily: WKFontFamily.title,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: WKColors.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              if (!data.isGroup && data.vipLevel == 1) ...[
-                                const SizedBox(width: 6),
-                                VipBadge(
-                                  key: ValueKey<String>(
-                                    'conversation-vip-badge-${data.channelId}',
-                                  ),
-                                  compact: true,
-                                ),
-                              ],
-                              for (final tag in tags) ...[
-                                const SizedBox(width: 4),
-                                tag,
-                              ],
-                            ],
-                          ),
-                        ),
-                        if (data.showSingleTick ||
-                            data.showDoubleTick ||
-                            data.showSending ||
-                            data.showSendFailed) ...[
-                          const SizedBox(width: 5),
-                          _buildSendStatus(),
-                        ],
-                        if (data.lastMsgTime != null)
-                          Text(
-                            _formatTime(data.lastMsgTime!),
-                            style: const TextStyle(
-                              fontFamily: WKFontFamily.primary,
-                              fontSize: 13,
-                              color: WKColors.color999,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          if (data.isGroup) ...[
+                            WKReferenceAssets.image(
+                              WKReferenceAssets.groupTag,
+                              width: 14,
+                              height: 14,
+                              tint: WKColors.colorDark,
                             ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              if (hasReminder)
-                                for (final reminderLabel in reminderLabels)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 5),
-                                    child: Text(
-                                      reminderLabel,
-                                      style: const TextStyle(
-                                        fontFamily: WKFontFamily.primary,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: WKColors.brand500,
-                                      ),
-                                    ),
-                                  ),
-                              if (data.showTypingIndicator) ...[
-                                const WKConversationTypingDots(),
-                                const SizedBox(width: 4),
-                              ],
-                              Expanded(
-                                child: Text(
-                                  displaySubtitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontFamily: WKFontFamily.primary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w400,
-                                    color: WKColors.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (data.isCalling) ...[
-                          const SizedBox(width: 10),
-                          WKReferenceAssets.image(
-                            WKReferenceAssets.calling,
-                            width: 20,
-                            height: 20,
-                            tint: WKColors.brand500,
-                          ),
-                        ],
-                        if (data.isForbidden) ...[
-                          const SizedBox(width: 10),
-                          WKReferenceAssets.image(
-                            WKReferenceAssets.forbidden,
-                            width: 15,
-                            height: 15,
-                          ),
-                        ],
-                        if (data.unreadCount > 0) ...[
-                          const SizedBox(width: 5),
-                          Container(
-                            constraints: const BoxConstraints(
-                              minWidth: 20,
-                              minHeight: 20,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: unreadBackground,
-                              borderRadius: BorderRadius.circular(
-                                WKRadius.pill,
-                              ),
-                            ),
-                            alignment: Alignment.center,
+                            const SizedBox(width: 3),
+                          ],
+                          Flexible(
                             child: Text(
-                              data.unreadCount > 99
-                                  ? '99+'
-                                  : data.unreadCount.toString(),
-                              style: labelStyle,
+                              data.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontFamily: WKFontFamily.title,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: WKColors.textPrimary,
+                              ),
                             ),
                           ),
+                          if (!data.isGroup && data.vipLevel == 1) ...[
+                            const SizedBox(width: 6),
+                            VipBadge(
+                              key: ValueKey<String>(
+                                'conversation-vip-badge-${data.channelId}',
+                              ),
+                              compact: true,
+                            ),
+                          ],
+                          for (final tag in tags) ...[
+                            const SizedBox(width: 4),
+                            tag,
+                          ],
                         ],
-                      ],
+                      ),
                     ),
+                    if (data.showSingleTick ||
+                        data.showDoubleTick ||
+                        data.showSending ||
+                        data.showSendFailed) ...[
+                      const SizedBox(width: 5),
+                      _buildSendStatus(),
+                    ],
+                    if (data.lastMsgTime != null)
+                      Text(
+                        _formatTime(data.lastMsgTime!),
+                        style: const TextStyle(
+                          fontFamily: WKFontFamily.primary,
+                          fontSize: 13,
+                          color: WKColors.color999,
+                        ),
+                      ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 3),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          if (hasReminder)
+                            for (final reminderLabel in reminderLabels)
+                              Flexible(
+                                fit: FlexFit.loose,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 5),
+                                  child: Text(
+                                    reminderLabel,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontFamily: WKFontFamily.primary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: WKColors.brand500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          if (data.showTypingIndicator) ...[
+                            const WKConversationTypingDots(),
+                            const SizedBox(width: 4),
+                          ],
+                          Expanded(
+                            child: _buildSubtitlePreview(
+                              displaySubtitle,
+                              subtitleStyle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (data.isCalling) ...[
+                      const SizedBox(width: 10),
+                      WKReferenceAssets.image(
+                        WKReferenceAssets.calling,
+                        width: 20,
+                        height: 20,
+                        tint: WKColors.brand500,
+                      ),
+                    ],
+                    if (data.isForbidden) ...[
+                      const SizedBox(width: 10),
+                      WKReferenceAssets.image(
+                        WKReferenceAssets.forbidden,
+                        width: 15,
+                        height: 15,
+                      ),
+                    ],
+                    if (data.unreadCount > 0) ...[
+                      const SizedBox(width: 5),
+                      Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: unreadBackground,
+                          borderRadius: BorderRadius.circular(WKRadius.pill),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          data.unreadCount > 99
+                              ? '99+'
+                              : data.unreadCount.toString(),
+                          style: labelStyle,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: AnimatedContainer(
+        key: webStyle
+            ? const ValueKey<String>('wk-conversation-item-web-shell')
+            : null,
+        duration: const Duration(milliseconds: 160),
+        margin: webStyle
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+            : EdgeInsets.zero,
+        decoration: BoxDecoration(
+          color: effectiveRowBackground,
+          borderRadius: rowBorderRadius,
+          border: webStyle
+              ? Border.all(
+                  color: selected ? WKWebColors.action : Colors.transparent,
+                )
+              : null,
+        ),
+        child: webStyle
+            ? Material(
+                type: MaterialType.transparency,
+                borderRadius: rowBorderRadius,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: onTap,
+                  onLongPress: onLongPress,
+                  borderRadius: rowBorderRadius,
+                  highlightColor: WKWebColors.actionSoft.withValues(alpha: 0.6),
+                  splashColor: WKWebColors.actionSoft.withValues(alpha: 0.4),
+                  child: hitbox,
+                ),
+              )
+            : InkWell(
+                onTap: onTap,
+                onLongPress: onLongPress,
+                borderRadius: rowBorderRadius,
+                highlightColor: WKColors.screenBgSelected,
+                splashColor: WKColors.screenBgSelected,
+                child: hitbox,
+              ),
+      ),
+    );
+  }
+
+  Widget _buildSubtitlePreview(String text, TextStyle style) {
+    if (WKEmojiText.containsAndroidEmoji(text)) {
+      return WKEmojiText(
+        text: text,
+        style: style,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: style,
     );
   }
 
@@ -314,7 +388,7 @@ class WKConversationItem extends StatelessWidget {
       );
     }
 
-    final category = data.category?.trim().toLowerCase() ?? '';
+    final category = normalizePublicAccountCategory(data.category) ?? '';
     if (category == 'system') {
       tags.add(
         _ConversationTag(
@@ -323,12 +397,13 @@ class WKConversationItem extends StatelessWidget {
           borderColor: WKColors.reminderColor,
         ),
       );
-    } else if (category == 'customer_service' || category == 'service') {
+    } else if (isCustomerServiceCategory(category)) {
       tags.add(
-        const _ConversationTag(
-          label: '客服',
-          backgroundColor: WKColors.brand500,
-          textColor: WKColors.white,
+        CustomerServiceBadge(
+          key: ValueKey<String>(
+            'conversation-customer-service-badge-${data.channelId}',
+          ),
+          compact: true,
         ),
       );
     } else if (category == 'visitor') {

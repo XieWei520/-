@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wukong_im_app/core/config/app_config.dart';
 import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
 import 'package:wukong_im_app/data/providers/runtime_capabilities_provider.dart';
@@ -354,14 +353,12 @@ void main() {
     expect(find.byKey(const ValueKey('auth-page-panel')), findsOneWidget);
     expect(find.text('欢迎登录'), findsOneWidget);
     expect(find.text('信息平权'), findsWidgets);
+    expect(find.text('InfoEquity'), findsNothing);
     expect(find.text('让全天下的人没有信息差'), findsOneWidget);
-    expect(
-      find.text('使用手机号和密码进入${AppConfig.appName}'),
-      findsOneWidget,
-    );
+    expect(find.text('使用手机号和密码进入信息平权'), findsOneWidget);
     expect(find.text('真实信息更快抵达'), findsOneWidget);
     expect(find.text('统一可信入口'), findsOneWidget);
-    expect(find.text('桌面 / 移动 / Web 一致体验'), findsOneWidget);
+    expect(find.text(AuthCopy.loginBrandHighlights.last), findsOneWidget);
     expect(find.byKey(loginPrimaryActionKey), findsOneWidget);
     expect(
       find.byKey(const ValueKey('auth_login_phone_field')),
@@ -371,6 +368,22 @@ void main() {
       find.byKey(const ValueKey('auth_login_password_field')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('login page uses warm Web B stage colors', (tester) async {
+    await pumpLoginPage(tester);
+
+    final background = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey<String>('wk_login_background')),
+    );
+    final decoration = background.decoration as BoxDecoration;
+    expect(decoration.color, const Color(0xFFFFFAF5));
+
+    final stageShell = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('auth-stage-shell')),
+    );
+    final shellDecoration = stageShell.decoration! as BoxDecoration;
+    expect(shellDecoration.borderRadius, BorderRadius.circular(10));
   });
 
   testWidgets('renders remember-password and auto-login toggles', (

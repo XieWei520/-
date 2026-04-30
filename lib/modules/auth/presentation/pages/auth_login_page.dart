@@ -14,6 +14,7 @@ import '../../../../widgets/wk_reference_assets.dart';
 import '../../../../widgets/wk_sub_page_scaffold.dart';
 import '../../../../wk_foundation/logging/app_logger.dart';
 import '../../../../wk_foundation/net/wk_http_client.dart';
+import '../../../../wukong_push/notification/web_notification_manager.dart';
 import '../../../conversation/main_page.dart';
 import '../../application/auth_providers.dart';
 import '../../data/shared_prefs_auth_login_preferences_store.dart';
@@ -386,7 +387,7 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
 
   Widget _buildApiBaseUrlSurface() {
     final hasCustomBaseUrl = _customApiBaseUrl.isNotEmpty;
-    final displayValue = hasCustomBaseUrl ? _customApiBaseUrl : 'Update API';
+    final displayValue = hasCustomBaseUrl ? _customApiBaseUrl : '修改服务器地址';
 
     return Wrap(
       key: const ValueKey<String>('auth_login_base_url_surface'),
@@ -411,7 +412,7 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
           TextButton(
             key: const ValueKey<String>('auth_login_base_url_reset'),
             onPressed: _resetCustomApiBaseUrl,
-            child: const Text('Reset'),
+            child: const Text('重置'),
           ),
       ],
     );
@@ -421,6 +422,12 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
     if (ref.read(authFlowControllerProvider).isLoading) {
       _logger.info('submit ignored because loading');
       return;
+    }
+
+    if (!triggeredByAutoLogin) {
+      // 必须在用户点击“登录”这一类手势中触发，才能最大概率解锁 Web
+      // 音频自动播放限制，并让浏览器接受 Notification 权限请求。
+      unawaited(WebNotificationManager.instance.init());
     }
 
     final phone = _phoneController.text.trim();
@@ -518,7 +525,7 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Update API'),
+          title: const Text('修改服务器地址'),
           content: TextField(
             key: const ValueKey<String>('auth_login_base_url_input'),
             controller: controller,
@@ -527,7 +534,7 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
+              child: const Text('取消'),
             ),
             TextButton(
               key: const ValueKey<String>('auth_login_base_url_confirm'),
@@ -536,7 +543,7 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
                   dialogContext,
                 ).pop(_normalizeCustomApiBaseUrl(controller.text));
               },
-              child: const Text('Confirm'),
+              child: const Text('确认'),
             ),
           ],
         );

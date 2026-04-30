@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wukong_im_app/core/config/api_config.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
+import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/wukong_uikit/group/group_detail_page.dart';
 
 const String _groupNo = 'g_task4_avatar';
@@ -35,11 +36,24 @@ void main() {
   setUp(() async {
     await StorageUtils.clear();
     HttpOverrides.global = _FakeHttpOverrides(imageHttpClient);
+    WKAvatar.setBytesLoaderForTesting(
+      (_) async => Uint8List.fromList(_transparentImage),
+    );
   });
 
   tearDown(() {
     ApiClient.instance.dio.httpClientAdapter = originalAdapter;
     HttpOverrides.global = null;
+    WKAvatar.setBytesLoaderForTesting(null);
+  });
+
+  test('group detail avatar branches do not bypass WKAvatar', () {
+    final source = File(
+      'lib/wukong_uikit/group/group_detail_page.dart',
+    ).readAsStringSync();
+
+    expect(source, isNot(contains('Image.network(_group!.avatar!')));
+    expect(source, isNot(contains('Image.network(member.avatar!')));
   });
 
   testWidgets(
@@ -81,6 +95,39 @@ void main() {
       expect(
         find.byKey(const ValueKey<String>('group-detail-avatar-edit-badge')),
         findsOneWidget,
+      );
+      final cachedAvatars = tester.widgetList<WKAvatar>(find.byType(WKAvatar));
+      expect(
+        cachedAvatars.any(
+          (avatar) => avatar.url == 'https://example.com/old.png',
+        ),
+        isTrue,
+      );
+      expect(
+        cachedAvatars.any(
+          (avatar) => avatar.url == 'https://example.com/member-owner.png',
+        ),
+        isTrue,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is NetworkImage &&
+              (widget.image as NetworkImage).url ==
+                  'https://example.com/old.png',
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is NetworkImage &&
+              (widget.image as NetworkImage).url ==
+                  'https://example.com/member-owner.png',
+        ),
+        findsNothing,
       );
 
       await tester.tap(
@@ -158,7 +205,10 @@ Future<void> _pumpGroupDetailPage(
     ProviderScope(
       child: MaterialApp(
         locale: const Locale('zh', 'CN'),
-        supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
+        supportedLocales: const <Locale>[
+          Locale('zh', 'CN'),
+          Locale('en', 'US'),
+        ],
         localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
@@ -204,6 +254,7 @@ List<Map<String, dynamic>> _buildMembersJson({
       'group_no': _groupNo,
       'uid': 'u_owner',
       'name': 'Owner',
+      'avatar': 'https://example.com/member-owner.png',
       'role': 1,
     },
     <String, dynamic>{

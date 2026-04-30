@@ -48,14 +48,14 @@ class ChatSearchResultsPage extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Load more failed'),
+                    const Text('加载更多失败'),
                     const SizedBox(height: 12),
                     FilledButton(
                       key: const ValueKey<String>(
                         'chat-search-load-more-retry',
                       ),
                       onPressed: onRetryLoadMore,
-                      child: const Text('Retry'),
+                      child: const Text('重试'),
                     ),
                   ],
                 ),

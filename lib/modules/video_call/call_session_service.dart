@@ -366,8 +366,8 @@ class _TestCallBootstrapApi implements CallBootstrapApi {
         participant: 'u_self',
       ),
       join: CallJoinDescriptor(
-        controlUrl: 'wss://wemx.cc/v1/callgateway/ws',
-        livekitUrl: 'wss://wemx.cc/livekit',
+        controlUrl: 'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
+        livekitUrl: 'wss://infoequity.qingyunshe.top/livekit',
         roomName: roomId,
       ),
       capabilities: capabilities,

@@ -84,25 +84,25 @@ class Device {
     return parts.join(' • ');
   }
 
-  /// Returns the last active time as a relative string (e.g., "2 hours ago").
+  /// Returns the last active time as a relative string.
   String get lastActiveRelative {
     final now = DateTime.now();
     final difference = now.difference(lastActiveAt);
 
     if (difference.inDays > 365) {
       final years = (difference.inDays / 365).floor();
-      return '$years year${years > 1 ? 's' : ''} ago';
+      return '$years年前';
     } else if (difference.inDays > 30) {
       final months = (difference.inDays / 30).floor();
-      return '$months month${months > 1 ? 's' : ''} ago';
+      return '$months个月前';
     } else if (difference.inDays > 0) {
-      return '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} ago';
+      return '${difference.inDays}天前';
     } else if (difference.inHours > 0) {
-      return '${difference.inHours} hour${difference.inHours > 1 ? 's' : ''} ago';
+      return '${difference.inHours}小时前';
     } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''} ago';
+      return '${difference.inMinutes}分钟前';
     } else {
-      return 'Just now';
+      return '刚刚';
     }
   }
 

@@ -104,6 +104,13 @@ class DeviceBadgeService {
     if (raw is num) {
       return raw.toInt();
     }
+    if (raw is Map) {
+      for (final key in const <String>['badge', 'count', 'unread']) {
+        if (raw.containsKey(key)) {
+          return _readBadge(raw[key]);
+        }
+      }
+    }
     return int.tryParse(raw?.toString().trim() ?? '') ?? 0;
   }
 }

@@ -1,15 +1,22 @@
+import 'dart:typed_data';
+
 import 'package:path/path.dart' as path;
 import 'package:uuid/uuid.dart';
 
 import '../../core/config/api_config.dart';
 import '../../core/utils/storage_utils.dart';
 import 'api_client.dart';
+import 'chat_file_multipart_upload_strategy.dart'
+    if (dart.library.io) 'chat_file_multipart_upload_strategy_io.dart';
 
 class FileApi {
   FileApi._();
 
   static final FileApi _instance = FileApi._();
   static FileApi get instance => _instance;
+  static const int defaultMultipartUploadThresholdBytes = 64 * 1024 * 1024;
+  static int multipartUploadThresholdBytes =
+      defaultMultipartUploadThresholdBytes;
 
   final ApiClient _client = ApiClient.instance;
   static const Uuid _uuid = Uuid();
@@ -19,24 +26,68 @@ class FileApi {
     required String channelId,
     required int channelType,
   }) async {
-    final extension = _resolveExtension(filePath);
+    final normalizedFilePath = filePath.trim();
+    final extension = _resolveExtension(normalizedFilePath);
+    final channelSegment = _safeObjectPathSegment(
+      channelId,
+      fallback: 'channel',
+    );
     final uploadPath =
-        '/$channelType/$channelId/${DateTime.now().millisecondsSinceEpoch}.$extension';
-    return _uploadFile(
-      filePath: filePath,
+        '/$channelType/$channelSegment/${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final normalizedUploadPath = _normalizeObjectPath(uploadPath);
+    final multipartUrl = await tryMultipartChatFileUpload(
+      filePath: normalizedFilePath,
       fileType: 'chat',
-      uploadPath: uploadPath,
+      objectPath: normalizedUploadPath,
+      thresholdBytes: multipartUploadThresholdBytes,
+    );
+    if (multipartUrl != null && multipartUrl.isNotEmpty) {
+      return multipartUrl;
+    }
+    return _uploadFile(
+      filePath: normalizedFilePath,
+      fileType: 'chat',
+      uploadPath: normalizedUploadPath,
+    );
+  }
+
+  Future<String> uploadChatFileBytes({
+    required Uint8List bytes,
+    required String fileName,
+    required String channelId,
+    required int channelType,
+  }) async {
+    if (bytes.isEmpty) {
+      throw const FileApiException('file bytes are empty');
+    }
+
+    final extension = _resolveExtension(fileName);
+    final channelSegment = _safeObjectPathSegment(
+      channelId,
+      fallback: 'channel',
+    );
+    final uploadPath =
+        '/$channelType/$channelSegment/${DateTime.now().millisecondsSinceEpoch}.$extension';
+    return _uploadBytes(
+      bytes: bytes,
+      fileName: _safeUploadFileName(fileName, extension: extension),
+      fileType: 'chat',
+      uploadPath: _normalizeObjectPath(uploadPath),
     );
   }
 
   Future<String> uploadMomentFile(String filePath, {int? index}) async {
-    final extension = _resolveExtension(filePath);
-    final uid = StorageUtils.getUid() ?? 'moment';
+    final normalizedFilePath = filePath.trim();
+    final extension = _resolveExtension(normalizedFilePath);
+    final uid = _safeObjectPathSegment(
+      StorageUtils.getUid() ?? '',
+      fallback: 'moment',
+    );
     final suffix = index == null ? '' : '_$index';
     final uploadPath =
         '/$uid/${DateTime.now().millisecondsSinceEpoch}$suffix.$extension';
     return _uploadFile(
-      filePath: filePath,
+      filePath: normalizedFilePath,
       fileType: 'moment',
       uploadPath: uploadPath,
     );
@@ -51,11 +102,15 @@ class FileApi {
   }
 
   Future<String> uploadReportImage(String filePath) async {
-    final uid = StorageUtils.getUid() ?? 'report';
-    final extension = _resolveExtension(filePath);
+    final normalizedFilePath = filePath.trim();
+    final uid = _safeObjectPathSegment(
+      StorageUtils.getUid() ?? '',
+      fallback: 'report',
+    );
+    final extension = _resolveExtension(normalizedFilePath);
     final uploadPath = '/$uid/${_uuid.v4()}.$extension';
     return _uploadFile(
-      filePath: filePath,
+      filePath: normalizedFilePath,
       fileType: 'report',
       uploadPath: uploadPath,
     );
@@ -77,9 +132,14 @@ class FileApi {
     required String fileType,
     required String uploadPath,
   }) async {
+    final normalizedFilePath = filePath.trim();
+    if (normalizedFilePath.isEmpty) {
+      throw const FileApiException('file path is empty');
+    }
+
     final uploadUrl = await _requestUploadUrl(
       fileType: fileType,
-      uploadPath: uploadPath,
+      uploadPath: _normalizeObjectPath(uploadPath),
     );
     if (uploadUrl.isEmpty) {
       throw const FileApiException('获取上传地址失败');
@@ -87,7 +147,7 @@ class FileApi {
 
     final response = await _client.uploadFile(
       ApiConfig.resolveUrl(uploadUrl),
-      filePath,
+      normalizedFilePath,
       name: 'file',
     );
 
@@ -98,6 +158,42 @@ class FileApi {
     ]);
     if (uploadedPath.isEmpty) {
       throw const FileApiException('上传文件失败');
+    }
+    return ApiConfig.resolveMediaUrl(uploadedPath);
+  }
+
+  Future<String> _uploadBytes({
+    required Uint8List bytes,
+    required String fileName,
+    required String fileType,
+    required String uploadPath,
+  }) async {
+    if (bytes.isEmpty) {
+      throw const FileApiException('file bytes are empty');
+    }
+
+    final uploadUrl = await _requestUploadUrl(
+      fileType: fileType,
+      uploadPath: _normalizeObjectPath(uploadPath),
+    );
+    if (uploadUrl.isEmpty) {
+      throw const FileApiException('鑾峰彇涓婁紶鍦板潃澶辫触');
+    }
+
+    final response = await _client.uploadBytes(
+      ApiConfig.resolveUrl(uploadUrl),
+      bytes,
+      filename: fileName,
+      name: 'file',
+    );
+
+    final uploadedPath = _readStringField(response.data, const [
+      'path',
+      'data.path',
+      'data',
+    ]);
+    if (uploadedPath.isEmpty) {
+      throw const FileApiException('涓婁紶鏂囦欢澶辫触');
     }
     return ApiConfig.resolveMediaUrl(uploadedPath);
   }
@@ -121,8 +217,59 @@ class FileApi {
   }
 
   String _resolveExtension(String filePath) {
-    final extension = path.extension(filePath).replaceFirst('.', '').trim();
+    final extension = path
+        .extension(filePath.trim())
+        .replaceFirst('.', '')
+        .trim()
+        .toLowerCase();
+    if (!RegExp(r'^[a-z0-9]{1,16}$').hasMatch(extension)) {
+      return 'dat';
+    }
     return extension.isEmpty ? 'dat' : extension;
+  }
+
+  String _safeUploadFileName(String fileName, {required String extension}) {
+    final normalized = fileName.trim().replaceAll('\\', '/');
+    final basename = path.basename(normalized).trim();
+    final cleaned = basename
+        .replaceAll(RegExp(r'[\x00-\x1F\x7F]+'), '')
+        .replaceAll(RegExp(r'[\\/]+'), '_')
+        .trim();
+    if (cleaned.isNotEmpty && cleaned != '.' && cleaned != '..') {
+      return cleaned;
+    }
+    return 'file.$extension';
+  }
+
+  String _safeObjectPathSegment(String value, {required String fallback}) {
+    final normalized = value
+        .trim()
+        .replaceAll(RegExp(r'[\\/]+'), '_')
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceFirst(RegExp(r'^[._-]+'), '')
+        .replaceFirst(RegExp(r'[._-]+$'), '');
+    if (normalized.isEmpty) {
+      return fallback;
+    }
+    return normalized;
+  }
+
+  String _normalizeObjectPath(String uploadPath) {
+    final segments = uploadPath
+        .trim()
+        .replaceAll('\\', '/')
+        .split('/')
+        .map((segment) => segment.trim())
+        .where((segment) => segment.isNotEmpty)
+        .where((segment) => segment != '.' && segment != '..')
+        .map((segment) => _safeObjectPathSegment(segment, fallback: 'file'))
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    if (segments.isEmpty) {
+      return '/file';
+    }
+    return '/${segments.join('/')}';
   }
 
   String _readStringField(dynamic rawData, List<String> fields) {

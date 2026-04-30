@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/cache/media_cache_manager.dart';
+import '../../core/platform/local_file_picker.dart';
+import '../../widgets/local_media_image_provider.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_status_view.dart';
@@ -130,16 +131,13 @@ class _EmojiStorePageState extends ConsumerState<EmojiStorePage>
   }
 
   Future<void> _addEmojiPack() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      type: FileType.custom,
-      allowedExtensions: const ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+    final paths = await pickMultipleLocalImageFilePaths(
+      allowedExtensions: const <String>['png', 'jpg', 'jpeg', 'gif', 'webp'],
     );
-    if (result == null || result.files.isEmpty) {
+    if (paths == null) {
       return;
     }
 
-    final paths = result.paths.whereType<String>().toList();
     if (paths.isEmpty) {
       if (!mounted) {
         return;
@@ -545,29 +543,37 @@ class _EmojiPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (_looksLikeLocalMedia(value)) {
+    if (_looksLikeRemoteMedia(value)) {
+      final decodeSize = (size * MediaQuery.devicePixelRatioOf(context)).ceil();
       return ClipRRect(
         borderRadius: BorderRadius.circular(WKRadius.sm),
-        child: Image.file(
-          File(value),
+        child: CachedMediaImage(
+          imageUrl: value,
+          cacheKey: value,
           width: size,
           height: size,
+          maxWidth: decodeSize,
+          maxHeight: decodeSize,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _emojiFallback(),
+          placeholder: (_, _) => _emojiFallback(),
+          errorWidget: (_, _, _) => _emojiFallback(),
         ),
       );
     }
 
-    if (_looksLikeRemoteMedia(value)) {
+    if (_looksLikeLocalMedia(value)) {
+      final imageProvider = resolveLocalMediaImageProvider(value);
       return ClipRRect(
         borderRadius: BorderRadius.circular(WKRadius.sm),
-        child: Image.network(
-          value,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _emojiFallback(),
-        ),
+        child: imageProvider == null
+            ? _emojiFallback()
+            : Image(
+                image: imageProvider,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _emojiFallback(),
+              ),
       );
     }
 

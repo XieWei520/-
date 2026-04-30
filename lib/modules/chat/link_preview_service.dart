@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../data/models/link_preview.dart';
 
@@ -8,6 +10,7 @@ class LinkPreviewService {
   LinkPreviewService._();
 
   static final LinkPreviewService instance = LinkPreviewService._();
+  static const int maxPreviewCacheEntries = 256;
 
   static final RegExp _urlPattern = RegExp(
     r'(https?:\/\/[^\s<>"\u3000]+)',
@@ -36,7 +39,8 @@ class LinkPreviewService {
     ),
   );
 
-  final Map<String, LinkPreview?> _cache = <String, LinkPreview?>{};
+  final LinkedHashMap<String, LinkPreview?> _cache =
+      LinkedHashMap<String, LinkPreview?>();
   final Map<String, Future<LinkPreview?>> _pending =
       <String, Future<LinkPreview?>>{};
 
@@ -85,7 +89,9 @@ class LinkPreviewService {
       return null;
     }
     if (_cache.containsKey(normalizedUrl)) {
-      return _cache[normalizedUrl];
+      final cached = _cache.remove(normalizedUrl);
+      _cache[normalizedUrl] = cached;
+      return cached;
     }
     final pending = _pending[normalizedUrl];
     if (pending != null) {
@@ -96,11 +102,44 @@ class LinkPreviewService {
     _pending[normalizedUrl] = future;
     try {
       final preview = await future;
-      _cache[normalizedUrl] = preview;
+      _storePreview(normalizedUrl, preview);
       return preview;
     } finally {
       _pending.remove(normalizedUrl);
     }
+  }
+
+  @visibleForTesting
+  void setPreviewForTesting(String url, LinkPreview? preview) {
+    final normalizedUrl = normalizeUrl(url);
+    if (normalizedUrl == null) {
+      return;
+    }
+    _pending.remove(normalizedUrl);
+    _storePreview(normalizedUrl, preview);
+  }
+
+  @visibleForTesting
+  void clearCacheForTesting() {
+    _cache.clear();
+    _pending.clear();
+  }
+
+  @visibleForTesting
+  int get cachedPreviewCountForTesting => _cache.length;
+
+  @visibleForTesting
+  bool hasCachedPreviewForTesting(String url) {
+    final normalizedUrl = normalizeUrl(url);
+    return normalizedUrl != null && _cache.containsKey(normalizedUrl);
+  }
+
+  void _storePreview(String url, LinkPreview? preview) {
+    _cache.remove(url);
+    while (_cache.length >= maxPreviewCacheEntries && _cache.isNotEmpty) {
+      _cache.remove(_cache.keys.first);
+    }
+    _cache[url] = preview;
   }
 
   Future<LinkPreview?> _fetchPreview(String url) async {
@@ -238,7 +277,9 @@ class LinkPreviewService {
     if (decoded.length <= maxLength) {
       return decoded;
     }
-    return '${decoded.substring(0, maxLength - 1)}…';
+    final clippedLength = maxLength > 3 ? maxLength - 3 : maxLength;
+    final suffix = maxLength > 3 ? '...' : '';
+    return '${decoded.substring(0, clippedLength)}$suffix';
   }
 
   static String _decodeHtml(String value) {

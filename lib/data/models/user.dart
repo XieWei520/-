@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../core/utils/avatar_utils.dart';
+import '../../modules/customer_service/customer_service_identity.dart';
 
 class UserInfo {
   final String uid;
@@ -18,6 +19,7 @@ class UserInfo {
   final String? zone;
   final int? status;
   final String? token;
+  final String? category;
   final String? username;
   final String? region;
   final String? signature;
@@ -34,6 +36,7 @@ class UserInfo {
   final int vipLevel;
 
   bool get isVip => vipLevel == 1;
+  bool get isCustomerService => isCustomerServiceCategory(category);
 
   UserInfo({
     required this.uid,
@@ -51,6 +54,7 @@ class UserInfo {
     this.zone,
     this.status,
     this.token,
+    String? category,
     this.username,
     this.region,
     this.signature,
@@ -65,7 +69,7 @@ class UserInfo {
     this.chatPwd,
     this.chatPwdOn,
     this.vipLevel = 0,
-  });
+  }) : category = normalizePublicAccountCategory(category);
 
   factory UserInfo.fromJson(Map<String, dynamic> json) {
     final uid = json['uid']?.toString() ?? '';
@@ -86,6 +90,7 @@ class UserInfo {
       zone: json['zone'],
       status: json['status'],
       token: json['token'],
+      category: normalizePublicAccountCategory(json['category']?.toString()),
       username: json['username'],
       region: json['region'],
       signature: json['signature'],
@@ -124,6 +129,7 @@ class UserInfo {
       'zone': zone,
       'status': status,
       'token': token,
+      'category': category,
       'username': username,
       'region': region,
       'signature': signature,
@@ -163,6 +169,7 @@ class UserInfo {
     String? zone,
     int? status,
     String? token,
+    String? category,
     String? username,
     String? region,
     String? signature,
@@ -194,6 +201,9 @@ class UserInfo {
       zone: zone ?? this.zone,
       status: status ?? this.status,
       token: token ?? this.token,
+      category: category == null
+          ? this.category
+          : normalizePublicAccountCategory(category),
       username: username ?? this.username,
       region: region ?? this.region,
       signature: signature ?? this.signature,

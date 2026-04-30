@@ -8,6 +8,14 @@ import 'package:wukong_im_app/wukong_base/utils/audio_record_manager.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 
 void main() {
+  test('ChatVoiceActionService source does not import dart io directly', () {
+    final source = File(
+      'lib/modules/chat/chat_voice_action_service.dart',
+    ).readAsStringSync();
+
+    expect(source, isNot(contains("import 'dart:io'")));
+  });
+
   group('ChatVoiceContentFactory', () {
     test('builds voice content using a rounded-up duration in seconds', () {
       final factory = ChatVoiceContentFactory();
@@ -1041,9 +1049,7 @@ class _FakeAudioRecorderRuntime implements AudioRecorderRuntime {
 }
 
 class _FakeChatAudioSessionBridge implements ChatAudioSessionBridge {
-  _FakeChatAudioSessionBridge({
-    this.onDeactivate,
-  });
+  _FakeChatAudioSessionBridge({this.onDeactivate});
 
   final Future<void> Function()? onDeactivate;
 

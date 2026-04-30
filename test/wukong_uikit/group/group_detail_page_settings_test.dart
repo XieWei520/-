@@ -13,6 +13,7 @@ import 'package:wukong_im_app/core/config/api_config.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/modules/settings/settings_surface_widgets.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
+import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/widgets/wk_dialog.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
 import 'package:wukong_im_app/wukong_uikit/group/group_detail_page.dart';
@@ -410,6 +411,48 @@ void main() {
   );
 
   testWidgets(
+    'group avatar upload keeps returned avatar visible when reload is stale',
+    (tester) async {
+      const oldAvatar = 'groups/g_task2/avatar-old.png';
+      const newAvatar =
+          'https://infoequity.qingyunshe.top/v1/groups/g_task2/avatar?t=123';
+      final adapter = _GroupDetailRoutingAdapter(
+        groupNo: _groupNo,
+        group: _buildGroupJson(role: 1, invite: 0, avatar: oldAvatar),
+        members: _buildMembersJson(currentUid: 'u_owner', currentRole: 1),
+        friends: const <Map<String, dynamic>>[],
+      );
+
+      await _pumpGroupDetailPage(
+        tester,
+        adapter: adapter,
+        currentUid: 'u_owner',
+        pickAvatarImage: () async => 'C:\\fake\\avatar.png',
+        uploadAvatarImage: (_, _) async => newAvatar,
+      );
+
+      final avatarTile = find.byKey(
+        const ValueKey<String>('group-detail-avatar-button'),
+      );
+      await _scrollToFinder(tester, avatarTile);
+      expect(_avatarUrlInTile(tester, avatarTile), oldAvatar);
+
+      await tester.tap(avatarTile);
+      await tester.pumpAndSettle();
+
+      expect(_avatarUrlInTile(tester, avatarTile), newAvatar);
+
+      await _tapSwitch(tester, 'group_setting_show_nick_switch');
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, 1000));
+      await tester.pumpAndSettle();
+      expect(avatarTile, findsOneWidget);
+      expect(_avatarUrlInTile(tester, avatarTile), newAvatar);
+    },
+  );
+
+  testWidgets(
     'invite-only mode uses inviteMembers for normal member add flow',
     (tester) async {
       final adapter = _GroupDetailRoutingAdapter(
@@ -541,21 +584,30 @@ Future<void> _pumpGroupDetailPage(
   WidgetTester tester, {
   required _GroupDetailRoutingAdapter adapter,
   required String currentUid,
+  Future<String?> Function()? pickAvatarImage,
+  Future<String> Function(String groupNo, String filePath)? uploadAvatarImage,
 }) async {
   await StorageUtils.setUid(currentUid);
   ApiClient.instance.dio.httpClientAdapter = adapter;
 
   await tester.pumpWidget(
-    const ProviderScope(
+    ProviderScope(
       child: MaterialApp(
-        locale: Locale('zh', 'CN'),
-        supportedLocales: <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
-        localizationsDelegates: <LocalizationsDelegate<dynamic>>[
+        locale: const Locale('zh', 'CN'),
+        supportedLocales: const <Locale>[
+          Locale('zh', 'CN'),
+          Locale('en', 'US'),
+        ],
+        localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        home: GroupDetailPage(channelId: _groupNo),
+        home: GroupDetailPage(
+          channelId: _groupNo,
+          pickAvatarImage: pickAvatarImage,
+          uploadAvatarImage: uploadAvatarImage,
+        ),
       ),
     ),
   );
@@ -597,6 +649,13 @@ String? _cellValue(WidgetTester tester, String key) {
   return null;
 }
 
+String? _avatarUrlInTile(WidgetTester tester, Finder tile) {
+  final avatars = tester.widgetList<WKAvatar>(
+    find.descendant(of: tile, matching: find.byType(WKAvatar)),
+  );
+  return avatars.first.url;
+}
+
 Future<void> _tapSwitch(WidgetTester tester, String key) async {
   final container = find.byKey(ValueKey<String>(key));
   await _scrollToFinder(tester, container);
@@ -626,6 +685,7 @@ Finder _findAddMemberAffordance() {
 Map<String, dynamic> _buildGroupJson({
   required int role,
   required int invite,
+  String? avatar,
   int showNick = 1,
   int allowViewHistoryMsg = 1,
   int joinGroupRemind = 1,
@@ -636,6 +696,7 @@ Map<String, dynamic> _buildGroupJson({
     'group_no': _groupNo,
     'name': 'Task2 Group',
     'creator': 'u_owner',
+    'avatar': avatar,
     'member_count': 2,
     'role': role,
     'invite': invite,

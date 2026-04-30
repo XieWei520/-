@@ -16,6 +16,17 @@ void main() {
       expect(friend.vipLevel, 1);
       expect(friend.toJson()['vip_level'], 1);
     });
+
+    test('normalizes customer service category aliases', () {
+      final friend = Friend.fromJson({
+        'uid': 'cs_001',
+        'category': 'customerService',
+      });
+
+      expect(friend.category, 'customer_service');
+      expect(friend.isCustomerService, isTrue);
+      expect(friend.toJson()['category'], 'customer_service');
+    });
   });
 
   group('FriendRequest model', () {
@@ -76,5 +87,22 @@ void main() {
       expect(copied.vipLevel, -1);
       expect(copied.isVip, isFalse);
     });
+
+    test(
+      'normalizes customer service category in parse, json and copyWith',
+      () {
+        final user = UserInfo.fromJson({
+          'uid': 'cs_001',
+          'category': 'customerService',
+        });
+        final copied = user.copyWith(category: 'service');
+
+        expect(user.category, 'customer_service');
+        expect(user.isCustomerService, isTrue);
+        expect(user.toJson()['category'], 'customer_service');
+        expect(copied.category, 'customer_service');
+        expect(copied.isCustomerService, isTrue);
+      },
+    );
   });
 }

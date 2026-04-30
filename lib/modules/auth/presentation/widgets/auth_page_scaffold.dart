@@ -135,14 +135,7 @@ class AuthPageScaffold extends StatelessWidget {
       key: const ValueKey<String>(AuthExperienceTokens.stageShellKey),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: <Color>[
-            AuthExperienceTokens.stageShellTop,
-            AuthExperienceTokens.stageShellBottom,
-          ],
-        ),
+        color: AuthExperienceTokens.stageShellTop,
         borderRadius: BorderRadius.circular(
           AuthExperienceTokens.stageShellRadius,
         ),
@@ -185,20 +178,9 @@ class AuthPageScaffold extends StatelessWidget {
       key: const ValueKey<String>(AuthExperienceTokens.brandPanelKey),
       padding: AuthExperienceTokens.brandPanelPadding,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AuthExperienceTokens.brandPanelBackground,
-            AuthExperienceTokens.stageShellTop,
-            AuthExperienceTokens.stageShellBottom,
-          ],
-          stops: <double>[0.0, 0.56, 1.0],
-        ),
+        color: AuthExperienceTokens.brandPanelBackground,
         border: Border(
-          right: BorderSide(
-            color: AuthExperienceTokens.stageShellBorder.withOpacity(0.86),
-          ),
+          right: BorderSide(color: AuthExperienceTokens.stageShellBorder),
         ),
       ),
       child: Column(
@@ -243,7 +225,7 @@ class AuthPageScaffold extends StatelessWidget {
             Container(
               width: compact ? 54 : 72,
               height: 1.5,
-              color: AuthExperienceTokens.brandAccent.withOpacity(0.66),
+              color: AuthExperienceTokens.brandAccent.withValues(alpha: 0.66),
             ),
             SizedBox(height: compact ? 10 : 14),
             Text(
@@ -255,7 +237,7 @@ class AuthPageScaffold extends StatelessWidget {
                 fontSize: compact ? 14 : 16,
                 height: 1.55,
                 fontWeight: FontWeight.w500,
-                color: AuthExperienceTokens.brandInk.withOpacity(0.86),
+                color: AuthExperienceTokens.brandInk.withValues(alpha: 0.86),
               ),
             ),
           ],
@@ -297,7 +279,7 @@ class AuthPageScaffold extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: AuthExperienceTokens.stageShellBorder.withOpacity(0.9),
+          color: AuthExperienceTokens.stageShellBorder.withValues(alpha: 0.9),
         ),
       ),
       child: Column(
@@ -344,7 +326,7 @@ class AuthPageScaffold extends StatelessWidget {
             Container(
               width: compact ? 44 : 56,
               height: 1.2,
-              color: AuthExperienceTokens.brandAccent.withOpacity(0.62),
+              color: AuthExperienceTokens.brandAccent.withValues(alpha: 0.62),
             ),
             SizedBox(height: compact ? 7 : 9),
             Text(
@@ -355,7 +337,7 @@ class AuthPageScaffold extends StatelessWidget {
                 fontFamily: WKFontFamily.primary,
                 fontSize: compact ? 12 : 13,
                 height: 1.45,
-                color: AuthExperienceTokens.brandInk.withOpacity(0.84),
+                color: AuthExperienceTokens.brandInk.withValues(alpha: 0.84),
               ),
             ),
           ],

@@ -27,17 +27,11 @@ class _AccountSecurityPageState extends ConsumerState<AccountSecurityPage> {
   SettingsStrings get _strings =>
       resolveSettingsStrings(locale: Localizations.localeOf(context));
 
-  bool get _useEnglish =>
-      Localizations.localeOf(context).languageCode.toLowerCase() == 'en';
+  String get _chatPasswordTitle => '聊天密码';
 
-  String get _chatPasswordTitle => _useEnglish ? 'Chat Password' : '聊天密码';
+  String get _chatPasswordSubtitle => '设置或更新聊天密码，用于受保护会话。';
 
-  String get _chatPasswordSubtitle => _useEnglish
-      ? 'Set or update the conversation password used for protected chats.'
-      : '设置或更新聊天密码，用于受保护会话。';
-
-  String get _chatPasswordUpdated =>
-      _useEnglish ? 'Chat password updated.' : '聊天密码已更新';
+  String get _chatPasswordUpdated => '聊天密码已更新';
 
   @override
   void initState() {
@@ -188,33 +182,23 @@ class _ChatPasswordDialogState extends ConsumerState<_ChatPasswordDialog> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
-  bool get _useEnglish =>
-      Localizations.localeOf(context).languageCode.toLowerCase() == 'en';
+  String get _title => '设置聊天密码';
 
-  String get _title => _useEnglish ? 'Set Chat Password' : '设置聊天密码';
+  String get _description => '更新聊天密码前，请先验证当前登录密码。';
 
-  String get _description => _useEnglish
-      ? 'Verify your login password before updating the chat password.'
-      : '更新聊天密码前，请先验证当前登录密码。';
+  String get _loginPasswordLabel => '登录密码';
 
-  String get _loginPasswordLabel => _useEnglish ? 'Login Password' : '登录密码';
+  String get _chatPasswordLabel => '聊天密码';
 
-  String get _chatPasswordLabel => _useEnglish ? 'Chat Password' : '聊天密码';
+  String get _confirmChatPasswordLabel => '确认聊天密码';
 
-  String get _confirmChatPasswordLabel =>
-      _useEnglish ? 'Confirm Chat Password' : '确认聊天密码';
+  String get _requiredFieldsError => '请完整填写所有密码项';
 
-  String get _requiredFieldsError =>
-      _useEnglish ? 'Please complete all password fields.' : '请完整填写所有密码项';
+  String get _passwordMismatchError => '两次输入的聊天密码不一致';
 
-  String get _passwordMismatchError =>
-      _useEnglish ? 'The chat passwords do not match.' : '两次输入的聊天密码不一致';
+  String get _confirmAction => '保存密码';
 
-  String get _confirmAction => _useEnglish ? 'Save Password' : '保存密码';
-
-  String _submitFailed(Object error) => _useEnglish
-      ? 'Failed to update chat password: $error'
-      : '更新聊天密码失败: $error';
+  String _submitFailed(Object error) => '更新聊天密码失败: $error';
 
   @override
   void dispose() {

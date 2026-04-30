@@ -5,8 +5,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wukong_im_app/core/cache/media_cache_manager.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
@@ -91,13 +91,42 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(CachedNetworkImage), findsNothing);
+      expect(find.byType(CachedMediaImage), findsNothing);
       expect(
         find.byWidgetPredicate(
           (widget) => widget is Image && widget.image is FileImage,
         ),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'network image collection thumbnails use shared media cache with decode bounds',
+    (tester) async {
+      await tester.pumpWidget(
+        wrapWithApp(
+          const ChatSearchCollectionPage(
+            channelId: 'g1001',
+            channelType: 2,
+            scope: SearchCollectionScope.image,
+          ),
+          repository: _FakeScopedRepository(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final cachedImage = tester.widget<CachedMediaImage>(
+        find.byType(CachedMediaImage),
+      );
+
+      expect(cachedImage.imageUrl, 'https://cdn.example.com/image.png');
+      expect(cachedImage.cacheKey, cachedImage.imageUrl);
+      expect(cachedImage.fit, BoxFit.cover);
+      expect(cachedImage.maxWidth, isNotNull);
+      expect(cachedImage.maxHeight, isNotNull);
+      expect(cachedImage.maxWidth, greaterThan(0));
+      expect(cachedImage.maxHeight, greaterThan(0));
     },
   );
 

@@ -1,18 +1,20 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import '../../core/cache/media_cache_manager.dart';
+import '../../widgets/local_media_image_provider.dart';
 
 /// Image viewer arguments
 class ImageViewerArgs {
   /// List of image URLs or file paths
   final List<String> images;
-  
+
   /// Initial index to show
   final int initialIndex;
-  
+
   /// Optional hero tag for animation
   final String? heroTag;
-  
+
   /// Optional caption
   final String? caption;
 
@@ -53,10 +55,7 @@ class ImageViewerAction {
 class ImageViewer extends StatefulWidget {
   final ImageViewerArgs args;
 
-  const ImageViewer({
-    super.key,
-    required this.args,
-  });
+  const ImageViewer({super.key, required this.args});
 
   @override
   State<ImageViewer> createState() => _ImageViewerState();
@@ -88,7 +87,7 @@ class _ImageViewerState extends State<ImageViewer>
 
     // Hide system UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    
+
     _animationController.forward();
   }
 
@@ -99,7 +98,7 @@ class _ImageViewerState extends State<ImageViewer>
     for (final controller in _transformControllers.values) {
       controller.dispose();
     }
-    
+
     // Restore system UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -114,7 +113,7 @@ class _ImageViewerState extends State<ImageViewer>
 
   void _onPageChanged(int index) {
     setState(() => _currentIndex = index);
-    
+
     // Reset transform for new page
     _getTransformController(index).value = Matrix4.identity();
   }
@@ -264,9 +263,9 @@ class _ImageViewerState extends State<ImageViewer>
 
   void _copyLink() {
     Clipboard.setData(ClipboardData(text: widget.args.images[_currentIndex]));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已复制到剪贴板')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
   }
 }
 
@@ -288,29 +287,29 @@ class _ImagePage extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget imageWidget;
 
-    // Check if local file
-    if (url.startsWith('/') || url.startsWith('file://') || File(url).existsSync()) {
-      imageWidget = Image.file(
-        File(url.startsWith('file://') ? url.substring(7) : url),
+    final localImageProvider = _isLocalImagePath(url)
+        ? resolveLocalMediaImageProvider(url)
+        : null;
+    if (localImageProvider != null) {
+      imageWidget = Image(
+        image: localImageProvider,
         fit: BoxFit.contain,
         errorBuilder: (context, error, stack) => _ErrorWidget(),
+      );
+    } else if (_isNetworkImageSource(url)) {
+      final viewportSize = MediaQuery.sizeOf(context);
+      final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+      imageWidget = CachedMediaImage(
+        imageUrl: url,
+        cacheKey: url,
+        fit: BoxFit.contain,
+        maxWidth: _resolveDecodeBound(viewportSize.width, devicePixelRatio),
+        maxHeight: _resolveDecodeBound(viewportSize.height, devicePixelRatio),
+        placeholder: (context, url) => const _ImageLoadingPlaceholder(),
+        errorWidget: (context, url, error) => _ErrorWidget(),
       );
     } else {
-      imageWidget = Image.network(
-        url,
-        fit: BoxFit.contain,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return Center(
-            child: CircularProgressIndicator(
-              value: progress.expectedTotalBytes != null
-                  ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
-                  : null,
-            ),
-          );
-        },
-        errorBuilder: (context, error, stack) => _ErrorWidget(),
-      );
+      imageWidget = _ErrorWidget();
     }
 
     Widget content = InteractiveViewer(
@@ -326,10 +325,48 @@ class _ImagePage extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        color: Colors.black,
-        child: content,
-      ),
+      child: Container(color: Colors.black, child: content),
+    );
+  }
+}
+
+bool _isNetworkImageSource(String source) {
+  final uri = Uri.tryParse(source.trim());
+  return uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+}
+
+int? _resolveDecodeBound(double logicalSize, double devicePixelRatio) {
+  if (!logicalSize.isFinite || logicalSize <= 0 || devicePixelRatio <= 0) {
+    return null;
+  }
+  return (logicalSize * devicePixelRatio).ceil();
+}
+
+bool _isLocalImagePath(String source) {
+  final mediaUrl = source.trim();
+  if (mediaUrl.isEmpty) {
+    return false;
+  }
+  final uri = Uri.tryParse(mediaUrl);
+  if (uri != null && uri.scheme == 'file') {
+    return true;
+  }
+  if (mediaUrl.startsWith('/')) {
+    return true;
+  }
+  if (mediaUrl.startsWith(r'\\')) {
+    return true;
+  }
+  return RegExp(r'^[a-zA-Z]:[\\/]').hasMatch(mediaUrl);
+}
+
+class _ImageLoadingPlaceholder extends StatelessWidget {
+  const _ImageLoadingPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Icon(Icons.image_outlined, size: 48, color: Colors.grey[700]),
     );
   }
 }
@@ -341,19 +378,9 @@ class _ErrorWidget extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(
-          Icons.broken_image,
-          size: 64,
-          color: Colors.grey[600],
-        ),
+        Icon(Icons.broken_image, size: 64, color: Colors.grey[600]),
         const SizedBox(height: 16),
-        Text(
-          '图片加载失败',
-          style: TextStyle(
-            color: Colors.grey[500],
-            fontSize: 14,
-          ),
-        ),
+        Text('图片加载失败', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
       ],
     );
   }
@@ -378,10 +405,7 @@ class _TopBar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.6),
-            Colors.transparent,
-          ],
+          colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
         ),
       ),
       child: SafeArea(
@@ -396,17 +420,17 @@ class _TopBar extends StatelessWidget {
               const Spacer(),
               if (totalCount > 1)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black45,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     '${currentIndex + 1} / $totalCount',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
                   ),
                 ),
             ],
@@ -438,10 +462,7 @@ class _BottomBar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.7),
-            Colors.transparent,
-          ],
+          colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
         ),
       ),
       child: SafeArea(
@@ -453,14 +474,12 @@ class _BottomBar extends StatelessWidget {
               if (caption != null)
                 Text(
                   caption!,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
                   textAlign: TextAlign.center,
                 ),
               if (actions.isNotEmpty) ...[
-                if (caption != null || totalCount > 1) const SizedBox(height: 12),
+                if (caption != null || totalCount > 1)
+                  const SizedBox(height: 12),
                 Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 24,
@@ -514,10 +533,7 @@ class _ImageViewerActionButton extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               action.label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Colors.white, fontSize: 12),
             ),
           ],
         ),
@@ -531,10 +547,7 @@ class _PageIndicator extends StatelessWidget {
   final int currentIndex;
   final int totalCount;
 
-  const _PageIndicator({
-    required this.currentIndex,
-    required this.totalCount,
-  });
+  const _PageIndicator({required this.currentIndex, required this.totalCount});
 
   @override
   Widget build(BuildContext context) {

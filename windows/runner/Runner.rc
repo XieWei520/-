@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.im" "\0"
-            VALUE "FileDescription", "wukong_im_app" "\0"
+            VALUE "CompanyName", "InfoEquity" "\0"
+            VALUE "FileDescription", "InfoEquity" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "wukong_im_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.im. All rights reserved." "\0"
-            VALUE "OriginalFilename", "wukong_im_app.exe" "\0"
-            VALUE "ProductName", "wukong_im_app" "\0"
+            VALUE "InternalName", "InfoEquity" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 InfoEquity. All rights reserved." "\0"
+            VALUE "OriginalFilename", "InfoEquity.exe" "\0"
+            VALUE "ProductName", "InfoEquity" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

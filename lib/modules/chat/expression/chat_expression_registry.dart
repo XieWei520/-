@@ -14,14 +14,14 @@ class ChatExpressionRegistry {
   final ChatStickerPackLoader _stickerPackLoader;
 
   Future<ChatExpressionRegistrySnapshot> load() async {
-    final recents = await _recentStore.load();
+    final recents = _normalizeRecents(await _recentStore.load());
     final packs = await _stickerPackLoader.load();
 
     final categories = <ChatExpressionCategory>[
       ChatExpressionCategory(
         id: 'recent',
         kind: ChatExpressionKind.emoji,
-        label: 'Recent',
+        label: '最近',
         iconKey: 'recent',
         emojiTags: const <String>[],
         stickers: const <ChatStickerDefinition>[],
@@ -53,7 +53,7 @@ class ChatExpressionRegistry {
       const ChatExpressionCategory(
         id: 'gif',
         kind: ChatExpressionKind.gif,
-        label: 'GIF',
+        label: '动图',
         iconKey: 'gif',
         emojiTags: <String>[],
         stickers: <ChatStickerDefinition>[],
@@ -65,6 +65,51 @@ class ChatExpressionRegistry {
     return ChatExpressionRegistrySnapshot(
       categories: List<ChatExpressionCategory>.unmodifiable(categories),
     );
+  }
+
+  List<ChatExpressionRecentRecord> _normalizeRecents(
+    List<ChatExpressionRecentRecord> records,
+  ) {
+    final normalized = <ChatExpressionRecentRecord>[];
+    final seenKeys = <String>{};
+    for (final record in records) {
+      final item = _normalizeRecent(record);
+      if (item == null || !seenKeys.add(item.logicalKey)) {
+        continue;
+      }
+      normalized.add(item);
+    }
+    return List<ChatExpressionRecentRecord>.unmodifiable(normalized);
+  }
+
+  ChatExpressionRecentRecord? _normalizeRecent(
+    ChatExpressionRecentRecord record,
+  ) {
+    switch (record.kind) {
+      case ChatExpressionKind.emoji:
+        final entry =
+            androidEmojiCatalog.lookupByTag(record.itemId) ??
+            androidEmojiCatalog.lookupByTag(record.displayText) ??
+            androidEmojiCatalog.lookupById(record.itemId);
+        if (entry == null) {
+          return null;
+        }
+        return ChatExpressionRecentRecord(
+          kind: ChatExpressionKind.emoji,
+          categoryId: 'emoji:${entry.groupId}',
+          itemId: entry.tag,
+          displayText: entry.tag,
+          previewKey: entry.assetPath,
+          animationKey: '',
+          gifUrl: '',
+          width: 0,
+          height: 0,
+        );
+      case ChatExpressionKind.sticker:
+        return record.itemId.trim().isEmpty ? null : record;
+      case ChatExpressionKind.gif:
+        return record.gifUrl.trim().isEmpty ? null : record;
+    }
   }
 
   Future<void> rememberEmoji(AndroidEmojiEntry entry) {
@@ -110,7 +155,7 @@ class ChatExpressionRegistry {
         kind: ChatExpressionKind.gif,
         categoryId: 'gif',
         itemId: title.isNotEmpty ? title : url,
-        displayText: 'GIF',
+        displayText: '动图',
         previewKey: '',
         animationKey: '',
         gifUrl: url,

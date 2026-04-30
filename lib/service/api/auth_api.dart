@@ -487,6 +487,7 @@ class LoginData {
       name: name,
       avatar: avatar,
       sex: sex,
+      category: category,
       username: username,
       shortNo: shortNo,
       shortStatus: shortStatus,

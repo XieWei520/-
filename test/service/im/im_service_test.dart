@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_activity_registry.dart';
 import 'package:wukong_im_app/data/models/wk_custom_content.dart';
+import 'package:wukong_im_app/service/api/im_route_info.dart';
 import 'package:wukong_im_app/service/im/im_service.dart';
 import 'package:wukongimfluttersdk/entity/cmd.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
@@ -20,7 +21,7 @@ void main() {
 
   test('builds session gateway uri without introducing port zero', () {
     final uri = buildSessionGatewayUri(
-      baseUrl: 'http://42.194.218.158',
+      baseUrl: 'https://infoequity.qingyunshe.top',
       deviceSessionId: 'device_session_01',
       lastAckedSeq: 0,
     );
@@ -28,7 +29,53 @@ void main() {
     expect(uri.toString(), isNot(contains(':0/')));
     expect(
       uri.toString(),
-      'ws://42.194.218.158/v1/realtime/session/events/ws?device_session_id=device_session_01&last_acked_seq=0',
+      'wss://infoequity.qingyunshe.top/v1/realtime/session/events/ws?device_session_id=device_session_01&last_acked_seq=0',
+    );
+  });
+
+  test('selectImConnectAddr uses preferred_addr then transport fallbacks', () {
+    final route = ImRouteInfo(
+      tcpAddr: 'infoequity.qingyunshe.top:5100',
+      wsAddr: 'ws://infoequity.qingyunshe.top:5200',
+      wssAddr: 'wss://infoequity.qingyunshe.top/ws',
+      preferredTransport: 'wss',
+      preferredAddr: 'wss://infoequity.qingyunshe.top/ws',
+    );
+
+    expect(
+      selectImConnectAddr(route, fallbackAddr: 'fallback.example:5100'),
+      'wss://infoequity.qingyunshe.top/ws',
+    );
+
+    final invalidPreferred = ImRouteInfo(
+      tcpAddr: 'infoequity.qingyunshe.top:5100',
+      wsAddr: 'ws://infoequity.qingyunshe.top:5200',
+      wssAddr: 'wss://infoequity.qingyunshe.top/ws',
+      preferredTransport: 'wss',
+      preferredAddr: 'https://infoequity.qingyunshe.top/ws',
+    );
+
+    expect(
+      selectImConnectAddr(
+        invalidPreferred,
+        fallbackAddr: 'fallback.example:5100',
+      ),
+      'wss://infoequity.qingyunshe.top/ws',
+    );
+  });
+
+  test('selectImConnectAddr keeps explicit local fallback override first', () {
+    final route = ImRouteInfo(
+      tcpAddr: 'infoequity.qingyunshe.top:5100',
+      wsAddr: 'ws://infoequity.qingyunshe.top:5200',
+      wssAddr: 'wss://infoequity.qingyunshe.top/ws',
+      preferredTransport: 'wss',
+      preferredAddr: 'wss://infoequity.qingyunshe.top/ws',
+    );
+
+    expect(
+      selectImConnectAddr(route, fallbackAddr: '127.0.0.1:15100'),
+      '127.0.0.1:15100',
     );
   });
 
@@ -192,6 +239,19 @@ void main() {
       expect(content.name, 'custom.doc');
       expect(content.size, 1024);
       expect(content.suffix, 'doc');
+    });
+
+    test('sanitizes unsafe file metadata before upload', () {
+      final content = WKFileContent()
+        ..localPath = ' C:/tmp/report.final.PDF '
+        ..name = r'..\..\report.final.PDF'
+        ..size = -9;
+
+      normalizeFileAttachmentMetadata(content, localPath: content.localPath);
+
+      expect(content.name, 'report.final.PDF');
+      expect(content.size, 0);
+      expect(content.suffix, 'pdf');
     });
   });
 

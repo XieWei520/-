@@ -101,6 +101,28 @@ class MyGroupListNotifier extends StateNotifier<AsyncValue<List<GroupInfo>>> {
     }
   }
 
+  void upsertGroup(GroupInfo group) {
+    final groupNo = group.groupNo.trim();
+    if (groupNo.isEmpty) {
+      return;
+    }
+    final currentGroups = state.valueOrNull ?? const <GroupInfo>[];
+    var replaced = false;
+    final updatedGroups = <GroupInfo>[];
+    for (final current in currentGroups) {
+      if (current.groupNo.trim() == groupNo) {
+        updatedGroups.add(group);
+        replaced = true;
+      } else {
+        updatedGroups.add(current);
+      }
+    }
+    if (!replaced) {
+      updatedGroups.add(group);
+    }
+    state = AsyncValue.data(List<GroupInfo>.unmodifiable(updatedGroups));
+  }
+
   /// 鍒锋柊
   Future<void> refresh() async {
     await loadGroups();

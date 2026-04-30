@@ -4,6 +4,7 @@ import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../../core/config/api_config.dart';
+import '../../core/utils/avatar_utils.dart';
 import '../../data/models/group.dart';
 import '../../data/models/group_dingtalk_robot_config.dart';
 import '../../data/models/group_feishu_robot_config.dart';
@@ -38,6 +39,11 @@ class GroupApi {
   static GroupApi get instance => _instance;
 
   final ApiClient _client = ApiClient.instance;
+  final Map<String, String> _groupAvatarOverrides = <String, String>{};
+  final Map<String, Map<String, String>> _feishuRobotIdentityOverrides =
+      <String, Map<String, String>>{};
+  final Map<String, Map<String, String>> _dingTalkRobotIdentityOverrides =
+      <String, Map<String, String>>{};
 
   Map<String, dynamic> _resolveBody(dynamic raw) {
     if (raw is Map<String, dynamic>) {
@@ -61,6 +67,36 @@ class GroupApi {
     if (statusCode >= 400 || hasErrorCode) {
       throw Exception(message);
     }
+  }
+
+  String _extractUploadedAvatar(dynamic raw) {
+    if (raw is String) {
+      return raw.trim();
+    }
+    if (raw is Map) {
+      final data = raw['data'];
+      if (data != null && !identical(data, raw)) {
+        final avatar = _extractUploadedAvatar(data);
+        if (avatar.isNotEmpty) {
+          return avatar;
+        }
+      }
+      for (final key in const <String>[
+        'avatar',
+        'url',
+        'path',
+        'file_url',
+        'fileUrl',
+        'src',
+        'location',
+      ]) {
+        final value = raw[key]?.toString().trim() ?? '';
+        if (value.isNotEmpty) {
+          return value;
+        }
+      }
+    }
+    return '';
   }
 
   Map<String, dynamic> _normalizeQrPayload(dynamic raw) {
@@ -170,6 +206,169 @@ class GroupApi {
     return null;
   }
 
+  void _rememberGroupAvatarOverride(String groupNo, String avatar) {
+    final normalizedGroupNo = groupNo.trim();
+    final normalizedAvatar = avatar.trim();
+    if (normalizedGroupNo.isEmpty || normalizedAvatar.isEmpty) {
+      return;
+    }
+    _groupAvatarOverrides[normalizedGroupNo] = normalizedAvatar;
+  }
+
+  GroupInfo _applyGroupAvatarOverride(GroupInfo group) {
+    final override = _groupAvatarOverrides[group.groupNo.trim()]?.trim() ?? '';
+    if (override.isEmpty) {
+      return group;
+    }
+    return group.copyWith(avatar: override);
+  }
+
+  void _rememberRobotIdentityOverride(
+    Map<String, Map<String, String>> overrides,
+    String groupNo, {
+    String? displayName,
+    String? displayAvatar,
+  }) {
+    final normalizedGroupNo = groupNo.trim();
+    if (normalizedGroupNo.isEmpty) {
+      return;
+    }
+    if (displayName == null && displayAvatar == null) {
+      return;
+    }
+
+    final override = overrides.putIfAbsent(
+      normalizedGroupNo,
+      () => <String, String>{},
+    );
+    if (displayName != null) {
+      override['display_name'] = displayName;
+    }
+    if (displayAvatar != null) {
+      override['display_avatar'] = displayAvatar;
+    }
+  }
+
+  GroupFeishuRobotConfig _applyFeishuRobotIdentityOverride(
+    GroupFeishuRobotConfig config,
+  ) {
+    final override = _feishuRobotIdentityOverrides[config.groupNo.trim()];
+    if (override == null || override.isEmpty) {
+      return config;
+    }
+    return config.copyWith(
+      displayName: override.containsKey('display_name')
+          ? override['display_name']
+          : null,
+      displayAvatar: override.containsKey('display_avatar')
+          ? override['display_avatar']
+          : null,
+    );
+  }
+
+  GroupDingTalkRobotConfig _applyDingTalkRobotIdentityOverride(
+    GroupDingTalkRobotConfig config,
+  ) {
+    final override = _dingTalkRobotIdentityOverrides[config.groupNo.trim()];
+    if (override == null || override.isEmpty) {
+      return config;
+    }
+    return config.copyWith(
+      displayName: override.containsKey('display_name')
+          ? override['display_name']
+          : null,
+      displayAvatar: override.containsKey('display_avatar')
+          ? override['display_avatar']
+          : null,
+    );
+  }
+
+  dynamic _robotResponsePayload(dynamic raw) {
+    if (raw is Map && raw.containsKey('data')) {
+      return raw['data'];
+    }
+    return raw;
+  }
+
+  Map<String, dynamic> _robotConfigResponseMap(dynamic raw, String groupNo) {
+    final payload = _robotResponsePayload(raw);
+    final data = payload is Map
+        ? Map<String, dynamic>.from(payload)
+        : <String, dynamic>{};
+    if ((data['group_no']?.toString().trim() ?? '').isEmpty) {
+      data['group_no'] = groupNo;
+    }
+    return data;
+  }
+
+  GroupFeishuRobotConfig _buildFeishuRobotConfigFromResponse(
+    String groupNo,
+    dynamic raw, {
+    required bool enabled,
+    String? appId,
+    String? appSecret,
+    String? webhookMode,
+    String? officialWebhookUrl,
+    String? officialSecret,
+    String? displayName,
+    String? displayAvatar,
+  }) {
+    final data = _robotConfigResponseMap(raw, groupNo);
+    data['enabled'] = enabled ? 1 : 0;
+    if (appId != null) {
+      data['app_id'] = appId;
+    }
+    if (appSecret != null) {
+      data['app_secret'] = appSecret;
+    }
+    if (webhookMode != null) {
+      data['webhook_mode'] = webhookMode;
+    }
+    if (officialWebhookUrl != null) {
+      data['official_webhook_url'] = officialWebhookUrl;
+    }
+    if (officialSecret != null) {
+      data['official_secret'] = officialSecret;
+    }
+    if (displayName != null) {
+      data['display_name'] = displayName;
+    }
+    if (displayAvatar != null) {
+      data['display_avatar'] = displayAvatar;
+    }
+    return GroupFeishuRobotConfig.fromJson(data);
+  }
+
+  GroupDingTalkRobotConfig _buildDingTalkRobotConfigFromResponse(
+    String groupNo,
+    dynamic raw, {
+    required bool enabled,
+    String? webhookMode,
+    String? officialWebhookUrl,
+    String? officialSecret,
+    String? displayName,
+    String? displayAvatar,
+  }) {
+    final data = _robotConfigResponseMap(raw, groupNo);
+    data['enabled'] = enabled ? 1 : 0;
+    if (webhookMode != null) {
+      data['webhook_mode'] = webhookMode;
+    }
+    if (officialWebhookUrl != null) {
+      data['official_webhook_url'] = officialWebhookUrl;
+    }
+    if (officialSecret != null) {
+      data['official_secret'] = officialSecret;
+    }
+    if (displayName != null) {
+      data['display_name'] = displayName;
+    }
+    if (displayAvatar != null) {
+      data['display_avatar'] = displayAvatar;
+    }
+    return GroupDingTalkRobotConfig.fromJson(data);
+  }
+
   Future<GroupInfo> createGroup(
     List<String> memberIds, {
     String? name,
@@ -236,9 +435,11 @@ class GroupApi {
     );
     _ensureSuccess(response, fallback: 'Load group info failed');
 
-    final group = GroupInfo.fromJson(
-      Map<String, dynamic>.from(
-        response.data['data'] ?? response.data ?? <String, dynamic>{},
+    final group = _applyGroupAvatarOverride(
+      GroupInfo.fromJson(
+        Map<String, dynamic>.from(
+          response.data['data'] ?? response.data ?? <String, dynamic>{},
+        ),
       ),
     );
     _cacheGroupChannel(group);
@@ -318,6 +519,9 @@ class GroupApi {
       data: data,
     );
     _ensureSuccess(response, fallback: 'Update group info failed');
+    if (avatar != null) {
+      _rememberGroupAvatarOverride(groupNo, avatar);
+    }
   }
 
   Future<void> updateGroupMemberRemark(
@@ -638,7 +842,27 @@ class GroupApi {
       name: 'file',
     );
     _ensureSuccess(response, fallback: 'Upload group avatar failed');
-    return response.data['data'] ?? '';
+    final avatar = _extractUploadedAvatar(response.data);
+    if (avatar.isNotEmpty) {
+      await updateGroupInfo(groupNo, avatar: avatar);
+      _rememberGroupAvatarOverride(groupNo, avatar);
+      return avatar;
+    }
+    final canonicalAvatar = buildGroupAvatarUrl(groupNo) ?? '';
+    final cacheBustedAvatar =
+        buildGroupAvatarUrl(
+          groupNo,
+          cacheKey: DateTime.now().millisecondsSinceEpoch.toString(),
+        ) ??
+        '';
+    if (canonicalAvatar.isNotEmpty) {
+      await updateGroupInfo(groupNo, avatar: canonicalAvatar);
+    }
+    final visibleAvatar = cacheBustedAvatar.isNotEmpty
+        ? cacheBustedAvatar
+        : canonicalAvatar;
+    _rememberGroupAvatarOverride(groupNo, visibleAvatar);
+    return visibleAvatar;
   }
 
   Future<GroupFeishuRobotConfig?> getFeishuRobotConfig(String groupNo) async {
@@ -657,7 +881,9 @@ class GroupApi {
     if ((data['group_no']?.toString() ?? '').trim().isEmpty) {
       return null;
     }
-    return GroupFeishuRobotConfig.fromJson(data);
+    return _applyFeishuRobotIdentityOverride(
+      GroupFeishuRobotConfig.fromJson(data),
+    );
   }
 
   Future<GroupFeishuRobotConfig> updateFeishuRobotConfig(
@@ -712,13 +938,25 @@ class GroupApi {
     );
     _ensureSuccess(response, fallback: 'Save Feishu robot config failed');
 
-    final raw = response.data is Map
-        ? (response.data['data'] ?? response.data)
-        : response.data;
-    if (raw is! Map) {
-      throw Exception('Invalid Feishu robot config response');
-    }
-    return GroupFeishuRobotConfig.fromJson(Map<String, dynamic>.from(raw));
+    final saved = _buildFeishuRobotConfigFromResponse(
+      groupNo,
+      response.data,
+      enabled: enabled,
+      appId: trimmedAppId,
+      appSecret: trimmedAppSecret,
+      webhookMode: normalizedWebhookMode,
+      officialWebhookUrl: trimmedOfficialWebhookUrl,
+      officialSecret: trimmedOfficialSecret,
+      displayName: trimmedDisplayName,
+      displayAvatar: trimmedDisplayAvatar,
+    );
+    _rememberRobotIdentityOverride(
+      _feishuRobotIdentityOverrides,
+      groupNo,
+      displayName: trimmedDisplayName,
+      displayAvatar: trimmedDisplayAvatar,
+    );
+    return _applyFeishuRobotIdentityOverride(saved);
   }
 
   Future<void> deleteFeishuRobotConfig(String groupNo) async {
@@ -753,7 +991,9 @@ class GroupApi {
     if ((data['group_no']?.toString() ?? '').trim().isEmpty) {
       return null;
     }
-    return GroupDingTalkRobotConfig.fromJson(data);
+    return _applyDingTalkRobotIdentityOverride(
+      GroupDingTalkRobotConfig.fromJson(data),
+    );
   }
 
   Future<GroupDingTalkRobotConfig> updateDingTalkRobotConfig(
@@ -798,13 +1038,23 @@ class GroupApi {
     );
     _ensureSuccess(response, fallback: 'Save DingTalk robot config failed');
 
-    final raw = response.data is Map
-        ? (response.data['data'] ?? response.data)
-        : response.data;
-    if (raw is! Map) {
-      throw Exception('Invalid DingTalk robot config response');
-    }
-    return GroupDingTalkRobotConfig.fromJson(Map<String, dynamic>.from(raw));
+    final saved = _buildDingTalkRobotConfigFromResponse(
+      groupNo,
+      response.data,
+      enabled: enabled,
+      webhookMode: normalizedWebhookMode,
+      officialWebhookUrl: trimmedOfficialWebhookUrl,
+      officialSecret: trimmedOfficialSecret,
+      displayName: trimmedDisplayName,
+      displayAvatar: trimmedDisplayAvatar,
+    );
+    _rememberRobotIdentityOverride(
+      _dingTalkRobotIdentityOverrides,
+      groupNo,
+      displayName: trimmedDisplayName,
+      displayAvatar: trimmedDisplayAvatar,
+    );
+    return _applyDingTalkRobotIdentityOverride(saved);
   }
 
   Future<void> deleteDingTalkRobotConfig(String groupNo) async {

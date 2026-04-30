@@ -1,13 +1,13 @@
 {
   "packId": "android_sample_motion",
   "packVersion": 1,
-  "title": "Android Motion",
-  "cover": "assets/stickers/sample_pack/group.webp",
+  "title": "示例动效",
+  "cover": "assets/stickers/sample_pack/previews/group-preview.webp",
   "stickers": [
     {
       "stickerId": "group",
-      "title": "Group",
-      "preview": "assets/stickers/sample_pack/group.webp",
+      "title": "群聊",
+      "preview": "assets/stickers/sample_pack/previews/group-preview.webp",
       "animation": "assets/stickers/sample_pack/group.webp",
       "mimeType": "image/webp",
       "width": 512,
@@ -17,8 +17,8 @@
     },
     {
       "stickerId": "other",
-      "title": "Other",
-      "preview": "assets/stickers/sample_pack/other.webp",
+      "title": "其他",
+      "preview": "assets/stickers/sample_pack/previews/other-preview.webp",
       "animation": "assets/stickers/sample_pack/other.webp",
       "mimeType": "image/webp",
       "width": 512,
@@ -28,8 +28,8 @@
     },
     {
       "stickerId": "reply",
-      "title": "Reply",
-      "preview": "assets/stickers/sample_pack/reply.webp",
+      "title": "回复",
+      "preview": "assets/stickers/sample_pack/previews/reply-preview.webp",
       "animation": "assets/stickers/sample_pack/reply.webp",
       "mimeType": "image/webp",
       "width": 512,
@@ -39,8 +39,8 @@
     },
     {
       "stickerId": "typing",
-      "title": "Typing",
-      "preview": "assets/stickers/sample_pack/typing.webp",
+      "title": "输入中",
+      "preview": "assets/stickers/sample_pack/previews/typing-preview.webp",
       "animation": "assets/stickers/sample_pack/typing.webp",
       "mimeType": "image/webp",
       "width": 512,
@@ -50,8 +50,8 @@
     },
     {
       "stickerId": "voice",
-      "title": "Voice",
-      "preview": "assets/stickers/sample_pack/voice.webp",
+      "title": "语音",
+      "preview": "assets/stickers/sample_pack/previews/voice-preview.webp",
       "animation": "assets/stickers/sample_pack/voice.webp",
       "mimeType": "image/webp",
       "width": 512,

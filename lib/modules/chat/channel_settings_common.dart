@@ -16,16 +16,15 @@ class ChannelAutoDeleteOption {
   String label(bool english) => english ? enLabel : zhLabel;
 }
 
-const List<ChannelAutoDeleteOption>
-channelAutoDeleteOptions = <ChannelAutoDeleteOption>[
-  ChannelAutoDeleteOption(seconds: 0, zhLabel: '关闭', enLabel: 'Off'),
-  ChannelAutoDeleteOption(seconds: 86400, zhLabel: '1天', enLabel: '1 day'),
-  ChannelAutoDeleteOption(seconds: 604800, zhLabel: '7天', enLabel: '7 days'),
-  ChannelAutoDeleteOption(seconds: 2592000, zhLabel: '30天', enLabel: '30 days'),
-];
+const List<ChannelAutoDeleteOption> channelAutoDeleteOptions =
+    <ChannelAutoDeleteOption>[
+      ChannelAutoDeleteOption(seconds: 0, zhLabel: '关闭', enLabel: '关闭'),
+      ChannelAutoDeleteOption(seconds: 86400, zhLabel: '1天', enLabel: '1天'),
+      ChannelAutoDeleteOption(seconds: 604800, zhLabel: '7天', enLabel: '7天'),
+      ChannelAutoDeleteOption(seconds: 2592000, zhLabel: '30天', enLabel: '30天'),
+    ];
 
-bool isEnglishLocale(BuildContext context) =>
-    Localizations.localeOf(context).languageCode.toLowerCase() == 'en';
+bool isEnglishLocale(BuildContext context) => false;
 
 String formatChannelAutoDeleteLabel(int seconds, {required bool english}) {
   for (final option in channelAutoDeleteOptions) {
@@ -34,17 +33,17 @@ String formatChannelAutoDeleteLabel(int seconds, {required bool english}) {
     }
   }
   if (seconds <= 0) {
-    return english ? 'Off' : '关闭';
+    return '关闭';
   }
   if (seconds % 86400 == 0) {
     final days = seconds ~/ 86400;
-    return english ? '$days day${days == 1 ? '' : 's'}' : '${days}天';
+    return '$days天';
   }
   if (seconds % 3600 == 0) {
     final hours = seconds ~/ 3600;
-    return english ? '$hours hour${hours == 1 ? '' : 's'}' : '${hours}小时';
+    return '$hours小时';
   }
-  return english ? '$seconds sec' : '${seconds}秒';
+  return '$seconds秒';
 }
 
 Future<int?> showChannelAutoDeletePicker({
@@ -53,7 +52,7 @@ Future<int?> showChannelAutoDeletePicker({
   String? title,
 }) {
   final english = isEnglishLocale(context);
-  final resolvedTitle = title ?? (english ? 'Auto Delete Messages' : '消息自动删除');
+  final resolvedTitle = title ?? '消息自动删除';
 
   return showModalBottomSheet<int>(
     context: context,

@@ -39,6 +39,25 @@ void main() {
       expect(decoded.body, source.body);
       expect(decoded.raw, source.raw);
     });
+
+    test('trims text fields and treats blank identifiers as absent', () {
+      final payload = PushPayload.fromMap({
+        'channel_id': '   ',
+        'channel_type': '1',
+        'message_id': ' mid_2 ',
+        'sender_uid': ' u_2 ',
+        'title': '  Alice  ',
+        'body': '   ',
+      });
+
+      expect(payload.channelId, isNull);
+      expect(payload.channelType, 1);
+      expect(payload.messageId, 'mid_2');
+      expect(payload.senderUid, 'u_2');
+      expect(payload.title, 'Alice');
+      expect(payload.body, isNull);
+      expect(payload.hasConversationTarget, isFalse);
+    });
   });
 
   group('PushMessageEvent', () {

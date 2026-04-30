@@ -100,6 +100,8 @@ void main() {
     required String channelId,
     required int channelType,
     required String channelName,
+    String? channelCategory,
+    int initialVipLevel = 0,
     NavigatorObserver? navigatorObserver,
     ChatTypingGateway typingGateway = const _NoopTypingGateway(),
     List<Override> overrides = const <Override>[],
@@ -110,6 +112,8 @@ void main() {
           channelId: channelId,
           channelType: channelType,
           channelName: channelName,
+          channelCategory: channelCategory,
+          initialVipLevel: initialVipLevel,
         ),
         navigatorObserver: navigatorObserver,
         typingGateway: typingGateway,
@@ -937,6 +941,94 @@ void main() {
     );
   });
 
+  testWidgets(
+    'personal chat places call actions in the composer toolbar without narrow-screen overflow',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final channel = WKChannel('u_toolbar_calls', WKChannelType.personal)
+        ..channelName = 'Alice With An Extra Long Display Name';
+      WKIM.shared.channelManager.addOrUpdateChannel(channel);
+
+      await pumpChatPage(
+        tester,
+        channelId: 'u_toolbar_calls',
+        channelType: WKChannelType.personal,
+        channelName: 'Alice With An Extra Long Display Name',
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+
+      final toolbarRow = find.byKey(
+        const ValueKey<String>('chat-composer-toolbar-row'),
+      );
+      final appBar = find.byType(AppBar);
+      final audioButton = find.byKey(
+        const ValueKey<String>('chat-call-audio-button'),
+      );
+      final videoButton = find.byKey(
+        const ValueKey<String>('chat-call-video-button'),
+      );
+
+      expect(toolbarRow, findsOneWidget);
+      expect(audioButton, findsOneWidget);
+      expect(videoButton, findsOneWidget);
+      expect(
+        find.descendant(of: toolbarRow, matching: audioButton),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: toolbarRow, matching: videoButton),
+        findsOneWidget,
+      );
+      expect(find.descendant(of: appBar, matching: audioButton), findsNothing);
+      expect(find.descendant(of: appBar, matching: videoButton), findsNothing);
+
+      final audioDecoration = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey<String>('chat-call-audio-decoration')),
+      );
+      final videoDecoration = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey<String>('chat-call-video-decoration')),
+      );
+      expect((audioDecoration.decoration as BoxDecoration).gradient, isNotNull);
+      expect((videoDecoration.decoration as BoxDecoration).gradient, isNotNull);
+    },
+  );
+
+  testWidgets(
+    'chat composer toolbar action artwork uses the call action visual size',
+    (tester) async {
+      await pumpChatPage(
+        tester,
+        channelId: 'u_toolbar_visual_size',
+        channelType: WKChannelType.personal,
+        channelName: 'Toolbar Visual Size',
+      );
+      await tester.pumpAndSettle();
+
+      final callVisualSize = tester.getSize(
+        find.byKey(const ValueKey<String>('chat-call-audio-decoration')),
+      );
+
+      expect(callVisualSize, const Size(38, 38));
+      for (final asset in <String>[
+        WKReferenceAssets.chatToolbarEmoji,
+        WKReferenceAssets.chatToolbarAlbum,
+        WKReferenceAssets.chatToolbarMore,
+      ]) {
+        expect(
+          tester.getSize(_assetFinder(asset).first),
+          callVisualSize,
+          reason: '$asset should visually match the voice/video call buttons',
+        );
+      }
+    },
+  );
+
   testWidgets('chat page shows Android official category tag', (tester) async {
     final channel = WKChannel('u_official', WKChannelType.personal)
       ..channelName = 'Official Account'
@@ -1017,6 +1109,45 @@ void main() {
 
       expect(find.text('\u5ba2\u670d'), findsOneWidget);
       expect(find.byType(AnimatedSize), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'chat page shows customer service tag when category is supplied by service entry',
+    (tester) async {
+      await pumpChatPage(
+        tester,
+        channelId: 'cs_001',
+        channelType: WKChannelType.personal,
+        channelName: 'Support',
+        channelCategory: 'customerService',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('\u5ba2\u670d'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'customer service chat shows vip merchant badge from conversation entry',
+    (tester) async {
+      final channel = WKChannel('u_vip_customer', WKChannelType.customerService)
+        ..channelName = 'VIP Alice';
+      WKIM.shared.channelManager.addOrUpdateChannel(channel);
+
+      await pumpChatPage(
+        tester,
+        channelId: 'u_vip_customer',
+        channelType: WKChannelType.customerService,
+        channelName: 'VIP Alice',
+        initialVipLevel: 1,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('chat-header-vip-badge')),
+        findsOneWidget,
+      );
     },
   );
 
@@ -1453,6 +1584,37 @@ void main() {
     );
     expect(find.text('\u5c0f\u89c6\u9891'), findsNothing);
     expect(find.text('\u6536\u85cf'), findsNothing);
+  });
+
+  testWidgets('more panel renders default function entries as colorful icons', (
+    tester,
+  ) async {
+    await pumpChatPage(
+      tester,
+      channelId: 'u_function_colorful_icons',
+      channelType: WKChannelType.personal,
+      channelName: 'Function Colorful Icons',
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(_assetFinder(WKReferenceAssets.chatToolbarMore));
+    await tester.pumpAndSettle();
+
+    for (final sid in <String>[
+      'chooseImg',
+      'chooseFile',
+      'sendLocation',
+      'chooseCard',
+    ]) {
+      final decoration = tester.widget<DecoratedBox>(
+        find.byKey(ValueKey<String>('chat-function-$sid-icon')),
+      );
+      final boxDecoration = decoration.decoration as BoxDecoration;
+
+      expect(boxDecoration.gradient, isNotNull, reason: sid);
+      expect(boxDecoration.borderRadius, isNotNull, reason: sid);
+      expect(boxDecoration.boxShadow, isNotEmpty, reason: sid);
+    }
   });
 
   testWidgets(
@@ -2196,7 +2358,7 @@ class _FakeChatExpressionRegistry extends ChatExpressionRegistry {
         const ChatExpressionCategory(
           id: 'recent',
           kind: ChatExpressionKind.emoji,
-          label: 'Recent',
+          label: '最近',
           iconKey: 'recent',
           emojiTags: <String>[],
           stickers: <ChatStickerDefinition>[],
@@ -2218,7 +2380,7 @@ class _FakeChatExpressionRegistry extends ChatExpressionRegistry {
         const ChatExpressionCategory(
           id: 'sticker:android_sample_motion',
           kind: ChatExpressionKind.sticker,
-          label: 'Sample Stickers',
+          label: '示例贴纸',
           iconKey: 'assets/stickers/sample_pack/group.webp',
           emojiTags: <String>[],
           stickers: <ChatStickerDefinition>[_sampleSticker],
@@ -2227,7 +2389,7 @@ class _FakeChatExpressionRegistry extends ChatExpressionRegistry {
         const ChatExpressionCategory(
           id: 'gif',
           kind: ChatExpressionKind.gif,
-          label: 'GIF',
+          label: '动图',
           iconKey: 'gif',
           emojiTags: <String>[],
           stickers: <ChatStickerDefinition>[],

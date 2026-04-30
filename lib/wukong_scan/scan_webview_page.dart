@@ -8,7 +8,20 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../data/models/user.dart';
 import '../service/api/auth_api.dart';
 import '../service/api/openapi_api.dart';
+import '../widgets/wk_avatar.dart';
 import 'openapi_webview_bridge.dart';
+
+Uri? normalizeScanWebviewInitialUri(String rawUrl) {
+  final uri = Uri.tryParse(rawUrl.trim());
+  if (uri == null || !uri.hasScheme || uri.host.trim().isEmpty) {
+    return null;
+  }
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme != 'http' && scheme != 'https') {
+    return null;
+  }
+  return uri;
+}
 
 class ScanWebviewPage extends StatefulWidget {
   ScanWebviewPage({
@@ -51,7 +64,7 @@ class _ScanWebviewPageState extends State<ScanWebviewPage> {
   @override
   void initState() {
     super.initState();
-    _uri = Uri.tryParse(widget.initialUrl);
+    _uri = normalizeScanWebviewInitialUri(widget.initialUrl);
     _openApiBridgeController = OpenApiWebViewBridgeController(
       fetchAppInfo: widget.openApiApi.getAppInfo,
       fetchAuthCode: widget.openApiApi.getAuthCode,
@@ -142,7 +155,7 @@ class _ScanWebviewPageState extends State<ScanWebviewPage> {
     }
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Link copied')));
+    ).showSnackBar(const SnackBar(content: Text('链接已复制')));
   }
 
   Future<void> _openExternally() async {
@@ -154,7 +167,7 @@ class _ScanWebviewPageState extends State<ScanWebviewPage> {
     if (!opened && mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Unable to open link')));
+      ).showSnackBar(const SnackBar(content: Text('无法打开链接')));
     }
   }
 
@@ -194,15 +207,15 @@ class _ScanWebviewPageState extends State<ScanWebviewPage> {
               itemBuilder: (context) => const [
                 PopupMenuItem(
                   value: _ScanWebviewAction.copy,
-                  child: Text('Copy link'),
+                  child: Text('复制链接'),
                 ),
                 PopupMenuItem(
                   value: _ScanWebviewAction.refresh,
-                  child: Text('Refresh'),
+                  child: Text('刷新'),
                 ),
                 PopupMenuItem(
                   value: _ScanWebviewAction.external,
-                  child: Text('Open in browser'),
+                  child: Text('在浏览器中打开'),
                 ),
               ],
             ),
@@ -215,7 +228,7 @@ class _ScanWebviewPageState extends State<ScanWebviewPage> {
               : null,
         ),
         body: _uri == null
-            ? const Center(child: Text('Invalid link'))
+            ? const Center(child: Text('链接无效'))
             : WebViewWidget(controller: _controller),
       ),
     );
@@ -238,7 +251,7 @@ class _OpenApiAuthorizationSheet extends StatelessWidget {
     final theme = Theme.of(context);
     final user = prompt.currentUser;
     final userName = _displayName(user);
-    final hostLabel = sourceHost.isEmpty ? 'Embedded web page' : sourceHost;
+    final hostLabel = sourceHost.isEmpty ? '内嵌网页' : sourceHost;
 
     return SafeArea(
       child: Padding(
@@ -264,10 +277,7 @@ class _OpenApiAuthorizationSheet extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Authorize app access',
-                        style: theme.textTheme.titleLarge,
-                      ),
+                      Text('授权应用访问', style: theme.textTheme.titleLarge),
                       const SizedBox(height: 4),
                       Text(
                         prompt.appInfo.appName,
@@ -282,7 +292,7 @@ class _OpenApiAuthorizationSheet extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Text(
-              '$hostLabel is requesting an OpenAPI authorization code for your account.',
+              '$hostLabel 正在请求获取你账号的开放接口授权码。',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -315,7 +325,7 @@ class _OpenApiAuthorizationSheet extends StatelessWidget {
                         Text(
                           user?.uid.trim().isNotEmpty == true
                               ? 'UID: ${user!.uid}'
-                              : 'Current signed-in account',
+                              : '当前登录账号',
                           style: theme.textTheme.bodySmall,
                         ),
                       ],
@@ -330,14 +340,14 @@ class _OpenApiAuthorizationSheet extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('Cancel'),
+                    child: const Text('取消'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Allow'),
+                    child: const Text('允许'),
                   ),
                 ),
               ],
@@ -379,24 +389,11 @@ class _NetworkAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final normalizedUrl = imageUrl?.trim() ?? '';
-    if (normalizedUrl.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: Image.network(
-          normalizedUrl,
-          width: radius * 2,
-          height: radius * 2,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _fallbackAvatar(),
-        ),
-      );
-    }
-    return _fallbackAvatar();
-  }
-
-  Widget _fallbackAvatar() {
-    final trimmed = label.trim();
-    final initial = trimmed.isEmpty ? '?' : trimmed.substring(0, 1);
-    return CircleAvatar(radius: radius, child: Text(initial.toUpperCase()));
+    return WKAvatar(
+      url: normalizedUrl.isEmpty ? null : normalizedUrl,
+      name: label,
+      size: radius * 2,
+      borderRadius: BorderRadius.circular(radius),
+    );
   }
 }

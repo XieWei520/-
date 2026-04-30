@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/utils/storage_utils.dart';
@@ -26,6 +27,9 @@ typedef QueryCachedFriends = Future<List<Friend>> Function();
 typedef SyncFriends = Future<List<Friend>> Function();
 typedef PersistFriends = Future<void> Function(List<Friend>);
 
+@visibleForTesting
+bool shouldUseFriendLocalPersistence({required bool isWeb}) => !isWeb;
+
 class FriendListNotifier extends StateNotifier<AsyncValue<List<Friend>>> {
   FriendListNotifier({
     FriendApi? friendApi,
@@ -33,12 +37,16 @@ class FriendListNotifier extends StateNotifier<AsyncValue<List<Friend>>> {
     QueryCachedFriends? queryCachedFriends,
     SyncFriends? syncFriends,
     PersistFriends? persistFriends,
+    bool? useLocalPersistence,
     bool loadOnInit = true,
   }) : _friendApi = friendApi ?? FriendApi.instance,
        _contactsDB = contactsDB ?? ContactsDB.instance,
        _queryCachedFriends = queryCachedFriends,
        _syncFriends = syncFriends,
        _persistFriends = persistFriends,
+       _useLocalPersistence =
+           useLocalPersistence ??
+           shouldUseFriendLocalPersistence(isWeb: kIsWeb),
        super(const AsyncValue.loading()) {
     if (loadOnInit) {
       loadFriends();
@@ -50,6 +58,7 @@ class FriendListNotifier extends StateNotifier<AsyncValue<List<Friend>>> {
   final QueryCachedFriends? _queryCachedFriends;
   final SyncFriends? _syncFriends;
   final PersistFriends? _persistFriends;
+  final bool _useLocalPersistence;
 
   /// Load cached contacts first, then sync from network.
   Future<void> _loadFromCacheThenSync() async {
@@ -57,17 +66,19 @@ class FriendListNotifier extends StateNotifier<AsyncValue<List<Friend>>> {
       state = const AsyncValue.data(<Friend>[]);
       return;
     }
-    try {
-      final cached =
-          await (_queryCachedFriends?.call() ?? _contactsDB.queryAll());
-      if (!mounted) {
-        return;
+    if (_useLocalPersistence) {
+      try {
+        final cached =
+            await (_queryCachedFriends?.call() ?? _contactsDB.queryAll());
+        if (!mounted) {
+          return;
+        }
+        if (cached.isNotEmpty) {
+          state = AsyncValue.data(cached);
+        }
+      } catch (_) {
+        // Cache read failure is non-fatal
       }
-      if (cached.isNotEmpty) {
-        state = AsyncValue.data(cached);
-      }
-    } catch (_) {
-      // Cache read failure is non-fatal
     }
     await _syncFromNetwork();
   }
@@ -80,8 +91,10 @@ class FriendListNotifier extends StateNotifier<AsyncValue<List<Friend>>> {
       if (!mounted) {
         return;
       }
-      await (_persistFriends?.call(friends) ??
-          _contactsDB.insertOrUpdateAll(friends));
+      if (_useLocalPersistence) {
+        await (_persistFriends?.call(friends) ??
+            _contactsDB.insertOrUpdateAll(friends));
+      }
       if (!mounted) {
         return;
       }
@@ -123,7 +136,9 @@ class FriendListNotifier extends StateNotifier<AsyncValue<List<Friend>>> {
   Future<bool> deleteFriend(String uid) async {
     try {
       await _friendApi.deleteFriend(uid);
-      await _contactsDB.markDeleted(uid);
+      if (_useLocalPersistence) {
+        await _contactsDB.markDeleted(uid);
+      }
       await loadFriends();
       return true;
     } catch (_) {
@@ -174,12 +189,16 @@ class FriendRequestListNotifier
     QueryCachedRequests? queryCachedRequests,
     SyncRequests? syncRequests,
     PersistRequests? persistRequests,
+    bool? useLocalPersistence,
     bool loadOnInit = true,
   }) : _friendApi = friendApi ?? FriendApi.instance,
        _applyDB = applyDB ?? FriendApplyDB.instance,
        _queryCachedRequests = queryCachedRequests,
        _syncRequests = syncRequests,
        _persistRequests = persistRequests,
+       _useLocalPersistence =
+           useLocalPersistence ??
+           shouldUseFriendLocalPersistence(isWeb: kIsWeb),
        super(const AsyncValue.loading()) {
     if (loadOnInit) {
       loadRequests();
@@ -191,6 +210,7 @@ class FriendRequestListNotifier
   final QueryCachedRequests? _queryCachedRequests;
   final SyncRequests? _syncRequests;
   final PersistRequests? _persistRequests;
+  final bool _useLocalPersistence;
 
   /// Load cached requests first, then sync from network.
   Future<void> _loadFromCacheThenSync() async {
@@ -198,17 +218,19 @@ class FriendRequestListNotifier
       state = const AsyncValue.data(<FriendRequest>[]);
       return;
     }
-    try {
-      final cached =
-          await (_queryCachedRequests?.call() ?? _applyDB.queryAll());
-      if (!mounted) {
-        return;
+    if (_useLocalPersistence) {
+      try {
+        final cached =
+            await (_queryCachedRequests?.call() ?? _applyDB.queryAll());
+        if (!mounted) {
+          return;
+        }
+        if (cached.isNotEmpty) {
+          state = AsyncValue.data(cached);
+        }
+      } catch (_) {
+        // Cache read failure is non-fatal
       }
-      if (cached.isNotEmpty) {
-        state = AsyncValue.data(cached);
-      }
-    } catch (_) {
-      // Cache read failure is non-fatal
     }
     await _syncFromNetwork();
   }
@@ -222,8 +244,10 @@ class FriendRequestListNotifier
       if (!mounted) {
         return;
       }
-      await (_persistRequests?.call(requests) ??
-          _applyDB.insertOrUpdateAll(requests));
+      if (_useLocalPersistence) {
+        await (_persistRequests?.call(requests) ??
+            _applyDB.insertOrUpdateAll(requests));
+      }
       if (!mounted) {
         return;
       }

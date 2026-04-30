@@ -33,7 +33,7 @@ class GroupRobotWebhookModeSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Webhook 模式',
+            '回调模式',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -41,34 +41,49 @@ class GroupRobotWebhookModeSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            '可在 IM 接收 Webhook 与官方 Webhook 之间切换，按需选择接入方式。',
-            style: const TextStyle(
+          const Text(
+            '可在群聊内接收回调与官方回调之间切换，按需选择接入方式。',
+            style: TextStyle(
               fontSize: 14,
               height: 1.5,
               color: WKColors.color999,
             ),
           ),
           const SizedBox(height: 8),
-          RadioListTile<GroupRobotWebhookMode>(
-            key: const ValueKey('group-robot-webhook-mode-im-generated'),
-            value: GroupRobotWebhookMode.imGenerated,
+          RadioGroup<GroupRobotWebhookMode>(
             groupValue: mode,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(GroupRobotWebhookMode.imGenerated.label),
-            subtitle: const Text('使用当前页面生成的 Webhook 与加签密钥接收消息'),
-            onChanged: canEdit ? (value) => onModeChanged?.call(value!) : null,
-          ),
-          RadioListTile<GroupRobotWebhookMode>(
-            key: const ValueKey('group-robot-webhook-mode-official'),
-            value: GroupRobotWebhookMode.official,
-            groupValue: mode,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(GroupRobotWebhookMode.official.label),
-            subtitle: Text('手动填写$providerName官方 Webhook 与密钥进行接入'),
-            onChanged: canEdit ? (value) => onModeChanged?.call(value!) : null,
+            onChanged: (value) {
+              if (!canEdit || value == null) {
+                return;
+              }
+              onModeChanged?.call(value);
+            },
+            child: Column(
+              children: [
+                RadioListTile<GroupRobotWebhookMode>(
+                  key: const ValueKey('group-robot-webhook-mode-im-generated'),
+                  value: GroupRobotWebhookMode.imGenerated,
+                  dense: true,
+                  enabled: canEdit,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(GroupRobotWebhookMode.imGenerated.label),
+                  subtitle: const Text(
+                    '使用当前页面生成的回调地址与加签密钥接收消息',
+                  ),
+                ),
+                RadioListTile<GroupRobotWebhookMode>(
+                  key: const ValueKey('group-robot-webhook-mode-official'),
+                  value: GroupRobotWebhookMode.official,
+                  dense: true,
+                  enabled: canEdit,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(GroupRobotWebhookMode.official.label),
+                  subtitle: Text(
+                    '手动填写$providerName官方回调地址与密钥进行接入',
+                  ),
+                ),
+              ],
+            ),
           ),
           if (mode == GroupRobotWebhookMode.official) ...[
             const SizedBox(height: 8),
@@ -78,7 +93,7 @@ class GroupRobotWebhookModeSection extends StatelessWidget {
               enabled: !isBusy,
               autocorrect: false,
               decoration: const InputDecoration(
-                labelText: '官方 Webhook URL',
+                labelText: '官方回调地址',
                 hintText: 'https://',
                 border: OutlineInputBorder(),
                 filled: true,

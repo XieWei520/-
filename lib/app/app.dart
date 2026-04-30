@@ -13,6 +13,7 @@ import '../modules/video_call/call_coordinator.dart';
 import '../core/theme/wk_dark_theme.dart';
 import '../widgets/wk_theme.dart';
 import '../wukong_push/device_badge_service.dart';
+import '../wukong_push/notification/browser_notification_click_bridge.dart';
 import '../wukong_push/notification_permission_prompt_bridge.dart';
 import '../wukong_scan/scan_qr_code_bridge.dart';
 import '../wukong_push/push_service.dart';
@@ -32,6 +33,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
   late final ProviderSubscription<AuthState> _authSubscription;
   late final ProviderSubscription<HomeBadgeSnapshot> _badgeSubscription;
   late final DeviceBadgeSyncBridge _deviceBadgeSyncBridge;
+  late final BrowserNotificationClickBridge _browserNotificationClickBridge;
   late final NotificationPermissionPromptBridge
   _notificationPermissionPromptBridge;
   bool _flushPendingScheduled = false;
@@ -44,6 +46,10 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       isLoggedIn: () => ref.read(authProvider).isLoggedIn,
     );
     DeviceBadgeService.instance.registerEndpoint();
+    _browserNotificationClickBridge = BrowserNotificationClickBridge.instance;
+    _browserNotificationClickBridge.start(
+      onNotificationClick: PushService.instance.handleNotificationTapPayload,
+    );
     _notificationPermissionPromptBridge =
         NotificationPermissionPromptBridge.instance;
     _notificationPermissionPromptBridge.ensureRegistered();
@@ -79,6 +85,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
   void dispose() {
     _badgeSubscription.close();
     _authSubscription.close();
+    unawaited(_browserNotificationClickBridge.dispose());
     unawaited(_pushRouteBridge.dispose());
     super.dispose();
   }
@@ -116,7 +123,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
 
     return ValueListenableBuilder<int>(
       valueListenable: WKSettingPreferences.appearanceChanges,
-      builder: (context, _, __) {
+      builder: (context, ignoredValue, ignoredChild) {
         final themeMode = switch (WKSettingPreferences.getThemeMode()) {
           WKThemeSettingMode.light => ThemeMode.light,
           WKThemeSettingMode.dark => ThemeMode.dark,
@@ -129,14 +136,10 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
           theme: WKTheme.themeData,
           darkTheme: WKDarkTheme.themeData,
           themeMode: themeMode,
-          builder: (context, child) => AppDisplayPreferences(
-            child: child ?? const SizedBox.shrink(),
-          ),
-          locale: WKSettingPreferences.resolvePreferredLocale(),
-          supportedLocales: const <Locale>[
-            Locale('zh', 'CN'),
-            Locale('en', 'US'),
-          ],
+          builder: (context, child) =>
+              AppDisplayPreferences(child: child ?? const SizedBox.shrink()),
+          locale: const Locale('zh', 'CN'),
+          supportedLocales: const <Locale>[Locale('zh', 'CN')],
           localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,

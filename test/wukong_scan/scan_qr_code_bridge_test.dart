@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -20,28 +21,40 @@ void main() {
     EndpointManager.getInstance().clear();
   });
 
-  test('parse_qr_code bridge returns parsed content through callback', () async {
-    final bridge = ScanQrCodeBridge(
-      endpointManager: EndpointManager.getInstance(),
-      analyzeImageBytes: (_) async => 'https://example.com/parsed',
-      processScanResult: (content) async => ScanServiceResult.rawText(content),
-    )..ensureRegistered();
+  test(
+    'parse_qr_code bridge returns parsed content through callback',
+    () async {
+      final bridge = ScanQrCodeBridge(
+        endpointManager: EndpointManager.getInstance(),
+        analyzeImageBytes: (_) async => 'https://example.com/parsed',
+        processScanResult: (content) async =>
+            ScanServiceResult.rawText(content),
+      )..ensureRegistered();
 
-    String? parsedContent;
-    final result = await EndpointManager.getInstance().invoke(
-      ChatMenuIDs.parseQrCode,
-      ParseQrCodeMenu(
-        isJump: false,
-        imageBytes: Uint8List.fromList(<int>[1, 2, 3]),
-        onResult: (codeContent) {
-          parsedContent = codeContent;
-        },
-      ),
-    );
+      String? parsedContent;
+      final result = await EndpointManager.getInstance().invoke(
+        ChatMenuIDs.parseQrCode,
+        ParseQrCodeMenu(
+          isJump: false,
+          imageBytes: Uint8List.fromList(<int>[1, 2, 3]),
+          onResult: (codeContent) {
+            parsedContent = codeContent;
+          },
+        ),
+      );
 
-    expect(parsedContent, 'https://example.com/parsed');
-    expect(result, 'https://example.com/parsed');
-    expect(bridge.isRegistered, isTrue);
+      expect(parsedContent, 'https://example.com/parsed');
+      expect(result, 'https://example.com/parsed');
+      expect(bridge.isRegistered, isTrue);
+    },
+  );
+
+  test('ScanQrCodeBridge source does not import dart io directly', () {
+    final source = File(
+      'lib/wukong_scan/scan_qr_code_bridge.dart',
+    ).readAsStringSync();
+
+    expect(source, isNot(contains("import 'dart:io'")));
   });
 
   testWidgets('parse_qr_code bridge routes jump requests to ScanResultPage', (
@@ -49,17 +62,15 @@ void main() {
   ) async {
     final navigatorKey = GlobalKey<NavigatorState>();
     ScanQrCodeBridge(
-      endpointManager: EndpointManager.getInstance(),
-      analyzeImageBytes: (_) async => 'resolved-qr-content',
-      processScanResult: (_) async => ScanServiceResult.fromJson(
-        <String, dynamic>{
-          'forward': 'native',
-          'type': 'group',
-          'data': <String, dynamic>{'group_no': 'g_1001'},
-        },
-        'resolved-qr-content',
-      ),
-    )
+        endpointManager: EndpointManager.getInstance(),
+        analyzeImageBytes: (_) async => 'resolved-qr-content',
+        processScanResult: (_) async =>
+            ScanServiceResult.fromJson(<String, dynamic>{
+              'forward': 'native',
+              'type': 'group',
+              'data': <String, dynamic>{'group_no': 'g_1001'},
+            }, 'resolved-qr-content'),
+      )
       ..bindNavigator(navigatorKey)
       ..ensureRegistered();
 
@@ -81,6 +92,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ScanResultPage), findsOneWidget);
-    expect(find.byKey(const ValueKey('scan_group_chat_button')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('scan_group_chat_button')),
+      findsOneWidget,
+    );
   });
 }

@@ -8,13 +8,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('ApiConfig defaults', () {
-    test('point to the new deployment target by default', () {
-      expect(ApiConfig.devBaseUrl, 'http://42.194.218.158');
-      expect(ApiConfig.prodBaseUrl, 'http://42.194.218.158');
-      expect(ApiConfig.devWsAddr, '42.194.218.158:5100');
-      expect(ApiConfig.prodWsAddr, '42.194.218.158:5100');
-      expect(ApiConfig.baseUrl, 'http://42.194.218.158');
-      expect(ApiConfig.wsAddr, '42.194.218.158:5100');
+    test('point to the secure production domain by default', () {
+      expect(ApiConfig.devBaseUrl, 'https://infoequity.qingyunshe.top');
+      expect(ApiConfig.prodBaseUrl, 'https://infoequity.qingyunshe.top');
+      expect(ApiConfig.devWsAddr, 'wss://infoequity.qingyunshe.top/ws');
+      expect(ApiConfig.prodWsAddr, 'wss://infoequity.qingyunshe.top/ws');
+      expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
+      expect(ApiConfig.wsAddr, 'wss://infoequity.qingyunshe.top/ws');
     });
 
     test(
@@ -23,7 +23,7 @@ void main() {
         SharedPreferences.setMockInitialValues(<String, Object>{});
         await StorageUtils.init();
 
-        expect(ApiConfig.baseUrl, 'http://42.194.218.158');
+        expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
 
         await StorageUtils.setString(
           AppConstants.keyAuthLoginApiBaseUrl,
@@ -32,7 +32,25 @@ void main() {
         expect(ApiConfig.baseUrl, 'http://127.0.0.1:5001');
 
         await StorageUtils.remove(AppConstants.keyAuthLoginApiBaseUrl);
-        expect(ApiConfig.baseUrl, 'http://42.194.218.158');
+        expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
+      },
+    );
+
+    test(
+      'maps the desktop tunnel API override onto the local IM fallback addr',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        await StorageUtils.init();
+
+        await StorageUtils.setString(
+          AppConstants.keyAuthLoginApiBaseUrl,
+          'http://127.0.0.1:15001',
+        );
+
+        expect(ApiConfig.baseUrl, 'http://127.0.0.1:15001');
+        expect(ApiConfig.wsAddr, '127.0.0.1:15100');
+
+        await StorageUtils.remove(AppConstants.keyAuthLoginApiBaseUrl);
       },
     );
   });
@@ -62,10 +80,116 @@ void main() {
       () {
         expect(
           ApiConfig.resolveMediaUrl(
-            'https://wemx.cc/minio/chat/1/u_self/demo.png?download=0',
+            'https://infoequity.qingyunshe.top/minio/chat/1/u_self/demo.png?download=0',
           ),
           '${ApiConfig.baseUrl}/minio/chat/1/u_self/demo.png?download=0',
         );
+      },
+    );
+
+    test('keeps relative minio paths outside the v1 api namespace', () {
+      expect(
+        ApiConfig.resolveMediaUrl('/minio/chat/1/u_self/demo.png?download=0'),
+        '${ApiConfig.baseUrl}/minio/chat/1/u_self/demo.png?download=0',
+      );
+      expect(
+        ApiConfig.resolveMediaUrl('minio/chat/1/u_self/demo.png'),
+        '${ApiConfig.baseUrl}/minio/chat/1/u_self/demo.png',
+      );
+    });
+
+    test('maps raw object storage media paths onto the minio edge path', () {
+      expect(
+        ApiConfig.resolveMediaUrl('chat/1/u_self/demo.png'),
+        '${ApiConfig.baseUrl}/minio/chat/1/u_self/demo.png',
+      );
+      expect(
+        ApiConfig.resolveMediaUrl('/common/avatar/u_self.png'),
+        '${ApiConfig.baseUrl}/minio/common/avatar/u_self.png',
+      );
+    });
+
+    test(
+      'maps self-hosted preview urls onto the local minio tunnel in desktop tunnel mode',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        await StorageUtils.init();
+        await StorageUtils.setString(
+          AppConstants.keyAuthLoginApiBaseUrl,
+          ApiConfig.windowsDesktopTunnelBaseUrl,
+        );
+
+        expect(
+          ApiConfig.resolveMediaUrl(
+            'https://infoequity.qingyunshe.top/v1/file/preview/chat/1/u_self/demo.png?download=0',
+          ),
+          'http://127.0.0.1:15002/chat/1/u_self/demo.png?download=0',
+        );
+
+        await StorageUtils.remove(AppConstants.keyAuthLoginApiBaseUrl);
+      },
+    );
+
+    test(
+      'maps local API preview urls onto the local minio tunnel in desktop tunnel mode',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        await StorageUtils.init();
+        await StorageUtils.setString(
+          AppConstants.keyAuthLoginApiBaseUrl,
+          ApiConfig.windowsDesktopTunnelBaseUrl,
+        );
+
+        expect(
+          ApiConfig.resolveMediaUrl(
+            'http://127.0.0.1:15001/v1/file/preview/chat/1/u_self/demo.png',
+          ),
+          'http://127.0.0.1:15002/chat/1/u_self/demo.png',
+        );
+
+        await StorageUtils.remove(AppConstants.keyAuthLoginApiBaseUrl);
+      },
+    );
+
+    test(
+      'maps self-hosted minio urls onto the local minio tunnel in desktop tunnel mode',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        await StorageUtils.init();
+        await StorageUtils.setString(
+          AppConstants.keyAuthLoginApiBaseUrl,
+          ApiConfig.windowsDesktopTunnelBaseUrl,
+        );
+
+        expect(
+          ApiConfig.resolveMediaUrl(
+            'https://infoequity.qingyunshe.top/minio/chat/1/u_self/demo.png?download=0',
+          ),
+          'http://127.0.0.1:15002/chat/1/u_self/demo.png?download=0',
+        );
+
+        await StorageUtils.remove(AppConstants.keyAuthLoginApiBaseUrl);
+      },
+    );
+
+    test(
+      'maps relative preview urls onto the local minio tunnel in desktop tunnel mode',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        await StorageUtils.init();
+        await StorageUtils.setString(
+          AppConstants.keyAuthLoginApiBaseUrl,
+          ApiConfig.windowsDesktopTunnelBaseUrl,
+        );
+
+        expect(
+          ApiConfig.resolveMediaUrl(
+            '/v1/file/preview/chat/1/u_self/demo.png?download=0',
+          ),
+          'http://127.0.0.1:15002/chat/1/u_self/demo.png?download=0',
+        );
+
+        await StorageUtils.remove(AppConstants.keyAuthLoginApiBaseUrl);
       },
     );
   });
@@ -76,7 +200,7 @@ void main() {
       () {
         expect(
           ApiConfig.normalizeUploadUrl(
-            'https://wemx.cc/v1/file/upload?type=chat&path=/1/u_self/demo.png',
+            'https://infoequity.qingyunshe.top/v1/file/upload?type=chat&path=/1/u_self/demo.png',
           ),
           '${ApiConfig.baseUrl}/v1/file/upload?type=chat&path=/1/u_self/demo.png',
         );

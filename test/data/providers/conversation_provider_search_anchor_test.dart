@@ -100,18 +100,38 @@ void main() {
     notifier.dispose();
   });
 
+  test(
+    'loadMore skips repeated empty older-page query for unchanged oldest item',
+    () async {
+      final gateway = _EmptyOlderPageGateway();
+      final notifier = MessageListNotifier(
+        'g1001',
+        2,
+        historyGateway: gateway,
+        autoLoad: false,
+      );
+
+      await notifier.loadMessages();
+      await notifier.loadMore();
+      await notifier.loadMore();
+
+      expect(gateway.moreCalls, 1);
+      notifier.dispose();
+    },
+  );
+
   testWidgets('ChatPage forwards initialAroundOrderSeq to ChatPageShell', (
     tester,
   ) async {
     await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
-            messageListProvider.overrideWith(
-              (ref, session) => _EmptyMessageListNotifier(
-                session.channelId,
-                session.channelType,
-              ),
+      ProviderScope(
+        overrides: [
+          realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
+          messageListProvider.overrideWith(
+            (ref, session) => _EmptyMessageListNotifier(
+              session.channelId,
+              session.channelType,
+            ),
           ),
         ],
         child: const MaterialApp(
@@ -134,14 +154,14 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
-            messageListProvider.overrideWith(
-              (ref, session) => _EmptyMessageListNotifier(
-                session.channelId,
-                session.channelType,
-              ),
+      ProviderScope(
+        overrides: [
+          realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
+          messageListProvider.overrideWith(
+            (ref, session) => _EmptyMessageListNotifier(
+              session.channelId,
+              session.channelType,
+            ),
           ),
         ],
         child: const MaterialApp(
@@ -232,15 +252,15 @@ void main() {
   ) async {
     final gateway = _RecordingHistoryGateway();
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            chatHistoryGatewayProvider.overrideWithValue(gateway),
-            realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
-          ],
-          child: const MaterialApp(
-            home: ChatPage(
-              channelId: 'fileHelper',
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          chatHistoryGatewayProvider.overrideWithValue(gateway),
+          realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
+        ],
+        child: const MaterialApp(
+          home: ChatPage(
+            channelId: 'fileHelper',
             channelType: 1,
             channelName: 'Design',
           ),
@@ -345,6 +365,46 @@ class _BlockingLoadMoreGateway implements ChatHistoryGateway {
     if (!_loadMore.isCompleted) {
       _loadMore.complete(messages);
     }
+  }
+}
+
+class _EmptyOlderPageGateway implements ChatHistoryGateway {
+  int moreCalls = 0;
+
+  @override
+  Future<List<WKMsg>> loadAroundOrderSeq({
+    required String channelId,
+    required int channelType,
+    required int limit,
+    required int aroundOrderSeq,
+  }) async {
+    return const <WKMsg>[];
+  }
+
+  @override
+  Future<List<WKMsg>> loadLatest({
+    required String channelId,
+    required int channelType,
+    required int limit,
+  }) async {
+    return <WKMsg>[
+      WKMsg()
+        ..channelID = channelId
+        ..channelType = channelType
+        ..orderSeq = 1000
+        ..contentType = 1,
+    ];
+  }
+
+  @override
+  Future<List<WKMsg>> loadMore({
+    required String channelId,
+    required int channelType,
+    required int oldestOrderSeq,
+    required int limit,
+  }) async {
+    moreCalls += 1;
+    return const <WKMsg>[];
   }
 }
 

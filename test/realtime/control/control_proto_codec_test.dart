@@ -79,6 +79,41 @@ void main() {
     expect(frame.serverTs, 1712000005);
   });
 
+  test(
+    'prefers protobuf v2 top-level identity fields over payload aliases',
+    () {
+      final payload = utf8.encode(
+        jsonEncode(<String, dynamic>{
+          'event_id': 'evt_from_payload',
+          'aggregate_id': '1:u_from_payload',
+          'server_ts': 1712000008,
+          'channel_id': 'u_2002',
+          'channel_type': 1,
+        }),
+      );
+
+      final encoded = ControlProtoCodec.encodeEnvelope(
+        eventSeq: 44,
+        eventType: 'conversation.updated',
+        payload: Uint8List.fromList(payload),
+        ackSeq: 23,
+        eventId: 'evt_top_level',
+        aggregateId: '1:u_top_level',
+        schemaVersion: 2,
+      );
+
+      final envelope = ControlProtoCodec.decodeEnvelope(encoded);
+      final frame = ControlProtoCodec.toSessionEventFrame(envelope);
+
+      expect(envelope.eventId, 'evt_top_level');
+      expect(envelope.aggregateId, '1:u_top_level');
+      expect(envelope.schemaVersion, 2);
+      expect(frame.eventId, 'evt_top_level');
+      expect(frame.aggregateId, '1:u_top_level');
+      expect(frame.payload['event_id'], 'evt_from_payload');
+    },
+  );
+
   test('decodes protobuf envelope for session.kicked kind', () {
     final payload = utf8.encode(
       jsonEncode(<String, dynamic>{

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_action_policy.dart';
 import 'package:wukong_im_app/wukong_base/msg/widget/wk_message_reaction.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 
 const String _emptySheetKey = 'chat-action-sheet-empty';
 
@@ -37,57 +38,73 @@ class ChatMessageActionSheet extends StatelessWidget {
 
     return SafeArea(
       top: false,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.6,
+      child: Container(
+        decoration: BoxDecoration(
+          color: WKWebColors.surface,
+          borderRadius: BorderRadius.circular(WKWebRadius.panel),
+          border: Border.all(color: WKWebColors.borderWarm),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: WKWebColors.shadow,
+              blurRadius: 20,
+              offset: Offset(0, 10),
+            ),
+          ],
         ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showReactionStrip) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                  child: WKReactionPicker(
-                    selectedEmoji: selectedEmoji,
-                    onEmojiSelected: (emoji) {
-                      final onReactionSelected = this.onReactionSelected;
-                      if (onReactionSelected == null) {
-                        return;
-                      }
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showReactionStrip) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                    child: WKReactionPicker(
+                      selectedEmoji: selectedEmoji,
+                      onEmojiSelected: (emoji) {
+                        final onReactionSelected = this.onReactionSelected;
+                        if (onReactionSelected == null) {
+                          return;
+                        }
+                        Navigator.of(context).pop();
+                        onReactionSelected(emoji);
+                      },
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: WKWebColors.surface,
+                        borderRadius: BorderRadius.circular(WKWebRadius.panel),
+                        border: Border.all(color: WKWebColors.borderWarm),
+                      ),
+                      itemExtent: 40,
+                      emojiFontSize: 22,
+                      spacing: 6,
+                      runSpacing: 6,
+                    ),
+                  ),
+                  const Divider(height: 1, indent: 12, endIndent: 12),
+                ],
+                ...orderedActions.map(
+                  (descriptor) => ListTile(
+                    key: ValueKey<String>(
+                      'chat-action-${descriptor.action.name}',
+                    ),
+                    title: Text(descriptor.label),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+                    visualDensity: const VisualDensity(vertical: -1),
+                    onTap: () {
                       Navigator.of(context).pop();
-                      onReactionSelected(emoji);
+                      onSelected(descriptor.action);
                     },
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFD),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE7ECF3)),
-                    ),
-                    itemExtent: 40,
-                    emojiFontSize: 22,
-                    spacing: 6,
-                    runSpacing: 6,
                   ),
                 ),
-                const Divider(height: 1, indent: 12, endIndent: 12),
               ],
-              ...orderedActions.map(
-                (descriptor) => ListTile(
-                  key: ValueKey<String>('chat-action-${descriptor.action.name}'),
-                  title: Text(descriptor.label),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                  visualDensity: const VisualDensity(vertical: -1),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    onSelected(descriptor.action);
-                  },
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

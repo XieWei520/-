@@ -68,7 +68,7 @@ class _ChatSearchEntryPageState extends ConsumerState<ChatSearchEntryPage> {
                       textInputAction: TextInputAction.search,
                       onChanged: controller.updateKeyword,
                       decoration: InputDecoration(
-                        hintText: 'Search messages',
+                        hintText: '搜索消息',
                         prefixIcon: const Icon(Icons.search),
                         filled: true,
                         fillColor: Theme.of(
@@ -90,7 +90,7 @@ class _ChatSearchEntryPageState extends ConsumerState<ChatSearchEntryPage> {
                     onPressed: () {
                       Navigator.of(context).maybePop();
                     },
-                    child: const Text('Cancel'),
+                    child: const Text('取消'),
                   ),
                 ],
               ),
@@ -101,7 +101,7 @@ class _ChatSearchEntryPageState extends ConsumerState<ChatSearchEntryPage> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Search specified content',
+                    '搜索指定内容',
                     key: const ValueKey<String>('chat-search-menu-hint'),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -170,19 +170,20 @@ class _ChatSearchEntryPageState extends ConsumerState<ChatSearchEntryPage> {
         channelName: widget.channelName,
         scope: SearchCollectionScope.link,
       ),
-      SearchMenuKind.member => widget.channelType == WKChannelType.group
-          // Group member search now uses AllMembersPage as the picker authority.
-          ? AllMembersPage(
-              channelId: widget.channelId,
-              channelType: widget.channelType,
-              channelName: widget.channelName,
-              searchMessage: true,
-            )
-          : ChatSearchMemberPage(
-              channelId: widget.channelId,
-              channelType: widget.channelType,
-              channelName: widget.channelName,
-            ),
+      SearchMenuKind.member =>
+        widget.channelType == WKChannelType.group
+            // Group member search now uses AllMembersPage as the picker authority.
+            ? AllMembersPage(
+                channelId: widget.channelId,
+                channelType: widget.channelType,
+                channelName: widget.channelName,
+                searchMessage: true,
+              )
+            : ChatSearchMemberPage(
+                channelId: widget.channelId,
+                channelType: widget.channelType,
+                channelName: widget.channelName,
+              ),
     };
 
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
@@ -219,14 +220,14 @@ class _SearchResultsBody extends StatelessWidget {
             FilledButton(
               key: const ValueKey<String>('chat-search-keyword-initial-retry'),
               onPressed: onRetryInitial,
-              child: const Text('Retry'),
+              child: const Text('重试'),
             ),
           ],
         ),
       );
     }
     if (state.items.isEmpty) {
-      return const Center(child: Text('No results'));
+      return const Center(child: Text('暂无结果'));
     }
     return ChatSearchResultsPage(
       items: state.items,

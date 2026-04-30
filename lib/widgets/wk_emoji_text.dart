@@ -3,10 +3,22 @@ import 'package:flutter/material.dart';
 import '../wukong_base/emoji/android_emoji_catalog.dart';
 
 class WKEmojiText extends StatelessWidget {
-  const WKEmojiText({super.key, required this.text, required this.style});
+  const WKEmojiText({
+    super.key,
+    required this.text,
+    required this.style,
+    this.maxLines,
+    this.overflow,
+    this.textAlign,
+    this.softWrap,
+  });
 
   final String text;
   final TextStyle style;
+  final int? maxLines;
+  final TextOverflow? overflow;
+  final TextAlign? textAlign;
+  final bool? softWrap;
 
   static bool containsAndroidEmoji(String text) {
     var index = 0;
@@ -24,6 +36,10 @@ class WKEmojiText extends StatelessWidget {
     final emojiSize = style.fontSize ?? 14;
     return Text.rich(
       TextSpan(style: style, children: _buildSpans(text, style, emojiSize)),
+      maxLines: maxLines,
+      overflow: overflow ?? TextOverflow.clip,
+      textAlign: textAlign ?? TextAlign.start,
+      softWrap: softWrap,
     );
   }
 

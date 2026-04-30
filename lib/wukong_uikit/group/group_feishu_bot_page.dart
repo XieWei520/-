@@ -1,10 +1,10 @@
-import 'package:file_picker/file_picker.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as path;
 
-import '../../core/utils/platform_utils.dart';
+import '../../core/platform/local_image_picker.dart';
 import '../../data/models/group_feishu_robot_config.dart';
 import '../../service/api/file_api.dart';
 import '../../service/api/group_api.dart';
@@ -43,7 +43,6 @@ class GroupFeishuBotPage extends StatefulWidget {
 }
 
 class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
-  final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _appIdController = TextEditingController();
   final TextEditingController _appSecretController = TextEditingController();
   final TextEditingController _displayNameController = TextEditingController();
@@ -58,6 +57,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
   GroupRobotWebhookMode _webhookMode = GroupRobotWebhookMode.imGenerated;
   GroupFeishuRobotConfig? _config;
   String _displayAvatar = '';
+  Timer? _identitySaveDebounce;
 
   @override
   void initState() {
@@ -72,6 +72,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
     _displayNameController.dispose();
     _officialWebhookUrlController.dispose();
     _officialSecretController.dispose();
+    _identitySaveDebounce?.cancel();
     super.dispose();
   }
 
@@ -109,6 +110,8 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
     bool regenerateWebhook = false,
     bool regenerateSecret = false,
   }) async {
+    _identitySaveDebounce?.cancel();
+    _identitySaveDebounce = null;
     final officialWebhookUrl = _officialWebhookUrlController.text.trim();
     final officialSecret = _officialSecretController.text.trim();
     final validationError = validateFeishuOfficialWebhookUrl(
@@ -141,17 +144,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
       if (!mounted) {
         return;
       }
-      setState(() {
-        _config = saved;
-        _enabled = saved.enabled;
-        _displayAvatar = saved.displayAvatar;
-        _webhookMode = GroupRobotWebhookModeX.fromApiValue(saved.webhookMode);
-      });
-      _appIdController.text = saved.appId;
-      _appSecretController.text = saved.appSecret;
-      _displayNameController.text = saved.displayName;
-      _officialWebhookUrlController.text = saved.officialWebhookUrl;
-      _officialSecretController.text = saved.officialSecret;
+      _applySavedConfig(saved);
 
       if (regenerateWebhook || regenerateSecret) {
         _showMessage('机器人凭证已更新');
@@ -162,6 +155,56 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
       } else {
         _showMessage('飞书机器人已生成');
       }
+    });
+  }
+
+  void _applySavedConfig(GroupFeishuRobotConfig saved) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _config = saved;
+      _enabled = saved.enabled;
+      _displayAvatar = saved.displayAvatar;
+      _webhookMode = GroupRobotWebhookModeX.fromApiValue(saved.webhookMode);
+    });
+    _appIdController.text = saved.appId;
+    _appSecretController.text = saved.appSecret;
+    _displayNameController.text = saved.displayName;
+    _officialWebhookUrlController.text = saved.officialWebhookUrl;
+    _officialSecretController.text = saved.officialSecret;
+  }
+
+  Future<void> _persistDisplayIdentity({String? successMessage}) async {
+    final saved = await GroupApi.instance.updateFeishuRobotConfig(
+      widget.groupNo,
+      enabled: _enabled,
+      displayName: _displayNameController.text.trim(),
+      displayAvatar: _displayAvatar.trim(),
+    );
+    if (!mounted) {
+      return;
+    }
+    _applySavedConfig(saved);
+    if (successMessage != null) {
+      _showMessage(successMessage);
+    }
+  }
+
+  Future<void> _saveDisplayIdentity({String? successMessage}) async {
+    await _runBusyAction(
+      () => _persistDisplayIdentity(successMessage: successMessage),
+    );
+  }
+
+  void _scheduleDisplayIdentitySave(String _) {
+    _identitySaveDebounce?.cancel();
+    _identitySaveDebounce = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) {
+        return;
+      }
+      _identitySaveDebounce = null;
+      unawaited(_saveDisplayIdentity());
     });
   }
 
@@ -255,26 +298,12 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
         return;
       }
       setState(() => _displayAvatar = uploadedUrl);
-      _showMessage('机器人展示头像已上传，保存当前配置后生效');
+      await _persistDisplayIdentity(successMessage: '机器人展示头像已保存');
     });
   }
 
   Future<String?> _pickDisplayAvatarImage() async {
-    if (PlatformUtils.isDesktop) {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
-        allowMultiple: false,
-        withData: false,
-      );
-      return result?.files.single.path;
-    }
-    final file = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1024,
-    );
-    return file?.path;
+    return pickSingleLocalImagePath(imageQuality: 85, maxWidth: 1024);
   }
 
   Future<String> _uploadAvatarByFileApi(String filePath, String uploadPath) {
@@ -290,7 +319,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
         '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
   }
 
-  void _clearDisplayAvatar() {
+  Future<void> _clearDisplayAvatar() async {
     if (_isSaving) {
       return;
     }
@@ -299,7 +328,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
       return;
     }
     setState(() => _displayAvatar = '');
-    _showMessage('机器人展示头像已清空，保存当前配置后生效');
+    await _saveDisplayIdentity(successMessage: '机器人展示头像已清空');
   }
 
   Future<void> _copyText(String label, String value) async {
@@ -366,10 +395,10 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                             _buildCreateSection(),
                           ] else ...[
                             _buildCredentialSection(
-                              title: 'Webhook 地址',
+                              title: '回调地址',
                               value: config.webhookUrl,
-                              subtitle: '将此地址配置到支持飞书机器人 Webhook 协议的第三方系统中。',
-                              copyLabel: 'Webhook 地址',
+                              subtitle: '将此地址配置到支持飞书机器人回调协议的第三方系统中。',
+                              copyLabel: '回调地址',
                             ),
                             const Divider(height: 1, indent: 15, endIndent: 15),
                             _buildCredentialSection(
@@ -396,8 +425,9 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                           displayNameController: _displayNameController,
                           displayAvatar: _displayAvatar,
                           isBusy: _isSaving,
+                          onDisplayNameChanged: _scheduleDisplayIdentitySave,
                           onUploadAvatar: _uploadDisplayAvatar,
-                          onClearAvatar: _clearDisplayAvatar,
+                          onClearAvatar: () => unawaited(_clearDisplayAvatar()),
                         ),
                       ],
                     ),
@@ -540,7 +570,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                     : WKColors.color999,
               ),
               _StatusChip(
-                label: config?.appSecretSet == true ? '已配置飞书 App' : '未配置飞书 App',
+                label: config?.appSecretSet == true ? '已配置飞书应用' : '未配置飞书应用',
                 color: config?.appSecretSet == true
                     ? const Color(0xFF4B62D4)
                     : WKColors.color999,
@@ -698,7 +728,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
             enabled: !_isSaving,
             autocorrect: false,
             decoration: const InputDecoration(
-              labelText: 'App ID',
+              labelText: '应用标识',
               border: OutlineInputBorder(),
               hintText: 'cli_xxxxxxxxxxxxx',
               filled: true,
@@ -712,7 +742,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
             autocorrect: false,
             obscureText: true,
             decoration: const InputDecoration(
-              labelText: 'App Secret',
+              labelText: '应用密钥',
               border: OutlineInputBorder(),
               hintText: '填写飞书应用密钥',
               filled: true,

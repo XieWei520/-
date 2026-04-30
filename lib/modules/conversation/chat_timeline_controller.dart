@@ -35,37 +35,76 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
   }
 
   void applyIncoming(Iterable<WKMsg> messages) {
-    final next = <ChatMessageViewModel>[...state.items];
+    final baseItems = <ChatMessageViewModel>[...state.items];
+    final headItems = <ChatMessageViewModel>[];
+    final matchIndex = ChatViewportMessageMatchIndex(baseItems);
     for (final message in messages) {
-      _upsert(
-        next,
-        _mapper.map(message, currentUid: _currentUid),
-        insertAtHead: true,
-      );
+      final model = _mapper.map(message, currentUid: _currentUid);
+      final existingIndex = matchIndex.find(model.message);
+      if (existingIndex != -1) {
+        if (existingIndex < headItems.length) {
+          headItems[existingIndex] = model;
+        } else {
+          baseItems[existingIndex - headItems.length] = model;
+        }
+        matchIndex.register(model, existingIndex);
+        continue;
+      }
+
+      headItems.insert(0, model);
+      matchIndex.noteHeadInsertion();
+      matchIndex.register(model, 0);
     }
-    _replace(next, isLoadingMore: false);
+    if (headItems.isEmpty) {
+      _replace(baseItems, isLoadingMore: false);
+      return;
+    }
+    _replace(<ChatMessageViewModel>[
+      ...headItems,
+      ...baseItems,
+    ], isLoadingMore: false);
   }
 
   void applyRefresh(WKMsg message) {
     final next = <ChatMessageViewModel>[...state.items];
+    final matchIndex = ChatViewportMessageMatchIndex(next);
     _upsert(
       next,
       _mapper.map(message, currentUid: _currentUid),
+      matchIndex: matchIndex,
       insertAtHead: true,
     );
     _replace(next, isLoadingMore: false);
   }
 
   void appendOlder(Iterable<WKMsg> messages) {
-    final next = <ChatMessageViewModel>[...state.items];
+    final baseItems = <ChatMessageViewModel>[...state.items];
+    final tailItems = <ChatMessageViewModel>[];
+    final matchIndex = ChatViewportMessageMatchIndex(baseItems);
     for (final message in messages) {
-      _upsert(
-        next,
-        _mapper.map(message, currentUid: _currentUid),
-        insertAtHead: false,
-      );
+      final model = _mapper.map(message, currentUid: _currentUid);
+      final existingIndex = matchIndex.find(model.message);
+      if (existingIndex != -1) {
+        if (existingIndex < baseItems.length) {
+          baseItems[existingIndex] = model;
+        } else {
+          tailItems[existingIndex - baseItems.length] = model;
+        }
+        matchIndex.register(model, existingIndex);
+        continue;
+      }
+
+      tailItems.add(model);
+      matchIndex.register(model, baseItems.length + tailItems.length - 1);
     }
-    _replace(next, isLoadingMore: false);
+    if (tailItems.isEmpty) {
+      _replace(baseItems, isLoadingMore: false);
+      return;
+    }
+    _replace(<ChatMessageViewModel>[
+      ...baseItems,
+      ...tailItems,
+    ], isLoadingMore: false);
   }
 
   Future<void> loadOlder() async {
@@ -138,28 +177,23 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
   void _upsert(
     List<ChatMessageViewModel> items,
     ChatMessageViewModel model, {
+    required ChatViewportMessageMatchIndex matchIndex,
     required bool insertAtHead,
   }) {
-    final existingIndex = _findExistingIndex(items, model);
+    final existingIndex = matchIndex.find(model.message);
     if (existingIndex != -1) {
       items[existingIndex] = model;
+      matchIndex.register(model, existingIndex);
       return;
     }
     if (insertAtHead) {
       items.insert(0, model);
+      matchIndex.noteHeadInsertion();
+      matchIndex.register(model, 0);
     } else {
       items.add(model);
+      matchIndex.register(model, items.length - 1);
     }
-  }
-
-  int _findExistingIndex(
-    List<ChatMessageViewModel> items,
-    ChatMessageViewModel model,
-  ) {
-    return items.indexWhere(
-      (item) =>
-          ChatViewportMessageMatcher.equivalent(item.message, model.message),
-    );
   }
 }
 

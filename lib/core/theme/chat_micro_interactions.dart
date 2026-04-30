@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../motion/chat_motion.dart';
+
 /// Micro-interaction widgets for chat visual polish.
 ///
 /// - [UnreadBadgeBounce]: Elastic scale animation on the unread count badge
@@ -39,22 +41,28 @@ class _UnreadBadgeBounceState extends State<UnreadBadgeBounce>
     _previousCount = widget.count;
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: ChatMotionDurations.badgeBounce.value,
     );
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.3)
-            .chain(CurveTween(curve: Curves.easeOut)),
+        tween: Tween(
+          begin: 1.0,
+          end: 1.3,
+        ).chain(CurveTween(curve: Curves.easeOut)),
         weight: 40,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.3, end: 0.9)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween(
+          begin: 1.3,
+          end: 0.9,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 30,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 0.9, end: 1.0)
-            .chain(CurveTween(curve: Curves.elasticOut)),
+        tween: Tween(
+          begin: 0.9,
+          end: 1.0,
+        ).chain(CurveTween(curve: ChatMotionCurves.spring)),
         weight: 30,
       ),
     ]).animate(_controller);
@@ -81,18 +89,13 @@ class _UnreadBadgeBounceState extends State<UnreadBadgeBounce>
   Widget build(BuildContext context) {
     if (widget.count <= 0) return const SizedBox.shrink();
 
-    final label =
-        widget.count > 99 ? '99+' : widget.count.toString();
-    final minWidth =
-        label.length > 2 ? widget.size + 8 : widget.size;
+    final label = widget.count > 99 ? '99+' : widget.count.toString();
+    final minWidth = label.length > 2 ? widget.size + 8 : widget.size;
 
     return ScaleTransition(
       scale: _scaleAnimation,
       child: Container(
-        constraints: BoxConstraints(
-          minWidth: minWidth,
-          minHeight: widget.size,
-        ),
+        constraints: BoxConstraints(minWidth: minWidth, minHeight: widget.size),
         padding: const EdgeInsets.symmetric(horizontal: 5),
         decoration: BoxDecoration(
           color: widget.color,
@@ -177,7 +180,9 @@ class _ReadReceiptTicksState extends State<ReadReceiptTicks>
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.isSent) return SizedBox(width: widget.size, height: widget.size);
+    if (!widget.isSent) {
+      return SizedBox(width: widget.size, height: widget.size);
+    }
 
     final color = widget.isRead ? widget.readColor : widget.unreadColor;
 
@@ -271,10 +276,7 @@ class _BannerContent extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            bgColor,
-            bgColor.withValues(alpha: 0.85),
-          ],
+          colors: [bgColor, bgColor.withValues(alpha: 0.85)],
         ),
       ),
       child: SafeArea(

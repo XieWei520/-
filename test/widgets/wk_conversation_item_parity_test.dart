@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
+import 'package:wukong_im_app/widgets/wk_emoji_text.dart';
 import 'package:wukong_im_app/widgets/wk_conversation_item.dart';
 import 'package:wukong_im_app/widgets/wk_colors.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
+import 'package:wukong_im_app/wukong_base/emoji/android_emoji_catalog.dart';
 
 void main() {
   Widget wrapWithApp(Widget child) {
@@ -53,6 +57,33 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('VIP商家'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'conversation item shows prominent customer service badge for service chats',
+    (tester) async {
+      await tester.pumpWidget(
+        wrapWithApp(
+          const WKConversationItem(
+            data: WKConversationItemData(
+              channelId: 'cs_001',
+              channelType: 1,
+              title: 'Support',
+              category: 'customerService',
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(
+          const ValueKey<String>('conversation-customer-service-badge-cs_001'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(CustomerServiceBadge), findsOneWidget);
+      expect(find.text('\u5ba2\u670d'), findsOneWidget);
     },
   );
 
@@ -173,4 +204,144 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'conversation item truncates dense status badges instead of overflowing on narrow screens',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 640);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        wrapWithApp(
+          const WKConversationItem(
+            data: WKConversationItemData(
+              channelId: 'dense_status',
+              channelType: 2,
+              isGroup: true,
+              title:
+                  'Extremely Long Group Conversation Name That Must Truncate',
+              lastMsgContent:
+                  'Very long message preview that should shrink after reminders',
+              reminderLabel: '[有人@我] [草稿] [进群申请] [超长提醒标签]',
+              showTypingIndicator: true,
+              typingLabel: '对方正在输入',
+              isCalling: true,
+              isForbidden: true,
+              unreadCount: 128,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('[有人@我]'), findsOneWidget);
+      expect(find.text('[草稿]'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('conversation_typing_dots')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'conversation item renders Android emoji preview with inline assets',
+    (tester) async {
+      final emoji = androidEmojiCatalog.lookupById('0_0')!;
+
+      await tester.pumpWidget(
+        wrapWithApp(
+          WKConversationItem(
+            data: WKConversationItemData(
+              channelId: 'emoji_preview',
+              channelType: 1,
+              title: 'Emoji Preview',
+              lastMsgContent: 'hi ${emoji.tag}',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(WKEmojiText), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName == emoji.assetPath,
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('conversation item supports warm Web selected state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithApp(
+        const WKConversationItem(
+          webStyle: true,
+          selected: true,
+          data: WKConversationItemData(
+            channelId: 'u_web',
+            channelType: 1,
+            title: 'Web Alice',
+            lastMsgContent: 'hello from web',
+            unreadCount: 3,
+          ),
+        ),
+      ),
+    );
+
+    final shell = tester.widget<AnimatedContainer>(
+      find.byKey(const ValueKey<String>('wk-conversation-item-web-shell')),
+    );
+    final decoration = shell.decoration! as BoxDecoration;
+    expect(decoration.color, WKWebColors.actionSoft);
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey<String>('wk-conversation-item-hitbox')),
+          )
+          .height,
+      76,
+    );
+  });
+
+  testWidgets('conversation item exposes a visible Web ink surface', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithApp(
+        const WKConversationItem(
+          webStyle: true,
+          data: WKConversationItemData(
+            channelId: 'u_web_ink',
+            channelType: 1,
+            title: 'Web Ink',
+            lastMsgContent: 'ink should render above shell',
+          ),
+        ),
+      ),
+    );
+
+    final webShell = find.byKey(
+      const ValueKey<String>('wk-conversation-item-web-shell'),
+    );
+    final inkSurface = find.descendant(
+      of: webShell,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Material &&
+            widget.type == MaterialType.transparency &&
+            widget.clipBehavior == Clip.antiAlias,
+        description: 'transparent clipped Material for Web ink',
+      ),
+    );
+
+    expect(inkSurface, findsOneWidget);
+  });
 }

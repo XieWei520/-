@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/wk_avatar.dart';
+
 /// Mention suggestion data
 class MentionSuggestion {
   final String id;
@@ -42,10 +44,7 @@ class MentionSuggestionOverlay extends StatelessWidget {
       elevation: 4,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        constraints: const BoxConstraints(
-          maxHeight: 250,
-          maxWidth: 300,
-        ),
+        constraints: const BoxConstraints(maxHeight: 250, maxWidth: 300),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(8),
@@ -59,7 +58,9 @@ class MentionSuggestionOverlay extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.grey[100],
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(8),
+                ),
               ),
               child: Row(
                 children: [
@@ -67,10 +68,7 @@ class MentionSuggestionOverlay extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     '@提及',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -97,22 +95,11 @@ class MentionSuggestionOverlay extends StatelessWidget {
                       child: Row(
                         children: [
                           // Avatar
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: Colors.grey[300],
-                            backgroundImage: suggestion.avatar != null
-                                ? NetworkImage(suggestion.avatar!)
-                                : null,
-                            child: suggestion.avatar == null
-                                ? Text(
-                                    suggestion.name.isNotEmpty
-                                        ? suggestion.name[0].toUpperCase()
-                                        : '?',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  )
-                                : null,
+                          WKAvatar(
+                            url: suggestion.avatar,
+                            name: suggestion.name,
+                            size: 36,
+                            isGroup: suggestion.type == 1,
                           ),
                           const SizedBox(width: 12),
 
@@ -208,7 +195,8 @@ class MentionSuggestionController extends ChangeNotifier {
 
   void selectPrevious() {
     if (_suggestions.isNotEmpty) {
-      _selectedIndex = (_selectedIndex - 1 + _suggestions.length) % _suggestions.length;
+      _selectedIndex =
+          (_selectedIndex - 1 + _suggestions.length) % _suggestions.length;
       notifyListeners();
     }
   }

@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../widgets/local_media_image_provider.dart';
 import '../../../../widgets/wk_colors.dart';
 import '../../../../widgets/wk_design_tokens.dart';
 import '../../application/auth_providers.dart';
@@ -107,8 +107,9 @@ class _AuthProfileCompletionPageState
 
   Widget _buildAvatarPreview() {
     final filePath = _avatarFilePath?.trim() ?? '';
-    final file = filePath.isEmpty ? null : File(filePath);
-    final canPreview = file != null && file.existsSync();
+    final imageProvider = filePath.isEmpty
+        ? null
+        : resolveLocalMediaImageProvider(filePath);
 
     return Container(
       width: 120,
@@ -122,31 +123,37 @@ class _AuthProfileCompletionPageState
         ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: canPreview
-          ? Image.file(file, fit: BoxFit.cover)
-          : Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  _hasAvatarSelection
-                      ? Icons.check_circle_rounded
-                      : Icons.add_a_photo_outlined,
-                  size: 36,
-                  color: _hasAvatarSelection
-                      ? WKColors.brand500
-                      : WKColors.color999,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _hasAvatarSelection ? '已选头像' : '上传头像',
-                  style: const TextStyle(
-                    fontFamily: WKFontFamily.primary,
-                    fontSize: 12,
-                    color: WKColors.color999,
-                  ),
-                ),
-              ],
-            ),
+      child: imageProvider != null
+          ? Image(
+              image: imageProvider,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _buildAvatarPlaceholder(),
+            )
+          : _buildAvatarPlaceholder(),
+    );
+  }
+
+  Widget _buildAvatarPlaceholder() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          _hasAvatarSelection
+              ? Icons.check_circle_rounded
+              : Icons.add_a_photo_outlined,
+          size: 36,
+          color: _hasAvatarSelection ? WKColors.brand500 : WKColors.color999,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _hasAvatarSelection ? '已选头像' : '上传头像',
+          style: const TextStyle(
+            fontFamily: WKFontFamily.primary,
+            fontSize: 12,
+            color: WKColors.color999,
+          ),
+        ),
+      ],
     );
   }
 
@@ -194,7 +201,7 @@ class _AuthProfileCompletionPageState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('OK'),
+              child: const Text('确定'),
             ),
           ],
         );

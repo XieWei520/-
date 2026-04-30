@@ -1,5 +1,7 @@
+import 'dart:collection';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_unknown_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
@@ -20,8 +22,21 @@ String chatMessageIdentity(WKMsg message) {
 }
 
 class ChatMessageMapper {
-  final Map<String, Map<String, dynamic>?> _payloadCache =
-      <String, Map<String, dynamic>?>{};
+  ChatMessageMapper({
+    int maxStructuredPayloadCacheEntries =
+        defaultMaxStructuredPayloadCacheEntries,
+  }) : _maxStructuredPayloadCacheEntries = maxStructuredPayloadCacheEntries < 1
+           ? 1
+           : maxStructuredPayloadCacheEntries;
+
+  static const int defaultMaxStructuredPayloadCacheEntries = 512;
+
+  final int _maxStructuredPayloadCacheEntries;
+  final LinkedHashMap<String, Map<String, dynamic>?> _payloadCache =
+      LinkedHashMap<String, Map<String, dynamic>?>();
+
+  @visibleForTesting
+  int get structuredPayloadCacheSizeForTesting => _payloadCache.length;
 
   ChatMessageViewModel map(WKMsg message, {required String currentUid}) {
     final identity = chatMessageIdentity(message);
@@ -47,20 +62,20 @@ class ChatMessageMapper {
   }
 
   Map<String, dynamic>? _structuredPayload(WKMsg message, String revision) {
-    final cached = _payloadCache[revision];
-    if (_payloadCache.containsKey(revision)) {
-      return cached;
-    }
     final shouldDecode =
         message.contentType == WkMessageContentType.unknown ||
         message.messageContent is WKUnknownContent;
     if (!shouldDecode) {
-      _payloadCache[revision] = null;
       return null;
+    }
+    if (_payloadCache.containsKey(revision)) {
+      final cached = _payloadCache.remove(revision);
+      _payloadCache[revision] = cached;
+      return cached;
     }
     final raw = message.content.trim();
     if (raw.isEmpty || (!raw.startsWith('{') && !raw.startsWith('['))) {
-      _payloadCache[revision] = null;
+      _putStructuredPayload(revision, null);
       return null;
     }
     try {
@@ -68,11 +83,19 @@ class ChatMessageMapper {
       final payload = decoded is Map
           ? Map<String, dynamic>.from(decoded)
           : null;
-      _payloadCache[revision] = payload;
+      _putStructuredPayload(revision, payload);
       return payload;
     } catch (_) {
-      _payloadCache[revision] = null;
+      _putStructuredPayload(revision, null);
       return null;
     }
+  }
+
+  void _putStructuredPayload(String revision, Map<String, dynamic>? payload) {
+    _payloadCache.remove(revision);
+    while (_payloadCache.length >= _maxStructuredPayloadCacheEntries) {
+      _payloadCache.remove(_payloadCache.keys.first);
+    }
+    _payloadCache[revision] = payload;
   }
 }

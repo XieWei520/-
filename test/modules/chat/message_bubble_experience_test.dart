@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/core/cache/media_cache_manager.dart';
 import 'package:wukong_im_app/core/config/api_config.dart';
+import 'package:wukong_im_app/data/models/link_preview.dart';
+import 'package:wukong_im_app/data/models/wk_custom_content.dart'
+    show WKLocationContent;
 import 'package:wukong_im_app/data/models/wk_robot_card_content.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_mapper.dart';
+import 'package:wukong_im_app/modules/chat/link_preview_service.dart';
 import 'package:wukong_im_app/widgets/message_bubble.dart';
+import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/widgets/wk_emoji_text.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 import 'package:wukong_im_app/wukong_base/emoji/android_emoji_catalog.dart';
 import 'package:wukong_im_app/wukong_base/msg/msg_content_type.dart';
 import 'package:wukong_im_app/wukong_base/msg/widget/wk_message_reaction.dart';
@@ -13,15 +20,25 @@ import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/entity/channel_member.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_card_content.dart';
+import 'package:wukongimfluttersdk/model/wk_gif_content.dart';
 import 'package:wukongimfluttersdk/model/wk_image_content.dart';
 import 'package:wukongimfluttersdk/model/wk_sticker_content.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/model/wk_unknown_content.dart';
+import 'package:wukongimfluttersdk/model/wk_video_content.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
   group('message bubble presentation', () {
+    setUp(() {
+      WKAvatar.setBytesLoaderForTesting((url) async => null);
+    });
+
+    tearDown(() {
+      WKAvatar.setBytesLoaderForTesting(null);
+    });
+
     test('resolveMessageParticipantInfo prefers group member data', () {
       final message = WKMsg()
         ..fromUID = 'u_alice'
@@ -64,6 +81,60 @@ void main() {
     );
 
     test(
+      'resolveMessageParticipantInfo prefers current group member data over stale message member data',
+      () {
+        final message = WKMsg()
+          ..fromUID = 'u_test3'
+          ..channelType = WKChannelType.group;
+        message.setMemberOfFrom(
+          WKChannelMember()
+            ..memberUID = 'u_test3'
+            ..memberName = 'Old Name'
+            ..memberAvatar = 'users/test3/old-avatar',
+        );
+        final fallbackMember = WKChannelMember()
+          ..memberUID = 'u_test3'
+          ..memberName = 'Current Name'
+          ..memberAvatar = 'users/test3/current-avatar';
+
+        final info = resolveMessageParticipantInfo(
+          message,
+          fallbackGroupMember: fallbackMember,
+        );
+
+        expect(info.displayName, 'Current Name');
+        expect(
+          info.avatarUrl,
+          ApiConfig.resolveMediaUrl('users/test3/current-avatar'),
+        );
+      },
+    );
+
+    test(
+      'resolveMessageParticipantInfo uses current peer channel for incoming personal messages',
+      () {
+        final message = WKMsg()
+          ..fromUID = 'u_peer'
+          ..channelID = 'u_peer'
+          ..channelType = WKChannelType.personal;
+        final peerChannel = WKChannel('u_peer', WKChannelType.personal)
+          ..channelName = 'Peer Name'
+          ..avatar = 'users/u_peer/current-avatar';
+
+        final info = resolveMessageParticipantInfo(
+          message,
+          fallbackSenderChannel: peerChannel,
+        );
+
+        expect(info.displayName, 'Peer Name');
+        expect(
+          info.avatarUrl,
+          ApiConfig.resolveMediaUrl('users/u_peer/current-avatar'),
+        );
+      },
+    );
+
+    test(
       'resolveMessageParticipantInfo prefers robot identity for group robot payloads',
       () {
         final message = WKMsg()
@@ -89,6 +160,77 @@ void main() {
         expect(
           info.avatarUrl,
           ApiConfig.resolveMediaUrl('robots/weather/avatar.png'),
+        );
+      },
+    );
+
+    test(
+      'resolveMessageParticipantInfo does not use the peer channel avatar for outgoing personal messages',
+      () {
+        final message = WKMsg()
+          ..fromUID = 'u_me'
+          ..channelID = 'u_peer'
+          ..channelType = WKChannelType.personal;
+        message.setChannelInfo(
+          WKChannel('u_peer', WKChannelType.personal)
+            ..channelName = 'Peer'
+            ..avatar = 'users/peer/avatar',
+        );
+
+        final info = resolveMessageParticipantInfo(message);
+
+        expect(info.displayName, 'u_me');
+        expect(info.avatarUrl, ApiConfig.resolveMediaUrl('users/u_me/avatar'));
+      },
+    );
+
+    test(
+      'resolveMessageParticipantInfo uses current user profile for outgoing messages',
+      () {
+        final message = WKMsg()
+          ..fromUID = 'u_me'
+          ..channelID = 'g_team'
+          ..channelType = WKChannelType.group;
+        final fallbackMember = WKChannelMember()
+          ..memberUID = 'u_me'
+          ..memberName = 'Group Nickname'
+          ..memberAvatar = 'users/stale/avatar';
+
+        final info = resolveMessageParticipantInfo(
+          message,
+          fallbackGroupMember: fallbackMember,
+          currentUid: 'u_me',
+          currentUserDisplayName: 'Current Me',
+          currentUserAvatarUrl: 'users/current/avatar',
+        );
+
+        expect(info.displayName, 'Current Me');
+        expect(
+          info.avatarUrl,
+          ApiConfig.resolveMediaUrl('users/current/avatar'),
+        );
+      },
+    );
+
+    test(
+      'resolveMessageParticipantInfo does not reuse the group avatar as a member avatar',
+      () {
+        final message = WKMsg()
+          ..fromUID = 'u_alice'
+          ..channelID = 'g_team'
+          ..channelType = WKChannelType.group;
+        message.setChannelInfo(
+          WKChannel('g_team', WKChannelType.group)
+            ..channelName = 'Team'
+            ..avatar = 'groups/g_team/avatar',
+        );
+
+        final info = resolveMessageParticipantInfo(message);
+
+        expect(info.displayName, 'u_alice');
+        expect(
+          info.avatarUrl,
+          ApiConfig.resolveMediaUrl('users/u_alice/avatar'),
         );
       },
     );
@@ -139,6 +281,93 @@ void main() {
       expect(model.identity, startsWith('seq:'));
       expect(model.self, isTrue);
       expect(label, allOf(contains('3'), contains('1')));
+    });
+
+    testWidgets('failed outgoing status exposes a retry tap target', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('retry me')
+        ..status = WKSendMsgResult.sendFail;
+      var retryCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              onRetrySend: () {
+                retryCount += 1;
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('message-retry-send-button')),
+      );
+
+      expect(retryCount, 1);
+    });
+
+    testWidgets('failed outgoing status plays a short shake affordance', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('retry me')
+        ..status = WKSendMsgResult.sendFail;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              onRetrySend: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 48));
+
+      final shake = tester.widget<Transform>(
+        find.byKey(const ValueKey<String>('message-send-failure-shake')),
+      );
+      expect(shake.transform.getTranslation().x.abs(), greaterThan(0));
+    });
+
+    testWidgets('pending outgoing status shows a subtle pulse affordance', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('sending')
+        ..status = WKSendMsgResult.sendLoading;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+
+      final pulse = tester.widget<Opacity>(
+        find.byKey(const ValueKey<String>('message-send-pending-pulse')),
+      );
+      expect(pulse.opacity, lessThan(1));
+      expect(pulse.opacity, greaterThan(0.65));
     });
 
     test('reaction picker exposes real emoji instead of placeholders', () {
@@ -274,18 +503,65 @@ void main() {
           find.byKey(const ValueKey<String>('message-sticker-body')),
           findsOneWidget,
         );
-        expect(
-          find.byWidgetPredicate(
-            (widget) =>
-                widget is Image &&
-                widget.image is AssetImage &&
-                (widget.image as AssetImage).assetName ==
-                    'assets/stickers/sample_pack/typing.webp',
+        final stickerImage = tester.widget<Image>(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('message-sticker-body')),
+            matching: find.byType(Image),
           ),
-          findsOneWidget,
+        );
+        expect(stickerImage.image, isA<ResizeImage>());
+        final resizedImage = stickerImage.image as ResizeImage;
+        expect(resizedImage.imageProvider, isA<AssetImage>());
+        expect(
+          (resizedImage.imageProvider as AssetImage).assetName,
+          'assets/stickers/sample_pack/typing.webp',
         );
       },
     );
+
+    testWidgets('sticker bubble prefers preview asset before full animation', (
+      tester,
+    ) async {
+      const previewKey =
+          'assets/stickers/sample_pack/previews/typing-preview.webp';
+      const animationKey = 'assets/stickers/sample_pack/typing.webp';
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.sticker
+        ..messageContent = WKStickerContent(
+          packId: 'android_sample_motion',
+          stickerId: 'typing',
+          previewKey: previewKey,
+          animationKey: animationKey,
+          fallbackText: '[贴纸]',
+        )
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      final stickerImage = tester.widget<Image>(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('message-sticker-body')),
+          matching: find.byType(Image),
+        ),
+      );
+
+      expect(stickerImage.image, isA<ResizeImage>());
+      final resizedImage = stickerImage.image as ResizeImage;
+      expect(resizedImage.imageProvider, isA<AssetImage>());
+      expect((resizedImage.imageProvider as AssetImage).assetName, previewKey);
+      expect(resizedImage.width, (160 * tester.view.devicePixelRatio).round());
+      expect(resizedImage.height, (160 * tester.view.devicePixelRatio).round());
+    });
 
     testWidgets(
       'sticker bubble falls back to placeholder card when assets are missing',
@@ -320,6 +596,54 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('[贴纸]'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'sticker bubble renders remote sticker url when asset keys are absent',
+      (tester) async {
+        final message = WKMsg()
+          ..fromUID = 'u_other'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.sticker
+          ..messageContent = WKStickerContent(
+            packId: 'remote_pack',
+            stickerId: 'remote_sticker',
+            fallbackText: '[\u8d34\u7eb8]',
+            url: 'https://cdn.example.com/stickers/remote.webp',
+          )
+          ..status = WKSendMsgResult.sendSuccess;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          find.byKey(const ValueKey<String>('message-sticker-body')),
+          findsOneWidget,
+        );
+        final cachedSticker = tester.widget<CachedMediaImage>(
+          find.byType(CachedMediaImage),
+        );
+        final expectedDecodeSize = (160 * tester.view.devicePixelRatio).round();
+        expect(
+          cachedSticker.imageUrl,
+          'https://cdn.example.com/stickers/remote.webp',
+        );
+        expect(cachedSticker.cacheKey, cachedSticker.imageUrl);
+        expect(cachedSticker.fit, BoxFit.contain);
+        expect(cachedSticker.maxWidth, expectedDecodeSize);
+        expect(cachedSticker.maxHeight, expectedDecodeSize);
+        expect(
+          find.byKey(const ValueKey<String>('message-sticker-placeholder')),
+          findsNothing,
+        );
       },
     );
 
@@ -457,6 +781,42 @@ void main() {
       },
     );
 
+    testWidgets('reply preview renders catalog emoji as inline image asset', (
+      tester,
+    ) async {
+      final entry = androidEmojiCatalog.lookupById('0_0')!;
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = (WKTextContent('replying body')
+          ..reply = (WKReply()
+            ..fromName = 'Alice'
+            ..payload = WKTextContent('quoted ${entry.tag}')))
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(WKEmojiText), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Image &&
+              widget.image is AssetImage &&
+              (widget.image as AssetImage).assetName == entry.assetPath,
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('link preview updates when bubble url changes', (tester) async {
       final firstMessage = WKMsg()
         ..fromUID = 'u_me'
@@ -504,6 +864,50 @@ void main() {
 
       expect(find.textContaining('example.com/preview-second'), findsWidgets);
       expect(find.textContaining('example.com/preview-first'), findsNothing);
+    });
+
+    testWidgets('link preview image uses the shared media cache pipeline', (
+      tester,
+    ) async {
+      const url = 'https://example.com/preview-with-image';
+      const imageUrl = 'https://cdn.example.com/preview/card.jpg';
+      LinkPreviewService.instance.setPreviewForTesting(
+        url,
+        const LinkPreview(
+          url: url,
+          host: 'example.com',
+          displayUrl: 'example.com/preview-with-image',
+          title: 'Preview with image',
+          description: 'Cached preview image',
+          imageUrl: imageUrl,
+        ),
+      );
+      addTearDown(LinkPreviewService.instance.clearCacheForTesting);
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent(url)
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final cachedImage = tester.widget<CachedMediaImage>(
+        find.byType(CachedMediaImage),
+      );
+      expect(cachedImage.imageUrl, imageUrl);
+      expect(cachedImage.cacheKey, imageUrl);
+      expect(cachedImage.height, 132);
+      expect(find.text('Preview with image'), findsOneWidget);
     });
 
     testWidgets('incoming text bubble uses a bordered card surface', (
@@ -698,6 +1102,10 @@ void main() {
             home: Scaffold(
               body: MessageBubble(
                 model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+                participant: const MessageParticipantInfo(
+                  displayName: 'Me',
+                  avatarUrl: null,
+                ),
               ),
             ),
           ),
@@ -721,6 +1129,151 @@ void main() {
         expect(find.byIcon(Icons.broken_image_outlined), findsNothing);
       },
     );
+
+    testWidgets('remote image bubble uses the shared media cache pipeline', (
+      tester,
+    ) async {
+      final content = WKImageContent(918, 352)..url = '/uploads/panel.png';
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.image
+        ..messageContent = content
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              participant: const MessageParticipantInfo(
+                displayName: 'Me',
+                avatarUrl: null,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final cachedImage = tester.widget<CachedMediaImage>(
+        find.byType(CachedMediaImage),
+      );
+      expect(cachedImage.imageUrl, ApiConfig.resolveMediaUrl(content.url));
+      expect(cachedImage.cacheKey, cachedImage.imageUrl);
+    });
+
+    testWidgets(
+      'remote preview path in image localPath renders as network media',
+      (tester) async {
+        final content = WKImageContent(918, 352)
+          ..localPath = '/v1/file/preview/chat/1/u_peer/demo.png';
+        final message = WKMsg()
+          ..fromUID = 'u_peer'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.image
+          ..messageContent = content
+          ..status = WKSendMsgResult.sendSuccess;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+                participant: const MessageParticipantInfo(
+                  displayName: 'Peer',
+                  avatarUrl: null,
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final cachedImage = tester.widget<CachedMediaImage>(
+          find.byType(CachedMediaImage),
+        );
+        expect(
+          cachedImage.imageUrl,
+          ApiConfig.resolveMediaUrl(content.localPath),
+        );
+        expect(find.byIcon(Icons.broken_image_outlined), findsNothing);
+      },
+    );
+
+    testWidgets('video cover uses the shared media cache pipeline', (
+      tester,
+    ) async {
+      final content = WKVideoContent()
+        ..cover = '/uploads/video-cover.jpg'
+        ..width = 1920
+        ..height = 1080;
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.video
+        ..messageContent = content;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              participant: const MessageParticipantInfo(
+                displayName: 'Me',
+                avatarUrl: null,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final cachedImage = tester.widget<CachedMediaImage>(
+        find.byType(CachedMediaImage),
+      );
+      expect(cachedImage.imageUrl, ApiConfig.resolveMediaUrl(content.cover));
+      expect(cachedImage.cacheKey, cachedImage.imageUrl);
+      expect(cachedImage.width, 200);
+      expect(cachedImage.height, 150);
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+    });
+
+    testWidgets('gif bubble uses shared media cache and readable badge', (
+      tester,
+    ) async {
+      final content = WKGifContent(width: 800, height: 600)
+        ..url = '/uploads/fun.gif';
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.gif
+        ..messageContent = content;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              participant: const MessageParticipantInfo(
+                displayName: 'Me',
+                avatarUrl: null,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final cachedGif = tester.widget<CachedMediaImage>(
+        find.byType(CachedMediaImage),
+      );
+      final expectedDecodeSize = (200 * tester.view.devicePixelRatio).round();
+      expect(cachedGif.imageUrl, ApiConfig.resolveMediaUrl(content.url));
+      expect(cachedGif.cacheKey, cachedGif.imageUrl);
+      expect(cachedGif.width, 200);
+      expect(cachedGif.height, 200);
+      expect(cachedGif.maxWidth, expectedDecodeSize);
+      expect(cachedGif.maxHeight, expectedDecodeSize);
+      expect(find.text('\u52a8\u56fe'), findsOneWidget);
+      expect(find.text('鍔ㄥ浘'), findsNothing);
+    });
 
     test('media decode request matches rendered image demand', () {
       final request = resolveMediaDecodeRequest(
@@ -1019,6 +1572,27 @@ void main() {
       },
     );
 
+    testWidgets('location bubble fallback title is readable Chinese', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..contentType = WkMessageContentType.location
+        ..messageContent = (WKLocationContent()..address = '上海市徐汇区');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_self'),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('\u4f4d\u7f6e'), findsOneWidget);
+      expect(find.text('浣嶇疆'), findsNothing);
+    });
+
     testWidgets(
       'robot card bubble renders premium card shell instead of plain text fallback',
       (tester) async {
@@ -1056,6 +1630,94 @@ void main() {
           find.byKey(const ValueKey<String>('message-status-badge')),
           findsNothing,
         );
+      },
+    );
+
+    testWidgets('warm Web text bubble uses approved outgoing color', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('hello warm web')
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              webStyle: true,
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      final body = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-bubble-body')),
+      );
+      final decoration = body.decoration! as BoxDecoration;
+      expect(decoration.color, const Color(0xFFFFEDD5));
+    });
+
+    testWidgets(
+      'warm Web outgoing text bubble uses dark readable content and metadata colors',
+      (tester) async {
+        final message = WKMsg()
+          ..fromUID = 'u_me'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.text
+          ..messageContent = WKTextContent('readable warm web')
+          ..timestamp = 1710000000
+          ..wkMsgExtra = (WKMsgExtra()..isPinned = 1)
+          ..status = WKSendMsgResult.sendSuccess;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                webStyle: true,
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              ),
+            ),
+          ),
+        );
+
+        final body = tester.widget<Container>(
+          find.byKey(const ValueKey<String>('message-bubble-body')),
+        );
+        final decoration = body.decoration! as BoxDecoration;
+        expect(decoration.color, WKWebColors.actionSoft);
+
+        final contentText = tester.widget<SelectableText>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is SelectableText && widget.data == 'readable warm web',
+          ),
+        );
+        expect(contentText.style?.color, WKWebColors.textPrimary);
+        expect(contentText.style?.color, isNot(Colors.white));
+
+        final pinnedText = tester.widget<Text>(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('message-pinned-indicator')),
+            matching: find.text('\u7f6e\u9876'),
+          ),
+        );
+        expect(pinnedText.style?.color, const Color(0xFF475569));
+        expect(pinnedText.style?.color, isNot(Colors.white));
+
+        final metadataText = tester.widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey<String>('message-status-badge')),
+                matching: find.byType(Text),
+              )
+              .first,
+        );
+        expect(metadataText.style?.color, const Color(0xFF475569));
+        expect(metadataText.style?.color, isNot(Colors.white));
       },
     );
   });

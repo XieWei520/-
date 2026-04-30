@@ -161,26 +161,26 @@ class EmojiManager {
     switch (groupId) {
       case '0':
         return const _EmojiGroupMeta(
-          categoryName: 'Smileys',
-          packName: 'Classic',
+          categoryName: '表情',
+          packName: '经典',
           icon: Icons.sentiment_satisfied_alt,
         );
       case '1':
         return const _EmojiGroupMeta(
-          categoryName: 'Gestures',
-          packName: 'Gestures',
+          categoryName: '手势',
+          packName: '手势',
           icon: Icons.thumb_up_alt,
         );
       case '2':
         return const _EmojiGroupMeta(
-          categoryName: 'Symbols',
-          packName: 'Symbols',
+          categoryName: '符号',
+          packName: '符号',
           icon: Icons.favorite,
         );
       default:
         return const _EmojiGroupMeta(
-          categoryName: 'Emojis',
-          packName: 'Emoji Pack',
+          categoryName: '表情',
+          packName: '表情包',
           icon: Icons.emoji_emotions,
         );
     }

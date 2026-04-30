@@ -230,6 +230,29 @@ class WkHttpClient {
     );
   }
 
+  Future<Response<T>> uploadBytes<T>(
+    String path,
+    List<int> bytes, {
+    required String filename,
+    String name = 'file',
+    Map<String, dynamic>? data,
+    void Function(int, int)? onSendProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final formData = FormData.fromMap({
+      ...?data,
+      name: MultipartFile.fromBytes(bytes, filename: filename),
+    });
+
+    return dio.post<T>(
+      path,
+      data: formData,
+      onSendProgress: onSendProgress,
+      options: Options(contentType: 'multipart/form-data'),
+      cancelToken: cancelToken,
+    );
+  }
+
   Future<Response<dynamic>> downloadFile(
     String path,
     String savePath, {

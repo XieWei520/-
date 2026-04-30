@@ -231,7 +231,21 @@ void main() {
     });
 
     test(
-      'pulls pending invites only when gateway is degraded and app is foreground',
+      'default safety polling interval is short enough for incoming rings',
+      () {
+        final loop = PendingCallRecoveryLoop(
+          callStore: CallStore(machine: const CallStateMachine()),
+          fetchPendingCalls: ({required fallback}) async => <CallRoom>[],
+          currentUidReader: () => 'u_self',
+        );
+        addTearDown(loop.stop);
+
+        expect(loop.safetyPollingInterval, const Duration(seconds: 2));
+      },
+    );
+
+    test(
+      'pulls pending invites by safety polling when app is foreground',
       () async {
         final store = CallStore(machine: const CallStateMachine());
         addTearDown(store.dispose);
@@ -261,7 +275,7 @@ void main() {
         addTearDown(loop.stop);
 
         loop.setForeground(false);
-        loop.setGatewayDegradationReader((_) => true);
+        loop.setGatewayDegradationReader((_) => false);
         loop.start();
 
         await Future<void>.delayed(Duration.zero);
@@ -278,6 +292,41 @@ void main() {
         expect(store.state.status, CallLifecycleStatus.invited);
       },
     );
+
+    test(
+      'can disable safety polling and only poll when gateway is degraded',
+      () async {
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        var fetchCount = 0;
+        final loop = PendingCallRecoveryLoop(
+          callStore: store,
+          fetchPendingCalls: ({required fallback}) async {
+            fetchCount++;
+            return <CallRoom>[];
+          },
+          currentUidReader: () => 'u_self',
+          enableSafetyPolling: false,
+          degradedThreshold: Duration.zero,
+          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+          delay: (_) => Completer<void>().future,
+        );
+        addTearDown(loop.stop);
+
+        loop.setGatewayDegradationReader((_) => false);
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+        expect(fetchCount, 0);
+
+        loop.setGatewayDegradationReader((_) => true);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 1);
+      },
+    );
   });
 
   group('call coordinator lifecycle', () {
@@ -290,6 +339,7 @@ void main() {
         final coordinator = CallCoordinator(
           callStore: store,
           currentUidReader: () => 'u_self',
+          fetchPendingCalls: ({required fallback}) async => <CallRoom>[],
         );
 
         coordinator.start(GlobalKey<NavigatorState>());

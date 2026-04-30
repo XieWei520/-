@@ -1,9 +1,13 @@
-import 'dart:io';
+import 'dart:collection';
+
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'wk_colors.dart';
+
+typedef WKAvatarBytesLoader = Future<Uint8List?> Function(String url);
 
 class WKAvatar extends StatefulWidget {
   final String? url;
@@ -26,9 +30,21 @@ class WKAvatar extends StatefulWidget {
   static const Set<String> _knownPlaceholderHashes = {
     '13b9c7748b60fd0290013c92341f44fd',
   };
-  static final Map<String, Uint8List?> _bytesCache = <String, Uint8List?>{};
+  static const int maxAvatarMemoryCacheBytes = 4 * 1024 * 1024;
+  static const int maxAvatarMemoryCacheEntries = 512;
+  static final LinkedHashMap<String, _WKAvatarBytesCacheEntry> _bytesCache =
+      LinkedHashMap<String, _WKAvatarBytesCacheEntry>();
   static final Map<String, Future<Uint8List?>> _pendingLoads =
       <String, Future<Uint8List?>>{};
+  static WKAvatarBytesLoader? _debugBytesLoader;
+  static int _bytesCacheSize = 0;
+  static final Dio _avatarDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 12),
+      receiveTimeout: const Duration(seconds: 12),
+      responseType: ResponseType.bytes,
+    ),
+  );
 
   static String? _normalizeUrl(String? value) {
     final normalized = value?.trim() ?? '';
@@ -41,14 +57,14 @@ class WKAvatar extends StatefulWidget {
       return;
     }
 
-    _bytesCache.remove(normalized);
+    _removeCachedBytes(normalized);
     _pendingLoads.remove(normalized);
 
     final uri = Uri.tryParse(normalized);
     if (uri != null && (uri.hasQuery || uri.fragment.isNotEmpty)) {
       final withoutQuery = uri.replace(queryParameters: const {}, fragment: '');
       final baseUrl = withoutQuery.toString();
-      _bytesCache.remove(baseUrl);
+      _removeCachedBytes(baseUrl);
       _pendingLoads.remove(baseUrl);
     }
   }
@@ -58,44 +74,151 @@ class WKAvatar extends StatefulWidget {
     if (normalizedUrl == null) {
       return Future<Uint8List?>.value(null);
     }
-    if (_bytesCache.containsKey(normalizedUrl)) {
-      return Future<Uint8List?>.value(_bytesCache[normalizedUrl]);
+    final cachedEntry = _bytesCache.remove(normalizedUrl);
+    if (cachedEntry != null) {
+      _bytesCache[normalizedUrl] = cachedEntry;
+      return Future<Uint8List?>.value(cachedEntry.bytes);
+    }
+
+    final debugBytesLoader = _debugBytesLoader;
+    if (debugBytesLoader != null) {
+      return _pendingLoads.putIfAbsent(normalizedUrl, () async {
+        try {
+          final bytes = await debugBytesLoader(normalizedUrl);
+          _storeCachedBytes(normalizedUrl, bytes);
+          return bytes;
+        } finally {
+          _pendingLoads.remove(normalizedUrl);
+        }
+      });
     }
 
     return _pendingLoads.putIfAbsent(normalizedUrl, () async {
-      HttpClient? client;
       try {
-        client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
-        final request = await client.getUrl(Uri.parse(normalizedUrl));
-        final response = await request.close();
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          _bytesCache[normalizedUrl] = null;
+        final response = await _avatarDio.get<List<int>>(
+          normalizedUrl,
+          options: Options(
+            responseType: ResponseType.bytes,
+            validateStatus: (status) =>
+                status != null && status >= 200 && status < 300,
+          ),
+        );
+        final rawBytes = response.data;
+        if (rawBytes == null || rawBytes.isEmpty) {
+          _storeCachedBytes(normalizedUrl, null);
           return null;
         }
 
-        final bytes = await consolidateHttpClientResponseBytes(response);
-        if (bytes.isEmpty) {
-          _bytesCache[normalizedUrl] = null;
-          return null;
-        }
-
+        final bytes = Uint8List.fromList(rawBytes);
         final hash = crypto.md5.convert(bytes).toString();
         final isPlaceholder = _knownPlaceholderHashes.contains(hash);
         final resolvedBytes = isPlaceholder ? null : bytes;
-        _bytesCache[normalizedUrl] = resolvedBytes;
+        _storeCachedBytes(normalizedUrl, resolvedBytes);
         return resolvedBytes;
       } catch (_) {
-        _bytesCache[normalizedUrl] = null;
+        _storeCachedBytes(normalizedUrl, null);
         return null;
       } finally {
-        client?.close(force: true);
         _pendingLoads.remove(normalizedUrl);
       }
     });
   }
 
+  @visibleForTesting
+  static void setBytesLoaderForTesting(WKAvatarBytesLoader? loader) {
+    _bytesCache.clear();
+    _bytesCacheSize = 0;
+    _pendingLoads.clear();
+    _debugBytesLoader = loader;
+  }
+
+  @visibleForTesting
+  static Future<Uint8List?> loadBytesForTesting(String url) => _loadBytes(url);
+
+  @visibleForTesting
+  static int get cachedAvatarBytesForTesting => _bytesCacheSize;
+
+  @visibleForTesting
+  static int get cachedAvatarEntriesForTesting => _bytesCache.length;
+
+  @visibleForTesting
+  static bool shouldUseBrowserNetworkImageForTesting({
+    required bool isWeb,
+    required String? url,
+  }) {
+    return _shouldUseBrowserNetworkImage(isWeb: isWeb, url: url);
+  }
+
+  static void _storeCachedBytes(String url, Uint8List? bytes) {
+    final estimatedBytes = bytes?.lengthInBytes ?? 1;
+    if (estimatedBytes > maxAvatarMemoryCacheBytes) {
+      _removeCachedBytes(url);
+      return;
+    }
+
+    _removeCachedBytes(url);
+    while (_bytesCache.isNotEmpty &&
+        (_bytesCacheSize + estimatedBytes > maxAvatarMemoryCacheBytes ||
+            _bytesCache.length >= maxAvatarMemoryCacheEntries)) {
+      _removeCachedBytes(_bytesCache.keys.first);
+    }
+
+    _bytesCache[url] = _WKAvatarBytesCacheEntry(
+      bytes: bytes,
+      estimatedBytes: estimatedBytes,
+    );
+    _bytesCacheSize += estimatedBytes;
+  }
+
+  static void _removeCachedBytes(String url) {
+    final entry = _bytesCache.remove(url);
+    if (entry != null) {
+      _bytesCacheSize -= entry.estimatedBytes;
+    }
+  }
+
+  static bool _shouldUseBrowserNetworkImage({
+    required bool isWeb,
+    required String? url,
+  }) {
+    final normalizedUrl = _normalizeUrl(url);
+    return isWeb &&
+        normalizedUrl != null &&
+        !_isGeneratedAvatarEndpoint(normalizedUrl);
+  }
+
+  static bool _isGeneratedAvatarEndpoint(String url) {
+    final uri = Uri.tryParse(url);
+    final rawPath = uri?.path ?? url;
+    final path = rawPath.split('?').first.split('#').first;
+    final segments = path
+        .split('/')
+        .map((segment) => segment.trim())
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    final v1Index = segments.indexOf('v1');
+    if (v1Index == -1 || v1Index + 3 >= segments.length) {
+      return false;
+    }
+    final resource = segments[v1Index + 1];
+    return (resource == 'users' || resource == 'groups') &&
+        segments[v1Index + 2].isNotEmpty &&
+        segments[v1Index + 3] == 'avatar' &&
+        segments.length == v1Index + 4;
+  }
+
   @override
   State<WKAvatar> createState() => _WKAvatarState();
+}
+
+class _WKAvatarBytesCacheEntry {
+  const _WKAvatarBytesCacheEntry({
+    required this.bytes,
+    required this.estimatedBytes,
+  });
+
+  final Uint8List? bytes;
+  final int estimatedBytes;
 }
 
 class _WKAvatarState extends State<WKAvatar> {
@@ -117,6 +240,13 @@ class _WKAvatarState extends State<WKAvatar> {
 
   void _syncAvatarFuture() {
     final normalizedUrl = WKAvatar._normalizeUrl(widget.url);
+    if (WKAvatar._shouldUseBrowserNetworkImage(
+      isWeb: kIsWeb,
+      url: normalizedUrl,
+    )) {
+      _avatarFuture = null;
+      return;
+    }
     _avatarFuture = normalizedUrl == null
         ? null
         : WKAvatar._loadBytes(normalizedUrl);
@@ -144,6 +274,28 @@ class _WKAvatarState extends State<WKAvatar> {
   }
 
   Widget _buildAvatarContent() {
+    final normalizedUrl = WKAvatar._normalizeUrl(widget.url);
+    if (WKAvatar._shouldUseBrowserNetworkImage(
+      isWeb: kIsWeb,
+      url: normalizedUrl,
+    )) {
+      return Image.network(
+        normalizedUrl!,
+        width: widget.size,
+        height: widget.size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.low,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) {
+            return child;
+          }
+          return _buildPlaceholder();
+        },
+        errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+      );
+    }
+
     if (_avatarFuture == null) {
       return _buildPlaceholder();
     }

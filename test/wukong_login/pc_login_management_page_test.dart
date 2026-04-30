@@ -453,7 +453,12 @@ void main() {
 
     expect(find.text('\u624b\u673a\u9759\u97f3'), findsOneWidget);
     expect(find.text('\u6587\u4ef6\u4f20\u8f93\u52a9\u624b'), findsOneWidget);
-    expect(find.text('\u9000\u51fa\u5168\u90e8 PC/Web \u767b\u5f55'), findsOneWidget);
+    expect(
+      find.text(
+        '\u9000\u51fa\u5168\u90e8\u7535\u8111\u7aef/\u7f51\u9875\u7aef\u767b\u5f55',
+      ),
+      findsOneWidget,
+    );
   });
 }
 

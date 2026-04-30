@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/app/bootstrap/app_startup.dart';
@@ -21,25 +23,80 @@ void main() {
     expect(events, <String>['storage', 'push']);
   });
 
-  test('startup runner stops at first failing step and rejects retries', () async {
+  test('startup runner does not wait for background steps', () async {
     final events = <String>[];
+    final backgroundCompleter = Completer<void>();
     final runner = AppStartupRunner(
       logger: const AppLogger('startup'),
       steps: <AppStartupStep>[
         AppStartupStep('storage', () async => events.add('storage')),
-        AppStartupStep('broken', () async {
-          events.add('broken');
-          throw StateError('boom');
+      ],
+      backgroundSteps: <AppStartupStep>[
+        AppStartupStep('drafts', () async {
+          events.add('drafts:start');
+          await backgroundCompleter.future;
+          events.add('drafts:end');
         }),
-        AppStartupStep('never', () async => events.add('never')),
       ],
     );
 
-    await expectLater(runner.ensureStarted(), throwsA(isA<StateError>()));
-    await expectLater(runner.ensureStarted(), throwsA(isA<StateError>()));
+    await runner.ensureStarted().timeout(const Duration(milliseconds: 100));
 
-    expect(events, <String>['storage', 'broken']);
+    expect(events, <String>['storage', 'drafts:start']);
+
+    backgroundCompleter.complete();
+    await runner.ensureBackgroundStarted();
+
+    expect(events, <String>['storage', 'drafts:start', 'drafts:end']);
   });
+
+  test(
+    'startup runner records foreground and background step timings',
+    () async {
+      final events = <AppStartupStepMetric>[];
+      final runner = AppStartupRunner(
+        logger: const AppLogger('startup'),
+        onStepMetric: events.add,
+        steps: <AppStartupStep>[AppStartupStep('storage', () async {})],
+        backgroundSteps: <AppStartupStep>[AppStartupStep('push', () async {})],
+      );
+
+      await runner.ensureStarted();
+      await runner.ensureBackgroundStarted();
+
+      expect(events, hasLength(2));
+      expect(events[0].label, 'storage');
+      expect(events[0].background, isFalse);
+      expect(events[0].succeeded, isTrue);
+      expect(events[0].elapsed, isNot(Duration.zero));
+      expect(events[1].label, 'push');
+      expect(events[1].background, isTrue);
+      expect(events[1].succeeded, isTrue);
+    },
+  );
+
+  test(
+    'startup runner stops at first failing step and rejects retries',
+    () async {
+      final events = <String>[];
+      final runner = AppStartupRunner(
+        logger: const AppLogger('startup'),
+        steps: <AppStartupStep>[
+          AppStartupStep('storage', () async => events.add('storage')),
+          AppStartupStep('broken', () async {
+            events.add('broken');
+            throw StateError('boom');
+          }),
+          AppStartupStep('never', () async => events.add('never')),
+        ],
+      );
+
+      await expectLater(runner.ensureStarted(), throwsA(isA<StateError>()));
+      await expectLater(runner.ensureStarted(), throwsA(isA<StateError>()));
+
+      expect(events, <String>['storage', 'broken']);
+    },
+  );
 
   test('AppEnvironment rejects mismatched platform and web flags', () {
     expect(

@@ -31,13 +31,14 @@ ChatFileOpenTarget? resolveChatFileOpenTarget({
   WKMessageContent? messageContent,
   Map<String, dynamic>? structuredPayload,
 }) {
+  final fileName = _fileNameOf(messageContent, structuredPayload);
   final localCandidates = <String>[
     if (messageContent is WKFileContent) messageContent.localPath.trim(),
     _readStructuredString(structuredPayload, const [
       'localPath',
       'local_path',
-      'path',
       'file_path',
+      'filePath',
     ]),
   ];
   for (final value in localCandidates) {
@@ -57,10 +58,11 @@ ChatFileOpenTarget? resolveChatFileOpenTarget({
       'url',
       'file_url',
       'fileUrl',
+      'path',
     ]),
   ];
   for (final value in remoteCandidates) {
-    final normalized = _normalizeRemoteUrl(value);
+    final normalized = _normalizeRemoteUrl(value, fileName: fileName);
     if (normalized.isNotEmpty) {
       return ChatFileOpenTarget(
         type: ChatFileOpenTargetType.remoteUrl,
@@ -94,6 +96,27 @@ String _readStructuredString(Map<String, dynamic>? payload, List<String> keys) {
   return '';
 }
 
+String _fileNameOf(
+  WKMessageContent? messageContent,
+  Map<String, dynamic>? payload,
+) {
+  final candidates = <String>[
+    if (messageContent is WKFileContent) messageContent.name.trim(),
+    _readStructuredString(payload, const [
+      'name',
+      'fileName',
+      'file_name',
+      'filename',
+    ]),
+  ];
+  for (final value in candidates) {
+    if (value.isNotEmpty) {
+      return value;
+    }
+  }
+  return '';
+}
+
 bool _isLocalPath(String value) {
   final normalized = value.trim();
   if (normalized.isEmpty) {
@@ -115,25 +138,113 @@ bool _isLocalPath(String value) {
   return RegExp(r'^[a-zA-Z]:[\\/]').hasMatch(normalized);
 }
 
-String _normalizeRemoteUrl(String value) {
+String _normalizeRemoteUrl(String value, {String fileName = ''}) {
   final normalized = value.trim();
   if (normalized.isEmpty) {
     return '';
   }
   final lowerValue = normalized.toLowerCase();
   if (lowerValue.startsWith('http://') || lowerValue.startsWith('https://')) {
-    return normalized;
+    final uri = Uri.tryParse(normalized);
+    if (uri == null || uri.host.trim().isEmpty) {
+      return '';
+    }
+    return _withAttachmentDisposition(
+      ApiConfig.resolveMediaUrl(normalized),
+      fileName: fileName,
+    );
   }
   if (_looksLikeRemotePath(normalized)) {
-    return ApiConfig.resolveMediaUrl(normalized);
+    return _withAttachmentDisposition(
+      ApiConfig.resolveMediaUrl(_toMinioDownloadPath(normalized)),
+      fileName: fileName,
+    );
   }
   return '';
 }
 
 bool _looksLikeRemotePath(String value) {
-  final normalized = value.trim();
+  final normalized = value.trim().replaceAll('\\', '/');
+  final path = normalized.replaceFirst(RegExp(r'^/+'), '');
   return normalized.startsWith('/v1/') ||
       normalized.startsWith('v1/') ||
       normalized.startsWith('/minio/') ||
-      normalized.startsWith('minio/');
+      normalized.startsWith('minio/') ||
+      _looksLikeMinioObjectPath(path);
+}
+
+bool _looksLikeMinioObjectPath(String path) {
+  return path.startsWith('chat/') ||
+      path.startsWith('common/') ||
+      path.startsWith('avatar/') ||
+      path.startsWith('group/') ||
+      path.startsWith('moment/') ||
+      path.startsWith('report/') ||
+      path.startsWith('download/') ||
+      path.startsWith('sticker/') ||
+      path.startsWith('chatbg/');
+}
+
+String _toMinioDownloadPath(String value) {
+  final normalized = value.trim().replaceAll('\\', '/');
+  final withoutLeadingSlash = normalized.replaceFirst(RegExp(r'^/+'), '');
+  for (final prefix in <String>[
+    'v1/file/preview/',
+    'v1/file/download/',
+    'minio/',
+  ]) {
+    if (withoutLeadingSlash.startsWith(prefix)) {
+      return 'minio/${withoutLeadingSlash.substring(prefix.length)}';
+    }
+  }
+  if (_looksLikeMinioObjectPath(withoutLeadingSlash)) {
+    return 'minio/$withoutLeadingSlash';
+  }
+  return normalized;
+}
+
+String _withAttachmentDisposition(String value, {required String fileName}) {
+  final uri = Uri.tryParse(value);
+  if (uri == null || uri.host.trim().isEmpty) {
+    return value;
+  }
+  final minioUri = _asMinioUri(uri);
+  if (minioUri == null) {
+    return value;
+  }
+  final parameters = Map<String, String>.from(minioUri.queryParameters);
+  parameters['response-content-disposition'] =
+      'attachment; filename="${_safeDispositionFileName(fileName, minioUri)}"';
+  return minioUri.replace(queryParameters: parameters).toString();
+}
+
+Uri? _asMinioUri(Uri uri) {
+  final normalizedPath = uri.path.replaceAll('\\', '/');
+  const previewPrefix = '/v1/file/preview/';
+  const downloadPrefix = '/v1/file/download/';
+  if (normalizedPath.startsWith('/minio/')) {
+    return uri;
+  }
+  if (normalizedPath.startsWith(previewPrefix)) {
+    return uri.replace(
+      path: '/minio/${normalizedPath.substring(previewPrefix.length)}',
+    );
+  }
+  if (normalizedPath.startsWith(downloadPrefix)) {
+    return uri.replace(
+      path: '/minio/${normalizedPath.substring(downloadPrefix.length)}',
+    );
+  }
+  return null;
+}
+
+String _safeDispositionFileName(String fileName, Uri uri) {
+  final fromName = fileName.trim();
+  final fromPath = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last.trim();
+  final candidate = fromName.isNotEmpty ? fromName : fromPath;
+  final cleaned = candidate
+      .replaceAll(RegExp(r'[\x00-\x1F\x7F"]+'), '')
+      .replaceAll(RegExp(r'[\\/]+'), '_')
+      .trim();
+  return cleaned.isEmpty ? 'download' : cleaned;
 }

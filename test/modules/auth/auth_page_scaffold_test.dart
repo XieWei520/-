@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_agreement_block.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_experience_tokens.dart';
@@ -9,6 +9,34 @@ import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_page_scaffo
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_status_banner.dart';
 
 void main() {
+  test('auth control tokens meet accessible contrast thresholds', () {
+    expect(
+      _contrastRatio(Colors.white, AuthExperienceTokens.brandAccent),
+      greaterThanOrEqualTo(4.5),
+    );
+    expect(
+      _contrastRatio(
+        AuthExperienceTokens.inputHint,
+        AuthExperienceTokens.inputFill,
+      ),
+      greaterThanOrEqualTo(4.5),
+    );
+    expect(
+      _contrastRatio(
+        AuthExperienceTokens.inputBorder,
+        AuthExperienceTokens.inputFill,
+      ),
+      greaterThanOrEqualTo(3.0),
+    );
+    expect(
+      _contrastRatio(
+        AuthExperienceTokens.inputBorderFocus,
+        AuthExperienceTokens.inputFill,
+      ),
+      greaterThanOrEqualTo(3.0),
+    );
+  });
+
   testWidgets('AuthPageScaffold renders premium desktop stage shell split', (
     tester,
   ) async {
@@ -20,14 +48,10 @@ void main() {
         home: AuthPageScaffold(
           title: '欢迎登录',
           pageLabel: '欢迎登录',
-          brandEyebrow: 'INFORMATION EQUITY',
+          brandEyebrow: '信息平权',
           brandTitle: '信息平权',
           brandDescription: '让全天下的人没有信息差',
-          brandHighlights: const [
-            '真实信息更快抵达',
-            '统一可信入口',
-            '桌面 / 移动 / Web 一致体验',
-          ],
+          brandHighlights: ['真实信息更快抵达', '统一可信入口', '桌面 / 移动 / Web 一致体验'],
           body: SizedBox(height: 320, child: Placeholder()),
         ),
       ),
@@ -98,14 +122,10 @@ void main() {
           home: AuthPageScaffold(
             title: '欢迎登录',
             pageLabel: '欢迎登录',
-            brandEyebrow: 'INFORMATION EQUITY',
+            brandEyebrow: '信息平权',
             brandTitle: '信息平权',
             brandDescription: '让全天下的人没有信息差',
-            brandHighlights: const [
-              '真实信息更快抵达',
-              '统一可信入口',
-              '桌面 / 移动 / Web 一致体验',
-            ],
+            brandHighlights: ['真实信息更快抵达', '统一可信入口', '桌面 / 移动 / Web 一致体验'],
             statusBanner: const SizedBox(height: 48),
             body: const SizedBox(height: 220, child: Placeholder()),
             primaryAction: const SizedBox(
@@ -143,14 +163,10 @@ void main() {
           home: AuthPageScaffold(
             title: '欢迎登录',
             pageLabel: '欢迎登录',
-            brandEyebrow: 'INFORMATION EQUITY',
+            brandEyebrow: '信息平权',
             brandTitle: '信息平权',
             brandDescription: '让全天下的人没有信息差',
-            brandHighlights: const [
-              '真实信息更快抵达',
-              '统一可信入口',
-              '桌面 / 移动 / Web 一致体验',
-            ],
+            brandHighlights: ['真实信息更快抵达', '统一可信入口', '桌面 / 移动 / Web 一致体验'],
             body: SizedBox(height: 960, child: Placeholder()),
           ),
         ),
@@ -353,15 +369,15 @@ void main() {
         const ValueKey<String>('agreement-toggle-semantics'),
       );
       final beforeTap = tester.getSemantics(toggleFinder);
-      expect(beforeTap.hasFlag(SemanticsFlag.hasCheckedState), isTrue);
-      expect(beforeTap.hasFlag(SemanticsFlag.isChecked), isFalse);
+      expect(beforeTap.flagsCollection.isChecked, isNot(ui.CheckedState.none));
+      expect(beforeTap.flagsCollection.isChecked, ui.CheckedState.isFalse);
 
       await tester.tap(toggleFinder);
       await tester.pumpAndSettle();
 
       final afterTap = tester.getSemantics(toggleFinder);
-      expect(afterTap.hasFlag(SemanticsFlag.hasCheckedState), isTrue);
-      expect(afterTap.hasFlag(SemanticsFlag.isChecked), isTrue);
+      expect(afterTap.flagsCollection.isChecked, isNot(ui.CheckedState.none));
+      expect(afterTap.flagsCollection.isChecked, ui.CheckedState.isTrue);
     } finally {
       semanticsHandle.dispose();
     }
@@ -500,6 +516,18 @@ void main() {
     await tester.pump();
     expect(dismissCount, 1);
   });
+}
+
+double _contrastRatio(Color foreground, Color background) {
+  final foregroundLuminance = foreground.computeLuminance();
+  final backgroundLuminance = background.computeLuminance();
+  final lighter = foregroundLuminance > backgroundLuminance
+      ? foregroundLuminance
+      : backgroundLuminance;
+  final darker = foregroundLuminance > backgroundLuminance
+      ? backgroundLuminance
+      : foregroundLuminance;
+  return (lighter + 0.05) / (darker + 0.05);
 }
 
 void _noop() {}

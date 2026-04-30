@@ -51,7 +51,10 @@ class _AboutPageState extends State<AboutPage> {
 
   String get _appName {
     final packageName = _packageInfo?.appName.trim() ?? '';
-    return packageName.isEmpty ? AppConfig.appName : packageName;
+    if (packageName.isEmpty || packageName == 'wukong_im_app') {
+      return AppConfig.appName;
+    }
+    return packageName;
   }
 
   String get _versionText =>
@@ -175,15 +178,27 @@ class _AboutPageState extends State<AboutPage> {
           GestureDetector(
             onTap: () =>
                 _openUrl('https://beian.miit.gov.cn/#/home', '无法打开备案查询页面'),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: WKColors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'ICP备案号 沪ICP备2021032718号-6A >',
-                style: TextStyle(fontSize: 12, color: WKColors.color999),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Container(
+                key: const ValueKey<String>('about-legal-link'),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width - 20,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: WKColors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'ICP备案号 沪ICP备2021032718号-6A >',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: WKColors.color999),
+                ),
               ),
             ),
           ),

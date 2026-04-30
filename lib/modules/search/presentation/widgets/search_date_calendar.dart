@@ -20,12 +20,23 @@ class DateSearchStrings {
 
   static DateSearchStrings of(BuildContext context) {
     final languageCode = Localizations.localeOf(context).languageCode;
-    final isChinese = languageCode.toLowerCase().startsWith('zh');
+    if (languageCode == 'en') {
+      return DateSearchStrings(
+        title: 'Search chat history',
+        today: 'Today',
+        noData: 'No data',
+        retry: 'Retry',
+        weekdays: List<String>.from(
+          MaterialLocalizations.of(context).narrowWeekdays,
+          growable: false,
+        ),
+      );
+    }
     return DateSearchStrings(
-      title: isChinese ? '查找聊天记录' : 'Search Chat History',
-      today: isChinese ? '今天' : 'Today',
-      noData: isChinese ? '暂无数据' : 'No data',
-      retry: isChinese ? '重试' : 'Retry',
+      title: '查找聊天记录',
+      today: '今天',
+      noData: '暂无数据',
+      retry: '重试',
       weekdays: List<String>.from(
         MaterialLocalizations.of(context).narrowWeekdays,
         growable: false,

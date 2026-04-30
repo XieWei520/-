@@ -1,25 +1,53 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
+import '../../../core/config/api_config.dart';
+import '../../../core/utils/platform_utils.dart';
 import '../../../data/models/user.dart';
 import '../../../service/api/auth_api.dart';
 import '../../../service/api/login_bridge_api.dart';
 import '../../../service/api/user_api.dart';
 import '../../../wk_foundation/errors/app_failure.dart';
+import '../../../wk_foundation/logging/app_logger.dart';
+import '../../../wk_foundation/net/wk_http_client.dart';
 import '../domain/auth_flow_models.dart';
 import '../domain/auth_repository.dart';
+import 'shared_prefs_auth_login_preferences_store.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
+  static const AppLogger _logger = AppLogger('auth/repository');
+
   AuthRepositoryImpl({
     required AuthApi authApi,
     UserApi? userApi,
     LoginBridgeApi? loginBridgeApi,
+    AuthApiBaseUrlPreferencesStore? authApiBaseUrlStore,
+    bool? enableDesktopTunnelAutoFallback,
+    Future<bool> Function()? localDesktopTunnelAvailabilityChecker,
+    VoidCallback? syncHttpBaseUrlWithConfig,
+    String Function()? readApiBaseUrl,
   }) : _authApi = authApi,
        _userApi = userApi ?? UserApi.instance,
-       _loginBridgeApi = loginBridgeApi ?? LoginBridgeApi.instance;
+       _loginBridgeApi = loginBridgeApi ?? LoginBridgeApi.instance,
+       _authApiBaseUrlStore =
+           authApiBaseUrlStore ?? AuthApiBaseUrlPreferencesStore(),
+       _enableDesktopTunnelAutoFallback =
+           enableDesktopTunnelAutoFallback ?? PlatformUtils.isWindows,
+       _localDesktopTunnelAvailabilityChecker =
+           localDesktopTunnelAvailabilityChecker,
+       _syncHttpBaseUrlWithConfig =
+           syncHttpBaseUrlWithConfig ??
+           WkHttpClient.instance.syncBaseUrlWithConfig,
+       _readApiBaseUrl = readApiBaseUrl ?? (() => ApiConfig.baseUrl);
 
   final AuthApi _authApi;
   final UserApi _userApi;
   final LoginBridgeApi _loginBridgeApi;
+  final AuthApiBaseUrlPreferencesStore _authApiBaseUrlStore;
+  final bool _enableDesktopTunnelAutoFallback;
+  final Future<bool> Function()? _localDesktopTunnelAvailabilityChecker;
+  final VoidCallback _syncHttpBaseUrlWithConfig;
+  final String Function() _readApiBaseUrl;
 
   @override
   Future<AuthCredentialResult> loginWithPhone({
@@ -28,7 +56,11 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
   }) async {
     try {
-      final response = await _authApi.login(phone, password, zone: zone);
+      final response = await _loginWithPhoneWithFallback(
+        zone: zone,
+        phone: phone,
+        password: password,
+      );
       if (response.requiresLoginVerification) {
         final verificationUid = response.data?.uid?.trim() ?? '';
         if (verificationUid.isNotEmpty) {
@@ -358,5 +390,120 @@ class AuthRepositoryImpl implements AuthRepository {
       return normalizedImToken;
     }
     return token;
+  }
+
+  Future<LoginResp> _loginWithPhoneWithFallback({
+    required String zone,
+    required String phone,
+    required String password,
+  }) async {
+    try {
+      return await _authApi.login(phone, password, zone: zone);
+    } on DioException catch (error) {
+      final retriedResponse = await _retryLoginViaDesktopTunnelIfNeeded(
+        error: error,
+        retry: () => _authApi.login(phone, password, zone: zone),
+      );
+      if (retriedResponse != null) {
+        return retriedResponse;
+      }
+      rethrow;
+    }
+  }
+
+  Future<LoginResp?> _retryLoginViaDesktopTunnelIfNeeded({
+    required DioException error,
+    required Future<LoginResp> Function() retry,
+  }) async {
+    if (!_shouldRetryLoginViaDesktopTunnel(error)) {
+      _logger.info('desktop tunnel retry skipped');
+      return null;
+    }
+
+    if (_localDesktopTunnelAvailabilityChecker != null) {
+      final isTunnelAvailable = await _localDesktopTunnelAvailabilityChecker();
+      _logger.info('desktop tunnel availability=$isTunnelAvailable');
+      if (!isTunnelAvailable) {
+        return null;
+      }
+    }
+
+    final previousBaseUrl = _normalizeBaseUrl(_readApiBaseUrl());
+    _logger.info(
+      'desktop tunnel retry switching baseUrl from $previousBaseUrl to ${ApiConfig.windowsDesktopTunnelBaseUrl}',
+    );
+    await _authApiBaseUrlStore.save(ApiConfig.windowsDesktopTunnelBaseUrl);
+    _syncHttpBaseUrlWithConfig();
+    try {
+      final response = await retry();
+      _logger.info('desktop tunnel retry succeeded');
+      return response;
+    } catch (error, stackTrace) {
+      _logger.error('desktop tunnel retry failed', error, stackTrace);
+      await _restoreApiBaseUrl(previousBaseUrl);
+      rethrow;
+    }
+  }
+
+  bool _shouldRetryLoginViaDesktopTunnel(DioException error) {
+    if (!_enableDesktopTunnelAutoFallback) {
+      _logger.info('desktop tunnel retry disabled');
+      return false;
+    }
+
+    final currentBaseUrl = _normalizeBaseUrl(_readApiBaseUrl());
+    if (currentBaseUrl.isEmpty ||
+        ApiConfig.isWindowsDesktopTunnelBaseUrl(currentBaseUrl)) {
+      _logger.info(
+        'desktop tunnel retry rejected baseUrl=$currentBaseUrl alreadyTunnel=${ApiConfig.isWindowsDesktopTunnelBaseUrl(currentBaseUrl)}',
+      );
+      return false;
+    }
+
+    if (!_isDefaultHostedBaseUrl(currentBaseUrl)) {
+      _logger.info(
+        'desktop tunnel retry rejected non-default baseUrl=$currentBaseUrl',
+      );
+      return false;
+    }
+
+    final isPublicEndpointFailure = _isPublicDesktopEndpointFailure(error);
+    _logger.info(
+      'desktop tunnel retry publicEndpointFailure=$isPublicEndpointFailure baseUrl=$currentBaseUrl',
+    );
+    return isPublicEndpointFailure;
+  }
+
+  bool _isDefaultHostedBaseUrl(String value) {
+    final normalized = _normalizeBaseUrl(value);
+    return normalized == _normalizeBaseUrl(ApiConfig.devBaseUrl) ||
+        normalized == _normalizeBaseUrl(ApiConfig.prodBaseUrl);
+  }
+
+  bool _isPublicDesktopEndpointFailure(DioException error) {
+    final message =
+        '${error.message ?? ''} ${error.error ?? ''}'.toLowerCase();
+    return message.contains('handshakeexception') ||
+        message.contains('during handshake') ||
+        message.contains('connection terminated during handshake') ||
+        message.contains('connection reset') ||
+        message.contains('connection reset by peer') ||
+        message.contains('recv failure') ||
+        message.contains('forcibly closed by the remote host') ||
+        message.contains('software caused connection abort') ||
+        message.contains('sec_e_no_credentials');
+  }
+
+  String _normalizeBaseUrl(String value) {
+    return value.trim().replaceFirst(RegExp(r'/+$'), '');
+  }
+
+  Future<void> _restoreApiBaseUrl(String previousBaseUrl) async {
+    final restoredValue = _isDefaultHostedBaseUrl(previousBaseUrl)
+        ? ''
+        : previousBaseUrl;
+    _logger.info('restoring login baseUrl override to $restoredValue');
+    await _authApiBaseUrlStore.save(restoredValue);
+    _syncHttpBaseUrlWithConfig();
   }
 }

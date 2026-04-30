@@ -5,11 +5,16 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wukongimfluttersdk/type/const.dart';
+import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/core/config/im_config.dart';
 import 'package:wukong_im_app/data/models/friend.dart';
 import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
+import 'package:wukong_im_app/data/providers/conversation_provider.dart';
 import 'package:wukong_im_app/data/providers/user_provider.dart';
+import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/modules/contacts/contacts_directory_controller.dart';
 import 'package:wukong_im_app/modules/contacts/contacts_page.dart';
 import 'package:wukong_im_app/modules/contacts/contacts_presence_controller.dart';
@@ -24,10 +29,18 @@ import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
 import 'package:wukong_im_app/wukong_base/endpoint/entity/contacts_menu.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late HttpClientAdapter originalAdapter;
 
-  setUp(() {
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await StorageUtils.init();
+  });
+
+  setUp(() async {
     originalAdapter = ApiClient.instance.dio.httpClientAdapter;
+    await StorageUtils.clear();
+    await StorageUtils.setUid('u_self');
   });
 
   tearDown(() {
@@ -38,6 +51,7 @@ void main() {
     Widget child, {
     List<Override> overrides = const [],
     int vipLevel = 1,
+    NavigatorObserver? navigatorObserver,
   }) {
     return ProviderScope(
       overrides: [
@@ -57,9 +71,18 @@ void main() {
         }),
         authCurrentUserLoaderProvider.overrideWithValue(() async => null),
         authDraftSyncProvider.overrideWithValue(() async {}),
+        messageListProvider.overrideWith(
+          (ref, session) =>
+              _EmptyMessageListNotifier(session.channelId, session.channelType),
+        ),
         ...overrides,
       ],
-      child: MaterialApp(home: child),
+      child: MaterialApp(
+        home: child,
+        navigatorObservers: navigatorObserver == null
+            ? const <NavigatorObserver>[]
+            : <NavigatorObserver>[navigatorObserver],
+      ),
     );
   }
 
@@ -78,6 +101,7 @@ void main() {
       ),
     );
 
+    expect(find.text('Contacts'), findsOneWidget);
     expect(find.text('\u65b0\u670b\u53cb'), findsOneWidget);
     expect(find.text('\u4fdd\u5b58\u7684\u7fa4\u804a'), findsOneWidget);
     expect(find.text('\u670b\u53cb\u5708'), findsOneWidget);
@@ -161,6 +185,111 @@ void main() {
       expect(adapter.lastRequestOptions?.method, 'GET');
       expect(openedService?.uid, 'cs_001');
       expect(openedService?.name, '售后客服');
+    },
+  );
+
+  testWidgets(
+    'contacts page pushes resolved customer-service account as personal chat',
+    (tester) async {
+      final observer = _RecordingNavigatorObserver();
+      final adapter = _RecordingJsonAdapter(
+        payload: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'uid': 'cs_001',
+            'name': '\u552e\u540e\u5ba2\u670d',
+          },
+        ],
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+
+      await tester.pumpWidget(
+        wrapWithApp(
+          ContactsPage(
+            friendsStateOverride: const AsyncValue.data(<Friend>[]),
+            requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
+          ),
+          navigatorObserver: observer,
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('contacts-header-customer_service')),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(observer.lastPushedChatPage, isNotNull);
+      final chatPage = observer.lastPushedChatPage!;
+      expect(chatPage.channelId, 'cs_001');
+      expect(chatPage.channelType, WKChannelType.personal);
+      expect(chatPage.channelName, '\u552e\u540e\u5ba2\u670d');
+      expect(chatPage.channelCategory, 'customer_service');
+    },
+  );
+
+  testWidgets(
+    'contacts page keeps legacy placeholder customer-service route on error fallback',
+    (tester) async {
+      final observer = _RecordingNavigatorObserver();
+      ApiClient.instance.dio.httpClientAdapter = _FailingJsonAdapter();
+
+      await tester.pumpWidget(
+        wrapWithApp(
+          ContactsPage(
+            friendsStateOverride: const AsyncValue.data(<Friend>[]),
+            requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
+          ),
+          navigatorObserver: observer,
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('contacts-header-customer_service')),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(observer.lastPushedChatPage, isNotNull);
+      final chatPage = observer.lastPushedChatPage!;
+      expect(chatPage.channelId, 'customer_service');
+      expect(chatPage.channelType, WKChannelType.customerService);
+      expect(chatPage.channelName, '\u5ba2\u670d');
+    },
+  );
+
+  testWidgets(
+    'contacts page keeps legacy placeholder customer-service route when API returns no usable uid',
+    (tester) async {
+      final observer = _RecordingNavigatorObserver();
+      final adapter = _RecordingJsonAdapter(
+        payload: const <Map<String, dynamic>>[
+          <String, dynamic>{'uid': '   ', 'name': '\u552e\u540e\u5ba2\u670d'},
+        ],
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+
+      await tester.pumpWidget(
+        wrapWithApp(
+          ContactsPage(
+            friendsStateOverride: const AsyncValue.data(<Friend>[]),
+            requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
+          ),
+          navigatorObserver: observer,
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('contacts-header-customer_service')),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(adapter.lastRequestOptions?.path, '/v1/user/customerservices');
+      expect(observer.lastPushedChatPage, isNotNull);
+      final chatPage = observer.lastPushedChatPage!;
+      expect(chatPage.channelId, 'customer_service');
+      expect(chatPage.channelType, WKChannelType.customerService);
+      expect(chatPage.channelName, '\u5ba2\u670d');
     },
   );
 
@@ -570,6 +699,20 @@ void main() {
       expect(find.text('联系管理员'), findsOneWidget);
     },
   );
+
+  testWidgets('contacts page can render inside warm Web frame', (tester) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: ContactsPage(forceWebFrameForTesting: true)),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('contacts-web-frame')),
+      findsOneWidget,
+    );
+  });
 }
 
 class _RecordingJsonAdapter implements HttpClientAdapter {
@@ -596,6 +739,66 @@ class _RecordingJsonAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+}
+
+class _FailingJsonAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    throw DioException(
+      requestOptions: options,
+      error: 'network failed',
+      type: DioExceptionType.unknown,
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _RecordingNavigatorObserver extends NavigatorObserver {
+  Route<dynamic>? _lastPushedRoute;
+
+  ChatPage? get lastPushedChatPage {
+    final route = _lastPushedRoute;
+    if (route == null) {
+      return null;
+    }
+    final arguments = route.settings.arguments;
+    if (arguments is ChatPage) {
+      return arguments;
+    }
+    if (route is MaterialPageRoute<dynamic>) {
+      final currentNavigator = navigator;
+      if (currentNavigator == null) {
+        return null;
+      }
+      final built = route.builder(currentNavigator.context);
+      return built is ChatPage ? built : null;
+    }
+    return null;
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _lastPushedRoute = route;
+    super.didPush(route, previousRoute);
+  }
+}
+
+class _EmptyMessageListNotifier extends MessageListNotifier {
+  _EmptyMessageListNotifier(super.channelId, super.channelType);
+
+  @override
+  Future<void> loadMessages() async {
+    state = [];
+  }
+
+  @override
+  Future<void> loadMore() async {}
 }
 
 class _CountingContactsDirectoryController extends ContactsDirectoryController {

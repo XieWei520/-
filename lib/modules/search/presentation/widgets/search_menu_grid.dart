@@ -7,31 +7,31 @@ List<SearchMenuEntry> buildDefaultSearchMenuEntries() {
   return const <SearchMenuEntry>[
     SearchMenuEntry(
       kind: SearchMenuKind.date,
-      title: 'Date',
+      title: '日期',
       iconAsset: WKReferenceAssets.search,
       key: 'chat-search-menu-date',
     ),
     SearchMenuEntry(
       kind: SearchMenuKind.image,
-      title: 'Image',
+      title: '图片',
       iconAsset: WKReferenceAssets.search,
       key: 'chat-search-menu-image',
     ),
     SearchMenuEntry(
       kind: SearchMenuKind.file,
-      title: 'File',
+      title: '文件',
       iconAsset: WKReferenceAssets.search,
       key: 'chat-search-menu-file',
     ),
     SearchMenuEntry(
       kind: SearchMenuKind.link,
-      title: 'Link',
+      title: '链接',
       iconAsset: WKReferenceAssets.search,
       key: 'chat-search-menu-link',
     ),
     SearchMenuEntry(
       kind: SearchMenuKind.member,
-      title: 'Member',
+      title: '成员',
       iconAsset: WKReferenceAssets.search,
       key: 'chat-search-menu-member',
     ),
@@ -39,11 +39,7 @@ List<SearchMenuEntry> buildDefaultSearchMenuEntries() {
 }
 
 class SearchMenuGrid extends StatelessWidget {
-  const SearchMenuGrid({
-    super.key,
-    required this.entries,
-    required this.onTap,
-  });
+  const SearchMenuGrid({super.key, required this.entries, required this.onTap});
 
   final List<SearchMenuEntry> entries;
   final ValueChanged<SearchMenuEntry> onTap;
@@ -65,10 +61,7 @@ class SearchMenuGrid extends StatelessWidget {
               key: ValueKey<String>(entry.key),
               onTap: () => onTap(entry),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

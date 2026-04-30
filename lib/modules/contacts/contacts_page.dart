@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
@@ -12,6 +13,7 @@ import '../../data/models/friend.dart';
 import '../../data/models/group.dart';
 import '../../data/providers/channel_provider.dart';
 import '../../data/providers/user_provider.dart';
+import '../customer_service/customer_service_identity.dart';
 import '../../service/api/friend_api.dart';
 import '../../service/api/user_api.dart';
 import '../../widgets/wk_avatar.dart';
@@ -22,6 +24,7 @@ import '../../widgets/wk_main_top_bar.dart';
 import '../../widgets/wk_reference_assets.dart';
 import '../../widgets/wk_screen_popup_menu.dart';
 import '../../widgets/wk_status_view.dart';
+import '../../widgets/wk_web_ui_tokens.dart';
 import '../../wk_endpoint/providers/slot_registry_provider.dart';
 import '../../wk_endpoint/slots/contacts_slots.dart';
 import '../../wk_endpoint/slots/home_slots.dart';
@@ -157,6 +160,7 @@ class ContactsPage extends ConsumerStatefulWidget {
   final ValueChanged<CustomerServiceAccount>? onOpenResolvedCustomerService;
   final Map<String, ContactPresenceState>? contactPresenceOverrides;
   final int? currentTimestampSecondsOverride;
+  final bool forceWebFrameForTesting;
 
   const ContactsPage({
     super.key,
@@ -171,6 +175,7 @@ class ContactsPage extends ConsumerStatefulWidget {
     this.onOpenResolvedCustomerService,
     this.contactPresenceOverrides,
     this.currentTimestampSecondsOverride,
+    this.forceWebFrameForTesting = false,
   });
 
   @override
@@ -369,108 +374,121 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
         widget.currentTimestampSecondsOverride ??
         (DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
-    return Scaffold(
-      backgroundColor: WKColors.homeBg,
-      body: Column(
-        children: [
-          _buildHeader(strings),
-          Expanded(
-            child: friendsState.when(
-              loading: () => WKLoadingView(message: strings.contactsLoading),
-              error: (error, _) => WKErrorView(
-                message: strings.contactsLoadFailed,
-                subMessage: error.toString(),
-                onRetry: () => ref.read(friendListProvider.notifier).refresh(),
-              ),
-              data: (friends) {
-                final directory = _resolveDirectory(
-                  friends,
-                  directoryController,
-                );
-                final entries = directory.sections
-                    .expand((section) => section.entries)
-                    .toList(growable: false);
-                _syncContactPresence(entries);
-                final letters = directory.letters;
-                final header = _ContactsHeaderSection(
-                  headerMenus: resolvedHeaderMenus,
-                );
+    final body = Column(
+      children: [
+        _buildHeader(strings),
+        Expanded(
+          child: friendsState.when(
+            loading: () => WKLoadingView(message: strings.contactsLoading),
+            error: (error, _) => WKErrorView(
+              message: strings.contactsLoadFailed,
+              subMessage: error.toString(),
+              onRetry: () => ref.read(friendListProvider.notifier).refresh(),
+            ),
+            data: (friends) {
+              final directory = _resolveDirectory(friends, directoryController);
+              final entries = directory.sections
+                  .expand((section) => section.entries)
+                  .toList(growable: false);
+              _syncContactPresence(entries);
+              final letters = directory.letters;
+              final header = _ContactsHeaderSection(
+                headerMenus: resolvedHeaderMenus,
+              );
 
-                Widget buildViewport(
-                  Map<String, ContactPresenceState> contactPresenceByUid,
-                ) {
-                  return ContactsListViewport(
-                    scrollController: _scrollController,
-                    header: header,
-                    directory: directory,
-                    contactPresenceByUid: contactPresenceByUid,
-                    currentTimestampSeconds: currentTimestampSeconds,
-                    onTapEntry: (entry) => _openUserDetail(entry.friend.uid),
-                    onLongPressEntry: (entry) =>
-                        _showContactMenu(entry.friend, strings),
-                  );
-                }
+              Widget buildViewport(
+                Map<String, ContactPresenceState> contactPresenceByUid,
+              ) {
+                return ContactsListViewport(
+                  scrollController: _scrollController,
+                  header: header,
+                  directory: directory,
+                  contactPresenceByUid: contactPresenceByUid,
+                  currentTimestampSeconds: currentTimestampSeconds,
+                  onTapEntry: (entry) => _openUserDetail(entry.friend.uid),
+                  onLongPressEntry: (entry) =>
+                      _showContactMenu(entry.friend, strings),
+                );
+              }
 
-                return Stack(
-                  children: [
-                    RefreshIndicator(
-                      onRefresh: () async {
-                        await ref.read(friendListProvider.notifier).refresh();
-                        await ref
-                            .read(friendRequestListProvider.notifier)
-                            .refresh();
-                      },
-                      child: widget.contactPresenceOverrides != null
-                          ? buildViewport(widget.contactPresenceOverrides!)
-                          : Consumer(
-                              builder: (context, ref, _) {
-                                final contactPresenceByUid = ref.watch(
-                                  contactsPresenceControllerProvider,
-                                );
-                                return buildViewport(contactPresenceByUid);
-                              },
-                            ),
-                    ),
-                    if (letters.isNotEmpty)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                        child: SafeArea(
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ContactsAlphabetIndex(
-                              letters: letters,
-                              activeLetter: _sidebarLetter,
-                              isTouching: _sidebarTouching,
-                              onLetterTap: (letter) {
-                                setState(() {
-                                  _sidebarLetter = letter;
-                                });
-                                _jumpToSection(
-                                  letter,
-                                  directory.sections,
-                                  headerMenuCount,
-                                );
-                              },
-                              onTouchingChanged: (touching) {
-                                setState(() {
-                                  _sidebarTouching = touching;
-                                  if (!touching) {
-                                    _sidebarLetter = null;
-                                  }
-                                });
-                              },
-                            ),
+              return Stack(
+                children: [
+                  RefreshIndicator(
+                    onRefresh: () async {
+                      await ref.read(friendListProvider.notifier).refresh();
+                      await ref
+                          .read(friendRequestListProvider.notifier)
+                          .refresh();
+                    },
+                    child: widget.contactPresenceOverrides != null
+                        ? buildViewport(widget.contactPresenceOverrides!)
+                        : Consumer(
+                            builder: (context, ref, _) {
+                              final contactPresenceByUid = ref.watch(
+                                contactsPresenceControllerProvider,
+                              );
+                              return buildViewport(contactPresenceByUid);
+                            },
+                          ),
+                  ),
+                  if (letters.isNotEmpty)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ContactsAlphabetIndex(
+                            letters: letters,
+                            activeLetter: _sidebarLetter,
+                            isTouching: _sidebarTouching,
+                            onLetterTap: (letter) {
+                              setState(() {
+                                _sidebarLetter = letter;
+                              });
+                              _jumpToSection(
+                                letter,
+                                directory.sections,
+                                headerMenuCount,
+                              );
+                            },
+                            onTouchingChanged: (touching) {
+                              setState(() {
+                                _sidebarTouching = touching;
+                                if (!touching) {
+                                  _sidebarLetter = null;
+                                }
+                              });
+                            },
                           ),
                         ),
                       ),
-                  ],
-                );
-              },
-            ),
+                    ),
+                ],
+              );
+            },
           ),
-        ],
+        ),
+      ],
+    );
+
+    final content = Scaffold(backgroundColor: WKColors.homeBg, body: body);
+    final useWebFrame =
+        widget.forceWebFrameForTesting ||
+        (kIsWeb &&
+            MediaQuery.sizeOf(context).width >= WKWebBreakpoints.desktopMin);
+
+    if (!useWebFrame) {
+      return content;
+    }
+
+    return Scaffold(
+      key: const ValueKey<String>('contacts-web-frame'),
+      backgroundColor: WKWebColors.pageWarm,
+      body: Padding(
+        padding: const EdgeInsets.all(WKSpace.md),
+        child: WKWebPanel(child: content.body ?? const SizedBox.shrink()),
       ),
     );
   }
@@ -784,6 +802,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
     required String channelId,
     required String channelName,
     CustomerServiceAccount? resolvedService,
+    bool legacyFallback = false,
   }) {
     final service =
         resolvedService ??
@@ -793,12 +812,17 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
       onOpenResolvedCustomerService(service);
       return;
     }
+    final normalizedChannelId = channelId.trim();
+    final resolvedChannelType = legacyFallback
+        ? WKChannelType.customerService
+        : WKChannelType.personal;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatPage(
-          channelId: channelId,
-          channelType: WKChannelType.customerService,
+          channelId: normalizedChannelId,
+          channelType: resolvedChannelType,
           channelName: channelName,
+          channelCategory: customerServiceCategory,
         ),
       ),
     );
@@ -807,6 +831,7 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   void _openLegacyCustomerService() {
     _openCustomerServiceChat(
       channelId: 'customer_service',
+      legacyFallback: true,
       channelName: '客服',
       resolvedService: const CustomerServiceAccount(
         uid: 'customer_service',

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0EA5E9">
+  <title>信息平权 - 离线</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f8fb;
+      --ink: #102033;
+      --muted: #5b6b7d;
+      --accent: #0ea5e9;
+      --card: #ffffff;
+      --line: #d7e3ec;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 32px 18px;
+      background:
+        radial-gradient(circle at 20% 12%, rgba(14, 165, 233, 0.14), transparent 32%),
+        linear-gradient(145deg, #f8fbfd 0%, var(--bg) 46%, #ecf5f9 100%);
+      color: var(--ink);
+      font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    }
+
+    main {
+      width: min(420px, 100%);
+      padding: 30px 28px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      box-shadow: 0 22px 60px rgba(16, 32, 51, 0.10);
+    }
+
+    .mark {
+      width: 44px;
+      height: 44px;
+      margin-bottom: 18px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: var(--accent);
+      color: white;
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark">信</div>
+    <h1>信息平权暂时离线</h1>
+    <p>网络恢复后刷新页面即可继续使用。已打开的聊天窗口和本地草稿会尽量保留。</p>
+  </main>
+</body>
+</html>

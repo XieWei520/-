@@ -38,7 +38,8 @@ class NotificationPermissionPromptBridge {
   }
 
   void ensureRegistered() {
-    if (_registered || _endpointManager.hasEndpoint(showOpenNotificationDialogEndpoint)) {
+    if (_registered ||
+        _endpointManager.hasEndpoint(showOpenNotificationDialogEndpoint)) {
       _registered = true;
       return;
     }
@@ -70,18 +71,16 @@ class NotificationPermissionPromptBridge {
             barrierDismissible: true,
             builder: (dialogContext) {
               return AlertDialog(
-                title: const Text('Enable notifications'),
-                content: const Text(
-                  'WuKongIM needs notification permission so new messages and call invitations can alert you in time.',
-                ),
+                title: const Text('开启通知'),
+                content: const Text('请开启通知权限，以便新消息和通话邀请能够及时提醒你。'),
                 actions: <Widget>[
                   TextButton(
                     onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('Not now'),
+                    child: const Text('暂不开启'),
                   ),
                   FilledButton(
                     onPressed: () => Navigator.of(dialogContext).pop(true),
-                    child: const Text('Open Settings'),
+                    child: const Text('打开设置'),
                   ),
                 ],
               );
@@ -101,9 +100,7 @@ class NotificationPermissionPromptBridge {
       }
       unawaited(
         navigatorState.push(
-          MaterialPageRoute<void>(
-            builder: (_) => _settingsPageBuilder(),
-          ),
+          MaterialPageRoute<void>(builder: (_) => _settingsPageBuilder()),
         ),
       );
       return true;
@@ -116,7 +113,8 @@ class NotificationPermissionPromptBridge {
     if (raw is BuildContext) {
       return raw;
     }
-    return _navigatorKey?.currentContext ?? _navigatorKey?.currentState?.overlay?.context;
+    return _navigatorKey?.currentContext ??
+        _navigatorKey?.currentState?.overlay?.context;
   }
 
   static Widget _defaultNotificationSettingsPageBuilder() {

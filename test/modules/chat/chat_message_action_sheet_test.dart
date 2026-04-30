@@ -48,10 +48,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: ChatMessageActionSheet(
-              actions: actions,
-              onSelected: (_) {},
-            ),
+            body: ChatMessageActionSheet(actions: actions, onSelected: (_) {}),
           ),
         ),
       );
@@ -118,6 +115,46 @@ void main() {
       );
     });
 
+    testWidgets('reaction strip text uses emoji-capable font fallback', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatMessageActionSheet(
+              actions: const <ChatMessageActionDescriptor>[
+                ChatMessageActionDescriptor(
+                  action: ChatSceneAction.reply,
+                  label: '\u56de\u590d',
+                  order: 0,
+                ),
+              ],
+              onSelected: (_) {},
+              onReactionSelected: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      final emojiText = tester.widget<Text>(
+        find
+            .descendant(
+              of: find.byKey(
+                const ValueKey<String>('reaction-picker-\u{1F44D}'),
+              ),
+              matching: find.byType(Text),
+            )
+            .first,
+      );
+
+      expect(emojiText.style?.fontFamilyFallback, contains('Segoe UI Emoji'));
+      expect(
+        emojiText.style?.fontFamilyFallback,
+        contains('Apple Color Emoji'),
+      );
+      expect(emojiText.style?.fontFamilyFallback, contains('Noto Color Emoji'));
+    });
+
     testWidgets('tap closes sheet and returns selected action', (tester) async {
       ChatSceneAction? selected;
 
@@ -166,7 +203,9 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.byKey(const ValueKey<String>('chat-action-forward')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('chat-action-forward')),
+      );
       await tester.pumpAndSettle();
 
       expect(selected, ChatSceneAction.forward);

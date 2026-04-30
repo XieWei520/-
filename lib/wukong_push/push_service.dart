@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -10,9 +9,12 @@ import '../wukong_base/net/api_client.dart';
 import 'handlers/fcm_handler.dart';
 import 'handlers/push_handler.dart';
 import 'models/push_models.dart';
+import 'notification/browser_notification_service.dart';
 import 'notification/foreground_notification_plan.dart';
 import 'notification/notification_helper.dart';
 import 'notification_permission_prompt_bridge.dart';
+
+const int _maxPendingOpenedEvents = 16;
 
 /// Push service types
 enum PushType {
@@ -31,6 +33,11 @@ typedef NotificationInitializer =
     Future<void> Function({void Function(String payload)? onNotificationTap});
 typedef NotificationPermissionDeniedCallback = Future<void> Function();
 typedef PushSupportChecker = bool Function();
+typedef ForegroundNotificationPresenter =
+    Future<void> Function(
+      ForegroundNotificationPlan plan,
+      PushMessageEvent event,
+    );
 
 class PushService {
   PushService({
@@ -39,12 +46,15 @@ class PushService {
     NotificationInitializer? initializeNotifications,
     NotificationPermissionDeniedCallback? onPermissionDenied,
     PushSupportChecker? isPushSupported,
+    ForegroundNotificationPresenter? showForegroundNotification,
   }) : _client = client ?? ApiClient.instance,
        _handlerSelector = handlerSelector ?? _defaultSelectHandler,
        _initializeNotifications =
            initializeNotifications ?? NotificationHelper.instance.initialize,
        _onPermissionDenied = onPermissionDenied ?? _defaultOnPermissionDenied,
-       _isPushSupported = isPushSupported ?? _defaultIsPushSupported;
+       _isPushSupported = isPushSupported ?? _defaultIsPushSupported,
+       _foregroundNotificationPresenter =
+           showForegroundNotification ?? _defaultShowForegroundNotification;
   static final PushService _instance = PushService();
   static PushService get instance => _instance;
 
@@ -53,9 +63,11 @@ class PushService {
   final NotificationInitializer _initializeNotifications;
   final NotificationPermissionDeniedCallback _onPermissionDenied;
   final PushSupportChecker _isPushSupported;
+  final ForegroundNotificationPresenter _foregroundNotificationPresenter;
   final StreamController<PushMessageEvent> _messageController =
       StreamController<PushMessageEvent>.broadcast();
   final List<PushMessageEvent> _pendingOpenedEvents = <PushMessageEvent>[];
+  final Set<String> _pendingOpenedEventKeys = <String>{};
 
   PushHandler? _currentHandler;
   PushRegistrationSnapshot? _registrationSnapshot;
@@ -76,6 +88,7 @@ class PushService {
     }
     final pending = List<PushMessageEvent>.from(_pendingOpenedEvents);
     _pendingOpenedEvents.clear();
+    _pendingOpenedEventKeys.clear();
     return pending;
   }
 
@@ -123,6 +136,12 @@ class PushService {
     } catch (e, stackTrace) {
       debugPrint('PushService: initialization failed -> $e');
       debugPrint('$stackTrace');
+      handler.dispose();
+      if (identical(_currentHandler, handler)) {
+        _currentHandler = null;
+      }
+      _deviceToken = null;
+      _registrationSnapshot = null;
     }
   }
 
@@ -142,7 +161,35 @@ class PushService {
     if (kIsWeb) {
       return false;
     }
-    return Platform.isAndroid || Platform.isIOS;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  static Future<void> _defaultShowForegroundNotification(
+    ForegroundNotificationPlan plan,
+    PushMessageEvent event,
+  ) async {
+    if (kIsWeb) {
+      await BrowserForegroundNotificationService().showPlan(
+        plan,
+        onClick: () async {
+          PushService.instance.handleNotificationTapPayload(plan.payload);
+        },
+      );
+      return;
+    }
+    final identifier =
+        event.payload.messageId?.hashCode ??
+        DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff);
+    await NotificationHelper.instance.show(
+      id: identifier,
+      title: plan.title,
+      body: plan.body,
+      payload: plan.payload,
+      channelId: plan.channelId,
+      channelName: plan.channelName,
+      importance: plan.importance,
+    );
   }
 
   Future<void> _restoreSyncedState() async {
@@ -186,9 +233,9 @@ class PushService {
       }
       final resolvedSnapshot =
           fallbackDeviceToken != null &&
-                  (snapshot.deviceToken == null || snapshot.deviceToken!.isEmpty)
-              ? snapshot.copyWith(deviceToken: fallbackDeviceToken)
-              : snapshot;
+              (snapshot.deviceToken == null || snapshot.deviceToken!.isEmpty)
+          ? snapshot.copyWith(deviceToken: fallbackDeviceToken)
+          : snapshot;
       _registrationSnapshot = resolvedSnapshot;
       if (_shouldWarnForMissingApnsToken(resolvedSnapshot)) {
         debugPrint(
@@ -225,9 +272,46 @@ class PushService {
 
   void _dispatchMessageEvent(PushMessageEvent event) {
     if (event.openedFromNotification && !_messageController.hasListener) {
-      _pendingOpenedEvents.add(event);
+      final eventKey = _pendingOpenedEventKey(event);
+      if (_pendingOpenedEventKeys.add(eventKey)) {
+        _pendingOpenedEvents.add(event);
+        _trimPendingOpenedEvents();
+      }
     }
     _messageController.add(event);
+  }
+
+  void _trimPendingOpenedEvents() {
+    while (_pendingOpenedEvents.length > _maxPendingOpenedEvents) {
+      final removed = _pendingOpenedEvents.removeAt(0);
+      _pendingOpenedEventKeys.remove(_pendingOpenedEventKey(removed));
+    }
+  }
+
+  String _pendingOpenedEventKey(PushMessageEvent event) {
+    final payload = event.payload;
+    final messageId = payload.messageId?.trim();
+    if (messageId != null && messageId.isNotEmpty) {
+      return 'message:$messageId';
+    }
+
+    final channelId = payload.channelId?.trim() ?? '';
+    final channelType = payload.channelType ?? 0;
+    final title = _firstNonEmpty(event.title, payload.title) ?? '';
+    final body = _firstNonEmpty(event.body, payload.body) ?? '';
+    return 'conversation:$channelType:$channelId:$title:$body';
+  }
+
+  String? _firstNonEmpty(String? first, String? second) {
+    final normalizedFirst = first?.trim();
+    if (normalizedFirst != null && normalizedFirst.isNotEmpty) {
+      return normalizedFirst;
+    }
+    final normalizedSecond = second?.trim();
+    if (normalizedSecond != null && normalizedSecond.isNotEmpty) {
+      return normalizedSecond;
+    }
+    return null;
   }
 
   Future<void> _showForegroundNotification(PushMessageEvent event) async {
@@ -235,30 +319,19 @@ class PushService {
     if (plan == null) {
       return;
     }
-    final identifier =
-        event.payload.messageId?.hashCode ??
-        DateTime.now().millisecondsSinceEpoch.remainder(0x7fffffff);
-    await NotificationHelper.instance.show(
-      id: identifier,
-      title: plan.title,
-      body: plan.body,
-      payload: plan.payload,
-      channelId: plan.channelId,
-      channelName: plan.channelName,
-      importance: plan.importance,
-    );
+    await _foregroundNotificationPresenter(plan, event);
   }
 
-  void _handleLocalNotificationTap(String payload) {
+  bool handleNotificationTapPayload(String payload) {
     try {
       final decoded = jsonDecode(payload);
       if (decoded is! Map) {
-        return;
+        return false;
       }
       final map = Map<String, dynamic>.from(decoded);
       final rawPayload = map['payload'];
       if (rawPayload is! Map) {
-        return;
+        return false;
       }
       final pushPayload = PushPayload.fromMap(
         Map<String, dynamic>.from(rawPayload),
@@ -271,9 +344,15 @@ class PushService {
         body: map['body']?.toString(),
       );
       _dispatchMessageEvent(event);
+      return true;
     } catch (e) {
       debugPrint('PushService: failed to parse notification payload -> $e');
+      return false;
     }
+  }
+
+  void _handleLocalNotificationTap(String payload) {
+    handleNotificationTapPayload(payload);
   }
 
   Future<void> _syncTokenWithServer({bool force = false}) async {

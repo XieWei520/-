@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:wukong_im_app/core/cache/media_cache_manager.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/widgets/wk_sub_page_scaffold.dart';
 import 'package:wukong_im_app/wukong_base/endpoint/endpoint_handler.dart';
@@ -51,11 +52,35 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(WKSubPageScaffold), findsOneWidget);
-    expect(find.byKey(const ValueKey('my_head_portrait_image')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('my_head_portrait_image')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('my_head_portrait_more_action')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('remote avatar preview uses the shared media cache pipeline', (
+    tester,
+  ) async {
+    const avatarUrl = 'https://cdn.example.com/avatar/alice.png';
+
+    await tester.pumpWidget(
+      wrapWithApp(
+        const MyHeadPortraitPage(displayName: 'Alice', avatarUrl: avatarUrl),
+      ),
+    );
+
+    final cachedAvatar = tester.widget<CachedMediaImage>(
+      find.byType(CachedMediaImage),
+    );
+    expect(cachedAvatar.imageUrl, avatarUrl);
+    expect(cachedAvatar.cacheKey, avatarUrl);
+    expect(cachedAvatar.fit, BoxFit.contain);
+    expect(cachedAvatar.maxWidth, greaterThan(0));
+    expect(cachedAvatar.maxHeight, greaterThan(0));
   });
 
   test('buildRtcAvatarUrl replaces old query arguments with key', () {
@@ -87,14 +112,17 @@ void main() {
     expect(resolved, 'cache/avatar_cropped.jpg');
   });
 
-  test('resolveAvatarUploadSourcePath returns null when crop is cancelled', () async {
-    final resolved = await resolveAvatarUploadSourcePath(
-      'source/avatar.jpg',
-      cropAvatarPath: (_) async => null,
-    );
+  test(
+    'resolveAvatarUploadSourcePath returns null when crop is cancelled',
+    () async {
+      final resolved = await resolveAvatarUploadSourcePath(
+        'source/avatar.jpg',
+        cropAvatarPath: (_) async => null,
+      );
 
-    expect(resolved, isNull);
-  });
+      expect(resolved, isNull);
+    },
+  );
 
   test(
     'syncAvatarParityArtifacts creates or updates the personal channel and invokes rtc avatar sync',

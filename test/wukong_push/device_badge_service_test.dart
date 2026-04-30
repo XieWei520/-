@@ -42,33 +42,64 @@ void main() {
     },
   );
 
-  test('default remote badge sync posts to v1 user device badge endpoint', () async {
-    final recordingAdapter = _RecordingHttpClientAdapter();
-    ApiClient.instance.dio.httpClientAdapter = recordingAdapter;
-    final service = DeviceBadgeService(
-      platformBridge: _FakeDeviceBadgePlatformBridge(<int>[]),
-      isLoggedIn: () => true,
-    );
+  test(
+    'device badge endpoint reads structured badge payloads from legacy callers',
+    () async {
+      final endpointManager = EndpointManager.getInstance();
+      endpointManager.clear();
+      addTearDown(endpointManager.clear);
 
-    await service.updateBadge(3);
+      final remoteCalls = <int>[];
+      final platformCalls = <int>[];
+      final service = DeviceBadgeService(
+        registerRemoteBadge: (badge) async => remoteCalls.add(badge),
+        platformBridge: _FakeDeviceBadgePlatformBridge(platformCalls),
+        isLoggedIn: () => true,
+      );
 
-    expect(recordingAdapter.requestPaths, <String>['/v1/user/device_badge']);
-  });
+      service.registerEndpoint(endpointManager: endpointManager);
+      await endpointManager.invoke(pushUpdateDeviceBadgeEndpoint, {
+        'badge': ' 12 ',
+      });
 
-  test('clearLocalBadge only clears local badge like Android logout flow', () async {
-    final remoteCalls = <int>[];
-    final platformCalls = <int>[];
-    final service = DeviceBadgeService(
-      registerRemoteBadge: (badge) async => remoteCalls.add(badge),
-      platformBridge: _FakeDeviceBadgePlatformBridge(platformCalls),
-      isLoggedIn: () => true,
-    );
+      expect(remoteCalls, <int>[12]);
+      expect(platformCalls, <int>[12]);
+    },
+  );
 
-    await service.clearLocalBadge();
+  test(
+    'default remote badge sync posts to v1 user device badge endpoint',
+    () async {
+      final recordingAdapter = _RecordingHttpClientAdapter();
+      ApiClient.instance.dio.httpClientAdapter = recordingAdapter;
+      final service = DeviceBadgeService(
+        platformBridge: _FakeDeviceBadgePlatformBridge(<int>[]),
+        isLoggedIn: () => true,
+      );
 
-    expect(remoteCalls, isEmpty);
-    expect(platformCalls, <int>[0]);
-  });
+      await service.updateBadge(3);
+
+      expect(recordingAdapter.requestPaths, <String>['/v1/user/device_badge']);
+    },
+  );
+
+  test(
+    'clearLocalBadge only clears local badge like Android logout flow',
+    () async {
+      final remoteCalls = <int>[];
+      final platformCalls = <int>[];
+      final service = DeviceBadgeService(
+        registerRemoteBadge: (badge) async => remoteCalls.add(badge),
+        platformBridge: _FakeDeviceBadgePlatformBridge(platformCalls),
+        isLoggedIn: () => true,
+      );
+
+      await service.clearLocalBadge();
+
+      expect(remoteCalls, isEmpty);
+      expect(platformCalls, <int>[0]);
+    },
+  );
 
   test(
     'device badge sync bridge forwards changed unread totals and resets across logout',
@@ -98,27 +129,21 @@ void main() {
       );
       await bridge.sync(
         HomeBadgeSnapshot(
-          bySurface: <HomeSurfaceId, int>{
-            HomeSurfaceId.conversations: 4,
-          },
+          bySurface: <HomeSurfaceId, int>{HomeSurfaceId.conversations: 4},
         ),
       );
 
       isLoggedIn = false;
       await bridge.sync(
         HomeBadgeSnapshot(
-          bySurface: <HomeSurfaceId, int>{
-            HomeSurfaceId.conversations: 9,
-          },
+          bySurface: <HomeSurfaceId, int>{HomeSurfaceId.conversations: 9},
         ),
       );
 
       isLoggedIn = true;
       await bridge.sync(
         HomeBadgeSnapshot(
-          bySurface: <HomeSurfaceId, int>{
-            HomeSurfaceId.conversations: 9,
-          },
+          bySurface: <HomeSurfaceId, int>{HomeSurfaceId.conversations: 9},
         ),
       );
 

@@ -49,7 +49,9 @@ void main() {
         'content': 'edit-009',
       });
 
-    await WKIM.shared.messageManager.saveRemoteExtraMsg(<WKMsgExtra>[editExtra]);
+    await WKIM.shared.messageManager.saveRemoteExtraMsg(<WKMsgExtra>[
+      editExtra,
+    ]);
     await Future<void>.delayed(const Duration(milliseconds: 50));
 
     final hits = await LocalSearchService().searchMessages(
@@ -65,48 +67,77 @@ void main() {
     expect(hits.single.previewText, 'edit-009');
   });
 
-  test('chat search still finds legacy edited rows with stale searchable text', () async {
+  test(
+    'chat search still finds legacy edited rows with stale searchable text',
+    () async {
+      await _setupSdk();
+
+      final message = _buildTextMessage(
+        clientMsgNo: 'legacy_search_edit_client',
+        messageId: 'legacy_search_edit_mid',
+        channelId: 'legacy_search_edit_channel',
+        channelType: WKChannelType.personal,
+        messageSeq: 12,
+        orderSeq: 12000,
+        text: 'edit-007',
+      );
+      await WKIM.shared.messageManager.saveMsg(message);
+
+      final editExtra = WKMsgExtra()
+        ..messageID = message.messageID
+        ..channelID = message.channelID
+        ..channelType = message.channelType
+        ..editedAt = (DateTime.now().millisecondsSinceEpoch / 1000).truncate()
+        ..contentEdit = jsonEncode(<String, dynamic>{
+          'type': WkMessageContentType.text,
+          'content': 'edit-008',
+        });
+
+      await WKIM.shared.messageManager.saveRemoteExtraMsg(<WKMsgExtra>[
+        editExtra,
+      ]);
+      await MessageDB.shared.updateMsgWithFieldAndClientMsgNo(<String, Object>{
+        'searchable_word': 'edit-007',
+      }, message.clientMsgNO);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final hits = await LocalSearchService().searchMessages(
+        channelId: message.channelID,
+        channelType: message.channelType,
+        keyword: 'edit-008',
+        page: 1,
+        limit: 20,
+      );
+
+      expect(hits, hasLength(1));
+      expect(hits.single.messageId, message.messageID);
+      expect(hits.single.previewText, 'edit-008');
+    },
+  );
+
+  test('chat search returns no rows for an empty keyword', () async {
     await _setupSdk();
 
     final message = _buildTextMessage(
-      clientMsgNo: 'legacy_search_edit_client',
-      messageId: 'legacy_search_edit_mid',
-      channelId: 'legacy_search_edit_channel',
+      clientMsgNo: 'empty_search_client',
+      messageId: 'empty_search_mid',
+      channelId: 'empty_search_channel',
       channelType: WKChannelType.personal,
-      messageSeq: 12,
-      orderSeq: 12000,
-      text: 'edit-007',
+      messageSeq: 13,
+      orderSeq: 13000,
+      text: 'visible message',
     );
     await WKIM.shared.messageManager.saveMsg(message);
-
-    final editExtra = WKMsgExtra()
-      ..messageID = message.messageID
-      ..channelID = message.channelID
-      ..channelType = message.channelType
-      ..editedAt = (DateTime.now().millisecondsSinceEpoch / 1000).truncate()
-      ..contentEdit = jsonEncode(<String, dynamic>{
-        'type': WkMessageContentType.text,
-        'content': 'edit-008',
-      });
-
-    await WKIM.shared.messageManager.saveRemoteExtraMsg(<WKMsgExtra>[editExtra]);
-    await MessageDB.shared.updateMsgWithFieldAndClientMsgNo(
-      <String, Object>{'searchable_word': 'edit-007'},
-      message.clientMsgNO,
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 50));
 
     final hits = await LocalSearchService().searchMessages(
       channelId: message.channelID,
       channelType: message.channelType,
-      keyword: 'edit-008',
+      keyword: '   ',
       page: 1,
       limit: 20,
     );
 
-    expect(hits, hasLength(1));
-    expect(hits.single.messageId, message.messageID);
-    expect(hits.single.previewText, 'edit-008');
+    expect(hits, isEmpty);
   });
 }
 

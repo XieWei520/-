@@ -1,14 +1,18 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/models/chat_session.dart';
 import 'package:wukong_im_app/data/models/wk_custom_content.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
 import 'package:wukong_im_app/modules/chat/chat_action_definition.dart';
 import 'package:wukong_im_app/modules/chat/chat_action_dispatcher.dart';
+import 'package:wukong_im_app/modules/chat/chat_composer_controller.dart';
+import 'package:wukong_im_app/modules/chat/chat_desktop_drop_target.dart';
 import 'package:wukong_im_app/modules/chat/chat_media_action_service.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_favorite_registry.dart';
 import 'package:wukong_im_app/modules/chat/chat_mentions_controller.dart';
@@ -17,6 +21,8 @@ import 'package:wukong_im_app/modules/chat/chat_scene_gateway.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_models.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_providers.dart';
 import 'package:wukong_im_app/modules/chat/chat_voice_action_service.dart';
+import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
+import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
 import 'package:wukong_im_app/modules/chat/message_forwarding.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
@@ -25,6 +31,7 @@ import 'package:wukong_im_app/wk_endpoint/core/slot_registry.dart';
 import 'package:wukong_im_app/wk_endpoint/providers/slot_registry_provider.dart';
 import 'package:wukong_im_app/wk_endpoint/slots/chat_slots.dart';
 import 'package:wukong_im_app/wukong_base/endpoint/entity/chat_toolbar_menu.dart';
+import 'package:wukong_im_app/wukong_base/msg/draft_manager.dart';
 import 'package:wukong_im_app/wukong_base/msg/reaction_manager.dart';
 import 'package:wukong_im_app/wukong_base/views/mention_suggestion.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -35,6 +42,14 @@ import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
+Override _realtimeTelemetryNoTimerOverride() {
+  return realtimeRolloutTelemetryProvider.overrideWith((ref) {
+    final telemetry = RealtimeRolloutTelemetry(flushInterval: Duration.zero);
+    ref.onDispose(telemetry.dispose);
+    return telemetry;
+  });
+}
+
 void main() {
   testWidgets('reply, search, and selection are scene-driven in the shell', (
     tester,
@@ -42,6 +57,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -74,12 +90,136 @@ void main() {
     );
   });
 
+  testWidgets('chat shell includes a guarded desktop file drop target', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          _realtimeTelemetryNoTimerOverride(),
+          messageListProvider.overrideWith(
+            (ref, session) => _EmptyMessageListNotifier(
+              session.channelId,
+              session.channelType,
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: ChatPage(
+            channelId: 'u_drop',
+            channelType: WKChannelType.personal,
+            channelName: 'Drop Chat',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ChatDesktopDropTarget), findsOneWidget);
+  });
+
+  testWidgets('android keyboard inset is animated by the chat body', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            _realtimeTelemetryNoTimerOverride(),
+            messageListProvider.overrideWith(
+              (ref, session) => _EmptyMessageListNotifier(
+                session.channelId,
+                session.channelType,
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            builder: (context, child) {
+              return MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(viewInsets: const EdgeInsets.only(bottom: 280)),
+                child: child!,
+              );
+            },
+            home: const ChatPage(
+              channelId: 'u_keyboard_inset',
+              channelType: WKChannelType.personal,
+              channelName: 'Keyboard Inset',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+      expect(scaffold.resizeToAvoidBottomInset, isFalse);
+
+      final padding = tester.widget<AnimatedPadding>(
+        find.byKey(const ValueKey<String>('chat-keyboard-inset-padding')),
+      );
+      expect(padding.padding, const EdgeInsets.only(bottom: 280));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('send button uses compact motion states for composer feedback', (
+    tester,
+  ) async {
+    final gateway = _FakeChatSceneGateway();
+    addTearDown(gateway.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          _realtimeTelemetryNoTimerOverride(),
+          messageListProvider.overrideWith(
+            (ref, session) => _EmptyMessageListNotifier(
+              session.channelId,
+              session.channelType,
+            ),
+          ),
+          chatSceneGatewayProvider.overrideWith((ref, _) => gateway),
+        ],
+        child: const MaterialApp(
+          home: ChatPage(
+            channelId: 'u_send_motion',
+            channelType: WKChannelType.personal,
+            channelName: 'Send Motion',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final motionFinder = find.byKey(
+      const ValueKey<String>('chat-send-button-motion'),
+    );
+    expect(motionFinder, findsOneWidget);
+    expect(tester.widget<AnimatedScale>(motionFinder).scale, lessThan(1));
+
+    final input = find.byKey(const ValueKey<String>('chat-input-field'));
+    await tester.enterText(input, 'micro interaction');
+    await tester.pumpAndSettle();
+    expect(tester.widget<AnimatedScale>(motionFinder).scale, 1);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey<String>('chat-send-button'))),
+    );
+    await tester.pump();
+    expect(tester.widget<AnimatedScale>(motionFinder).scale, lessThan(1));
+    await gesture.up();
+  });
+
   testWidgets('overflow route returns without breaking shell actions', (
     tester,
   ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -118,6 +258,7 @@ void main() {
     (tester) async {
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -159,19 +300,28 @@ void main() {
         find.byKey(const ValueKey<String>('chat-selection-count')),
         findsOneWidget,
       );
-      expect(container.read(chatSelectionControllerProvider(session)).selectedCount, 1);
+      expect(
+        container.read(chatSelectionControllerProvider(session)).selectedCount,
+        1,
+      );
       expect(
         find.byKey(const ValueKey<String>('chat-selection-forward')),
         findsOneWidget,
       );
-      expect(find.byKey(const ValueKey<String>('chat-selection-cancel')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('chat-selection-cancel')),
+        findsOneWidget,
+      );
 
       await tester.tap(
         find.byKey(const ValueKey<String>('chat-selection-cancel')),
       );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey<String>('chat-selection-toolbar')), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('chat-selection-toolbar')),
+        findsNothing,
+      );
       expect(
         container.read(chatSceneControllerProvider(session)).mode,
         ChatSceneMode.normal,
@@ -193,6 +343,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -222,13 +373,92 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('chat-action-reply')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('chat-action-forward')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('chat-action-favorite')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('chat-action-select')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('chat-action-react')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('chat-action-pin')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('chat-action-reply')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('chat-action-forward')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('chat-action-favorite')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('chat-action-select')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('chat-action-react')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('chat-action-pin')),
+      findsOneWidget,
+    );
     expect(find.text('\u7f6e\u9876'), findsOneWidget);
+  });
+
+  testWidgets('desktop secondary tap opens an anchored message context menu', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final message = WKMsg()
+        ..messageID = 'mid:desktop-menu'
+        ..messageSeq = 1
+        ..channelID = 'u_scene'
+        ..channelType = 1
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('hello desktop context menu');
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            _realtimeTelemetryNoTimerOverride(),
+            messageListProvider.overrideWith(
+              (ref, session) => _StaticMessageListNotifier(
+                session.channelId,
+                session.channelType,
+                session.channelId == 'u_scene'
+                    ? <WKMsg>[message]
+                    : const <WKMsg>[],
+              ),
+            ),
+            chatMarkConversationReadProvider.overrideWithValue(
+              (session, messageIds) async {},
+            ),
+          ],
+          child: const MaterialApp(
+            home: ChatPage(
+              channelId: 'u_scene',
+              channelType: 1,
+              channelName: 'Scene Chat',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('message-bubble-body')),
+        buttons: kSecondaryMouseButton,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('chat-context-action-reply')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('chat-action-reply')),
+        findsNothing,
+      );
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets(
@@ -272,14 +502,14 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
-            (ref, providedSession) =>
-                providedSession == session
-                    ? tracker
-                    : _EmptyMessageListNotifier(
-                        providedSession.channelId,
-                        providedSession.channelType,
-                      ),
+            (ref, providedSession) => providedSession == session
+                ? tracker
+                : _EmptyMessageListNotifier(
+                    providedSession.channelId,
+                    providedSession.channelType,
+                  ),
           ),
           chatSceneGatewayProvider.overrideWith((ref, _) => gateway),
           chatMarkConversationReadProvider.overrideWithValue(
@@ -309,7 +539,9 @@ void main() {
       );
       expect(find.text('Pinned body'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey<String>('chat-pinned-banner')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('chat-pinned-banner')),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -317,23 +549,18 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const ValueKey<String>('chat-pinned-sheet-item-mid:pinned'),
-        ),
+        find.byKey(const ValueKey<String>('chat-pinned-sheet-item-mid:pinned')),
         findsOneWidget,
       );
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('chat-pinned-sheet-item-mid:pinned'),
-        ),
+        find.byKey(const ValueKey<String>('chat-pinned-sheet-item-mid:pinned')),
       );
       await tester.pumpAndSettle();
 
-      expect(
-        tracker.loadAroundOrderSeqCalls,
-        <int>[pinnedSyncMessage.getWKMsg().orderSeq],
-      );
+      expect(tracker.loadAroundOrderSeqCalls, <int>[
+        pinnedSyncMessage.getWKMsg().orderSeq,
+      ]);
     },
   );
 
@@ -356,6 +583,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, providedSession) => _StaticMessageListNotifier(
               providedSession.channelId,
@@ -449,6 +677,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, providedSession) => _StaticMessageListNotifier(
               providedSession.channelId,
@@ -518,6 +747,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _realtimeTelemetryNoTimerOverride(),
             messageListProvider.overrideWith(
               (ref, session) => _StaticMessageListNotifier(
                 session.channelId,
@@ -612,6 +842,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _realtimeTelemetryNoTimerOverride(),
             messageListProvider.overrideWith(
               (ref, session) => _StaticMessageListNotifier(
                 session.channelId,
@@ -697,6 +928,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _realtimeTelemetryNoTimerOverride(),
             messageListProvider.overrideWith(
               (ref, session) => _StaticMessageListNotifier(
                 session.channelId,
@@ -782,6 +1014,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -869,6 +1102,7 @@ void main() {
 
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -980,6 +1214,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -1069,6 +1304,7 @@ void main() {
   ) async {
     final container = ProviderContainer(
       overrides: [
+        _realtimeTelemetryNoTimerOverride(),
         messageListProvider.overrideWith(
           (ref, session) =>
               _EmptyMessageListNotifier(session.channelId, session.channelType),
@@ -1131,6 +1367,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -1210,6 +1447,241 @@ void main() {
     },
   );
 
+  testWidgets('send failure keeps composer text and shows retry feedback', (
+    tester,
+  ) async {
+    final gateway = _FakeChatSceneGateway(sendError: Exception('offline'));
+    addTearDown(gateway.dispose);
+    final container = ProviderContainer(
+      overrides: [
+        _realtimeTelemetryNoTimerOverride(),
+        messageListProvider.overrideWith(
+          (ref, session) => _StaticMessageListNotifier(
+            session.channelId,
+            session.channelType,
+            const <WKMsg>[],
+          ),
+        ),
+        chatSceneGatewayProvider.overrideWith((ref, _) => gateway),
+        _memoryChatComposerOverride(),
+        chatMarkConversationReadProvider.overrideWithValue(
+          (session, messageIds) async {},
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    const session = ChatSession(
+      channelId: 'g_send_failure',
+      channelType: WKChannelType.group,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: ChatPage(
+            channelId: 'g_send_failure',
+            channelType: WKChannelType.group,
+            channelName: 'Send Failure',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final input = find.byKey(const ValueKey<String>('chat-input-field'));
+    await tester.enterText(input, 'retry this message');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('chat-send-button')));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(gateway.sentContents, hasLength(1));
+    expect(
+      container.read(chatComposerProvider(session)).text,
+      'retry this message',
+    );
+    expect(find.text('发送失败，消息已保留，请检查网络后重试'), findsOneWidget);
+  });
+
+  testWidgets('in-flight send ignores repeated button and Enter submits', (
+    tester,
+  ) async {
+    final sendCompleter = Completer<void>();
+    final gateway = _FakeChatSceneGateway(sendCompleter: sendCompleter);
+    addTearDown(gateway.dispose);
+    final container = ProviderContainer(
+      overrides: [
+        _realtimeTelemetryNoTimerOverride(),
+        messageListProvider.overrideWith(
+          (ref, session) => _StaticMessageListNotifier(
+            session.channelId,
+            session.channelType,
+            const <WKMsg>[],
+          ),
+        ),
+        chatSceneGatewayProvider.overrideWith((ref, _) => gateway),
+        _memoryChatComposerOverride(),
+        chatMarkConversationReadProvider.overrideWithValue(
+          (session, messageIds) async {},
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    const session = ChatSession(
+      channelId: 'g_send_dedup',
+      channelType: WKChannelType.group,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: ChatPage(
+            channelId: 'g_send_dedup',
+            channelType: WKChannelType.group,
+            channelName: 'Send Dedup',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final input = find.byKey(const ValueKey<String>('chat-input-field'));
+    await tester.tap(input);
+    await tester.enterText(input, 'send exactly once');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('chat-send-button')));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.tap(find.byKey(const ValueKey<String>('chat-send-button')));
+    await tester.pump();
+
+    expect(gateway.sentContents, hasLength(1));
+
+    sendCompleter.complete();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(container.read(chatComposerProvider(session)).text, isEmpty);
+  });
+
+  testWidgets('hardware Enter sends composer text and clears the input', (
+    tester,
+  ) async {
+    final gateway = _FakeChatSceneGateway();
+    addTearDown(gateway.dispose);
+    final container = ProviderContainer(
+      overrides: [
+        _realtimeTelemetryNoTimerOverride(),
+        messageListProvider.overrideWith(
+          (ref, session) => _StaticMessageListNotifier(
+            session.channelId,
+            session.channelType,
+            const <WKMsg>[],
+          ),
+        ),
+        chatSceneGatewayProvider.overrideWith((ref, _) => gateway),
+        _memoryChatComposerOverride(),
+        chatMarkConversationReadProvider.overrideWithValue(
+          (session, messageIds) async {},
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    const session = ChatSession(
+      channelId: 'g_keyboard_send',
+      channelType: WKChannelType.group,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: ChatPage(
+            channelId: 'g_keyboard_send',
+            channelType: WKChannelType.group,
+            channelName: 'Keyboard Send',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final input = find.byKey(const ValueKey<String>('chat-input-field'));
+    await tester.tap(input);
+    await tester.enterText(input, 'desktop enter send');
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(gateway.sentContents, hasLength(1));
+    final sent = gateway.sentContents.single as WKTextContent;
+    expect(sent.content, 'desktop enter send');
+    expect(container.read(chatComposerProvider(session)).text, isEmpty);
+  });
+
+  testWidgets('Shift Enter inserts a newline without sending', (tester) async {
+    final gateway = _FakeChatSceneGateway();
+    addTearDown(gateway.dispose);
+    final container = ProviderContainer(
+      overrides: [
+        _realtimeTelemetryNoTimerOverride(),
+        messageListProvider.overrideWith(
+          (ref, session) => _StaticMessageListNotifier(
+            session.channelId,
+            session.channelType,
+            const <WKMsg>[],
+          ),
+        ),
+        chatSceneGatewayProvider.overrideWith((ref, _) => gateway),
+        _memoryChatComposerOverride(),
+        chatMarkConversationReadProvider.overrideWithValue(
+          (session, messageIds) async {},
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    const session = ChatSession(
+      channelId: 'g_keyboard_newline',
+      channelType: WKChannelType.group,
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: ChatPage(
+            channelId: 'g_keyboard_newline',
+            channelType: WKChannelType.group,
+            channelName: 'Keyboard Newline',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final input = find.byKey(const ValueKey<String>('chat-input-field'));
+    await tester.tap(input);
+    await tester.enterText(input, 'line one');
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+
+    final textField = tester.widget<TextField>(input);
+    expect(textField.controller?.text, 'line one\n');
+    expect(container.read(chatComposerProvider(session)).text, 'line one\n');
+    expect(gateway.sentContents, isEmpty);
+    await tester.pump(const Duration(milliseconds: 350));
+  });
+
   testWidgets(
     'album toolbar sends the picked image content through the scene gateway',
     (tester) async {
@@ -1224,6 +1696,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _realtimeTelemetryNoTimerOverride(),
             messageListProvider.overrideWith(
               (ref, session) => _EmptyMessageListNotifier(
                 session.channelId,
@@ -1258,7 +1731,7 @@ void main() {
   );
 
   testWidgets(
-    'more panel sends image, file, location, card, and rich text contents through the scene gateway',
+    'more panel sends attachments and composer rich text through the scene gateway',
     (tester) async {
       final gateway = _FakeChatSceneGateway();
       final imageContent = WKImageContent(640, 360)
@@ -1290,6 +1763,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _realtimeTelemetryNoTimerOverride(),
             messageListProvider.overrideWith(
               (ref, session) => _EmptyMessageListNotifier(
                 session.channelId,
@@ -1343,9 +1817,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await openMorePanel();
       await tester.tap(
-        find.byKey(const ValueKey<String>('chat-function-composeRichText')),
+        find.byKey(const ValueKey<String>('chat-compose-rich-text-button')),
       );
       await tester.pumpAndSettle();
 
@@ -1359,64 +1832,64 @@ void main() {
     },
   );
 
-  testWidgets(
-    'more panel extension item invokes its onClick callback',
-    (tester) async {
-      final tappedSids = <String>[];
-      final slotRegistry = SlotRegistry();
-      slotRegistry.register(
-        chatFunctionSlot,
-        SlotEntry<ChatToolbarSlotContext, ChatFunctionMenu>(
-          id: 'chat_function.extension.action',
-          priority: 1,
-          build: (_) => ChatFunctionMenu(
-            sid: 'extensionAction',
-            text: 'Extension Action',
-            onClick: tappedSids.add,
-          ),
+  testWidgets('more panel extension item invokes its onClick callback', (
+    tester,
+  ) async {
+    final tappedSids = <String>[];
+    final slotRegistry = SlotRegistry();
+    slotRegistry.register(
+      chatFunctionSlot,
+      SlotEntry<ChatToolbarSlotContext, ChatFunctionMenu>(
+        id: 'chat_function.extension.action',
+        priority: 1,
+        build: (_) => ChatFunctionMenu(
+          sid: 'extensionAction',
+          text: 'Extension Action',
+          onClick: tappedSids.add,
         ),
-      );
+      ),
+    );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            messageListProvider.overrideWith(
-              (ref, session) => _EmptyMessageListNotifier(
-                session.channelId,
-                session.channelType,
-              ),
-            ),
-            slotRegistryProvider.overrideWithValue(slotRegistry),
-          ],
-          child: const MaterialApp(
-            home: ChatPage(
-              channelId: 'u_extension',
-              channelType: WKChannelType.personal,
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          _realtimeTelemetryNoTimerOverride(),
+          messageListProvider.overrideWith(
+            (ref, session) => _EmptyMessageListNotifier(
+              session.channelId,
+              session.channelType,
             ),
           ),
+          slotRegistryProvider.overrideWithValue(slotRegistry),
+        ],
+        child: const MaterialApp(
+          home: ChatPage(
+            channelId: 'u_extension',
+            channelType: WKChannelType.personal,
+          ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('chat-toolbar-wk_chat_toolbar_more')),
-      );
-      await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('chat-toolbar-wk_chat_toolbar_more')),
+    );
+    await tester.pumpAndSettle();
 
-      final extensionItem = find.byKey(
-        const ValueKey<String>('chat-function-extensionAction'),
-      );
-      expect(extensionItem, findsOneWidget);
+    final extensionItem = find.byKey(
+      const ValueKey<String>('chat-function-extensionAction'),
+    );
+    expect(extensionItem, findsOneWidget);
 
-      await tester.tap(extensionItem);
-      await tester.pumpAndSettle();
+    await tester.tap(extensionItem);
+    await tester.pumpAndSettle();
 
-      expect(tappedSids, <String>['extensionAction']);
-    },
-  );
+    expect(tappedSids, <String>['extensionAction']);
+  });
 
   testWidgets(
-    'more panel routes image, file, location, card, and rich text actions through dispatcher',
+    'more panel routes attachments and composer rich text through dispatcher',
     (tester) async {
       final gateway = _FakeChatSceneGateway();
       final imageContent = WKImageContent(640, 360)
@@ -1442,7 +1915,9 @@ void main() {
           ChatActionId.chooseFile: ChatActionMessageResult(fileContent),
           ChatActionId.sendLocation: ChatActionMessageResult(locationContent),
           ChatActionId.chooseCard: ChatActionMessageResult(cardContent),
-          ChatActionId.composeRichText: ChatActionMessageResult(richTextContent),
+          ChatActionId.composeRichText: ChatActionMessageResult(
+            richTextContent,
+          ),
         },
       );
       addTearDown(gateway.dispose);
@@ -1450,6 +1925,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            _realtimeTelemetryNoTimerOverride(),
             messageListProvider.overrideWith(
               (ref, session) => _EmptyMessageListNotifier(
                 session.channelId,
@@ -1484,18 +1960,18 @@ void main() {
       await tapAction('chooseFile');
       await tapAction('sendLocation');
       await tapAction('chooseCard');
-      await tapAction('composeRichText');
-
-      expect(
-        dispatcher.requestedIds,
-        <ChatActionId>[
-          ChatActionId.chooseImage,
-          ChatActionId.chooseFile,
-          ChatActionId.sendLocation,
-          ChatActionId.chooseCard,
-          ChatActionId.composeRichText,
-        ],
+      await tester.tap(
+        find.byKey(const ValueKey<String>('chat-compose-rich-text-button')),
       );
+      await tester.pumpAndSettle();
+
+      expect(dispatcher.requestedIds, <ChatActionId>[
+        ChatActionId.chooseImage,
+        ChatActionId.chooseFile,
+        ChatActionId.sendLocation,
+        ChatActionId.chooseCard,
+        ChatActionId.composeRichText,
+      ]);
       expect(gateway.sentContents, hasLength(5));
       expect(gateway.sentContents[0], same(imageContent));
       expect(gateway.sentContents[1], same(fileContent));
@@ -1531,6 +2007,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
+          _realtimeTelemetryNoTimerOverride(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -1684,7 +2161,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(const ValueKey<String>('chat-voice-record-button'))),
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('chat-voice-record-button')),
+      ),
     );
     await tester.pump(const Duration(milliseconds: 600));
     await gesture.moveBy(const Offset(0, -110));
@@ -1726,7 +2205,8 @@ void main() {
       startResult: false,
       failedStartState: const ChatVoiceRecordingState(
         phase: ChatVoiceRecordingPhase.permissionDenied,
-        errorMessage: '\u9700\u8981\u5141\u8bb8\u9ea6\u514b\u98ce\u6743\u9650\u540e\u624d\u80fd\u53d1\u9001\u8bed\u97f3',
+        errorMessage:
+            '\u9700\u8981\u5141\u8bb8\u9ea6\u514b\u98ce\u6743\u9650\u540e\u624d\u80fd\u53d1\u9001\u8bed\u97f3',
       ),
     );
     addTearDown(gateway.dispose);
@@ -1748,7 +2228,9 @@ void main() {
     expect(voiceService.stopCalls, 0);
     expect(voiceService.stopShouldSendValues, isEmpty);
     expect(
-      find.text('\u9700\u8981\u5141\u8bb8\u9ea6\u514b\u98ce\u6743\u9650\u540e\u624d\u80fd\u53d1\u9001\u8bed\u97f3'),
+      find.text(
+        '\u9700\u8981\u5141\u8bb8\u9ea6\u514b\u98ce\u6743\u9650\u540e\u624d\u80fd\u53d1\u9001\u8bed\u97f3',
+      ),
       findsOneWidget,
     );
   });
@@ -1821,11 +2303,10 @@ Future<void> _pumpVoiceScene(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        _realtimeTelemetryNoTimerOverride(),
         messageListProvider.overrideWith(
-          (ref, session) => _EmptyMessageListNotifier(
-            session.channelId,
-            session.channelType,
-          ),
+          (ref, session) =>
+              _EmptyMessageListNotifier(session.channelId, session.channelType),
         ),
         chatSceneGatewayProvider.overrideWith((ref, _) => gateway),
         chatVoiceActionServiceProvider.overrideWithValue(voiceService),
@@ -1926,13 +2407,26 @@ class _FakeChatMediaActionService implements ChatMediaActionService {
   final WKRichTextContent? richTextContent;
 
   @override
+  Future<WKMessageContent?> buildDroppedFile(
+    ChatDroppedFileSelection selection,
+  ) async => null;
+
+  @override
   Future<WKCardContent?> pickCard(BuildContext context) async => cardContent;
 
   @override
-  Future<WKFileContent?> pickFile(BuildContext context) async => fileContent;
+  Future<WKFileContent?> pickFile(
+    BuildContext context, {
+    String channelId = '',
+    int channelType = 0,
+  }) async => fileContent;
 
   @override
-  Future<WKImageContent?> pickImage(BuildContext context) async => imageContent;
+  Future<WKImageContent?> pickImage(
+    BuildContext context, {
+    String channelId = '',
+    int channelType = 0,
+  }) async => imageContent;
 
   @override
   Future<WKLocationContent?> pickLocation(BuildContext context) async =>
@@ -1946,19 +2440,18 @@ class _FakeChatMediaActionService implements ChatMediaActionService {
 class _FakeChatActionDispatcher extends ChatActionDispatcher {
   _FakeChatActionDispatcher({
     Map<ChatActionId, ChatActionDispatchResult>? resultsById,
-  }) : _resultsById =
-           resultsById == null
-               ? const <ChatActionId, ChatActionDispatchResult>{}
-               : Map<ChatActionId, ChatActionDispatchResult>.unmodifiable(
-                   resultsById,
-                 ),
-      super(
-        pickImage: _pickImageUnused,
-        pickFile: _pickFileUnused,
-        pickLocation: _pickLocationUnused,
-        pickCard: _pickCardUnused,
-        pickRichText: _pickRichTextUnused,
-      );
+  }) : _resultsById = resultsById == null
+           ? const <ChatActionId, ChatActionDispatchResult>{}
+           : Map<ChatActionId, ChatActionDispatchResult>.unmodifiable(
+               resultsById,
+             ),
+       super(
+         pickImage: _pickImageUnused,
+         pickFile: _pickFileUnused,
+         pickLocation: _pickLocationUnused,
+         pickCard: _pickCardUnused,
+         pickRichText: _pickRichTextUnused,
+       );
 
   final Map<ChatActionId, ChatActionDispatchResult> _resultsById;
   final List<ChatActionId> requestedIds = <ChatActionId>[];
@@ -2075,7 +2568,8 @@ class _FakeChatVoiceActionService implements ChatVoiceActionService {
         ChatVoiceDiscardReason.cancelled,
       );
     } else if (!startResult &&
-        _stateNotifier.value.phase == ChatVoiceRecordingPhase.permissionDenied) {
+        _stateNotifier.value.phase ==
+            ChatVoiceRecordingPhase.permissionDenied) {
       resolved = const ChatVoiceDiscardedResult(
         ChatVoiceDiscardReason.permissionDenied,
       );
@@ -2118,6 +2612,8 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
       pinnedMessages: <PinnedMessageEntry>[],
       messages: <WKSyncMsg>[],
     ),
+    this.sendCompleter,
+    this.sendError,
     Set<String> failingFavoriteMessageIds = const <String>{},
     Map<String, List<MessageReaction>> initialReactionsByMessageId =
         const <String, List<MessageReaction>>{},
@@ -2132,6 +2628,8 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
 
   final List<ForwardTarget> targets;
   final PinnedMessageSyncSnapshot pinnedSnapshot;
+  final Completer<void>? sendCompleter;
+  final Object? sendError;
   final List<Object> sentContents = <Object>[];
   final List<String> sentChannels = <String>[];
   final List<List<ForwardTarget>> forwardedTargets = <List<ForwardTarget>>[];
@@ -2185,6 +2683,14 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
   }) async {
     sentContents.add(content);
     sentChannels.add('$channelType:$channelId');
+    final completer = sendCompleter;
+    if (completer != null) {
+      await completer.future;
+    }
+    final error = sendError;
+    if (error != null) {
+      throw error;
+    }
   }
 
   @override
@@ -2261,6 +2767,58 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
 
   @override
   Stream<ReactionUpdate> watchReactionUpdates() => _reactionController.stream;
+}
+
+class _MemoryDraftStore implements DraftStore {
+  final Map<String, MessageDraft> _drafts = <String, MessageDraft>{};
+
+  @override
+  MessageDraft? getDraft(String channelId, int channelType) {
+    return _drafts['${channelType}_$channelId'];
+  }
+
+  @override
+  Future<void> saveDraft({
+    required String channelId,
+    required int channelType,
+    required String content,
+    String? replyMsgId,
+    String? replyContent,
+  }) async {
+    final key = '${channelType}_$channelId';
+    final normalizedReplyMsgId = _normalizeNullable(replyMsgId);
+    final normalizedReplyContent = _normalizeNullable(replyContent);
+    if (content.trim().isEmpty && normalizedReplyMsgId == null) {
+      _drafts.remove(key);
+      return;
+    }
+    _drafts[key] = MessageDraft(
+      channelId: channelId,
+      channelType: channelType,
+      content: content,
+      updateTime: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      replyMsgId: normalizedReplyMsgId,
+      replyContent: normalizedReplyContent,
+    );
+  }
+
+  String? _normalizeNullable(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+}
+
+Override _memoryChatComposerOverride() {
+  final draftStore = _MemoryDraftStore();
+  return chatComposerProvider.overrideWith((ref, session) {
+    final controller = ChatComposerController(
+      channelId: session.channelId,
+      channelType: session.channelType,
+      draftStore: draftStore,
+    );
+    unawaited(controller.initialize());
+    return controller;
+  });
 }
 
 SlotRegistry buildExtendedChatFunctionRegistryLegacyReference() {

@@ -14,7 +14,7 @@ void ensureHomeTopMenuSlots(SlotRegistry registry) {
         priority: 200,
         build: (context) => HomeTopMenuItem(
           id: 'home.create_group',
-          title: 'Create group',
+          title: '创建群聊',
           assetIcon: WKReferenceAssets.menuChats,
           onSelected: context.openCreateGroup,
         ),
@@ -29,7 +29,7 @@ void ensureHomeTopMenuSlots(SlotRegistry registry) {
         priority: 99,
         build: (context) => HomeTopMenuItem(
           id: 'home.add_friend',
-          title: 'Add friend',
+          title: '添加好友',
           assetIcon: WKReferenceAssets.menuInvite,
           onSelected: context.openAddFriend,
         ),
@@ -44,7 +44,7 @@ void ensureHomeTopMenuSlots(SlotRegistry registry) {
         priority: 98,
         build: (context) => HomeTopMenuItem(
           id: 'home.scan',
-          title: 'Scan',
+          title: '扫一扫',
           assetIcon: WKReferenceAssets.menuScan,
           onSelected: context.openScan,
         ),
@@ -59,7 +59,7 @@ void ensureHomeTopMenuSlots(SlotRegistry registry) {
         priority: 70,
         build: (context) => HomeTopMenuItem(
           id: 'home.multi_select',
-          title: 'Multi-select',
+          title: '多选',
           icon: Icons.playlist_add_check_circle_outlined,
           enabled: context.hasConversations,
           onSelected: context.enterMultiSelect,
@@ -75,7 +75,7 @@ void ensureHomeTopMenuSlots(SlotRegistry registry) {
         priority: 60,
         build: (context) => HomeTopMenuItem(
           id: 'home.clear_all',
-          title: 'Clear all conversations',
+          title: '清空全部会话',
           icon: Icons.delete_sweep_outlined,
           enabled: context.hasConversations,
           onSelected: context.clearAllConversations,

@@ -1,4 +1,5 @@
 import '../../core/utils/avatar_utils.dart';
+import '../../modules/customer_service/customer_service_identity.dart';
 
 class Friend {
   final String uid;
@@ -16,6 +17,7 @@ class Friend {
   final int vipLevel;
 
   bool get isVip => vipLevel == 1;
+  bool get isCustomerService => isCustomerServiceCategory(category);
 
   Friend({
     required this.uid,
@@ -23,7 +25,7 @@ class Friend {
     this.avatar,
     this.remark,
     this.status,
-    this.category,
+    String? category,
     this.robot,
     this.beDeleted,
     this.beBlacklist,
@@ -31,7 +33,7 @@ class Friend {
     this.createdAt,
     this.updatedAt,
     this.vipLevel = 0,
-  });
+  }) : category = normalizePublicAccountCategory(category);
 
   factory Friend.fromJson(Map<String, dynamic> json) {
     // 服务器返回 uid 在 to_uid 字段中
@@ -51,7 +53,7 @@ class Friend {
       ),
       remark: json['remark'] ?? json['to_remark'],
       status: _parseTimestamp(json['status']),
-      category: json['category']?.toString(),
+      category: normalizePublicAccountCategory(json['category']?.toString()),
       robot: _parseTimestamp(json['robot']),
       beDeleted: _parseTimestamp(json['be_deleted']),
       beBlacklist: _parseTimestamp(json['be_blacklist']),
@@ -95,7 +97,7 @@ class Friend {
   }
 
   bool get isSystemAccount {
-    final normalizedCategory = (category ?? '').trim().toLowerCase();
+    final normalizedCategory = normalizePublicAccountCategory(category) ?? '';
     return normalizedCategory == 'system' ||
         (robot ?? 0) == 1 ||
         uid == 'u_10000' ||

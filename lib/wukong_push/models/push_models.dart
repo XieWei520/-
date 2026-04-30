@@ -1,18 +1,9 @@
 import 'dart:convert';
 
 /// Lifecycle hook describing how a push message reached the client.
-enum PushMessageTrigger {
-  foreground,
-  tap,
-  initial,
-  background,
-}
+enum PushMessageTrigger { foreground, tap, initial, background }
 
-enum ApplePushTokenState {
-  notApplicable,
-  missing,
-  available,
-}
+enum ApplePushTokenState { notApplicable, missing, available }
 
 class PushRegistrationSnapshot {
   const PushRegistrationSnapshot({
@@ -27,8 +18,7 @@ class PushRegistrationSnapshot {
 
   bool get hasDeviceToken => deviceToken != null && deviceToken!.isNotEmpty;
 
-  bool get isApnsReady =>
-      applePushTokenState == ApplePushTokenState.available;
+  bool get isApnsReady => applePushTokenState == ApplePushTokenState.available;
 
   PushRegistrationSnapshot copyWith({
     String? deviceToken,
@@ -88,12 +78,12 @@ class PushPayload {
       );
       return PushPayload(
         raw: rawMap,
-        channelId: decoded['channel_id']?.toString(),
+        channelId: _normalizeString(decoded['channel_id']),
         channelType: _parseChannelType(decoded['channel_type']),
-        messageId: decoded['message_id']?.toString(),
-        senderUid: decoded['sender_uid']?.toString(),
-        title: decoded['title']?.toString(),
-        body: decoded['body']?.toString(),
+        messageId: _normalizeString(decoded['message_id']),
+        senderUid: _normalizeString(decoded['sender_uid']),
+        title: _normalizeString(decoded['title']),
+        body: _normalizeString(decoded['body']),
       );
     }
     if (decoded is Map) {
@@ -104,51 +94,64 @@ class PushPayload {
   }
 
   factory PushPayload.fromMap(Map<String, dynamic>? json) {
-    final data = json == null ? <String, dynamic>{} : Map<String, dynamic>.from(json);
-    final normalizedChannelId = _resolveAny(
-      data,
-      const ['channel_id', 'channelId', 'conversation_id'],
+    final data = json == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(json);
+    final normalizedChannelId = _resolveAny(data, const [
+      'channel_id',
+      'channelId',
+      'conversation_id',
+    ]);
+    final normalizedChannelType = _parseChannelType(
+      _resolveAny(data, const ['channel_type', 'channelType']),
     );
-    final normalizedChannelType =
-        _parseChannelType(_resolveAny(data, const ['channel_type', 'channelType']));
-    final normalizedMessageId = _resolveAny(
-      data,
-      const ['message_id', 'messageId', 'msg_id'],
-    );
-    final normalizedSenderUid = _resolveAny(
-      data,
-      const ['sender_uid', 'senderUid', 'from_uid', 'fromUid'],
-    );
-    final payloadTitle = _resolveAny(
-      data,
-      const ['title', 'notification_title'],
-    );
-    final payloadBody = _resolveAny(
-      data,
-      const ['body', 'notification_body', 'content'],
-    );
+    final normalizedMessageId = _resolveAny(data, const [
+      'message_id',
+      'messageId',
+      'msg_id',
+    ]);
+    final normalizedSenderUid = _resolveAny(data, const [
+      'sender_uid',
+      'senderUid',
+      'from_uid',
+      'fromUid',
+    ]);
+    final payloadTitle = _resolveAny(data, const [
+      'title',
+      'notification_title',
+    ]);
+    final payloadBody = _resolveAny(data, const [
+      'body',
+      'notification_body',
+      'content',
+    ]);
 
     return PushPayload(
       raw: data,
-      channelId: normalizedChannelId?.toString(),
+      channelId: _normalizeString(normalizedChannelId),
       channelType: normalizedChannelType,
-      messageId: normalizedMessageId?.toString(),
-      senderUid: normalizedSenderUid?.toString(),
-      title: payloadTitle?.toString(),
-      body: payloadBody?.toString(),
+      messageId: _normalizeString(normalizedMessageId),
+      senderUid: _normalizeString(normalizedSenderUid),
+      title: _normalizeString(payloadTitle),
+      body: _normalizeString(payloadBody),
     );
   }
 
-  static dynamic _resolveAny(
-    Map<String, dynamic> data,
-    List<String> keys,
-  ) {
+  static dynamic _resolveAny(Map<String, dynamic> data, List<String> keys) {
     for (final key in keys) {
       if (data.containsKey(key) && data[key] != null) {
         return data[key];
       }
     }
     return null;
+  }
+
+  static String? _normalizeString(dynamic value) {
+    final normalized = value?.toString().trim();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+    return normalized;
   }
 
   static int? _parseChannelType(dynamic value) {
@@ -182,5 +185,6 @@ class PushMessageEvent {
   final String? body;
 
   bool get openedFromNotification =>
-      trigger == PushMessageTrigger.tap || trigger == PushMessageTrigger.initial;
+      trigger == PushMessageTrigger.tap ||
+      trigger == PushMessageTrigger.initial;
 }

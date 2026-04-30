@@ -74,15 +74,15 @@ class _HelpFeedbackPageState extends ConsumerState<HelpFeedbackPage> {
     final diagnostics = [
       '应用: ${AppConfig.appName}',
       '版本: $_versionLabel',
-      'ƽ̨: ${PlatformUtils.platformName}',
+      '平台: ${PlatformUtils.platformName}',
       '设备旗标: $_deviceFlagLabel (${IMConfig.currentDeviceFlag})',
       'API: ${ApiConfig.baseUrl}',
       'WS: ${ApiConfig.wsAddr}',
-      'Web 登录地址: ${runtimeCapabilities.webLoginUrl.isEmpty ? '未返回' : runtimeCapabilities.webLoginUrl}',
-      'Web 登录状态: ${runtimeCapabilities.webLoginStatusMessage}',
+      '网页端登录地址: ${runtimeCapabilities.webLoginUrl.isEmpty ? '未返回' : runtimeCapabilities.webLoginUrl}',
+      '网页端登录状态: ${runtimeCapabilities.webLoginStatusMessage}',
       '短编号修改: ${runtimeCapabilities.shortNoEditStatusMessage}',
       '手机号搜索: ${runtimeCapabilities.phoneSearchStatusMessage}',
-      '环境: ${AppConfig.isDevelopment ? 'development' : 'production'}',
+      '环境: ${AppConfig.isDevelopment ? '开发环境' : '生产环境'}',
     ].join('\n');
 
     await Clipboard.setData(ClipboardData(text: diagnostics));
@@ -114,7 +114,7 @@ class _HelpFeedbackPageState extends ConsumerState<HelpFeedbackPage> {
       '- 版本: $_versionLabel',
       '- ƽ̨: ${PlatformUtils.platformName}',
       '- API: ${ApiConfig.baseUrl}',
-      '- Web 登录状态: ${runtimeCapabilities.webLoginStatusMessage}',
+      '- 网页端登录状态: ${runtimeCapabilities.webLoginStatusMessage}',
     ].join('\n');
 
     await Clipboard.setData(ClipboardData(text: template));
@@ -176,7 +176,7 @@ class _HelpFeedbackPageState extends ConsumerState<HelpFeedbackPage> {
   Widget _buildActionsCard(AsyncValue<dynamic> runtimeCapabilities) {
     final webLoginStatus = runtimeCapabilities.maybeWhen(
       data: (value) => value.webLoginStatusMessage,
-      orElse: () => '正在读取 Web 登录状态',
+      orElse: () => '正在读取网页端登录状态',
     );
 
     return Container(
@@ -191,7 +191,7 @@ class _HelpFeedbackPageState extends ConsumerState<HelpFeedbackPage> {
           ListTile(
             leading: const Icon(Icons.copy_all_outlined),
             title: const Text('复制诊断信息'),
-            subtitle: Text('包含版本、API、WS、设备旗标和当前 Web 登录状态'),
+            subtitle: Text('包含版本、接口、长连接、设备旗标和当前网页端登录状态'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: _copyDiagnostics,
           ),
@@ -206,7 +206,7 @@ class _HelpFeedbackPageState extends ConsumerState<HelpFeedbackPage> {
           const Divider(indent: 64, endIndent: 16),
           ListTile(
             leading: const Icon(Icons.cloud_outlined),
-            title: const Text('当前 Web 登录状态'),
+            title: const Text('当前网页端登录状态'),
             subtitle: Text(webLoginStatus),
           ),
         ],
@@ -244,7 +244,7 @@ class _HelpFeedbackPageState extends ConsumerState<HelpFeedbackPage> {
           Text('常见联调问题', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: WKSpace.md),
           _FaqItem(
-            title: 'PC/Web 登录',
+            title: '电脑端/网页端登录',
             body:
                 '当前状态：$webLoginStatus\n如果网页能打开但还不能标绿，通常还差一次真实扫码确认和 `login_authcode` 收口回归。',
           ),

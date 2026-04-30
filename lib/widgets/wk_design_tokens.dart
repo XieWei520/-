@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class WKFontFamily {
@@ -45,21 +46,40 @@ class WKShadows {
 class WKTypography {
   WKTypography._();
 
-  static const List<String> fontFamilyFallback = [
+  static const List<String> nativeFontFamilyFallback = [
+    'WKNotoSansSC',
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Noto Color Emoji',
     'Microsoft YaHei UI',
     'Microsoft YaHei',
     'PingFang SC',
     'Hiragino Sans GB',
     'HarmonyOS Sans SC',
-    'Noto Sans SC',
-    'Noto Sans CJK SC',
-    'Source Han Sans SC',
     'SF Pro Text',
     'Segoe UI',
-    'Roboto',
     'Arial',
     'sans-serif',
   ];
+
+  static const List<String> webFontFamilyFallback = [
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Noto Color Emoji',
+    'WKChineseWebSubset',
+    'Microsoft YaHei UI',
+    'Microsoft YaHei',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'HarmonyOS Sans SC',
+    'SF Pro Text',
+    'Segoe UI',
+    'Arial',
+    'sans-serif',
+  ];
+
+  static List<String> get fontFamilyFallback =>
+      kIsWeb ? webFontFamilyFallback : nativeFontFamilyFallback;
 
   static TextTheme buildTextTheme({
     required Color primary,

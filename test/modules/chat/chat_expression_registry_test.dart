@@ -4,6 +4,7 @@ import 'package:wukong_im_app/modules/chat/expression/chat_expression_models.dar
 import 'package:wukong_im_app/modules/chat/expression/chat_expression_recent_store.dart';
 import 'package:wukong_im_app/modules/chat/expression/chat_expression_registry.dart';
 import 'package:wukong_im_app/modules/chat/expression/chat_sticker_pack_loader.dart';
+import 'package:wukong_im_app/wukong_base/emoji/android_emoji_catalog.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,50 @@ void main() {
       expect(loaded.single.logicalKey, 'sticker:android_sample_motion:typing');
       expect(loaded.single.categoryId, 'sticker:android_sample_motion');
       expect(loaded.single.itemId, 'typing');
+    },
+  );
+
+  test(
+    'registry drops stale invalid emoji recents before rendering panel',
+    () async {
+      final store = ChatExpressionRecentStore();
+      final validEmoji = androidEmojiCatalog.lookupById('0_0')!;
+      await store.save(<ChatExpressionRecentRecord>[
+        const ChatExpressionRecentRecord(
+          kind: ChatExpressionKind.emoji,
+          categoryId: 'emoji:0',
+          itemId: 'x',
+          displayText: 'x',
+          previewKey: '',
+          animationKey: '',
+          gifUrl: '',
+          width: 0,
+          height: 0,
+        ),
+        ChatExpressionRecentRecord(
+          kind: ChatExpressionKind.emoji,
+          categoryId: 'emoji:0',
+          itemId: validEmoji.tag,
+          displayText: validEmoji.tag,
+          previewKey: validEmoji.assetPath,
+          animationKey: '',
+          gifUrl: '',
+          width: 0,
+          height: 0,
+        ),
+      ]);
+
+      final snapshot = await ChatExpressionRegistry(
+        recentStore: store,
+        stickerPackLoader: ChatStickerPackLoader(
+          manifestPaths: const <String>[],
+        ),
+      ).load();
+
+      final recents = snapshot.categories.first.recents;
+      expect(recents, hasLength(1));
+      expect(recents.single.itemId, validEmoji.tag);
+      expect(recents.single.previewKey, validEmoji.assetPath);
     },
   );
 }

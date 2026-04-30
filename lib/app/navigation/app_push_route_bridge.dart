@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import '../../wukong_push/models/push_models.dart';
 import 'app_route_location.dart';
 
+const int _defaultMaxOpenedEventKeys = 128;
+const int _defaultMaxPendingOpenedIntents = 16;
+
 @immutable
 class AppChatRouteIntent {
   const AppChatRouteIntent({
@@ -35,18 +38,28 @@ class AppPushRouteBridge {
     required IsLoggedInReader isLoggedIn,
     required IsRestoringSessionReader isRestoringSession,
     required OpenChatRoute onOpenChat,
+    int maxOpenedEventKeys = _defaultMaxOpenedEventKeys,
+    int maxPendingOpenedIntents = _defaultMaxPendingOpenedIntents,
   }) : _messageEvents = messageEvents,
        _isLoggedIn = isLoggedIn,
        _isRestoringSession = isRestoringSession,
-       _onOpenChat = onOpenChat;
+       _onOpenChat = onOpenChat,
+       _maxOpenedEventKeys = maxOpenedEventKeys,
+       _maxPendingOpenedIntents = maxPendingOpenedIntents;
 
   final Stream<PushMessageEvent> _messageEvents;
   final IsLoggedInReader _isLoggedIn;
   final IsRestoringSessionReader _isRestoringSession;
   final OpenChatRoute _onOpenChat;
+  final int _maxOpenedEventKeys;
+  final int _maxPendingOpenedIntents;
 
   StreamSubscription<PushMessageEvent>? _subscription;
-  final List<AppChatRouteIntent> _pendingIntents = <AppChatRouteIntent>[];
+  final List<_PendingChatRouteIntent> _pendingIntents =
+      <_PendingChatRouteIntent>[];
+  final Set<String> _pendingOpenedEventKeys = <String>{};
+  final Set<String> _openedEventKeys = <String>{};
+  final List<String> _openedEventKeyOrder = <String>[];
 
   void start({ConsumePendingOpenedEvents? consumePendingOpenedEvents}) {
     if (_subscription != null) {
@@ -68,12 +81,22 @@ class AppPushRouteBridge {
     if (intent == null) {
       return;
     }
+    final eventKey = _openedEventKey(event);
+    if (_openedEventKeys.contains(eventKey) ||
+        _pendingOpenedEventKeys.contains(eventKey)) {
+      return;
+    }
     if (_isLoggedIn()) {
+      _rememberOpenedEventKey(eventKey);
       _onOpenChat(intent);
       return;
     }
     if (_isRestoringSession()) {
-      _pendingIntents.add(intent);
+      _pendingOpenedEventKeys.add(eventKey);
+      _pendingIntents.add(
+        _PendingChatRouteIntent(intent: intent, eventKey: eventKey),
+      );
+      _trimPendingIntents();
     }
   }
 
@@ -81,6 +104,7 @@ class AppPushRouteBridge {
     if (!_isLoggedIn()) {
       if (!_isRestoringSession()) {
         _pendingIntents.clear();
+        _pendingOpenedEventKeys.clear();
       }
       return;
     }
@@ -88,10 +112,12 @@ class AppPushRouteBridge {
       return;
     }
 
-    final pending = List<AppChatRouteIntent>.from(_pendingIntents);
+    final pending = List<_PendingChatRouteIntent>.from(_pendingIntents);
     _pendingIntents.clear();
-    for (final intent in pending) {
-      _onOpenChat(intent);
+    _pendingOpenedEventKeys.clear();
+    for (final pendingIntent in pending) {
+      _rememberOpenedEventKey(pendingIntent.eventKey);
+      _onOpenChat(pendingIntent.intent);
     }
   }
 
@@ -125,6 +151,48 @@ class AppPushRouteBridge {
     await _subscription?.cancel();
     _subscription = null;
     _pendingIntents.clear();
+    _pendingOpenedEventKeys.clear();
+    _openedEventKeys.clear();
+    _openedEventKeyOrder.clear();
+  }
+
+  void _rememberOpenedEventKey(String eventKey) {
+    if (_maxOpenedEventKeys <= 0) {
+      return;
+    }
+    if (_openedEventKeys.add(eventKey)) {
+      _openedEventKeyOrder.add(eventKey);
+    }
+    while (_openedEventKeyOrder.length > _maxOpenedEventKeys) {
+      final removed = _openedEventKeyOrder.removeAt(0);
+      _openedEventKeys.remove(removed);
+    }
+  }
+
+  void _trimPendingIntents() {
+    if (_maxPendingOpenedIntents <= 0) {
+      _pendingIntents.clear();
+      _pendingOpenedEventKeys.clear();
+      return;
+    }
+    while (_pendingIntents.length > _maxPendingOpenedIntents) {
+      final removed = _pendingIntents.removeAt(0);
+      _pendingOpenedEventKeys.remove(removed.eventKey);
+    }
+  }
+
+  String _openedEventKey(PushMessageEvent event) {
+    final payload = event.payload;
+    final messageId = payload.messageId?.trim();
+    if (messageId != null && messageId.isNotEmpty) {
+      return 'message:$messageId';
+    }
+
+    final channelId = payload.channelId?.trim() ?? '';
+    final channelType = payload.channelType ?? 0;
+    final title = _firstNonEmpty(event.title, payload.title) ?? '';
+    final body = _firstNonEmpty(event.body, payload.body) ?? '';
+    return 'conversation:$channelType:$channelId:$title:$body';
   }
 
   String? _firstNonEmpty(String? first, String? second) {
@@ -138,4 +206,11 @@ class AppPushRouteBridge {
     }
     return null;
   }
+}
+
+class _PendingChatRouteIntent {
+  const _PendingChatRouteIntent({required this.intent, required this.eventKey});
+
+  final AppChatRouteIntent intent;
+  final String eventKey;
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/core/cache/media_cache_manager.dart';
 import 'package:wukong_im_app/modules/workplace/workplace_catalog_models.dart';
 import 'package:wukong_im_app/modules/workplace/workplace_catalog_page.dart';
 import 'package:wukong_im_app/modules/workplace/workplace_catalog_service.dart';
@@ -117,6 +118,24 @@ void main() {
         find.byKey(const ValueKey('workplace-my-app-icon-crm')),
         findsOneWidget,
       );
+      final bannerCover = tester.widget<CachedMediaImage>(
+        find.byKey(const ValueKey('workplace-banner-cover-banner-1')),
+      );
+      expect(bannerCover.imageUrl, 'https://cdn.example.com/banner.png');
+      expect(bannerCover.cacheKey, bannerCover.imageUrl);
+      expect(bannerCover.fit, BoxFit.cover);
+      expect(bannerCover.maxWidth, greaterThan(0));
+      expect(bannerCover.maxHeight, greaterThan(0));
+
+      final appIcon = tester.widget<CachedMediaImage>(
+        find.byKey(const ValueKey('workplace-my-app-icon-crm')),
+      );
+      expect(appIcon.imageUrl, 'https://cdn.example.com/crm.png');
+      expect(appIcon.cacheKey, appIcon.imageUrl);
+      expect(appIcon.width, 40);
+      expect(appIcon.height, 40);
+      expect(appIcon.maxWidth, greaterThan(0));
+      expect(appIcon.maxHeight, greaterThan(0));
 
       await tester.tap(
         find.byKey(const ValueKey('workplace-app-open-crm')).first,
@@ -131,7 +150,9 @@ void main() {
       );
 
       Navigator.of(
-        tester.element(find.text('webview-destination:https://crm.example.com')),
+        tester.element(
+          find.text('webview-destination:https://crm.example.com'),
+        ),
       ).pop();
       await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView).first, const Offset(0, -800));
@@ -319,10 +340,7 @@ void main() {
         find.text('native-webview:https://native.example.com/dashboard'),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('Pending native route'),
-        findsNothing,
-      );
+      expect(find.textContaining('Pending native route'), findsNothing);
     },
   );
 

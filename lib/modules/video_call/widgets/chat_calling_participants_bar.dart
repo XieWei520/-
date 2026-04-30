@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../modules/conversation/conversation_activity_registry.dart';
 import '../../../widgets/wk_colors.dart';
+import '../../../widgets/wk_web_ui_tokens.dart';
 
 String buildCallingParticipantsLabel(ConversationActivityState state) {
   final names = state.callingParticipants
@@ -21,10 +22,7 @@ String buildCallingParticipantsLabel(ConversationActivityState state) {
 }
 
 class ChatCallingParticipantsBar extends StatelessWidget {
-  const ChatCallingParticipantsBar({
-    super.key,
-    required this.state,
-  });
+  const ChatCallingParticipantsBar({super.key, required this.state});
 
   final ConversationActivityState state;
 
@@ -39,19 +37,15 @@ class ChatCallingParticipantsBar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
-        color: WKColors.surface,
+        color: WKWebColors.surfaceSoft,
         border: Border(
-          top: BorderSide(color: WKColors.colorLine),
-          bottom: BorderSide(color: WKColors.colorLine),
+          top: BorderSide(color: WKWebColors.borderWarm),
+          bottom: BorderSide(color: WKWebColors.borderWarm),
         ),
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.call_rounded,
-            size: 18,
-            color: WKColors.brand500,
-          ),
+          const Icon(Icons.call_rounded, size: 18, color: WKWebColors.online),
           const SizedBox(width: 10),
           Expanded(
             child: roomName.isEmpty

@@ -19,15 +19,21 @@ void main() {
         'assets/emoji/android/default/0_0.png',
       );
       expect(androidEmojiCatalog.lookupById('0_114_default')?.baseId, '0_114');
-      expect(androidEmojiCatalog.lookupByTag('👋')?.id, '0_114_default');
-      expect(androidEmojiCatalog.lookupByTag('👋')?.baseId, '0_114');
+      expect(androidEmojiCatalog.lookupByTag('\u{1F44B}')?.id, '0_114_default');
+      expect(androidEmojiCatalog.lookupByTag('\u{1F44B}')?.baseId, '0_114');
       expect(androidEmojiCatalog.lookupByTag('__missing__'), isNull);
     });
 
     test('longestMatchAt uses the longest available tag', () {
-      final match = androidEmojiCatalog.longestMatchAt('x👋🏻y', 1);
+      final match = androidEmojiCatalog.longestMatchAt(
+        'x\u{1F44B}\u{1F3FB}y',
+        1,
+      );
       expect(match?.id, '0_114_color_1');
-      expect(androidEmojiCatalog.longestMatchAt('x👋🏻y', 0), isNull);
+      expect(
+        androidEmojiCatalog.longestMatchAt('x\u{1F44B}\u{1F3FB}y', 0),
+        isNull,
+      );
     });
 
     test('entriesForGroup excludes color variants from tab grids', () {

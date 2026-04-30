@@ -53,7 +53,7 @@ class _AuthLoginVerificationPageState
                   .read(authFlowControllerProvider.notifier)
                   .cancelLoginVerification(),
         icon: const Icon(Icons.arrow_back_rounded),
-        tooltip: 'Back',
+        tooltip: '返回',
       ),
       statusBanner: AuthStatusBanner(
         key: const ValueKey<String>('auth-status-banner'),
@@ -143,7 +143,7 @@ class _AuthLoginVerificationPageState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('OK'),
+              child: const Text('确定'),
             ),
           ],
         );

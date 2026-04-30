@@ -9,6 +9,8 @@ import 'package:wukong_im_app/data/providers/auth_provider.dart';
 import 'package:wukong_im_app/modules/auth/domain/auth_flow_models.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('AppRouteResolver', () {
     const defaultFlowState = AuthFlowState();
 
@@ -150,6 +152,20 @@ void main() {
 
       expect(redirect, AppRouteLocation.home);
     });
+
+    test('malformed locations do not crash route redirects', () {
+      final redirect = AppRouteResolver.resolve(
+        authState: AuthState(
+          isLoggedIn: false,
+          isLoading: false,
+          isRestoringSession: false,
+        ),
+        authFlowState: defaultFlowState,
+        location: 'http://[::1',
+      );
+
+      expect(redirect, AppRouteLocation.login);
+    });
   });
 
   group('AppRouteLocation', () {
@@ -186,6 +202,7 @@ void main() {
     addTearDown(container.dispose);
 
     final initialRouter = container.read(appRouterProvider);
+    container.read(authProvider.notifier);
 
     authNotifier.updateCurrentUser(
       UserInfo(uid: 'u_self', name: 'Tester Updated'),
@@ -223,6 +240,7 @@ void main() {
     addTearDown(container.dispose);
 
     final notifier = container.read(refreshNotifierProvider);
+    container.read(authProvider.notifier);
     var notifications = 0;
     notifier.addListener(() {
       notifications += 1;

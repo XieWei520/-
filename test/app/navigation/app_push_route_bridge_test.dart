@@ -190,6 +190,109 @@ void main() {
       },
     );
 
+    test('deduplicates replayed and streamed opened push events', () async {
+      final controller = StreamController<PushMessageEvent>();
+      final intents = <AppChatRouteIntent>[];
+      final duplicateEvent = PushMessageEvent(
+        payload: PushPayload.fromMap({
+          'channel_id': 'c-duplicate',
+          'channel_type': 1,
+          'message_id': 'm-duplicate',
+        }),
+        data: const <String, dynamic>{},
+        trigger: PushMessageTrigger.tap,
+        title: 'Duplicate',
+      );
+      final bridge = AppPushRouteBridge(
+        messageEvents: controller.stream,
+        isLoggedIn: () => true,
+        isRestoringSession: () => false,
+        onOpenChat: intents.add,
+      );
+
+      bridge.start(
+        consumePendingOpenedEvents: () => <PushMessageEvent>[duplicateEvent],
+      );
+      controller.add(duplicateEvent);
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(intents, hasLength(1));
+      expect(intents.single.channelId, 'c-duplicate');
+
+      await bridge.dispose();
+      await controller.close();
+    });
+
+    test(
+      'evicts old opened event keys after the recent window is full',
+      () async {
+        final controller = StreamController<PushMessageEvent>();
+        final intents = <AppChatRouteIntent>[];
+        final bridge = AppPushRouteBridge(
+          messageEvents: controller.stream,
+          isLoggedIn: () => true,
+          isRestoringSession: () => false,
+          onOpenChat: intents.add,
+          maxOpenedEventKeys: 3,
+        );
+        bridge.start();
+
+        for (final messageId in <String>['m-0', 'm-1', 'm-2', 'm-3']) {
+          controller.add(_openedEvent(messageId: messageId));
+        }
+        await Future<void>.delayed(Duration.zero);
+
+        controller.add(_openedEvent(messageId: 'm-0'));
+        controller.add(_openedEvent(messageId: 'm-3'));
+        await Future<void>.delayed(Duration.zero);
+
+        expect(intents.map((intent) => intent.channelId), <String>[
+          'c-m-0',
+          'c-m-1',
+          'c-m-2',
+          'c-m-3',
+          'c-m-0',
+        ]);
+
+        await bridge.dispose();
+        await controller.close();
+      },
+    );
+
+    test('caps pending opened intents during session restore', () async {
+      final controller = StreamController<PushMessageEvent>();
+      final intents = <AppChatRouteIntent>[];
+      var isLoggedIn = false;
+      var isRestoring = true;
+      final bridge = AppPushRouteBridge(
+        messageEvents: controller.stream,
+        isLoggedIn: () => isLoggedIn,
+        isRestoringSession: () => isRestoring,
+        onOpenChat: intents.add,
+        maxPendingOpenedIntents: 3,
+      );
+      bridge.start();
+
+      for (final messageId in <String>['m-0', 'm-1', 'm-2', 'm-3']) {
+        controller.add(_openedEvent(messageId: messageId));
+      }
+      await Future<void>.delayed(Duration.zero);
+
+      isLoggedIn = true;
+      isRestoring = false;
+      bridge.flushPending();
+
+      expect(intents.map((intent) => intent.channelId), <String>[
+        'c-m-1',
+        'c-m-2',
+        'c-m-3',
+      ]);
+
+      await bridge.dispose();
+      await controller.close();
+    });
+
     test(
       'buffers actionable intents during restore and flushes after login',
       () async {
@@ -274,4 +377,17 @@ void main() {
       await controller.close();
     });
   });
+}
+
+PushMessageEvent _openedEvent({required String messageId}) {
+  return PushMessageEvent(
+    payload: PushPayload.fromMap({
+      'channel_id': 'c-$messageId',
+      'channel_type': 1,
+      'message_id': messageId,
+    }),
+    data: const <String, dynamic>{},
+    trigger: PushMessageTrigger.tap,
+    title: 'Title $messageId',
+  );
 }

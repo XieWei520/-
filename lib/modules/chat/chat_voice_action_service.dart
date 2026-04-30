@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 
+import 'chat_recording_file_probe.dart';
 import 'chat_audio_session_bridge.dart';
 import 'chat_voice_feedback_service.dart';
 import '../../wukong_base/utils/audio_record_manager.dart';
@@ -570,7 +570,7 @@ class PlatformChatVoiceActionService implements ChatVoiceActionService {
     final next = _terminalOperationQueue.then((_) => operation());
     _terminalOperationQueue = next.then<void>(
       (_) {},
-      onError: (Object _, StackTrace __) {},
+      onError: (Object _, StackTrace stackTrace) {},
     );
     return next;
   }
@@ -598,8 +598,9 @@ class PlatformChatVoiceActionService implements ChatVoiceActionService {
 
     _pendingStoppedUpdate = null;
     final filePath = pendingStop.filePath?.trim() ?? '';
-    final fileExists = filePath.isNotEmpty && await File(filePath).exists();
-    final fileSize = fileExists ? await File(filePath).length() : 0;
+    final fileProbe = await probeChatRecordingFile(filePath);
+    final fileExists = fileProbe.exists;
+    final fileSize = fileProbe.size;
     final pathError = filePath.isEmpty
         ? 'Recording file path unavailable'
         : (!fileExists || fileSize <= 0)

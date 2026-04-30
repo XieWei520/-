@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/cache/media_cache_manager.dart';
 import '../../widgets/wk_avatar.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
@@ -375,16 +376,22 @@ class _MomentImages extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (images.length == 1) {
+      final decodeSize = _resolveMomentDecodeBound(
+        220,
+        MediaQuery.devicePixelRatioOf(context),
+      );
       return ClipRRect(
         borderRadius: BorderRadius.circular(WKRadius.lg),
-        child: Image.network(
-          images.first,
+        child: CachedMediaImage(
+          imageUrl: images.first,
+          cacheKey: images.first,
           width: 220,
           height: 220,
+          maxWidth: decodeSize,
+          maxHeight: decodeSize,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _fallback(220, 220);
-          },
+          placeholder: (_, _) => _fallback(220, 220),
+          errorWidget: (_, _, _) => _fallback(220, 220),
         ),
       );
     }
@@ -403,11 +410,26 @@ class _MomentImages extends StatelessWidget {
       itemBuilder: (context, index) {
         return ClipRRect(
           borderRadius: BorderRadius.circular(WKRadius.sm),
-          child: Image.network(
-            images[index],
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return _fallback(double.infinity, double.infinity);
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+              return CachedMediaImage(
+                imageUrl: images[index],
+                cacheKey: images[index],
+                maxWidth: _resolveMomentDecodeBound(
+                  constraints.maxWidth,
+                  devicePixelRatio,
+                ),
+                maxHeight: _resolveMomentDecodeBound(
+                  constraints.maxHeight,
+                  devicePixelRatio,
+                ),
+                fit: BoxFit.cover,
+                placeholder: (_, _) =>
+                    _fallback(double.infinity, double.infinity),
+                errorWidget: (_, _, _) =>
+                    _fallback(double.infinity, double.infinity),
+              );
             },
           ),
         );
@@ -427,6 +449,13 @@ class _MomentImages extends StatelessWidget {
       ),
     );
   }
+}
+
+int? _resolveMomentDecodeBound(double logicalSize, double devicePixelRatio) {
+  if (!logicalSize.isFinite || logicalSize <= 0 || devicePixelRatio <= 0) {
+    return null;
+  }
+  return (logicalSize * devicePixelRatio).ceil();
 }
 
 class _MomentAction extends StatelessWidget {

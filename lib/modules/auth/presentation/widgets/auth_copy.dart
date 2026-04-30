@@ -11,6 +11,8 @@ enum AuthLoginValidationError {
 class AuthCopy {
   AuthCopy._();
 
+  static const String authDisplayName = '信息平权';
+
   static const String loginButton = '登录';
   static const String registerEntry = '注册';
   static const String registerButton = '注册';
@@ -36,9 +38,9 @@ class AuthCopy {
 
   static String registerTitle(String appName) => '创建账号';
 
-  static String loginSubtitle(String appName) => '使用手机号和密码进入$appName';
+  static String loginSubtitle(String appName) => '使用手机号和密码进入$authDisplayName';
 
-  static String registerSubtitle(String appName) => '用手机号创建$appName账号';
+  static String registerSubtitle(String appName) => '用手机号创建$authDisplayName账号';
 
   static String resetPasswordSubtitle(String appName) =>
       '通过短信验证码恢复$appName访问权限';
@@ -114,22 +116,23 @@ class AuthCopy {
   static String registerPageLabel() => '注册';
   static String resetPageLabel() => '找回密码';
 
-  static const String _brandEyebrow = 'INFORMATION EQUITY';
-  static const String _brandTitle = '信息平权';
+  static const String _brandEyebrow = '信息平权';
+  static const String _authBrandTitle = authDisplayName;
+  static const String _resetBrandTitle = authDisplayName;
   static const String _brandDescription = '让全天下的人没有信息差';
   static const List<String> _brandHighlights = <String>[
     '真实信息更快抵达',
     '统一可信入口',
-    '桌面 / 移动 / Web 一致体验',
+    '桌面 / 移动 / 网页端一致体验',
   ];
 
   static String loginBrandEyebrow(String appName) => _brandEyebrow;
   static String registerBrandEyebrow(String appName) => _brandEyebrow;
   static String resetBrandEyebrow(String appName) => _brandEyebrow;
 
-  static String loginBrandTitle(String appName) => _brandTitle;
-  static String registerBrandTitle(String appName) => _brandTitle;
-  static String resetBrandTitle(String appName) => _brandTitle;
+  static String loginBrandTitle(String appName) => _authBrandTitle;
+  static String registerBrandTitle(String appName) => _authBrandTitle;
+  static String resetBrandTitle(String appName) => _resetBrandTitle;
 
   static const String loginBrandDescription = _brandDescription;
   static const String registerBrandDescription = _brandDescription;
@@ -173,6 +176,5 @@ class AuthCopy {
   static const String registerNicknameHint = '请输入昵称（选填）';
   static const String registerNicknameHelper = '显示用昵称，不作为登录账号。';
 
-  static const String unifiedAuthStageDescription =
-      'One unified auth stage across desktop, mobile, and web.';
+  static const String unifiedAuthStageDescription = '桌面端、移动端和网页端共用同一套认证流程。';
 }

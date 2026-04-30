@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 
 import '../../../core/config/im_config.dart';
 import '../../../data/models/friend.dart';
+import '../../../modules/customer_service/customer_service_badge.dart';
+import '../../../modules/customer_service/customer_service_identity.dart';
 import '../../../modules/vip/vip_badge.dart';
 import '../../../widgets/wk_avatar.dart';
 import '../../../widgets/wk_colors.dart';
@@ -37,37 +39,33 @@ class ContactsListViewport extends StatelessWidget {
     final strings = resolveContactsStrings(
       locale: Localizations.maybeLocaleOf(context),
     );
-    final entries = directory.sections
-        .expand((section) => section.entries)
-        .toList(growable: false);
+    final entries = _flattenEntries(directory.sections);
 
     return RepaintBoundary(
       key: const ValueKey('contacts-list-viewport-repaint'),
-      child: ListView(
+      child: ListView.builder(
         controller: scrollController,
         padding: EdgeInsets.zero,
-        children: [
-          header,
-          if (entries.isEmpty) ...[
-            const SizedBox(height: 120),
-            WKEmptyView(
-              icon: Icons.people_outline_rounded,
-              message: strings.contactsEmpty,
-              subMessage: strings.contactsEmptyHint,
-            ),
-          ] else ...[
-            for (final section in directory.sections)
-              for (var index = 0; index < section.entries.length; index++)
-                _ContactRow(
-                  entry: section.entries[index],
-                  presence:
-                      contactPresenceByUid[section.entries[index].friend.uid],
-                  currentTimestampSeconds: currentTimestampSeconds,
-                  showSection: index == 0,
-                  onTap: () => onTapEntry(section.entries[index]),
-                  onLongPress: () => onLongPressEntry(section.entries[index]),
+        itemCount: entries.isEmpty ? 2 : entries.length + 2,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return header;
+          }
+          if (entries.isEmpty) {
+            return Column(
+              children: [
+                const SizedBox(height: 120),
+                WKEmptyView(
+                  icon: Icons.people_outline_rounded,
+                  message: strings.contactsEmpty,
+                  subMessage: strings.contactsEmptyHint,
                 ),
-            Container(
+              ],
+            );
+          }
+          final rowIndex = index - 1;
+          if (rowIndex >= entries.length) {
+            return Container(
               color: WKColors.homeBg,
               padding: const EdgeInsets.symmetric(vertical: 15),
               alignment: Alignment.center,
@@ -79,12 +77,45 @@ class ContactsListViewport extends StatelessWidget {
                   color: WKColors.colorDark,
                 ),
               ),
-            ),
-          ],
-        ],
+            );
+          }
+          final row = entries[rowIndex];
+          return _ContactRow(
+            entry: row.entry,
+            presence: contactPresenceByUid[row.entry.friend.uid],
+            currentTimestampSeconds: currentTimestampSeconds,
+            showSection: row.showSection,
+            onTap: () => onTapEntry(row.entry),
+            onLongPress: () => onLongPressEntry(row.entry),
+          );
+        },
       ),
     );
   }
+
+  List<_ContactListEntry> _flattenEntries(
+    List<ContactsDirectorySection> sections,
+  ) {
+    final result = <_ContactListEntry>[];
+    for (final section in sections) {
+      for (var index = 0; index < section.entries.length; index++) {
+        result.add(
+          _ContactListEntry(
+            entry: section.entries[index],
+            showSection: index == 0,
+          ),
+        );
+      }
+    }
+    return result;
+  }
+}
+
+class _ContactListEntry {
+  const _ContactListEntry({required this.entry, required this.showSection});
+
+  final ContactsDirectoryEntry entry;
+  final bool showSection;
 }
 
 class _ContactRow extends StatelessWidget {
@@ -209,36 +240,7 @@ class _ContactRow extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                entry.sortKey,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontFamily: WKFontFamily.primary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: WKColors.colorDark,
-                                ),
-                              ),
-                            ),
-                            if (entry.friend.isVip) ...[
-                              const SizedBox(width: 6),
-                              VipBadge(
-                                key: ValueKey<String>(
-                                  'contacts-vip-badge-${entry.friend.uid}',
-                                ),
-                                compact: true,
-                              ),
-                            ],
-                            for (final tag in tags) ...[
-                              const SizedBox(width: 4),
-                              tag,
-                            ],
-                          ],
-                        ),
+                        _buildNameAndBadges(tags),
                         if (subtitle != null) ...[
                           const SizedBox(height: 2),
                           Text(
@@ -264,9 +266,43 @@ class _ContactRow extends StatelessWidget {
     );
   }
 
+  Widget _buildNameAndBadges(List<Widget> tags) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+              child: Text(
+                entry.sortKey,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: WKFontFamily.primary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: WKColors.colorDark,
+                ),
+              ),
+            ),
+            if (entry.friend.isVip)
+              VipBadge(
+                key: ValueKey<String>('contacts-vip-badge-${entry.friend.uid}'),
+                compact: true,
+              ),
+            ...tags,
+          ],
+        );
+      },
+    );
+  }
+
   List<Widget> _buildTags(Friend friend) {
     final tags = <Widget>[];
-    final category = (friend.category ?? '').trim().toLowerCase();
+    final category = normalizePublicAccountCategory(friend.category) ?? '';
     if (friend.uid == 'u_10000' || category == 'system') {
       tags.add(
         const _ContactTag(
@@ -275,12 +311,13 @@ class _ContactRow extends StatelessWidget {
           borderColor: WKColors.reminderColor,
         ),
       );
-    } else if (category == 'customer_service' || category == 'service') {
+    } else if (isCustomerServiceCategory(category)) {
       tags.add(
-        const _ContactTag(
-          label: '官方',
-          backgroundColor: WKColors.brand500,
-          textColor: WKColors.white,
+        CustomerServiceBadge(
+          key: ValueKey<String>(
+            'contacts-customer-service-badge-${friend.uid}',
+          ),
+          compact: true,
         ),
       );
     } else if (category == 'visitor') {

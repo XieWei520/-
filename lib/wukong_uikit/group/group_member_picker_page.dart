@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/wk_avatar.dart';
+
 class SelectableGroupMember {
   final String uid;
   final String title;
@@ -115,7 +117,7 @@ class _GroupMemberPickerPageState extends State<GroupMemberPickerPage> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search members',
+                hintText: '搜索成员',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _query.isNotEmpty
                     ? IconButton(
@@ -149,9 +151,6 @@ class _GroupMemberPickerPageState extends State<GroupMemberPickerPage> {
                       final title = candidate.title.isEmpty
                           ? candidate.uid
                           : candidate.title;
-                      final placeholder = title.isEmpty
-                          ? '?'
-                          : title[0].toUpperCase();
 
                       return CheckboxListTile(
                         key: ValueKey<String>(
@@ -167,24 +166,10 @@ class _GroupMemberPickerPageState extends State<GroupMemberPickerPage> {
                             }
                           });
                         },
-                        secondary: CircleAvatar(
-                          backgroundColor: Colors.blue[100],
-                          backgroundImage:
-                              candidate.avatar != null &&
-                                  candidate.avatar!.trim().isNotEmpty
-                              ? NetworkImage(candidate.avatar!)
-                              : null,
-                          child:
-                              candidate.avatar == null ||
-                                  candidate.avatar!.trim().isEmpty
-                              ? Text(
-                                  placeholder,
-                                  style: const TextStyle(
-                                    color: Colors.blue,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                )
-                              : null,
+                        secondary: WKAvatar(
+                          url: candidate.avatar,
+                          name: title,
+                          size: 40,
                         ),
                         title: Row(
                           children: [

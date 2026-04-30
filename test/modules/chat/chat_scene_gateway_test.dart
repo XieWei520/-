@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_gateway.dart';
@@ -12,6 +13,36 @@ import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
+  test(
+    'buildDirectOutgoingMessage mirrors SDK send payload for immediate web UI',
+    () {
+      final now = DateTime.fromMillisecondsSinceEpoch(1777184600000);
+      final channel = WKChannel('u_target', WKChannelType.personal)
+        ..channelName = 'Target';
+      final content = WKTextContent('hello web');
+
+      final message = buildDirectOutgoingMessage(
+        content: content,
+        channel: channel,
+        currentUid: 'u_me',
+        now: now,
+      );
+
+      expect(message.channelID, 'u_target');
+      expect(message.channelType, WKChannelType.personal);
+      expect(message.fromUID, 'u_me');
+      expect(message.contentType, WkMessageContentType.text);
+      expect(message.status, WKSendMsgResult.sendLoading);
+      expect(message.timestamp, 1777184600);
+      expect(message.orderSeq, 1777184600000);
+      expect(message.messageContent, same(content));
+      expect(message.getChannelInfo(), same(channel));
+      final payload = jsonDecode(message.content) as Map<String, dynamic>;
+      expect(payload['content'], 'hello web');
+      expect(payload['type'], WkMessageContentType.text);
+    },
+  );
+
   test('addFavorite forwards favorite metadata to collection api', () async {
     final collectionApi = _FakeCollectionApi();
     final gateway = ApiChatSceneGateway(collectionApi: collectionApi);
@@ -158,31 +189,85 @@ void main() {
     },
   );
 
-  test('deleteSelfMessage calls api delete and marks the local message deleted', () async {
-    final messageApi = _FakeMessageApi();
-    final locallyDeletedClientMsgNos = <String>[];
-    final gateway = ApiChatSceneGateway(
-      messageApi: messageApi,
-      deleteLocalMessage: (clientMsgNo) async {
-        locallyDeletedClientMsgNos.add(clientMsgNo);
-      },
-    );
-    final message = WKMsg()
-      ..messageID = 'message-delete'
-      ..messageSeq = 88
-      ..clientMsgNO = 'client-delete'
-      ..channelID = 'u-delete'
-      ..channelType = WKChannelType.personal;
+  test(
+    'deleteSelfMessage calls api delete and marks the local message deleted',
+    () async {
+      final messageApi = _FakeMessageApi();
+      final locallyDeletedClientMsgNos = <String>[];
+      final gateway = ApiChatSceneGateway(
+        messageApi: messageApi,
+        deleteLocalMessage: (clientMsgNo) async {
+          locallyDeletedClientMsgNos.add(clientMsgNo);
+        },
+      );
+      final message = WKMsg()
+        ..messageID = 'message-delete'
+        ..messageSeq = 88
+        ..clientMsgNO = 'client-delete'
+        ..channelID = 'u-delete'
+        ..channelType = WKChannelType.personal;
 
-    await gateway.deleteSelfMessage(message);
+      await gateway.deleteSelfMessage(message);
 
-    expect(messageApi.deleteCalls, hasLength(1));
-    expect(messageApi.deleteCalls.single.messageId, 'message-delete');
-    expect(messageApi.deleteCalls.single.messageSeq, 88);
-    expect(messageApi.deleteCalls.single.channelId, 'u-delete');
-    expect(messageApi.deleteCalls.single.channelType, WKChannelType.personal);
-    expect(locallyDeletedClientMsgNos, <String>['client-delete']);
-  });
+      expect(messageApi.deleteCalls, hasLength(1));
+      expect(messageApi.deleteCalls.single.messageId, 'message-delete');
+      expect(messageApi.deleteCalls.single.messageSeq, 88);
+      expect(messageApi.deleteCalls.single.channelId, 'u-delete');
+      expect(messageApi.deleteCalls.single.channelType, WKChannelType.personal);
+      expect(locallyDeletedClientMsgNos, <String>['client-delete']);
+    },
+  );
+
+  test(
+    'recallMessage persists a local revoke extra and publishes a fresh message snapshot',
+    () async {
+      final messageApi = _FakeMessageApi();
+      final savedExtras = <WKMsgExtra>[];
+      final refreshedMessages = <WKMsg>[];
+      final gateway = ApiChatSceneGateway(
+        messageApi: messageApi,
+        saveRemoteExtras: (extras) async {
+          savedExtras.addAll(extras);
+        },
+        refreshLocalMessage: (message) {
+          refreshedMessages.add(message);
+        },
+        currentUidReader: () => 'u_me',
+      );
+      final message = WKMsg()
+        ..messageID = 'message-recall'
+        ..messageSeq = 77
+        ..clientSeq = 707
+        ..clientMsgNO = 'client-recall'
+        ..channelID = 'u-recall'
+        ..channelType = WKChannelType.personal
+        ..fromUID = 'u_me'
+        ..contentType = WkMessageContentType.text
+        ..content = '{"content":"undo me","type":1}'
+        ..status = WKSendMsgResult.sendSuccess
+        ..orderSeq = 77000
+        ..wkMsgExtra = (WKMsgExtra()
+          ..messageID = 'message-recall'
+          ..extraVersion = 9);
+
+      await gateway.recallMessage(message);
+
+      expect(messageApi.revokeCalls, hasLength(1));
+      expect(messageApi.revokeCalls.single.clientMsgNo, 'client-recall');
+      expect(messageApi.revokeCalls.single.messageId, 'message-recall');
+      expect(savedExtras, hasLength(1));
+      expect(savedExtras.single.messageID, 'message-recall');
+      expect(savedExtras.single.channelID, 'u-recall');
+      expect(savedExtras.single.revoke, 1);
+      expect(savedExtras.single.revoker, 'u_me');
+      expect(savedExtras.single.extraVersion, greaterThan(9));
+      expect(refreshedMessages, hasLength(1));
+      expect(refreshedMessages.single, isNot(same(message)));
+      expect(refreshedMessages.single.clientMsgNO, 'client-recall');
+      expect(refreshedMessages.single.wkMsgExtra, same(savedExtras.single));
+      expect(message.wkMsgExtra?.revoke, 0);
+    },
+  );
 }
 
 class _FakeCollectionApi implements CollectionApi {
@@ -236,6 +321,7 @@ class _FakeCollectionApi implements CollectionApi {
 
 class _FakeMessageApi implements MessageApi {
   final List<_DeleteMessageCall> deleteCalls = <_DeleteMessageCall>[];
+  final List<_RevokeMessageCall> revokeCalls = <_RevokeMessageCall>[];
 
   @override
   Future<void> deleteMessage({
@@ -250,6 +336,23 @@ class _FakeMessageApi implements MessageApi {
         messageSeq: messageSeq,
         channelId: channelId,
         channelType: channelType,
+      ),
+    );
+  }
+
+  @override
+  Future<void> revokeMessage({
+    required String clientMsgNo,
+    required String channelId,
+    required int channelType,
+    String? messageId,
+  }) async {
+    revokeCalls.add(
+      _RevokeMessageCall(
+        clientMsgNo: clientMsgNo,
+        channelId: channelId,
+        channelType: channelType,
+        messageId: messageId,
       ),
     );
   }
@@ -296,4 +399,18 @@ class _DeleteMessageCall {
   final int messageSeq;
   final String channelId;
   final int channelType;
+}
+
+class _RevokeMessageCall {
+  const _RevokeMessageCall({
+    required this.clientMsgNo,
+    required this.channelId,
+    required this.channelType,
+    this.messageId,
+  });
+
+  final String clientMsgNo;
+  final String channelId;
+  final int channelType;
+  final String? messageId;
 }

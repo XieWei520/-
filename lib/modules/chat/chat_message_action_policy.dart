@@ -99,7 +99,7 @@ List<ChatMessageActionDescriptor> buildChatMessageActionDescriptors({
   return _buildInteractiveActionDescriptors(
     includeCopy: message.contentType == MessageContentType.text,
     includeEdit: isSelf && message.contentType == MessageContentType.text,
-    includeDelete: isSelf,
+    includeDelete: false,
     includeRecall: isSelf && canRecall,
     includePin: canPin && _supportsPinnedToggle(message),
     isPinned: (message.wkMsgExtra?.isPinned ?? 0) == 1,
@@ -119,7 +119,7 @@ List<ChatMessageActionDescriptor> buildLegacyLongPressActionDescriptors({
   return _buildInteractiveActionDescriptors(
     includeCopy: messageType == 'text',
     includeEdit: isFromMe && messageType == 'text',
-    includeDelete: isFromMe,
+    includeDelete: false,
     includeRecall: isFromMe && canRecall,
     includePin: canPin,
     isPinned: isPinned,
@@ -144,10 +144,7 @@ List<ChatMessageActionDescriptor> _buildInteractiveActionDescriptors({
   required bool includePin,
   required bool isPinned,
 }) {
-  final actions = <ChatMessageActionDescriptor>[
-    _replyAction,
-    _forwardAction,
-  ];
+  final actions = <ChatMessageActionDescriptor>[_replyAction, _forwardAction];
   if (includeCopy) {
     actions.add(_copyAction);
   }

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_list_page.dart';
-import 'package:wukong_im_app/modules/conversation/conversation_projection.dart';
 import 'package:wukong_im_app/wukong_base/msg/msg_content_type.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -11,6 +10,31 @@ import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
+  test(
+    'conversationKeyFor combines channel ID and type for workspace selection',
+    () {
+      final conversation = _buildConversation(
+        channelId: 'u_9001',
+        channelType: WKChannelType.personal,
+        unreadCount: 0,
+        lastMsgTimestamp: 0,
+        clientMsgNo: 'client_9001',
+      );
+
+      expect(conversationKeyFor(conversation), 'u_9001:1');
+    },
+  );
+
+  test(
+    'conversationSelectionKeyFromRowKey converts only the first separator',
+    () {
+      expect(
+        conversationSelectionKeyFromRowKey('2:group:alpha'),
+        'group:alpha:2',
+      );
+    },
+  );
+
   test('applyPatch keeps existing clientMsgNo identity', () {
     final notifier = ConversationNotifier.forTest(<WKUIConversationMsg>[
       _buildConversation(

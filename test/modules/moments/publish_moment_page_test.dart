@@ -43,6 +43,30 @@ void main() {
     expect(submitted?.location, '上海市浦东新区银城中路501号');
     expect(submitted?.mentions, <String>['u_bob']);
   });
+
+  testWidgets('publish page action buttons wrap on narrow screens', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(260, 640);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final service = FakeMomentsComposerService(
+      onPublish: (request) async => _fakeMoment(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: PublishMomentPage(service: service)),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('相册'), findsOneWidget);
+    expect(find.text('拍照'), findsOneWidget);
+    expect(find.text('位置'), findsOneWidget);
+    expect(find.text('@好友'), findsOneWidget);
+  });
 }
 
 class FakeMomentsComposerService implements MomentsComposeService {

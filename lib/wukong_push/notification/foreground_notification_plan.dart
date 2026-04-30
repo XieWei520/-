@@ -5,6 +5,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/push_models.dart';
 import 'notification_helper.dart';
 
+const int _maxForegroundNotificationTitleLength = 80;
+const int _maxForegroundNotificationBodyLength = 240;
+
 class ForegroundNotificationPlan {
   const ForegroundNotificationPlan({
     required this.title,
@@ -26,22 +29,43 @@ class ForegroundNotificationPlan {
 ForegroundNotificationPlan? buildForegroundNotificationPlan(
   PushMessageEvent event,
 ) {
-  final title = (event.title ?? event.payload.title ?? '').trim();
-  final body = (event.body ?? event.payload.body ?? '').trim();
+  final title = _compactForegroundNotificationText(
+    event.title ?? event.payload.title ?? '',
+    maxLength: _maxForegroundNotificationTitleLength,
+  );
+  final body = _compactForegroundNotificationText(
+    event.body ?? event.payload.body ?? '',
+    maxLength: _maxForegroundNotificationBodyLength,
+  );
   if (title.isEmpty && body.isEmpty) {
     return null;
   }
+  final displayTitle = title.isEmpty ? 'WuKongIM' : title;
 
   return ForegroundNotificationPlan(
-    title: title.isEmpty ? 'WuKongIM' : title,
+    title: displayTitle,
     body: body,
     payload: jsonEncode(<String, dynamic>{
       'payload': event.payload.toJson(),
-      'title': title,
+      'title': displayTitle,
       'body': body,
     }),
     channelId: NotificationHelper.messageChannelId,
     channelName: NotificationHelper.messageChannelName,
     importance: Importance.defaultImportance,
   );
+}
+
+String _compactForegroundNotificationText(
+  String value, {
+  required int maxLength,
+}) {
+  final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  if (maxLength <= 3) {
+    return normalized.substring(0, maxLength);
+  }
+  return '${normalized.substring(0, maxLength - 3)}...';
 }

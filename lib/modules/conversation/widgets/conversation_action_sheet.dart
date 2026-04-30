@@ -19,10 +19,8 @@ class ConversationActionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pinTitle = isPinned ? 'Unpin conversation' : 'Pin conversation';
-    final pinSubtitle = isPinned
-        ? 'Remove this conversation from the top of the list.'
-        : 'Keep this conversation at the top of the list.';
+    final pinTitle = isPinned ? '取消置顶' : '置顶会话';
+    final pinSubtitle = isPinned ? '将此会话从列表顶部移除。' : '将此会话固定在列表顶部。';
 
     return SafeArea(
       child: Padding(
@@ -49,8 +47,8 @@ class ConversationActionSheet extends StatelessWidget {
             _ConversationActionTile(
               tileKey: const ValueKey<String>('conversation-mute'),
               icon: Icons.notifications_off_outlined,
-              title: 'Mute notifications',
-              subtitle: 'Hide alerts but keep messages in sync.',
+              title: '消息免打扰',
+              subtitle: '隐藏提醒，但继续同步消息。',
               onTap: () {
                 Navigator.of(context).pop();
                 onMute();
@@ -61,10 +59,9 @@ class ConversationActionSheet extends StatelessWidget {
               tileKey: const ValueKey<String>('conversation-delete'),
               icon: Icons.delete_outline_rounded,
               iconColor: WKColors.danger,
-              title: 'Delete conversation',
+              title: '删除会话',
               titleColor: WKColors.danger,
-              subtitle:
-                  'Delete only local conversations and drafts. Server history is kept.',
+              subtitle: '只删除本地会话和草稿，服务器历史消息仍会保留。',
               onTap: () {
                 Navigator.of(context).pop();
                 onDelete();

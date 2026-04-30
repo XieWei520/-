@@ -1,12 +1,12 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
+import '../../core/platform/local_image_picker.dart';
+import '../../core/cache/media_cache_manager.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../core/utils/storage_utils.dart';
 import '../../data/models/user.dart';
@@ -145,7 +145,6 @@ class MyHeadPortraitPage extends ConsumerStatefulWidget {
 
 class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
   final GlobalKey _moreActionKey = GlobalKey();
-  final ImagePicker _picker = ImagePicker();
 
   User? _user;
   String _displayName = '我';
@@ -268,8 +267,8 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
     await _pickAndUploadAvatar(source);
   }
 
-  Future<ImageSource?> _selectAvatarSource() async {
-    return showModalBottomSheet<ImageSource>(
+  Future<LocalImagePickSource?> _selectAvatarSource() async {
+    return showModalBottomSheet<LocalImagePickSource>(
       context: context,
       builder: (sheetContext) {
         return SafeArea(
@@ -279,12 +278,15 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
                 title: const Text('从相册选择'),
-                onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+                onTap: () => Navigator.of(
+                  sheetContext,
+                ).pop(LocalImagePickSource.gallery),
               ),
               ListTile(
                 leading: const Icon(Icons.camera_alt_outlined),
                 title: const Text('拍照'),
-                onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+                onTap: () =>
+                    Navigator.of(sheetContext).pop(LocalImagePickSource.camera),
               ),
             ],
           ),
@@ -293,8 +295,8 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
     );
   }
 
-  Future<void> _pickAndUploadAvatar(ImageSource source) async {
-    if (source == ImageSource.camera && PlatformUtils.isDesktop) {
+  Future<void> _pickAndUploadAvatar(LocalImagePickSource source) async {
+    if (source == LocalImagePickSource.camera && PlatformUtils.isDesktop) {
       _showMessage('${PlatformUtils.platformName} 端暂不支持直接拍照');
       return;
     }
@@ -335,23 +337,12 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
     );
   }
 
-  Future<String?> _pickImagePath(ImageSource source) async {
-    if (source == ImageSource.gallery && PlatformUtils.isDesktop) {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
-        allowMultiple: false,
-        withData: false,
-      );
-      return result?.files.single.path;
-    }
-
-    final file = await _picker.pickImage(
+  Future<String?> _pickImagePath(LocalImagePickSource source) async {
+    return pickSingleLocalImagePath(
       source: source,
       imageQuality: 85,
       maxWidth: 1024,
     );
-    return file?.path;
   }
 
   Future<void> _saveAvatar() async {
@@ -365,7 +356,9 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
       if (widget.onSaveAvatar != null) {
         await widget.onSaveAvatar!(normalizedAvatar);
       } else {
-        final savedPath = await DownloadManager().downloadImage(normalizedAvatar);
+        final savedPath = await DownloadManager().downloadImage(
+          normalizedAvatar,
+        );
         if (savedPath == null || savedPath.trim().isEmpty) {
           throw Exception('保存头像失败');
         }
@@ -416,10 +409,16 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
     Widget child;
     if (normalizedAvatar.startsWith('http://') ||
         normalizedAvatar.startsWith('https://')) {
-      child = Image.network(
-        normalizedAvatar,
+      final viewportSize = MediaQuery.sizeOf(context);
+      final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+      child = CachedMediaImage(
+        imageUrl: normalizedAvatar,
+        cacheKey: normalizedAvatar,
         fit: BoxFit.contain,
-        errorBuilder: (_, _, _) => _buildAvatarFallback(),
+        maxWidth: _resolveDecodeBound(viewportSize.width, devicePixelRatio),
+        maxHeight: _resolveDecodeBound(viewportSize.height, devicePixelRatio),
+        placeholder: (_, _) => const SizedBox.expand(),
+        errorWidget: (_, _, _) => _buildAvatarFallback(),
       );
     } else {
       child = _buildAvatarFallback();
@@ -428,10 +427,7 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
     return GestureDetector(
       key: const ValueKey('my_head_portrait_image'),
       onLongPress: _isLoading || _isUpdating ? null : _showMoreActions,
-      child: SizedBox(
-        width: double.infinity,
-        child: child,
-      ),
+      child: SizedBox(width: double.infinity, child: child),
     );
   }
 
@@ -441,11 +437,7 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
       child: DecoratedBox(
         decoration: const BoxDecoration(color: WKColors.white),
         child: Center(
-          child: WKAvatar(
-            url: _avatarUrl,
-            name: _displayName,
-            size: 180,
-          ),
+          child: WKAvatar(url: _avatarUrl, name: _displayName, size: 180),
         ),
       ),
     );
@@ -512,4 +504,11 @@ class _MyHeadPortraitPageState extends ConsumerState<MyHeadPortraitPage> {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
+}
+
+int? _resolveDecodeBound(double logicalSize, double devicePixelRatio) {
+  if (!logicalSize.isFinite || logicalSize <= 0 || devicePixelRatio <= 0) {
+    return null;
+  }
+  return (logicalSize * devicePixelRatio).ceil();
 }

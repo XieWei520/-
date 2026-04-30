@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/entity/channel_member.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -22,7 +24,9 @@ import '../../data/models/call.dart';
 import '../../data/models/chat_session.dart';
 import '../../data/models/friend.dart';
 import '../../data/models/group.dart';
+import '../../data/models/user.dart';
 import '../../data/models/wk_custom_content.dart';
+import '../../data/providers/auth_provider.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../data/providers/user_provider.dart';
 import '../../service/api/group_api.dart';
@@ -31,6 +35,8 @@ import '../../service/api/robot_api.dart';
 import '../../service/api/user_api.dart';
 import '../../wukong_uikit/group/group_detail_page.dart';
 import '../../wukong_uikit/user/user_detail_page.dart';
+import '../customer_service/customer_service_badge.dart';
+import '../customer_service/customer_service_identity.dart';
 import '../location/location_view_page.dart';
 import '../search/presentation/chat_search_entry_page.dart';
 import '../search/presentation/message_record_search_page.dart';
@@ -39,7 +45,9 @@ import '../../widgets/chat_background_surface.dart';
 import '../../widgets/message_bubble.dart';
 import '../../widgets/wk_avatar.dart';
 import '../../widgets/wk_colors.dart';
+import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_reference_assets.dart';
+import '../../widgets/wk_web_ui_tokens.dart';
 import '../../wk_endpoint/providers/slot_registry_provider.dart';
 import '../../wk_endpoint/slots/chat_slots.dart';
 import '../../wukong_robot/models/robot.dart';
@@ -59,10 +67,14 @@ import 'chat_file_opening.dart';
 import 'chat_conversation_extra_gateway.dart';
 import 'chat_action_definition.dart';
 import 'chat_action_dispatcher.dart';
+import 'chat_desktop_drop_target.dart';
+import 'chat_media_action_service.dart';
 import 'chat_message_action_policy.dart';
+import 'chat_message_action_surface.dart';
 import 'chat_message_reaction_mapping.dart';
 import 'chat_mentions_controller.dart';
 import 'chat_message_view_model.dart';
+import 'chat_scene_gateway.dart';
 import 'chat_scene_models.dart';
 import 'chat_scene_providers.dart';
 import 'chat_gif_panel_service.dart';
@@ -95,6 +107,63 @@ import 'widgets/chat_voice_record_overlay.dart';
 import '../conversation/conversation_activity_registry.dart';
 import '../video_call/widgets/chat_calling_participants_bar.dart';
 
+@visibleForTesting
+const double olderMessageLoadExtentAfterThreshold = 300;
+
+@visibleForTesting
+bool shouldTriggerOlderMessageLoad({
+  required double extentAfter,
+  double threshold = olderMessageLoadExtentAfterThreshold,
+}) {
+  return extentAfter < threshold;
+}
+
+@visibleForTesting
+double chatListCacheExtent({
+  required double viewportHeight,
+  required TargetPlatform platform,
+  required bool isWeb,
+}) {
+  final safeHeight = viewportHeight.isFinite && viewportHeight > 0
+      ? viewportHeight
+      : 800.0;
+  final isDesktop =
+      platform == TargetPlatform.windows ||
+      platform == TargetPlatform.macOS ||
+      platform == TargetPlatform.linux;
+  final multiplier = isWeb
+      ? 0.9
+      : isDesktop
+      ? 1.5
+      : 1.0;
+  final minExtent = isDesktop && !isWeb ? 900.0 : 600.0;
+  final maxExtent = isWeb
+      ? 1000.0
+      : isDesktop
+      ? 1600.0
+      : 1200.0;
+  return (safeHeight * multiplier).clamp(minExtent, maxExtent).toDouble();
+}
+
+class _OlderMessagesLoadingIndicator extends StatelessWidget {
+  const _OlderMessagesLoadingIndicator()
+    : super(key: const ValueKey<String>('chat-older-loading-indicator'));
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 14),
+      child: Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+  }
+}
+
 const String _androidSystemTeamId = 'u_10000';
 const String _androidFileHelperId = 'fileHelper';
 const String _fileHelperTitle = '\u6587\u4ef6\u4f20\u8f93\u52a9\u624b';
@@ -103,7 +172,6 @@ const String _voiceTooltip = '\u8bed\u97f3\u901a\u8bdd';
 const String _videoTooltip = '\u89c6\u9891\u901a\u8bdd';
 const String _groupCallTooltip = '\u591a\u4eba\u901a\u8bdd';
 const String _officialTag = '\u5b98\u65b9';
-const String _serviceTag = '\u5ba2\u670d';
 const String _robotTag = '\u673a\u5668\u4eba';
 const String _onlineSuffix = '\u5728\u7ebf';
 const String _recentMinutesSuffix = '\u5206\u949f';
@@ -118,6 +186,10 @@ const String _voicePermissionDeniedFeedback =
 const String _voiceTooShortFeedback = '\u5f55\u97f3\u65f6\u95f4\u592a\u77ed';
 const String _voiceStartFailedFallback =
     '\u8bed\u97f3\u5f55\u5236\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5';
+const String _sendFailureRetainedFeedback =
+    '\u53d1\u9001\u5931\u8d25\uff0c\u6d88\u606f\u5df2\u4fdd\u7559\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u91cd\u8bd5';
+const String _retrySendFailureFeedback =
+    '\u91cd\u53d1\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u518d\u8bd5';
 const List<int> _flameSecondOptions = <int>[0, 10, 20, 30, 60, 120, 180];
 
 @visibleForTesting
@@ -144,6 +216,8 @@ class ChatPageShell extends ConsumerStatefulWidget {
     required this.channelId,
     required this.channelType,
     this.channelName,
+    this.channelCategory,
+    this.initialVipLevel = 0,
     this.initialAroundOrderSeq,
     this.initialLocateMessageSeq,
     this.flameRuntime,
@@ -155,6 +229,8 @@ class ChatPageShell extends ConsumerStatefulWidget {
   final String channelId;
   final int channelType;
   final String? channelName;
+  final String? channelCategory;
+  final int initialVipLevel;
   final int? initialAroundOrderSeq;
   final int? initialLocateMessageSeq;
   final ChatFlameMessageRuntime? flameRuntime;
@@ -359,6 +435,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
           widget.channelId,
           cancelToken: cancelToken,
         );
+        _applyChannelUserIdentity(channel, user);
         _applyChannelFlameSettings(
           channel,
           flame: user.flame ?? 0,
@@ -379,6 +456,25 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     }
     WKIM.shared.channelManager.addOrUpdateChannel(channel);
     return channel;
+  }
+
+  void _applyChannelUserIdentity(WKChannel channel, UserInfo user) {
+    final displayName = _firstNonEmptyText([
+      user.remark,
+      user.name,
+      user.username,
+    ]);
+    if (displayName.isNotEmpty && displayName != channel.channelID) {
+      channel.channelName = displayName;
+    }
+    final avatar = (user.avatar ?? '').trim();
+    if (avatar.isNotEmpty) {
+      channel.avatar = avatar;
+    }
+    final category = normalizePublicAccountCategory(user.category);
+    if (category != null && category.isNotEmpty) {
+      channel.category = category;
+    }
   }
 
   Future<void> _refreshPinnedUiState() async {
@@ -657,6 +753,10 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       channelId: widget.channelId,
       channelType: widget.channelType,
     );
+    final keyboardInset = PlatformUtils.isMobile
+        ? MediaQuery.viewInsetsOf(context).bottom
+        : 0.0;
+    final useWarmWebStyle = PlatformUtils.isWeb;
 
     return PopScope<void>(
       onPopInvokedWithResult: (didPop, result) {
@@ -665,9 +765,14 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         }
       },
       child: Scaffold(
-        backgroundColor: WKColors.homeBg,
+        backgroundColor: useWarmWebStyle
+            ? WKWebColors.pageWarm
+            : WKColors.homeBg,
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
-          backgroundColor: WKColors.homeBg,
+          backgroundColor: useWarmWebStyle
+              ? WKWebColors.surface
+              : WKColors.homeBg,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
@@ -790,44 +895,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
           actions: searchMode.isActive
               ? const <Widget>[]
               : [
-                  if (_showCallActions())
-                    IconButton(
-                      key: const ValueKey<String>('chat-call-audio-button'),
-                      tooltip: _voiceTooltip,
-                      onPressed: () =>
-                          unawaited(_handleCallActionTap(CallType.audio)),
-                      icon: WKReferenceAssets.image(
-                        WKReferenceAssets.chatCallVoice,
-                        width: 20,
-                        height: 20,
-                        tint: WKColors.popupText,
-                      ),
-                    ),
-                  if (_showCallActions())
-                    IconButton(
-                      key: const ValueKey<String>('chat-call-video-button'),
-                      tooltip: _videoTooltip,
-                      onPressed: () =>
-                          unawaited(_handleCallActionTap(CallType.video)),
-                      icon: WKReferenceAssets.image(
-                        WKReferenceAssets.chatCallVideo,
-                        width: 20,
-                        height: 20,
-                        tint: WKColors.popupText,
-                      ),
-                    ),
-                  if (_showGroupCallAction())
-                    IconButton(
-                      key: const ValueKey<String>('chat-group-call-button'),
-                      tooltip: _groupCallTooltip,
-                      onPressed: () => unawaited(_openGroupCallPicker()),
-                      icon: WKReferenceAssets.image(
-                        WKReferenceAssets.chatCallVideo,
-                        width: 20,
-                        height: 20,
-                        tint: WKColors.popupText,
-                      ),
-                    ),
                   IconButton(
                     key: const ValueKey<String>('chat-open-search'),
                     onPressed: _openSceneSearch,
@@ -858,87 +925,20 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                 key: const ValueKey<String>('chat-background-surface'),
                 option: selectedChatBackground,
                 fallbackStyle: fallbackBackgroundStyle,
+                fallbackColor: useWarmWebStyle ? WKWebColors.pageWarm : null,
               ),
             ),
-            Column(
-              children: [
-                if (scene.mode == ChatSceneMode.selecting)
-                  ChatSelectionToolbar(
-                    selectedCount: selection.selectedCount,
-                    onCancel: () {
-                      ref
-                          .read(
-                            chatSelectionControllerProvider(
-                              _chatSession,
-                            ).notifier,
-                          )
-                          .clear();
-                      ref
-                          .read(
-                            chatSceneControllerProvider(_chatSession).notifier,
-                          )
-                          .restoreNormal();
-                    },
-                    onForward: () async {
-                      final List<WKMsg> selectedMessages = selection
-                          .selectedIdentities
-                          .map(
-                            (identity) => ref
-                                .read(
-                                  chatViewportProvider(_chatSession).notifier,
-                                )
-                                .itemByIdentity(identity)
-                                ?.message,
-                          )
-                          .whereType<WKMsg>()
-                          .toList(growable: false);
-                      if (selectedMessages.isEmpty) {
-                        return;
-                      }
-                      ref
-                          .read(
-                            chatMessageActionControllerProvider(
-                              _chatSession,
-                            ).notifier,
-                          )
-                          .prepareForward(selectedMessages);
-                      final request = ref
-                          .read(
-                            chatMessageActionControllerProvider(_chatSession),
-                          )
-                          .forwardRequest;
-                      if (request == null || request.payloads.isEmpty) {
-                        return;
-                      }
-                      bool? didSubmit;
-                      try {
-                        didSubmit = await Navigator.of(context).push<bool>(
-                          MaterialPageRoute<bool>(
-                            builder: (_) => ForwardMessagePage(
-                              payloads: request.payloads,
-                              channelId: _chatSession.channelId,
-                              channelType: _chatSession.channelType,
-                              gateway: ref.read(
-                                chatSceneGatewayProvider(_chatSession),
-                              ),
-                            ),
-                          ),
-                        );
-                      } finally {
-                        if (mounted) {
-                          ref
-                              .read(
-                                chatMessageActionControllerProvider(
-                                  _chatSession,
-                                ).notifier,
-                              )
-                              .clearTransientState();
-                        }
-                      }
-                      if (!mounted) {
-                        return;
-                      }
-                      if (didSubmit == true) {
+            AnimatedPadding(
+              key: const ValueKey<String>('chat-keyboard-inset-padding'),
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.only(bottom: keyboardInset),
+              child: Column(
+                children: [
+                  if (scene.mode == ChatSceneMode.selecting)
+                    ChatSelectionToolbar(
+                      selectedCount: selection.selectedCount,
+                      onCancel: () {
                         ref
                             .read(
                               chatSelectionControllerProvider(
@@ -953,43 +953,129 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                               ).notifier,
                             )
                             .restoreNormal();
-                      }
-                    },
-                  ),
-                if (scene.mode != ChatSceneMode.selecting &&
-                    activityState.isCalling)
-                  ChatCallingParticipantsBar(state: activityState),
-                if (scene.mode != ChatSceneMode.selecting &&
-                    _pinnedMessages.isNotEmpty)
-                  ChatPinnedMessageBanner(
-                    data: ChatPinnedMessageBannerData(
-                      previewText: _pinnedMessages.first.previewText,
-                      count: _pinnedMessages.length,
+                      },
+                      onForward: () async {
+                        final List<WKMsg> selectedMessages = selection
+                            .selectedIdentities
+                            .map(
+                              (identity) => ref
+                                  .read(
+                                    chatViewportProvider(_chatSession).notifier,
+                                  )
+                                  .itemByIdentity(identity)
+                                  ?.message,
+                            )
+                            .whereType<WKMsg>()
+                            .toList(growable: false);
+                        if (selectedMessages.isEmpty) {
+                          return;
+                        }
+                        ref
+                            .read(
+                              chatMessageActionControllerProvider(
+                                _chatSession,
+                              ).notifier,
+                            )
+                            .prepareForward(selectedMessages);
+                        final request = ref
+                            .read(
+                              chatMessageActionControllerProvider(_chatSession),
+                            )
+                            .forwardRequest;
+                        if (request == null || request.payloads.isEmpty) {
+                          return;
+                        }
+                        bool? didSubmit;
+                        try {
+                          didSubmit = await Navigator.of(context).push<bool>(
+                            MaterialPageRoute<bool>(
+                              builder: (_) => ForwardMessagePage(
+                                payloads: request.payloads,
+                                channelId: _chatSession.channelId,
+                                channelType: _chatSession.channelType,
+                                gateway: ref.read(
+                                  chatSceneGatewayProvider(_chatSession),
+                                ),
+                              ),
+                            ),
+                          );
+                        } finally {
+                          if (mounted) {
+                            ref
+                                .read(
+                                  chatMessageActionControllerProvider(
+                                    _chatSession,
+                                  ).notifier,
+                                )
+                                .clearTransientState();
+                          }
+                        }
+                        if (!mounted) {
+                          return;
+                        }
+                        if (didSubmit == true) {
+                          ref
+                              .read(
+                                chatSelectionControllerProvider(
+                                  _chatSession,
+                                ).notifier,
+                              )
+                              .clear();
+                          ref
+                              .read(
+                                chatSceneControllerProvider(
+                                  _chatSession,
+                                ).notifier,
+                              )
+                              .restoreNormal();
+                        }
+                      },
                     ),
-                    onTap: _openPinnedMessageSheet,
-                    onClearAll: _canClearPinnedMessages
-                        ? () => unawaited(_clearPinnedMessages())
-                        : null,
+                  if (scene.mode != ChatSceneMode.selecting &&
+                      activityState.isCalling)
+                    ChatCallingParticipantsBar(state: activityState),
+                  if (scene.mode != ChatSceneMode.selecting &&
+                      _pinnedMessages.isNotEmpty)
+                    ChatPinnedMessageBanner(
+                      data: ChatPinnedMessageBannerData(
+                        previewText: _pinnedMessages.first.previewText,
+                        count: _pinnedMessages.length,
+                      ),
+                      onTap: _openPinnedMessageSheet,
+                      onClearAll: _canClearPinnedMessages
+                          ? () => unawaited(_clearPinnedMessages())
+                          : null,
+                    ),
+                  Expanded(
+                    child: _ChatViewportPane(
+                      session: _chatSession,
+                      conversationChannel: _participantFallbackChannel(),
+                      canPinMessages: _canPinMessages,
+                      flameRuntime: widget.flameRuntime,
+                      onBuild: widget.onViewportBuild,
+                      onPinnedMessageToggled: _handlePinnedMessageToggled,
+                      restoreAnchor: _restoreAnchor,
+                      webStyle: useWarmWebStyle,
+                      onPersistenceSnapshotChanged:
+                          _handleViewportPersistenceSnapshotChanged,
+                      onRestoreAnchorApplied: widget.onRestoreAnchorApplied,
+                    ),
                   ),
-                Expanded(
-                  child: _ChatViewportPane(
+                  _ChatComposerPane(
                     session: _chatSession,
-                    canPinMessages: _canPinMessages,
-                    flameRuntime: widget.flameRuntime,
-                    onBuild: widget.onViewportBuild,
-                    onPinnedMessageToggled: _handlePinnedMessageToggled,
-                    restoreAnchor: _restoreAnchor,
-                    onPersistenceSnapshotChanged:
-                        _handleViewportPersistenceSnapshotChanged,
-                    onRestoreAnchorApplied: widget.onRestoreAnchorApplied,
+                    channel: _channel,
+                    robotMenus: _robotMenus,
+                    showCallActions: _showCallActions(),
+                    showGroupCallAction: _showGroupCallAction(),
+                    webStyle: useWarmWebStyle,
+                    onAudioCallTap: () =>
+                        unawaited(_handleCallActionTap(CallType.audio)),
+                    onVideoCallTap: () =>
+                        unawaited(_handleCallActionTap(CallType.video)),
+                    onGroupCallTap: () => unawaited(_openGroupCallPicker()),
                   ),
-                ),
-                _ChatComposerPane(
-                  session: _chatSession,
-                  channel: _channel,
-                  robotMenus: _robotMenus,
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -1046,18 +1132,55 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     return widget.channelId;
   }
 
-  int _resolveHeaderVipLevel(List<Friend> friends) {
+  WKChannel? _participantFallbackChannel() {
+    final loadedChannel = _channel;
+    if (loadedChannel != null) {
+      return loadedChannel;
+    }
     if (widget.channelType != WKChannelType.personal) {
+      return null;
+    }
+
+    final title = _firstNonEmptyText([
+      _androidFixedChatTitle(widget.channelId, widget.channelType),
+      widget.channelName,
+    ]);
+    if (title.isEmpty) {
+      return null;
+    }
+    return WKChannel(widget.channelId, widget.channelType)..channelName = title;
+  }
+
+  String _firstNonEmptyText(Iterable<String?> values) {
+    for (final value in values) {
+      final normalized = value?.trim() ?? '';
+      if (normalized.isNotEmpty) {
+        return normalized;
+      }
+    }
+    return '';
+  }
+
+  int _resolveHeaderVipLevel(List<Friend> friends) {
+    final supportsHeaderVip =
+        widget.channelType == WKChannelType.personal ||
+        widget.channelType == WKChannelType.customerService;
+    if (!supportsHeaderVip) {
       return 0;
     }
     if (_androidFixedChatTitle(widget.channelId, widget.channelType) != null) {
       return 0;
     }
+    if (widget.initialVipLevel != 0) {
+      return widget.initialVipLevel;
+    }
 
-    final channelId = widget.channelId.trim();
-    for (final friend in friends) {
-      if (friend.uid.trim() == channelId) {
-        return friend.vipLevel;
+    if (widget.channelType == WKChannelType.personal) {
+      final channelId = widget.channelId.trim();
+      for (final friend in friends) {
+        if (friend.uid.trim() == channelId) {
+          return friend.vipLevel;
+        }
       }
     }
 
@@ -1086,12 +1209,23 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
 
   List<Widget> _buildTags() {
     final tags = <Widget>[];
-    final normalized = _normalizeCategory(_channel?.category);
+    final channelCategory = normalizePublicAccountCategory(_channel?.category);
+    final widgetCategory = normalizePublicAccountCategory(
+      widget.channelCategory,
+    );
+    final normalized = (channelCategory?.isNotEmpty ?? false)
+        ? channelCategory!
+        : widgetCategory;
     if (normalized == 'system') {
       tags.add(const _HeaderTag(label: _officialTag));
     }
-    if (normalized == 'customer_service') {
-      tags.add(const _HeaderTag(label: _serviceTag));
+    if (isCustomerServiceCategory(normalized)) {
+      tags.add(
+        const CustomerServiceBadge(
+          key: ValueKey<String>('chat-header-customer-service-badge'),
+          compact: true,
+        ),
+      );
     }
     if ((_channel?.robot ?? 0) == 1) {
       tags.add(const _HeaderTag(label: _robotTag));
@@ -1164,18 +1298,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       }
     }
     return null;
-  }
-
-  static String _normalizeCategory(String? value) {
-    final normalized = (value ?? '').trim().toLowerCase();
-    switch (normalized) {
-      case 'customerservice':
-      case 'customer_service':
-      case 'service':
-        return 'customer_service';
-      default:
-        return normalized;
-    }
   }
 
   static String _deviceLabel(int deviceFlag) {
@@ -1254,9 +1376,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       if (!decision.shouldStart) {
         final feedbackMessage = decision.feedbackMessage?.trim() ?? '';
         if (feedbackMessage.isNotEmpty) {
-          final messenger = ScaffoldMessenger.of(context);
-          messenger.hideCurrentSnackBar();
-          messenger.showSnackBar(SnackBar(content: Text(feedbackMessage)));
+          _showCallFeedback(feedbackMessage);
         }
         return;
       }
@@ -1274,13 +1394,23 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       }
       final normalizedFeedback = feedbackMessage?.trim() ?? '';
       if (normalizedFeedback.isNotEmpty) {
-        final messenger = ScaffoldMessenger.of(context);
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(SnackBar(content: Text(normalizedFeedback)));
+        _showCallFeedback(normalizedFeedback);
       }
     } finally {
       _isOpeningCallPage = false;
     }
+  }
+
+  void _showCallFeedback(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+      ),
+    );
   }
 
   Future<void> _openGroupCallPicker() async {
@@ -1352,21 +1482,25 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
 class _ChatViewportPane extends ConsumerStatefulWidget {
   const _ChatViewportPane({
     required this.session,
+    this.conversationChannel,
     this.canPinMessages = false,
     this.flameRuntime,
     this.onBuild,
     this.onPinnedMessageToggled,
     this.restoreAnchor,
+    this.webStyle = false,
     this.onPersistenceSnapshotChanged,
     this.onRestoreAnchorApplied,
   });
 
   final ChatSession session;
+  final WKChannel? conversationChannel;
   final bool canPinMessages;
   final ChatFlameMessageRuntime? flameRuntime;
   final VoidCallback? onBuild;
   final Future<void> Function(WKMsg message)? onPinnedMessageToggled;
   final ChatViewportRestoreAnchor? restoreAnchor;
+  final bool webStyle;
   final ValueChanged<ChatViewportPersistenceSnapshot>?
   onPersistenceSnapshotChanged;
   final ValueChanged<ChatViewportRestoreResult>? onRestoreAnchorApplied;
@@ -1431,10 +1565,18 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
   @override
   Widget build(BuildContext context) {
     final viewport = ref.watch(chatViewportProvider(widget.session));
+    final currentUser = ref.watch(
+      authProvider.select((state) => state.userInfo),
+    );
     final readController = ref.watch(
       chatReadControllerProvider(widget.session),
     );
     final gateway = ref.watch(chatSceneGatewayProvider(widget.session));
+    final listCacheExtent = chatListCacheExtent(
+      viewportHeight: MediaQuery.sizeOf(context).height,
+      platform: defaultTargetPlatform,
+      isWeb: kIsWeb,
+    );
 
     ref.listen<ChatViewportState>(chatViewportProvider(widget.session), (
       previous,
@@ -1469,9 +1611,14 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification is ScrollUpdateNotification &&
-              notification.metrics.pixels ==
-                  notification.metrics.minScrollExtent) {
-            ref.read(messageListProvider(widget.session).notifier).loadMore();
+              shouldTriggerOlderMessageLoad(
+                extentAfter: notification.metrics.extentAfter,
+              )) {
+            unawaited(
+              ref
+                  .read(chatViewportProvider(widget.session).notifier)
+                  .loadOlder(),
+            );
           }
           if (notification is ScrollUpdateNotification ||
               notification is UserScrollNotification ||
@@ -1480,46 +1627,77 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
           }
           return false;
         },
-        child: viewport.items.isEmpty
-            ? const Center(child: Text(_emptyMessageText))
-            : ListView.builder(
-                key: _listKey,
-                controller: _scrollController,
-                reverse: true,
-                cacheExtent: 1200,
-                itemCount: viewport.items.length,
-                findChildIndexCallback: (key) {
-                  if (key is ValueKey<String>) {
-                    return viewport.identityToIndex[key.value];
-                  }
-                  return null;
-                },
-                itemBuilder: (context, index) {
-                  final item = viewport.items[index];
-                  final contentType = item.message.contentType;
-                  return ChatMessageListItem(
-                    key: ValueKey<String>(item.identity),
-                    itemKey: ValueKey<String>(item.identity),
-                    measurementKey: _measurementKeyFor(item.identity),
-                    keepAlive: MessageHeightEstimator.shouldKeepAlive(
-                      contentType,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: viewport.items.isEmpty
+                  ? const Center(child: Text(_emptyMessageText))
+                  : ListView.builder(
+                      key: _listKey,
+                      controller: _scrollController,
+                      reverse: true,
+                      cacheExtent: listCacheExtent,
+                      itemCount: viewport.items.length,
+                      findChildIndexCallback: (key) {
+                        if (key is ValueKey<String>) {
+                          return viewport.identityToIndex[key.value];
+                        }
+                        return null;
+                      },
+                      itemBuilder: (context, index) {
+                        final item = viewport.items[index];
+                        final contentType = item.message.contentType;
+                        return ChatMessageListItem(
+                          key: ValueKey<String>(item.identity),
+                          itemKey: ValueKey<String>(item.identity),
+                          measurementKey: _measurementKeyFor(item.identity),
+                          keepAlive: MessageHeightEstimator.shouldKeepAlive(
+                            contentType,
+                          ),
+                          child: ChatMessageEngagementBubble(
+                            session: widget.session,
+                            model: item,
+                            participant: _resolveParticipantInfo(
+                              item.message,
+                              currentUser,
+                            ),
+                            statusInfo: resolveMessageStatusInfo(
+                              item.message,
+                              isSelf: item.isSelf,
+                            ),
+                            webStyle: widget.webStyle,
+                            gateway: gateway,
+                            onTap: _messageTapHandler(item, viewport),
+                            onLongPress: () => _showMessageActionSheet(item),
+                            onSecondaryTapDown: (details) =>
+                                _showMessageActionSheet(
+                                  item,
+                                  anchorPosition: details.globalPosition,
+                                ),
+                            onRetrySend:
+                                item.isSelf &&
+                                    item.message.status ==
+                                        WKSendMsgResult.sendFail
+                                ? () => unawaited(
+                                    _retryFailedMessage(item, gateway),
+                                  )
+                                : null,
+                            onReactionTap: (emoji) =>
+                                _toggleReaction(item, emoji),
+                          ),
+                        );
+                      },
                     ),
-                    child: ChatMessageEngagementBubble(
-                      session: widget.session,
-                      model: item,
-                      participant: _resolveParticipantInfo(item.message),
-                      statusInfo: resolveMessageStatusInfo(
-                        item.message,
-                        isSelf: item.isSelf,
-                      ),
-                      gateway: gateway,
-                      onTap: _messageTapHandler(item, viewport),
-                      onLongPress: () => _showMessageActionSheet(item),
-                      onReactionTap: (emoji) => _toggleReaction(item, emoji),
-                    ),
-                  );
-                },
+            ),
+            if (viewport.isLoadingMore)
+              const Positioned(
+                top: 8,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(child: _OlderMessagesLoadingIndicator()),
               ),
+          ],
+        ),
       ),
     );
   }
@@ -1531,7 +1709,10 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
     );
   }
 
-  MessageParticipantInfo _resolveParticipantInfo(WKMsg message) {
+  MessageParticipantInfo _resolveParticipantInfo(
+    WKMsg message,
+    UserInfo? currentUser,
+  ) {
     final fallbackGroupMember =
         widget.session.channelType == WKChannelType.group
         ? _groupMembersByUid[message.fromUID.trim()]
@@ -1539,7 +1720,59 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
     return resolveMessageParticipantInfo(
       message,
       fallbackGroupMember: fallbackGroupMember,
+      fallbackSenderChannel: _fallbackSenderChannel(message),
+      currentUid: currentUser?.uid,
+      currentUserDisplayName: _currentUserDisplayName(currentUser),
+      currentUserAvatarUrl: currentUser?.avatar,
     );
+  }
+
+  WKChannel? _fallbackSenderChannel(WKMsg message) {
+    final channel = widget.conversationChannel;
+    if (channel == null) {
+      return null;
+    }
+    final senderUid = message.fromUID.trim();
+    if (senderUid.isEmpty || channel.channelID.trim() != senderUid) {
+      return null;
+    }
+    return channel;
+  }
+
+  String _currentUserDisplayName(UserInfo? user) {
+    if (user == null) {
+      return '';
+    }
+    return _firstNonEmptyText([
+      user.remark,
+      user.name,
+      user.username,
+      user.uid,
+    ]);
+  }
+
+  String _firstNonEmptyText(Iterable<String?> values) {
+    for (final value in values) {
+      final normalized = value?.trim() ?? '';
+      if (normalized.isNotEmpty) {
+        return normalized;
+      }
+    }
+    return '';
+  }
+
+  Future<void> _retryFailedMessage(
+    ChatMessageViewModel model,
+    ChatSceneGateway gateway,
+  ) async {
+    if (model.message.status != WKSendMsgResult.sendFail) {
+      return;
+    }
+    try {
+      await gateway.retryMessage(model.message);
+    } catch (_) {
+      _showFileOpenFeedback(_retrySendFailureFeedback);
+    }
   }
 
   Future<void> _hydrateGroupMembers() async {
@@ -1695,18 +1928,22 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
       structuredPayload: model.structuredPayload,
     );
     if (target == null) {
-      _showFileOpenFeedback('当前文件缺少可用的路径或下载地址');
+      _showFileOpenFeedback(
+        '\u5f53\u524d\u6587\u4ef6\u7f3a\u5c11\u53ef\u7528\u7684\u8def\u5f84\u6216\u4e0b\u8f7d\u5730\u5740',
+      );
       return;
     }
 
     try {
       final opened = await openChatFileTarget(target);
       if (!opened) {
-        _showFileOpenFeedback('打开文件失败');
+        _showFileOpenFeedback('\u6253\u5f00\u6587\u4ef6\u5931\u8d25');
       }
     } catch (error) {
       final message = error.toString().replaceFirst('Exception: ', '').trim();
-      _showFileOpenFeedback(message.isEmpty ? '打开文件失败' : message);
+      _showFileOpenFeedback(
+        message.isEmpty ? '\u6253\u5f00\u6587\u4ef6\u5931\u8d25' : message,
+      );
     }
   }
 
@@ -1844,7 +2081,7 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
       ImageViewerAction(
         key: 'forward',
         icon: Icons.forward_outlined,
-        label: 'Forward',
+        label: '\u8f6c\u53d1',
         onPressed: (viewerContext, index) async {
           final current = previewItems[index];
           if (viewerContext.mounted) {
@@ -1888,7 +2125,7 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
       ImageViewerAction(
         key: 'favorite',
         icon: Icons.favorite_border,
-        label: 'Favorite',
+        label: '\u6536\u85cf',
         onPressed: (_, index) async {
           await ref
               .read(
@@ -1900,7 +2137,7 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
       ImageViewerAction(
         key: 'show-in-chat',
         icon: Icons.chat_bubble_outline,
-        label: 'Show in Chat',
+        label: '\u5728\u804a\u5929\u4e2d\u67e5\u770b',
         onPressed: (viewerContext, index) async {
           final targetIdentity = previewItems[index].identity;
           if (viewerContext.mounted) {
@@ -1919,7 +2156,7 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
         ImageViewerAction(
           key: 'scan-qrcode',
           icon: Icons.qr_code_scanner_outlined,
-          label: 'Scan QR Code',
+          label: '\u8bc6\u522b\u4e8c\u7ef4\u7801',
           onPressed: (viewerContext, index) async {
             await ScanQrCodeBridge.instance.handleImageSource(
               previewItems[index].url,
@@ -2163,7 +2400,10 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
     }
   }
 
-  Future<void> _showMessageActionSheet(ChatMessageViewModel model) {
+  Future<void> _showMessageActionSheet(
+    ChatMessageViewModel model, {
+    Offset? anchorPosition,
+  }) {
     final actions = buildChatMessageActionDescriptors(
       message: model.message,
       isSelf: model.isSelf,
@@ -2176,6 +2416,18 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
     );
     if (actions.isEmpty) {
       return Future<void>.value();
+    }
+    final surface = resolveChatMessageActionSurface(
+      platform: defaultTargetPlatform,
+      isWeb: kIsWeb,
+      anchorPosition: anchorPosition,
+    );
+    if (surface == ChatMessageActionSurface.contextMenu) {
+      return _showMessageContextMenu(
+        model,
+        actions: actions,
+        anchorPosition: anchorPosition!,
+      );
     }
     return showModalBottomSheet<void>(
       context: context,
@@ -2190,6 +2442,53 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
         },
       ),
     );
+  }
+
+  Future<void> _showMessageContextMenu(
+    ChatMessageViewModel model, {
+    required List<ChatMessageActionDescriptor> actions,
+    required Offset anchorPosition,
+  }) async {
+    final overlayBox =
+        Overlay.maybeOf(context)?.context.findRenderObject() as RenderBox?;
+    final overlaySize = overlayBox?.size ?? MediaQuery.sizeOf(context);
+    final localPosition = overlayBox == null
+        ? anchorPosition
+        : overlayBox.globalToLocal(anchorPosition);
+    final selectedAction = await showMenu<ChatSceneAction>(
+      context: context,
+      position: buildChatMessageContextMenuPosition(
+        anchorPosition: localPosition,
+        overlaySize: overlaySize,
+      ),
+      items: _orderedMessageActions(actions)
+          .map(
+            (descriptor) => PopupMenuItem<ChatSceneAction>(
+              key: ValueKey<String>(
+                'chat-context-action-${descriptor.action.name}',
+              ),
+              value: descriptor.action,
+              child: Text(descriptor.label),
+            ),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted || selectedAction == null) {
+      return;
+    }
+    await _dispatchSceneAction(selectedAction, model);
+  }
+
+  List<ChatMessageActionDescriptor> _orderedMessageActions(
+    List<ChatMessageActionDescriptor> actions,
+  ) {
+    return actions.toList(growable: false)..sort((left, right) {
+      final orderComparison = left.order.compareTo(right.order);
+      if (orderComparison != 0) {
+        return orderComparison;
+      }
+      return left.action.name.compareTo(right.action.name);
+    });
   }
 
   Future<void> _openReactionPicker(ChatMessageViewModel model) async {
@@ -2406,11 +2705,23 @@ class _ChatComposerPane extends ConsumerStatefulWidget {
     required this.session,
     this.channel,
     this.robotMenus = const <RobotMenu>[],
+    required this.showCallActions,
+    required this.showGroupCallAction,
+    this.webStyle = false,
+    required this.onAudioCallTap,
+    required this.onVideoCallTap,
+    required this.onGroupCallTap,
   });
 
   final ChatSession session;
   final WKChannel? channel;
   final List<RobotMenu> robotMenus;
+  final bool showCallActions;
+  final bool showGroupCallAction;
+  final bool webStyle;
+  final VoidCallback onAudioCallTap;
+  final VoidCallback onVideoCallTap;
+  final VoidCallback onGroupCallTap;
 
   @override
   ConsumerState<_ChatComposerPane> createState() => _ChatComposerPaneState();
@@ -2431,6 +2742,7 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
   String? _panelGifErrorText;
   Future<ChatExpressionRegistrySnapshot>? _expressionRegistryFuture;
   int _robotInlineRequestToken = 0;
+  bool _isSubmittingComposer = false;
 
   @override
   void initState() {
@@ -2496,7 +2808,7 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
 
     _syncText(composerState.text);
 
-    return Stack(
+    final composer = Stack(
       children: [
         ChatComposer(
           header: _buildComposerHeader(composerState, composerController),
@@ -2506,6 +2818,7 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
             composerController,
             mentionsController,
           ),
+          webStyle: widget.webStyle,
           inputRow: _buildComposerInputRow(
             composerState: composerState,
             composerController: composerController,
@@ -2534,6 +2847,11 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
           },
         ),
       ],
+    );
+    return ChatDesktopDropTarget(
+      enabled: PlatformUtils.isDesktop,
+      onFilesDropped: (files) => _handleDroppedFiles(files, composerController),
+      child: composer,
     );
   }
 
@@ -2658,18 +2976,23 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
     required ChatVoiceActionService voiceService,
     required bool flameEnabled,
   }) {
-    final canSend = composerState.text.trim().isNotEmpty;
+    final canSend =
+        composerState.text.trim().isNotEmpty && !_isSubmittingComposer;
     late final Widget inlineActionButton;
     if (flameEnabled) {
       inlineActionButton = _ComposerToolbarButton(
         key: const ValueKey<String>('chat-flame-toggle-button'),
         asset: WKReferenceAssets.flameSmall,
+        artworkExtent: _composerActionIconExtent,
+        fit: BoxFit.contain,
         onTap: composerController.toggleFlamePanel,
       );
     } else {
       inlineActionButton = _ComposerToolbarButton(
         key: const ValueKey<String>('chat-compose-rich-text-button'),
         asset: WKReferenceAssets.chatRichEdit,
+        artworkExtent: _composerActionIconExtent,
+        fit: BoxFit.contain,
         onTap: () => unawaited(
           _executeChatAction(ChatActionId.composeRichText, composerController),
         ),
@@ -2697,29 +3020,64 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
                     );
                   },
                 )
-              : TextField(
-                  controller: _textController,
-                  onTap: composerController.hidePanels,
-                  onChanged: (value) => _handleTextChanged(
-                    value,
-                    composerController,
-                    mentionsController,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '\u8f93\u5165\u6d88\u606f',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
+              : CallbackShortcuts(
+                  bindings: <ShortcutActivator, VoidCallback>{
+                    const SingleActivator(
+                      LogicalKeyboardKey.enter,
+                      shift: true,
+                    ): () => _insertTextAtCursor(
+                      '\n',
+                      composerController,
+                      mentionsController,
                     ),
-                    filled: true,
-                    fillColor: WKColors.surfaceSoft,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+                    const SingleActivator(
+                      LogicalKeyboardKey.numpadEnter,
+                      shift: true,
+                    ): () => _insertTextAtCursor(
+                      '\n',
+                      composerController,
+                      mentionsController,
                     ),
+                    const SingleActivator(LogicalKeyboardKey.enter): () =>
+                        _handleKeyboardSend(
+                          composerController,
+                          mentionsController,
+                        ),
+                    const SingleActivator(LogicalKeyboardKey.numpadEnter): () =>
+                        _handleKeyboardSend(
+                          composerController,
+                          mentionsController,
+                        ),
+                  },
+                  child: TextField(
+                    key: const ValueKey<String>('chat-input-field'),
+                    controller: _textController,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontFamily: WKFontFamily.primary,
+                      fontFamilyFallback: WKTypography.fontFamilyFallback,
+                    ),
+                    onTap: composerController.hidePanels,
+                    onChanged: (value) => _handleTextChanged(
+                      value,
+                      composerController,
+                      mentionsController,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '\u8f93\u5165\u6d88\u606f',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: WKColors.surfaceSoft,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                    ),
+                    maxLines: 4,
+                    minLines: 1,
                   ),
-                  maxLines: 4,
-                  minLines: 1,
                 ),
         ),
         const SizedBox(width: 8),
@@ -2738,29 +3096,108 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
     );
   }
 
+  void _handleKeyboardSend(
+    ChatComposerController composerController,
+    ChatMentionsController mentionsController,
+  ) {
+    if (_isSubmittingComposer || _textController.text.trim().isEmpty) {
+      return;
+    }
+    unawaited(_handleSendPressed(composerController, mentionsController));
+  }
+
   Widget _buildComposerToolbarRow({
     required ChatComposerState composerState,
     required ChatComposerController composerController,
     required ChatMentionsController mentionsController,
     required List<ChatToolBarMenu> toolbarItems,
   }) {
-    final toolbarButtons = <Widget>[
-      for (var index = 0; index < toolbarItems.length; index++) ...[
-        _ComposerToolbarButton(
-          key: ValueKey<String>('chat-toolbar-${toolbarItems[index].sid}'),
-          asset: toolbarItems[index].icon ?? '',
-          onTap: () => unawaited(
-            _handleToolbarTap(
-              toolbarItems[index],
-              composerController,
-              mentionsController,
+    final toolbarButtons = <Widget>[];
+    var insertedCallButtons = false;
+
+    void addButton(Widget button) {
+      if (toolbarButtons.isNotEmpty) {
+        toolbarButtons.add(const SizedBox(width: 8));
+      }
+      toolbarButtons.add(button);
+    }
+
+    void addCallButtons() {
+      if (insertedCallButtons) {
+        return;
+      }
+      insertedCallButtons = true;
+      if (widget.showCallActions) {
+        addButton(
+          _ComposerCallToolbarButton(
+            key: const ValueKey<String>('chat-call-audio-button'),
+            decorationKey: const ValueKey<String>('chat-call-audio-decoration'),
+            tooltip: _voiceTooltip,
+            asset: WKReferenceAssets.chatCallVoice,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF36E6B3), Color(0xFF16A76C)],
             ),
+            onTap: widget.onAudioCallTap,
+          ),
+        );
+        addButton(
+          _ComposerCallToolbarButton(
+            key: const ValueKey<String>('chat-call-video-button'),
+            decorationKey: const ValueKey<String>('chat-call-video-decoration'),
+            tooltip: _videoTooltip,
+            asset: WKReferenceAssets.chatCallVideo,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF8C7BFF), Color(0xFFFF6FB1)],
+            ),
+            onTap: widget.onVideoCallTap,
+          ),
+        );
+      }
+      if (widget.showGroupCallAction) {
+        addButton(
+          _ComposerCallToolbarButton(
+            key: const ValueKey<String>('chat-group-call-button'),
+            decorationKey: const ValueKey<String>('chat-call-group-decoration'),
+            tooltip: _groupCallTooltip,
+            asset: WKReferenceAssets.chatCallVideo,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF56CCF2), Color(0xFF2F80ED)],
+            ),
+            onTap: widget.onGroupCallTap,
+          ),
+        );
+      }
+    }
+
+    for (var index = 0; index < toolbarItems.length; index++) {
+      final item = toolbarItems[index];
+      if (item.sid == 'wk_chat_toolbar_more') {
+        addCallButtons();
+      }
+      addButton(
+        _ComposerToolbarButton(
+          key: ValueKey<String>('chat-toolbar-${item.sid}'),
+          asset: item.icon ?? '',
+          onTap: () => unawaited(
+            _handleToolbarTap(item, composerController, mentionsController),
           ),
         ),
-        if (index != toolbarItems.length - 1 || widget.robotMenus.isNotEmpty)
-          const SizedBox(width: 8),
-      ],
-      if (widget.robotMenus.isNotEmpty)
+      );
+      if (item.sid == 'wk_chat_toolbar_album') {
+        addCallButtons();
+      }
+    }
+
+    addCallButtons();
+
+    if (widget.robotMenus.isNotEmpty) {
+      addButton(
         _ComposerToolbarButton(
           key: const ValueKey<String>('chat-robot-menu-button'),
           asset: composerState.showRobotMenuPanel
@@ -2768,7 +3205,8 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
               : WKReferenceAssets.chatMenu,
           onTap: composerController.toggleRobotMenuPanel,
         ),
-    ];
+      );
+    }
 
     return Align(
       alignment: Alignment.centerLeft,
@@ -3060,7 +3498,13 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
         break;
       case 'wk_chat_toolbar_album':
         await _sendPickedContent(
-          await ref.read(chatMediaActionServiceProvider).pickImage(context),
+          await ref
+              .read(chatMediaActionServiceProvider)
+              .pickImage(
+                context,
+                channelId: widget.session.channelId,
+                channelType: widget.session.channelType,
+              ),
           composerController,
         );
         break;
@@ -3159,67 +3603,121 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
         .restoreNormal();
   }
 
+  Future<void> _handleDroppedFiles(
+    List<ChatDroppedFileSelection> files,
+    ChatComposerController composerController,
+  ) async {
+    if (files.isEmpty) {
+      return;
+    }
+    try {
+      for (final file in files) {
+        final content = await ref
+            .read(chatMediaActionServiceProvider)
+            .buildDroppedFile(file);
+        await _sendPickedContent(content, composerController);
+      }
+    } catch (_) {
+      _showSendFailureFeedback();
+    }
+  }
+
   Future<void> _handleSendPressed(
     ChatComposerController composerController,
     ChatMentionsController mentionsController,
   ) async {
+    if (_isSubmittingComposer) {
+      return;
+    }
     final payload = composerController.buildSubmissionPayload();
     if (payload.text.isEmpty) {
       return;
     }
-    final editMessageId = payload.editMessageId?.trim() ?? '';
-    if (editMessageId.isEmpty) {
-      final handledByTextSticker = await _textStickerConversion.tryHandle(
-        text: payload.text,
-        replyMessageId: payload.replyMessageId,
-        conversationContext: widget.session,
-      );
-      if (handledByTextSticker) {
-        composerController.markSubmitSucceeded();
-        mentionsController.clear();
-        ref
-            .read(chatSceneControllerProvider(widget.session).notifier)
-            .restoreNormal();
-        return;
+
+    _setComposerSubmitting(true);
+    try {
+      final editMessageId = payload.editMessageId?.trim() ?? '';
+      if (editMessageId.isEmpty) {
+        final handledByTextSticker = await _textStickerConversion.tryHandle(
+          text: payload.text,
+          replyMessageId: payload.replyMessageId,
+          conversationContext: widget.session,
+        );
+        if (handledByTextSticker) {
+          composerController.markSubmitSucceeded();
+          mentionsController.clear();
+          ref
+              .read(chatSceneControllerProvider(widget.session).notifier)
+              .restoreNormal();
+          return;
+        }
       }
-    }
 
-    final content = WKTextContent(payload.text);
-    final mentionedUids = _normalizedMentionedUids(
-      ref.read(chatMentionsControllerProvider(widget.session)).mentionedUids,
-    );
-    if (mentionedUids.isNotEmpty) {
-      content.mentionInfo = WKMentionInfo()..uids = mentionedUids;
-    }
-
-    if (editMessageId.isNotEmpty) {
-      final editableMessage = _findEditableMessage(
-        editMessageId,
-        payload.editMessageSeq,
+      final content = WKTextContent(payload.text);
+      final mentionedUids = _normalizedMentionedUids(
+        ref.read(chatMentionsControllerProvider(widget.session)).mentionedUids,
       );
-      if (editableMessage == null) {
-        return;
+      if (mentionedUids.isNotEmpty) {
+        content.mentionInfo = WKMentionInfo()..uids = mentionedUids;
       }
-      await ref
-          .read(chatSceneGatewayProvider(widget.session))
-          .editMessage(editableMessage, content);
-    } else {
-      _applyPendingReplyToContent(content, payload: payload);
 
-      await ref
-          .read(chatSceneGatewayProvider(widget.session))
-          .sendMessageContent(
-            content,
-            channelId: widget.session.channelId,
-            channelType: widget.session.channelType,
-          );
+      if (editMessageId.isNotEmpty) {
+        final editableMessage = _findEditableMessage(
+          editMessageId,
+          payload.editMessageSeq,
+        );
+        if (editableMessage == null) {
+          return;
+        }
+        await ref
+            .read(chatSceneGatewayProvider(widget.session))
+            .editMessage(editableMessage, content);
+      } else {
+        _applyPendingReplyToContent(content, payload: payload);
+
+        await ref
+            .read(chatSceneGatewayProvider(widget.session))
+            .sendMessageContent(
+              content,
+              channelId: widget.session.channelId,
+              channelType: widget.session.channelType,
+            );
+      }
+
+      composerController.markSubmitSucceeded();
+      mentionsController.clear();
+      ref
+          .read(chatSceneControllerProvider(widget.session).notifier)
+          .restoreNormal();
+    } catch (_) {
+      _showSendFailureFeedback();
+    } finally {
+      _setComposerSubmitting(false);
     }
+  }
 
-    composerController.markSubmitSucceeded();
-    mentionsController.clear();
-    ref
-        .read(chatSceneControllerProvider(widget.session).notifier)
-        .restoreNormal();
+  void _setComposerSubmitting(bool value) {
+    if (_isSubmittingComposer == value) {
+      return;
+    }
+    if (!mounted) {
+      _isSubmittingComposer = value;
+      return;
+    }
+    setState(() {
+      _isSubmittingComposer = value;
+    });
+  }
+
+  void _showSendFailureFeedback() {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text(_sendFailureRetainedFeedback)),
+      );
   }
 
   Future<void> _startVoiceRecording() async {
@@ -3631,7 +4129,7 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
       setState(() {
         _panelGifResults = const <ChatGifPanelResult>[];
         _panelGifErrorText =
-            'GIF \u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5';
+            '\u52a8\u56fe\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5';
       });
     }
   }
@@ -3679,7 +4177,7 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
                 child: Center(
                   child: Text(
                     result.contentUrl?.trim().isNotEmpty == true
-                        ? 'GIF'
+                        ? '\u52a8\u56fe'
                         : '...',
                     style: const TextStyle(
                       fontSize: 14,
@@ -3977,6 +4475,7 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
           for (final item in items)
             _FunctionItem(
               key: ValueKey<String>('chat-function-${item.sid}'),
+              sid: item.sid,
               asset: item.icon ?? '',
               label: item.text?.trim().isNotEmpty == true
                   ? item.text!.trim()
@@ -4210,12 +4709,22 @@ class _HeaderTag extends StatelessWidget {
 
 const double _composerActionButtonExtent = 48;
 const double _composerActionIconExtent = 24;
+const double _composerToolbarArtworkExtent = 38;
+const double _composerCallIconExtent = 22;
 
 class _ComposerToolbarButton extends StatelessWidget {
-  const _ComposerToolbarButton({super.key, required this.asset, this.onTap});
+  const _ComposerToolbarButton({
+    super.key,
+    required this.asset,
+    this.onTap,
+    this.artworkExtent = _composerToolbarArtworkExtent,
+    this.fit = BoxFit.fill,
+  });
 
   final String asset;
   final VoidCallback? onTap;
+  final double artworkExtent;
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
@@ -4230,44 +4739,146 @@ class _ComposerToolbarButton extends StatelessWidget {
         ),
         onPressed: onTap ?? () {},
         icon: asset.trim().isEmpty
-            ? const SizedBox(
-                width: _composerActionIconExtent,
-                height: _composerActionIconExtent,
-              )
+            ? SizedBox(width: artworkExtent, height: artworkExtent)
             : WKReferenceAssets.image(
                 asset,
-                width: _composerActionIconExtent,
-                height: _composerActionIconExtent,
+                width: artworkExtent,
+                height: artworkExtent,
+                fit: fit,
               ),
       ),
     );
   }
 }
 
-class _ComposerSendButton extends StatelessWidget {
-  const _ComposerSendButton({required this.enabled, this.onTap});
+class _ComposerCallToolbarButton extends StatelessWidget {
+  const _ComposerCallToolbarButton({
+    super.key,
+    required this.decorationKey,
+    required this.tooltip,
+    required this.asset,
+    required this.gradient,
+    required this.onTap,
+  });
 
-  final bool enabled;
-  final VoidCallback? onTap;
+  final Key decorationKey;
+  final String tooltip;
+  final String asset;
+  final Gradient gradient;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: _composerActionButtonExtent,
       height: _composerActionButtonExtent,
-      child: IconButton(
-        key: const ValueKey<String>('chat-send-button'),
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.transparent,
+          child: InkResponse(
+            onTap: onTap,
+            radius: _composerActionButtonExtent / 2,
+            containedInkWell: true,
+            borderRadius: BorderRadius.circular(18),
+            child: Center(
+              child: DecoratedBox(
+                key: decorationKey,
+                decoration: BoxDecoration(
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x22000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: SizedBox(
+                  width: 38,
+                  height: 38,
+                  child: Center(
+                    child: WKReferenceAssets.image(
+                      asset,
+                      width: _composerCallIconExtent,
+                      height: _composerCallIconExtent,
+                      tint: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerSendButton extends StatefulWidget {
+  const _ComposerSendButton({required this.enabled, this.onTap});
+
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  State<_ComposerSendButton> createState() => _ComposerSendButtonState();
+}
+
+class _ComposerSendButtonState extends State<_ComposerSendButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) {
+      return;
+    }
+    setState(() {
+      _pressed = value;
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _ComposerSendButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled && _pressed) {
+      _pressed = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final scale = widget.enabled ? (_pressed ? 0.92 : 1.0) : 0.88;
+    return Listener(
+      onPointerDown: widget.enabled ? (_) => _setPressed(true) : null,
+      onPointerUp: widget.enabled ? (_) => _setPressed(false) : null,
+      onPointerCancel: widget.enabled ? (_) => _setPressed(false) : null,
+      child: AnimatedScale(
+        key: const ValueKey<String>('chat-send-button-motion'),
+        scale: scale,
+        duration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        child: SizedBox(
           width: _composerActionButtonExtent,
           height: _composerActionButtonExtent,
-        ),
-        onPressed: enabled ? onTap : null,
-        icon: WKReferenceAssets.image(
-          WKReferenceAssets.chatSend,
-          width: _composerActionIconExtent,
-          height: _composerActionIconExtent,
-          tint: enabled ? WKColors.brand500 : WKColors.popupText,
+          child: IconButton(
+            key: const ValueKey<String>('chat-send-button'),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(
+              width: _composerActionButtonExtent,
+              height: _composerActionButtonExtent,
+            ),
+            onPressed: widget.enabled ? widget.onTap : null,
+            icon: WKReferenceAssets.image(
+              WKReferenceAssets.chatSend,
+              width: _composerActionIconExtent,
+              height: _composerActionIconExtent,
+              tint: widget.enabled ? WKColors.brand500 : WKColors.popupText,
+            ),
+          ),
         ),
       ),
     );
@@ -4277,11 +4888,13 @@ class _ComposerSendButton extends StatelessWidget {
 class _FunctionItem extends StatelessWidget {
   const _FunctionItem({
     super.key,
+    required this.sid,
     required this.asset,
     required this.label,
     this.onTap,
   });
 
+  final String sid;
   final String asset;
   final String label;
   final VoidCallback? onTap;
@@ -4300,9 +4913,7 @@ class _FunctionItem extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                asset.trim().isEmpty
-                    ? const SizedBox(width: 40, height: 40)
-                    : WKReferenceAssets.image(asset, width: 40, height: 40),
+                _FunctionIcon(sid: sid, asset: asset),
                 const SizedBox(height: 8),
                 Text(
                   label,
@@ -4318,5 +4929,137 @@ class _FunctionItem extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _FunctionIcon extends StatelessWidget {
+  const _FunctionIcon({required this.sid, required this.asset});
+
+  final String sid;
+  final String asset;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _functionIconStyleForSid(sid);
+    if (style == null) {
+      return asset.trim().isEmpty
+          ? const SizedBox(width: 40, height: 40)
+          : WKReferenceAssets.image(asset, width: 40, height: 40);
+    }
+
+    return DecoratedBox(
+      key: ValueKey<String>('chat-function-$sid-icon'),
+      decoration: BoxDecoration(
+        gradient: style.gradient,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: style.shadowColor.withValues(alpha: 0.28),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: SizedBox(
+        width: 52,
+        height: 52,
+        child: Stack(
+          children: [
+            Positioned(
+              right: -8,
+              top: -10,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox(width: 32, height: 32),
+              ),
+            ),
+            Positioned(
+              left: -6,
+              bottom: -8,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox(width: 28, height: 28),
+              ),
+            ),
+            Center(child: Icon(style.icon, size: 26, color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FunctionIconStyle {
+  const _FunctionIconStyle({
+    required this.icon,
+    required this.gradient,
+    required this.shadowColor,
+  });
+
+  final IconData icon;
+  final Gradient gradient;
+  final Color shadowColor;
+}
+
+_FunctionIconStyle? _functionIconStyleForSid(String sid) {
+  switch (sid) {
+    case 'chooseImg':
+      return const _FunctionIconStyle(
+        icon: Icons.photo_library_rounded,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF41D8FF), Color(0xFF4E6BFF)],
+        ),
+        shadowColor: Color(0xFF4E6BFF),
+      );
+    case 'captureImg':
+      return const _FunctionIconStyle(
+        icon: Icons.photo_camera_rounded,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFCB5F), Color(0xFFFF6B8A)],
+        ),
+        shadowColor: Color(0xFFFF7A45),
+      );
+    case 'chooseFile':
+      return const _FunctionIconStyle(
+        icon: Icons.description_rounded,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFB86B), Color(0xFFFF7A45)],
+        ),
+        shadowColor: Color(0xFFFF7A45),
+      );
+    case 'sendLocation':
+      return const _FunctionIconStyle(
+        icon: Icons.location_on_rounded,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF36E6B3), Color(0xFF16A76C)],
+        ),
+        shadowColor: Color(0xFF16A76C),
+      );
+    case 'chooseCard':
+      return const _FunctionIconStyle(
+        icon: Icons.badge_rounded,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFB576FF), Color(0xFF7A5CFF)],
+        ),
+        shadowColor: Color(0xFF7A5CFF),
+      );
+    default:
+      return null;
   }
 }

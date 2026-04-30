@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
+import 'package:wukongimfluttersdk/common/mode.dart';
 import 'package:wukongimfluttersdk/common/options.dart';
 import 'package:wukongimfluttersdk/db/const.dart';
 import 'package:wukongimfluttersdk/db/message.dart';
@@ -39,12 +38,16 @@ import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import '../../wukong_base/msg/msg_content_type.dart';
 import '../../wukong_base/db/db_helper.dart';
+import '../../wukong_push/notification/web_message_alert_plan.dart';
+import '../../wukong_push/notification/web_notification_manager.dart';
 import '../api/file_api.dart';
 import '../api/conversation_draft_api.dart';
+import '../api/im_route_info.dart';
 import '../api/im_sync_api.dart';
 import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'im_word_sync_models.dart';
+import 'local_attachment_file.dart';
 
 final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
   ref,
@@ -106,18 +109,59 @@ void normalizeFileAttachmentMetadata(
   required String localPath,
   int? inferredSize,
 }) {
-  if (content.name.trim().isEmpty) {
-    content.name = path.basename(localPath);
-  }
+  content.name = _safeAttachmentFileName(content.name, fallbackPath: localPath);
   if (content.size <= 0 && inferredSize != null && inferredSize > 0) {
     content.size = inferredSize;
+  } else if (content.size < 0) {
+    content.size = 0;
   }
   if (content.suffix.trim().isEmpty) {
-    content.suffix = path
-        .extension(content.name.trim().isEmpty ? localPath : content.name)
-        .replaceFirst('.', '')
-        .toLowerCase();
+    content.suffix = _attachmentFileSuffix(
+      name: content.name,
+      fallbackPath: localPath,
+    );
   }
+}
+
+String _safeAttachmentFileName(String name, {required String fallbackPath}) {
+  final fromName = _lastSafeAttachmentPathSegment(name);
+  if (fromName.isNotEmpty) {
+    return fromName;
+  }
+  final fromPath = _lastSafeAttachmentPathSegment(fallbackPath);
+  if (fromPath.isNotEmpty) {
+    return fromPath;
+  }
+  return 'file';
+}
+
+String _lastSafeAttachmentPathSegment(String value) {
+  final cleaned = value.trim().replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '');
+  if (cleaned.isEmpty) {
+    return '';
+  }
+  final segments = cleaned
+      .split(RegExp(r'[\\/]+'))
+      .map((segment) => segment.trim())
+      .where((segment) => segment.isNotEmpty)
+      .where((segment) => segment != '.' && segment != '..')
+      .toList(growable: false);
+  if (segments.isEmpty) {
+    return '';
+  }
+  return segments.last;
+}
+
+String _attachmentFileSuffix({
+  required String name,
+  required String fallbackPath,
+}) {
+  final safeName = _safeAttachmentFileName(name, fallbackPath: fallbackPath);
+  final dotIndex = safeName.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex == safeName.length - 1) {
+    return '';
+  }
+  return safeName.substring(dotIndex + 1).trim().toLowerCase();
 }
 
 bool shouldReuseInitializedImSession({
@@ -208,6 +252,27 @@ Uri buildSessionGatewayUri({
     path: '/v1/realtime/session/events/ws',
     queryParameters: queryParameters,
   );
+}
+
+String selectImConnectAddr(ImRouteInfo route, {required String fallbackAddr}) {
+  if (shouldPreferLocalFallbackImAddr(fallbackAddr) &&
+      isValidTcpConnectAddr(fallbackAddr)) {
+    return fallbackAddr.trim();
+  }
+  return route.resolvePreferredAddr(fallbackAddr: fallbackAddr);
+}
+
+@visibleForTesting
+bool shouldUseImLocalPersistence({
+  required bool isWeb,
+  required bool sdkAppMode,
+}) {
+  return !isWeb && sdkAppMode;
+}
+
+@visibleForTesting
+bool shouldStartNativeSessionRuntime({required bool isWeb}) {
+  return !isWeb;
 }
 
 class _RecoveredCallingKey {
@@ -382,6 +447,10 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   Future<bool> init() async {
+    if (kIsWeb) {
+      WKIM.shared.runMode = Model.web;
+    }
+
     final credentials = resolveStoredImInitCredentials(
       uid: StorageUtils.getUid(),
       apiToken: StorageUtils.getToken(),
@@ -411,7 +480,9 @@ class IMService extends StateNotifier<IMServiceState>
           token: credentials.imToken,
           deviceSessionId: credentials.deviceSessionId,
           connectionStatus: state.connectionStatus,
-          sessionRuntimeRunning: _sessionRuntime.isRunning,
+          sessionRuntimeRunning:
+              !shouldStartNativeSessionRuntime(isWeb: kIsWeb) ||
+              _sessionRuntime.isRunning,
         ) &&
         _initializedApiToken == credentials.apiToken) {
       return true;
@@ -457,18 +528,25 @@ class IMService extends StateNotifier<IMServiceState>
         throw StateError('WKIM.setup returned false.');
       }
 
-      final dbReady = await _ensureDatabaseReady();
-      if (!dbReady) {
-        throw StateError('IM database schema is not ready.');
+      if (_usesLocalPersistence) {
+        final dbReady = await _ensureDatabaseReady();
+        if (!dbReady) {
+          throw StateError('IM database schema is not ready.');
+        }
+        await _loadStoredWordCaches();
+      } else {
+        _loadSensitiveWordsSnapshot();
+        _cachedProhibitWords = const <ProhibitWordEntry>[];
       }
 
-      await _loadStoredWordCaches();
       _registerMessageContents();
       _bindSdkCallbacks();
-      await _startSessionRuntime(
-        token: credentials.apiToken,
-        deviceSessionId: credentials.deviceSessionId,
-      );
+      if (shouldStartNativeSessionRuntime(isWeb: kIsWeb)) {
+        await _startSessionRuntime(
+          token: credentials.apiToken,
+          deviceSessionId: credentials.deviceSessionId,
+        );
+      }
 
       WKIM.shared.connectionManager.connect();
 
@@ -779,6 +857,10 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   Future<void> _syncProhibitWords({String? reason}) async {
+    if (!_usesLocalPersistence) {
+      return;
+    }
+
     if (_isProhibitWordSyncing) {
       _pendingProhibitWordSync = true;
       return;
@@ -1050,13 +1132,49 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   void _handleNewMessages(List<WKMsg> messages) {
+    final currentUid = state.uid ?? StorageUtils.getUid()?.trim() ?? '';
     for (final message in messages) {
       applyProhibitWordsToMessage(message);
+      if (!_usesLocalPersistence) {
+        _publishRealtimeConversationMessage(message);
+      }
       final tip = buildSensitiveWordTipMessageIfNeeded(message);
       if (tip != null) {
         unawaited(_insertSensitiveWordTipMessage(tip));
       }
+      if (kIsWeb) {
+        _scheduleWebMessageAlert(message, currentUid: currentUid);
+      }
     }
+  }
+
+  void _scheduleWebMessageAlert(WKMsg message, {required String currentUid}) {
+    try {
+      final plan = buildWebMessageAlertPlan(message, currentUid: currentUid);
+      if (plan == null) {
+        return;
+      }
+      unawaited(
+        WebNotificationManager.instance.showNewMessageAlert(
+          title: plan.title,
+          body: plan.body,
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Web message alert scheduling failed: $error');
+      debugPrint('$stackTrace');
+    }
+  }
+
+  void _publishRealtimeConversationMessage(WKMsg message) {
+    final read = _readProvider;
+    if (read == null) {
+      return;
+    }
+    read(conversationProvider.notifier).applyRealtimeMessage(
+      message,
+      currentUid: state.uid ?? StorageUtils.getUid()?.trim(),
+    );
   }
 
   Future<void> _insertSensitiveWordTipMessage(WKMsg tip) async {
@@ -1118,6 +1236,10 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   Future<bool> _ensureDatabaseReady() async {
+    if (!_usesLocalPersistence) {
+      return false;
+    }
+
     if (WKDBHelper.shared.getDB() == null) {
       final reopened = await WKDBHelper.shared.init();
       if (!reopened) {
@@ -1199,8 +1321,7 @@ class IMService extends StateNotifier<IMServiceState>
       if (content.cover.trim().isEmpty) {
         final coverLocalPath = content.coverLocalPath.trim();
         if (coverLocalPath.isNotEmpty) {
-          final coverFile = File(coverLocalPath);
-          if (!await coverFile.exists()) {
+          if (!await localAttachmentFileExists(coverLocalPath)) {
             return false;
           }
           content.cover = await FileApi.instance.uploadChatFile(
@@ -1249,8 +1370,7 @@ class IMService extends StateNotifier<IMServiceState>
       return false;
     }
 
-    final file = File(localPath);
-    if (!await file.exists()) {
+    if (!await localAttachmentFileExists(localPath)) {
       return false;
     }
 
@@ -1276,8 +1396,7 @@ class IMService extends StateNotifier<IMServiceState>
       return false;
     }
 
-    final file = File(localPath);
-    if (!await file.exists()) {
+    if (!await localAttachmentFileExists(localPath)) {
       return false;
     }
 
@@ -1290,7 +1409,9 @@ class IMService extends StateNotifier<IMServiceState>
     normalizeFileAttachmentMetadata(
       content,
       localPath: localPath,
-      inferredSize: content.size > 0 ? content.size : await file.length(),
+      inferredSize: content.size > 0
+          ? content.size
+          : await localAttachmentFileLength(localPath),
     );
     return uploadedUrl.trim().isNotEmpty;
   }
@@ -1351,6 +1472,10 @@ class IMService extends StateNotifier<IMServiceState>
 
   Future<void> _loadStoredWordCaches() async {
     _loadSensitiveWordsSnapshot();
+    if (!_usesLocalPersistence) {
+      _cachedProhibitWords = const <ProhibitWordEntry>[];
+      return;
+    }
     _cachedProhibitWords = await DBHelper.instance.getProhibitWords();
   }
 
@@ -1632,12 +1757,8 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   Future<String> _resolveConnectAddr(String uid) async {
-    final connectAddr = await IMSyncApi.instance.fetchUserConnectAddr(uid: uid);
-    final normalized = connectAddr.trim();
-    if (normalized.isNotEmpty) {
-      return normalized;
-    }
-    return IMConfig.connectAddr;
+    final route = await IMSyncApi.instance.fetchUserConnectRoute(uid: uid);
+    return selectImConnectAddr(route, fallbackAddr: IMConfig.connectAddr);
   }
 
   Future<void> _ackConversationSync({
@@ -1748,9 +1869,18 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   Future<void> applyProhibitWordsSync(List<ProhibitWordEntry> words) async {
+    if (!_usesLocalPersistence) {
+      _cachedProhibitWords = words;
+      return;
+    }
     await DBHelper.instance.saveProhibitWords(words);
     _cachedProhibitWords = await DBHelper.instance.getProhibitWords();
   }
+
+  bool get _usesLocalPersistence => shouldUseImLocalPersistence(
+    isWeb: kIsWeb,
+    sdkAppMode: WKIM.shared.isApp(),
+  );
 
   @visibleForTesting
   bool applyProhibitWordsToMessage(WKMsg message) {

@@ -154,7 +154,10 @@ class SessionRuntime {
       return;
     }
     if (!_isInvalidationFrame(frame.kind)) {
-      await _repairGapIfNeeded(frame);
+      final shouldContinue = await _repairGapIfNeeded(frame);
+      if (!shouldContinue) {
+        return;
+      }
     }
     await _processFrame(frame);
   }
@@ -181,10 +184,10 @@ class SessionRuntime {
     );
   }
 
-  Future<void> _repairGapIfNeeded(SessionEventFrame incoming) async {
+  Future<bool> _repairGapIfNeeded(SessionEventFrame incoming) async {
     var cursor = gateway.lastAckedSeq;
     if (incoming.userSeq <= cursor + 1) {
-      return;
+      return true;
     }
 
     while (cursor < incoming.userSeq - 1) {
@@ -213,11 +216,14 @@ class SessionRuntime {
           );
         }
         await _processFrame(frame);
+        if (_isInvalidationFrame(frame.kind) || !_desiredRunning) {
+          return false;
+        }
         cursor = frame.userSeq;
       }
 
       if (cursor == incoming.userSeq - 1) {
-        return;
+        return true;
       }
       if (cursor == batchStart) {
         break;

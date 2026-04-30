@@ -1,8 +1,5 @@
-import 'dart:io';
-
-import 'package:image_picker/image_picker.dart';
-
 import '../../core/config/api_config.dart';
+import '../../core/platform/local_image_picker.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../service/api/collection_api.dart';
 
@@ -16,13 +13,13 @@ class MomentMention {
 class MomentPublishRequest {
   const MomentPublishRequest({
     this.content,
-    this.images = const <File>[],
+    this.images = const <String>[],
     this.mentions = const <String>[],
     this.location,
   });
 
   final String? content;
-  final List<File> images;
+  final List<String> images;
   final List<String> mentions;
   final String? location;
 }
@@ -168,16 +165,14 @@ class MomentLike {
 }
 
 class MomentsService implements MomentsComposeService {
-  MomentsService._({MomentsApi? momentsApi, ImagePicker? picker})
-    : _momentsApi = momentsApi ?? MomentsApi.instance,
-      _picker = picker ?? ImagePicker();
+  MomentsService._({MomentsApi? momentsApi})
+    : _momentsApi = momentsApi ?? MomentsApi.instance;
 
   static final MomentsService _instance = MomentsService._();
   static MomentsService get instance => _instance;
 
   static const int _detailLookupPageSize = 50;
   final MomentsApi _momentsApi;
-  final ImagePicker _picker;
 
   Future<List<Moment>> getMoments({int page = 1, int pageSize = 20}) async {
     final payloads = await _momentsApi.getList(page: page, pageSize: pageSize);
@@ -204,13 +199,13 @@ class MomentsService implements MomentsComposeService {
 
   Future<Moment> publishMoment({
     String? content,
-    List<File>? images,
+    List<String>? images,
     List<String> mentions = const <String>[],
     String? location,
   }) async {
     final momentId = await _momentsApi.publish(
       content: content,
-      images: images?.map((item) => item.path).toList(growable: false),
+      images: images,
       mentions: mentions,
       location: location,
     );
@@ -285,29 +280,29 @@ class MomentsService implements MomentsComposeService {
         .toList(growable: false);
   }
 
-  Future<List<File>> pickImages({int maxImages = 9}) async {
-    final images = await _picker.pickMultiImage(
+  Future<List<String>> pickImages({int maxImages = 9}) async {
+    return pickMultipleLocalImagePaths(
+      limit: maxImages,
       maxWidth: 1920,
       maxHeight: 1920,
       imageQuality: 85,
     );
-    return images.take(maxImages).map((image) => File(image.path)).toList();
   }
 
-  Future<File?> takePhoto() async {
+  Future<String?> takePhoto() async {
     if (PlatformUtils.isDesktop) {
       throw UnsupportedError(
         '${PlatformUtils.platformName} 桌面端暂不支持直接拍照，请从相册选择图片',
       );
     }
 
-    final image = await _picker.pickImage(
-      source: ImageSource.camera,
+    return pickSingleLocalImagePath(
+      source: LocalImagePickSource.camera,
       maxWidth: 1920,
       maxHeight: 1920,
       imageQuality: 85,
+      useDesktopFilePickerForGallery: false,
     );
-    return image == null ? null : File(image.path);
   }
 
   Future<Moment?> _findMomentById(String momentId) async {

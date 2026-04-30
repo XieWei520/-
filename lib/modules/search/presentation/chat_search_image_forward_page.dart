@@ -11,7 +11,9 @@ import '../domain/search_models.dart';
 import '../../../wukong_base/views/user_avatar.dart';
 
 typedef SearchForwardTargetResolver =
-    Future<List<ForwardTarget>> Function(List<WKUIConversationMsg> conversations);
+    Future<List<ForwardTarget>> Function(
+      List<WKUIConversationMsg> conversations,
+    );
 typedef SearchForwardSubmitCallback =
     Future<void> Function(List<ForwardTarget> targets, SearchMediaItem item);
 
@@ -45,7 +47,7 @@ class _ChatSearchImageForwardPageState
     final targetsFuture = _resolveTargets(conversations);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Forward')),
+      appBar: AppBar(title: const Text('转发')),
       body: FutureBuilder<List<ForwardTarget>>(
         future: targetsFuture,
         builder: (context, snapshot) {
@@ -64,7 +66,7 @@ class _ChatSearchImageForwardPageState
                     });
                   },
                   decoration: const InputDecoration(
-                    hintText: 'Search chats',
+                    hintText: '搜索聊天',
                     prefixIcon: Icon(Icons.search),
                     border: OutlineInputBorder(),
                     isDense: true,
@@ -72,13 +74,14 @@ class _ChatSearchImageForwardPageState
                 ),
               ),
               Expanded(
-                child: snapshot.connectionState == ConnectionState.waiting &&
+                child:
+                    snapshot.connectionState == ConnectionState.waiting &&
                         targets.isEmpty
                     ? const Center(child: CircularProgressIndicator())
                     : targets.isEmpty
-                    ? const Center(child: Text('No chats available'))
+                    ? const Center(child: Text('暂无可转发的聊天'))
                     : filteredTargets.isEmpty
-                    ? const Center(child: Text('No matches'))
+                    ? const Center(child: Text('暂无匹配结果'))
                     : ListView.builder(
                         itemCount: filteredTargets.length,
                         itemBuilder: (context, index) {
@@ -105,7 +108,9 @@ class _ChatSearchImageForwardPageState
                                     key: ValueKey<String>(
                                       'search-forward-selected-${target.key}',
                                     ),
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
                                   )
                                 : null,
                             onTap: () => _toggleTarget(target),
@@ -120,14 +125,16 @@ class _ChatSearchImageForwardPageState
                   child: SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      key: const ValueKey<String>('search-forward-confirm-button'),
+                      key: const ValueKey<String>(
+                        'search-forward-confirm-button',
+                      ),
                       onPressed: _selectedTargetKeys.isEmpty
                           ? null
                           : () => _submitSelectedTargets(targets),
                       child: Text(
                         _selectedTargetKeys.isEmpty
-                            ? 'Forward'
-                            : 'Forward (${_selectedTargetKeys.length})',
+                            ? '转发'
+                            : '转发（${_selectedTargetKeys.length}）',
                       ),
                     ),
                   ),
@@ -181,7 +188,7 @@ class _ChatSearchImageForwardPageState
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Forward unavailable')));
+      ).showSnackBar(const SnackBar(content: Text('当前内容无法转发')));
       return;
     }
 
@@ -198,12 +205,10 @@ class _ChatSearchImageForwardPageState
     if (!context.mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          targets.length == 1 ? 'Forwarded' : 'Forwarded to ${targets.length} chats',
+          targets.length == 1 ? '已转发' : '已转发给 ${targets.length} 个聊天',
         ),
       ),
     );
@@ -213,9 +218,8 @@ class _ChatSearchImageForwardPageState
   Future<WKImageContent?> _buildMessageContent() async {
     final clientMsgNo = widget.item.hit.clientMsgNo?.trim() ?? '';
     if (clientMsgNo.isNotEmpty) {
-      final originalMessage = await WKIM.shared.messageManager.getWithClientMsgNo(
-        clientMsgNo,
-      );
+      final originalMessage = await WKIM.shared.messageManager
+          .getWithClientMsgNo(clientMsgNo);
       final clonedContent = cloneMessageContentForForward(
         originalMessage?.messageContent,
       );
@@ -242,7 +246,8 @@ class _ChatSearchImageForwardPageState
   Future<List<ForwardTarget>> _resolveTargets(
     List<WKUIConversationMsg> conversations,
   ) {
-    if (_targetsFuture != null && identical(_cachedConversations, conversations)) {
+    if (_targetsFuture != null &&
+        identical(_cachedConversations, conversations)) {
       return _targetsFuture!;
     }
     _cachedConversations = conversations;

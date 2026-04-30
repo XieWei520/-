@@ -566,9 +566,9 @@ class _FakeLocalSearchService extends LocalSearchService {
   _FakeLocalSearchService()
     : super(
         searchChannels: (_) async => const <WKChannelSearchResult>[],
-        searchFollowedUsers: (_, __, ___) async => const <WKChannel>[],
+        searchFollowedUsers: (_, _, _) async => const <WKChannel>[],
         searchGlobalMessages: (_) async => const <WKMessageSearchResult>[],
-        searchMessagesWithChannel: (_, __, ___) async => const <WKMsg>[],
+        searchMessagesWithChannel: (_, _, _) async => const <WKMsg>[],
       );
 
   final Map<int, GlobalSearchSnapshot> globalSnapshotsByPage =

@@ -16,9 +16,6 @@ dependencies:
   wukongimfluttersdk:
     path: ../TangSengDaoDao/WuKongIMFlutterSDK-master
 
-  # Cupertino Icons
-  cupertino_icons: ^1.0.8
-
   # Networking
   dio: ^5.4.0
   web_socket_channel: ^2.4.0
@@ -27,8 +24,6 @@ dependencies:
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.4.0+2
   shared_preferences: ^2.2.2
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
 
   # State management
   flutter_riverpod: ^2.4.9
@@ -37,16 +32,16 @@ dependencies:
   # Map and location
   flutter_map: ^6.1.0
   latlong2: ^0.9.1
-  geolocator: ^11.0.0
+  geolocator: ^14.0.2
 
   # Audio/video calls
-  flutter_webrtc: ^0.11.7
-  livekit_client: ^2.2.4
+  flutter_webrtc: ^1.1.0
+  livekit_client: ^2.5.0
 
   # UI components
   flutter_svg: ^2.0.9
   cached_network_image: ^3.3.1
-  photo_view: ^0.14.0
+  flutter_cache_manager: ^3.4.1
   image_picker: ^1.0.7
   video_player: ^2.8.2
   audioplayers: ^6.6.0
@@ -56,15 +51,12 @@ dependencies:
   # Feature components
   permission_handler: ^11.1.0
   flutter_contacts: ^2.0.1
-  lottie: ^3.1.0
   url_launcher: ^6.2.4
-  file_picker: ^6.1.1
+  file_picker: ^8.3.7
   crop_your_image: ^2.0.0
   path_provider: ^2.1.2
   path: ^1.8.3
-  device_info_plus: ^9.1.2
   package_info_plus: ^9.0.0
-  get_it: ^7.6.7
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.0.4
   flutter_local_notifications: ^17.0.0
@@ -73,17 +65,14 @@ dependencies:
   sentry_flutter: ^8.5.0
   webview_flutter: ^4.10.0
 
-  # UI enhancements
-  flutter_slidable: ^3.0.1
-  pull_to_refresh_flutter3: ^2.0.2
-  badges: ^3.1.2
-
   # Utilities
   intl: ^0.20.2
-  collection: ^1.18.0
   crypto: ^3.0.3
   meta: ^1.17.0
   xml: ^6.5.0
+  desktop_drop: ^0.7.1
+  web: ^1.1.1
+  pointycastle: ^3.9.1
 
 hooks:
   user_defines:
@@ -108,9 +97,11 @@ flutter:
     - assets/images/
     - assets/emoji/
     - assets/emoji/android/
-    - assets/stickers/
-    - assets/stickers/sample_pack/
+    - assets/emoji/android/default/
+    - assets/stickers/sample_pack/manifest.json
+    - assets/stickers/sample_pack/previews/
     - assets/icons/
+    - assets/audio/
     - assets/reference_ui/icons/
     - assets/reference_ui/icons/icon_login_bg.png
     - assets/reference_ui/icons/icon_login_arrow_bottom.png
@@ -124,3 +115,12 @@ flutter:
     - family: WKRMedium
       fonts:
         - asset: assets/reference_ui/fonts/rmedium.ttf
+    - family: Roboto
+      fonts:
+        - asset: assets/reference_ui/fonts/rmedium.ttf
+    - family: WKNotoSansSC
+      fonts:
+        - asset: assets/reference_ui/fonts/noto_sans_sc_vf.ttf
+    - family: WKChineseWebSubset
+      fonts:
+        - asset: assets/reference_ui/fonts/noto_sans_sc_web_subset.ttf

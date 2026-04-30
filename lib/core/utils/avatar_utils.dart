@@ -21,6 +21,19 @@ String? buildUserAvatarUrl(String? uid, {String? cacheKey}) {
   return ApiConfig.resolveMediaUrl(path);
 }
 
+String? buildGroupAvatarUrl(String? groupNo, {String? cacheKey}) {
+  final normalizedGroupNo = groupNo?.trim() ?? '';
+  if (normalizedGroupNo.isEmpty) {
+    return null;
+  }
+
+  final normalizedCacheKey = cacheKey?.trim() ?? '';
+  final path = normalizedCacheKey.isEmpty
+      ? 'groups/$normalizedGroupNo/avatar'
+      : 'groups/$normalizedGroupNo/avatar?t=${Uri.encodeQueryComponent(normalizedCacheKey)}';
+  return ApiConfig.resolveMediaUrl(path);
+}
+
 String? resolveUserAvatarUrl(
   String? rawAvatar,
   String? uid, {

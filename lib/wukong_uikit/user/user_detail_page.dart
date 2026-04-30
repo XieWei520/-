@@ -10,6 +10,7 @@ import '../../data/models/user_relationship.dart';
 import '../../data/models/user.dart';
 import '../../data/providers/user_provider.dart';
 import '../../modules/chat/chat_page.dart';
+import '../../modules/customer_service/customer_service_badge.dart';
 import '../../modules/vip/vip_badge.dart';
 import '../../modules/vip/vip_guard.dart';
 import '../../service/api/friend_api.dart';
@@ -563,6 +564,7 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
   Widget _buildHeader() {
     final sexAsset = _sexAsset(_user?.sex);
     final isVipUser = (_user?.vipLevel ?? 0) == 1;
+    final isCustomerServiceUser = _user?.isCustomerService == true;
     final inGroupName = _inGroupNameText();
     final shortNo = _shortNoText();
 
@@ -590,31 +592,44 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
                       globalPosition: details.globalPosition,
                       text: _displayName,
                     ),
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            _displayName,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: WKColors.colorDark,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: constraints.maxWidth,
+                              ),
+                              child: Text(
+                                _displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: WKColors.colorDark,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        if (isVipUser) ...[
-                          const SizedBox(width: 6),
-                          const VipBadge(),
-                        ],
-                        if (sexAsset.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          WKReferenceAssets.image(
-                            sexAsset,
-                            width: 25,
-                            height: 25,
-                          ),
-                        ],
-                      ],
+                            if (isVipUser) const VipBadge(),
+                            if (isCustomerServiceUser)
+                              const CustomerServiceBadge(
+                                key: ValueKey<String>(
+                                  'user-detail-customer-service-badge',
+                                ),
+                              ),
+                            if (sexAsset.isNotEmpty)
+                              WKReferenceAssets.image(
+                                sexAsset,
+                                width: 25,
+                                height: 25,
+                              ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                   if (inGroupName != null)

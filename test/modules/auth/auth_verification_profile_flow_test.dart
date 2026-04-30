@@ -282,12 +282,15 @@ Future<void> _expectOkDialog(
     find.descendant(of: dialog, matching: find.text(message)),
     findsOneWidget,
   );
-  await tester.tap(find.text('OK'));
+  await tester.tap(find.descendant(of: dialog, matching: find.text('确定')));
   await tester.pumpAndSettle();
 }
 
 Future<void> _dismissOkDialogIfPresent(WidgetTester tester) async {
-  final okFinder = find.text('OK');
+  final okFinder = find.descendant(
+    of: find.byType(AlertDialog),
+    matching: find.text('确定'),
+  );
   if (okFinder.evaluate().isEmpty) {
     return;
   }
@@ -581,7 +584,6 @@ void main() {
     'login verification code page auto-fills hidden fixed code and submits it',
     (tester) async {
       const fixedCode = '123456';
-      const successMessage = '验证码获取成功';
       final repository = _RecordingAuthRepository()
         ..loginWithPhoneResult = AuthCredentialResult.verificationRequired(
           uid: 'u-verify',
@@ -668,7 +670,6 @@ void main() {
     'login verification code page exposes back action and returns to verification introduction',
     (tester) async {
       const fixedCode = '123456';
-      const successMessage = '楠岃瘉鐮佽幏鍙栨垚鍔?';
       final repository = _RecordingAuthRepository()
         ..loginWithPhoneResult = AuthCredentialResult.verificationRequired(
           uid: 'u-verify',
@@ -856,7 +857,12 @@ void main() {
 
       expect(repository.completeProfileCallCount, 0);
 
-      await tester.tap(find.text('OK'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('确定'),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('auth-profile-avatar')));
       await tester.pumpAndSettle();

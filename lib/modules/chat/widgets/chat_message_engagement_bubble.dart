@@ -22,8 +22,10 @@ class ChatMessageEngagementBubble extends StatefulWidget {
     this.onLongPress,
     this.onTap,
     this.onSecondaryTapDown,
+    this.onRetrySend,
     this.onAddReaction,
     this.onReactionTap,
+    this.webStyle = false,
   });
 
   final ChatSession session;
@@ -34,8 +36,10 @@ class ChatMessageEngagementBubble extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
   final void Function(TapDownDetails details)? onSecondaryTapDown;
+  final VoidCallback? onRetrySend;
   final VoidCallback? onAddReaction;
   final void Function(String emoji)? onReactionTap;
+  final bool webStyle;
 
   @override
   State<ChatMessageEngagementBubble> createState() =>
@@ -85,8 +89,10 @@ class _ChatMessageEngagementBubbleState
       onLongPress: widget.onLongPress,
       onTap: widget.onTap,
       onSecondaryTapDown: widget.onSecondaryTapDown,
+      onRetrySend: widget.onRetrySend,
       reactions: _reactions,
       onReactionTap: widget.onReactionTap,
+      webStyle: widget.webStyle,
       voiceContentBuilder: (context, model, isSelf) {
         return ChatVoiceMessageBubble(
           session: widget.session,

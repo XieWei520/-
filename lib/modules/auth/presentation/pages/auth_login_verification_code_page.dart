@@ -82,7 +82,7 @@ class _AuthLoginVerificationCodePageState
                   .read(authFlowControllerProvider.notifier)
                   .returnToLoginVerificationIntroduction(),
         icon: const Icon(Icons.arrow_back_rounded),
-        tooltip: 'Back',
+        tooltip: '返回',
       ),
       body: AuthFormField(
         fieldKey: const ValueKey<String>('auth-login-verification-code-field'),
@@ -201,7 +201,7 @@ class _AuthLoginVerificationCodePageState
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('OK'),
+              child: const Text('确定'),
             ),
           ],
         );

@@ -1,8 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wukongimfluttersdk/common/mode.dart';
+import 'package:wukongimfluttersdk/entity/channel.dart';
+import 'package:wukongimfluttersdk/entity/msg.dart';
+import 'package:wukongimfluttersdk/model/wk_message_content.dart';
+import 'package:wukongimfluttersdk/type/const.dart';
+import 'package:wukongimfluttersdk/wkim.dart';
 
+import '../../core/utils/storage_utils.dart';
 import '../../data/models/call.dart';
 import '../../data/models/chat_session.dart';
+import '../../data/providers/conversation_provider.dart';
 import '../../wukong_base/views/mention_suggestion.dart';
 import '../video_call/group_call_member_picker_page.dart';
 import '../video_call/video_call_page.dart';
@@ -27,10 +37,118 @@ final chatSceneControllerProvider = StateNotifierProvider.autoDispose
       return ChatSceneController();
     });
 
-final chatSceneGatewayProvider = Provider.autoDispose
-    .family<ChatSceneGateway, ChatSession>((ref, _) {
-      return ApiChatSceneGateway();
+typedef ChatOutgoingMessageSender = FutureOr<void> Function(WKMsg message);
+typedef ChatSdkMessageSender =
+    FutureOr<void> Function(WKMessageContent content, WKChannel channel);
+
+final chatUseDirectWebMessageSendProvider = Provider.autoDispose<bool>((ref) {
+  return WKIM.shared.runMode == Model.web;
+});
+
+final chatOutgoingMessageSenderProvider =
+    Provider.autoDispose<ChatOutgoingMessageSender>((ref) {
+      return (message) => WKIM.shared.connectionManager.sendMessage(message);
     });
+
+final chatSdkMessageSenderProvider = Provider.autoDispose<ChatSdkMessageSender>(
+  (ref) {
+    return (content, channel) =>
+        WKIM.shared.messageManager.sendMessage(content, channel);
+  },
+);
+
+final chatSceneGatewayProvider = Provider.autoDispose
+    .family<ChatSceneGateway, ChatSession>((ref, session) {
+      return ApiChatSceneGateway(
+        sendMessage: (content, channel) async {
+          if (!ref.read(chatUseDirectWebMessageSendProvider)) {
+            await Future<void>.sync(
+              () => ref.read(chatSdkMessageSenderProvider)(content, channel),
+            );
+            return;
+          }
+
+          final currentUid = _resolveDirectSendUid();
+          final outgoing = buildDirectOutgoingMessage(
+            content: content,
+            channel: channel,
+            currentUid: currentUid,
+          );
+          await _sendDirectWebMessage(
+            ref: ref,
+            session: session,
+            outgoing: outgoing,
+            currentUid: currentUid,
+          );
+        },
+        retryMessage: (message) async {
+          if (!ref.read(chatUseDirectWebMessageSendProvider)) {
+            message.status = WKSendMsgResult.sendLoading;
+            await Future<void>.sync(
+              () => WKIM.shared.connectionManager.sendMessage(message),
+            );
+            return;
+          }
+
+          final currentUid = _resolveDirectSendUid();
+          await _sendDirectWebMessage(
+            ref: ref,
+            session: session,
+            outgoing: message,
+            currentUid: currentUid,
+          );
+        },
+        refreshLocalMessage: (message) {
+          ref
+              .read(messageListProvider(session).notifier)
+              .applyLocalMessageRefresh(message);
+          ref
+              .read(conversationProvider.notifier)
+              .applyLocalMessageRefresh(message);
+        },
+        currentUidReader: _resolveDirectSendUid,
+      );
+    });
+
+Future<void> _sendDirectWebMessage({
+  required Ref ref,
+  required ChatSession session,
+  required WKMsg outgoing,
+  required String currentUid,
+}) async {
+  outgoing.status = WKSendMsgResult.sendLoading;
+  ref
+      .read(messageListProvider(session).notifier)
+      .applyLocalOutgoingMessage(outgoing);
+  ref
+      .read(conversationProvider.notifier)
+      .applyRealtimeMessage(outgoing, currentUid: currentUid);
+
+  try {
+    await Future<void>.sync(
+      () => ref.read(chatOutgoingMessageSenderProvider)(outgoing),
+    );
+    outgoing.status = WKSendMsgResult.sendSuccess;
+  } catch (_) {
+    outgoing.status = WKSendMsgResult.sendFail;
+    rethrow;
+  } finally {
+    ref
+        .read(messageListProvider(session).notifier)
+        .applyLocalOutgoingMessage(outgoing);
+    ref
+        .read(conversationProvider.notifier)
+        .applyRealtimeMessage(outgoing, currentUid: currentUid);
+  }
+}
+
+String _resolveDirectSendUid() {
+  final sdkUid = WKIM.shared.options.uid?.trim() ?? '';
+  if (sdkUid.isNotEmpty) {
+    return sdkUid;
+  }
+  return StorageUtils.getUid()?.trim() ?? '';
+}
 
 final chatMediaActionServiceProvider =
     Provider.autoDispose<ChatMediaActionService>((ref) {
@@ -46,14 +164,22 @@ final chatActionDispatcherProvider = Provider.autoDispose<ChatActionDispatcher>(
         if (viewContext == null) {
           return null;
         }
-        return media.pickImage(viewContext);
+        return media.pickImage(
+          viewContext,
+          channelId: action.channelId,
+          channelType: action.channelType,
+        );
       },
       pickFile: (action) async {
         final viewContext = action.context;
         if (viewContext == null) {
           return null;
         }
-        return media.pickFile(viewContext);
+        return media.pickFile(
+          viewContext,
+          channelId: action.channelId,
+          channelType: action.channelType,
+        );
       },
       pickLocation: (action) async {
         final viewContext = action.context;

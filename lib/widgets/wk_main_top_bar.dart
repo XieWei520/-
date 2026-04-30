@@ -39,8 +39,9 @@ class WKMainTopBar extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: DefaultTextStyle(
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: WKFontFamily.title,
+                      fontFamilyFallback: WKTypography.fontFamilyFallback,
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
                       color: WKColors.colorDark,

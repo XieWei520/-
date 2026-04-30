@@ -46,9 +46,9 @@ class ChatSearchCollectionPage extends ConsumerWidget {
     );
 
     final title = switch (scope) {
-      SearchCollectionScope.image => 'Images',
-      SearchCollectionScope.file => 'Files',
-      SearchCollectionScope.link => 'Links',
+      SearchCollectionScope.image => '图片',
+      SearchCollectionScope.file => '文件',
+      SearchCollectionScope.link => '链接',
     };
 
     return Scaffold(
@@ -75,14 +75,14 @@ class ChatSearchCollectionPage extends ConsumerWidget {
             const SizedBox(height: 12),
             FilledButton(
               onPressed: controller.refresh,
-              child: const Text('Retry'),
+              child: const Text('重试'),
             ),
           ],
         ),
       );
     }
     if (!state.isLoading && state.items.isEmpty) {
-      return const Center(child: Text('No data'));
+      return const Center(child: Text('暂无数据'));
     }
 
     return NotificationListener<ScrollNotification>(
@@ -233,7 +233,7 @@ class ChatSearchCollectionPage extends ConsumerWidget {
         ImageViewerAction(
           key: 'forward',
           icon: Icons.forward_outlined,
-          label: 'Forward',
+          label: '转发',
           onPressed: (viewerContext, index) async {
             final currentItem = previewableItems[index];
             if (onForwardItem != null) {
@@ -256,7 +256,7 @@ class ChatSearchCollectionPage extends ConsumerWidget {
         ImageViewerAction(
           key: 'favorite',
           icon: Icons.favorite_border,
-          label: 'Favorite',
+          label: '收藏',
           onPressed: (viewerContext, index) async {
             final currentItem = previewableItems[index];
             if (onFavoriteItem != null) {
@@ -269,7 +269,7 @@ class ChatSearchCollectionPage extends ConsumerWidget {
         ImageViewerAction(
           key: 'show-in-chat',
           icon: Icons.chat_bubble_outline,
-          label: 'Show in Chat',
+          label: '在聊天中查看',
           onPressed: (viewerContext, index) async {
             final currentItem = previewableItems[index];
             if (onShowItemInChat != null) {
@@ -286,7 +286,7 @@ class ChatSearchCollectionPage extends ConsumerWidget {
           ImageViewerAction(
             key: 'scan-qrcode',
             icon: Icons.qr_code_scanner_outlined,
-            label: 'Scan QR Code',
+            label: '识别二维码',
             onPressed: (viewerContext, index) async {
               await ScanQrCodeBridge.instance.handleImageSource(
                 previewableItems[index].mediaUrl!,
@@ -314,7 +314,7 @@ class ChatSearchCollectionPage extends ConsumerWidget {
                   'search-image-quick-action-forward',
                 ),
                 leading: const Icon(Icons.forward_outlined),
-                title: const Text('Forward'),
+                title: const Text('转发'),
                 onTap: () async {
                   Navigator.of(sheetContext).pop();
                   await Future<void>.delayed(Duration.zero);
@@ -337,7 +337,7 @@ class ChatSearchCollectionPage extends ConsumerWidget {
                   'search-image-quick-action-show-in-chat',
                 ),
                 leading: const Icon(Icons.chat_bubble_outline),
-                title: const Text('Show in Chat'),
+                title: const Text('在聊天中查看'),
                 onTap: () async {
                   Navigator.of(sheetContext).pop();
                   await Future<void>.delayed(Duration.zero);
@@ -382,7 +382,7 @@ class ChatSearchCollectionPage extends ConsumerWidget {
     if (clientMsgNo.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Favorite unavailable')));
+      ).showSnackBar(const SnackBar(content: Text('当前消息无法收藏')));
       return;
     }
 
@@ -398,14 +398,14 @@ class ChatSearchCollectionPage extends ConsumerWidget {
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Added to favorites')));
+      ).showSnackBar(const SnackBar(content: Text('已添加到收藏')));
     } catch (error) {
       if (!context.mounted) {
         return;
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Favorite failed: $error')));
+      ).showSnackBar(SnackBar(content: Text('收藏失败：$error')));
     }
   }
 }

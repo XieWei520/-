@@ -8,6 +8,11 @@ import 'package:wukong_im_app/modules/home/home_badge_snapshot.dart';
 import 'package:wukong_im_app/modules/home/home_surface_kernel.dart';
 import 'package:wukong_im_app/service/im/im_service.dart';
 import 'package:wukong_im_app/widgets/wk_tab_shell.dart';
+import 'package:wukongimfluttersdk/type/const.dart';
+
+const _homeBootstrapRetryButtonKey = ValueKey<String>(
+  'home-bootstrap-retry-button',
+);
 
 class _FailedBootstrapController extends HomeBootstrapController {
   @override
@@ -24,6 +29,10 @@ class _FakeIMService extends IMService {
 
   void setInitHandler(Future<bool> Function() handler) {
     _initHandler = handler;
+  }
+
+  void setConnectionState(IMServiceState next) {
+    state = next;
   }
 
   @override
@@ -48,7 +57,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byKey(_homeBootstrapRetryButtonKey), findsOneWidget);
   });
 
   testWidgets(
@@ -72,7 +81,7 @@ void main() {
 
       await tester.pump();
 
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byKey(_homeBootstrapRetryButtonKey), findsOneWidget);
       expect(badgeRead, isFalse);
     },
   );
@@ -97,6 +106,87 @@ void main() {
     );
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(WKTabShell), findsOneWidget);
+  });
+
+  testWidgets(
+    'home shell overlays reconnecting banner without blocking tabs',
+    (tester) async {
+      final service = _FakeIMService(() async => true)
+        ..setConnectionState(
+          const IMServiceState(
+            isInitialized: true,
+            isConnected: false,
+            connectionStatus: WKConnectStatus.connecting,
+          ),
+        );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            imServiceProvider.overrideWith((ref) => service),
+            homeBadgeSnapshotProvider.overrideWith((ref) {
+              return HomeBadgeSnapshot();
+            }),
+          ],
+          child: const MaterialApp(
+            home: HomeShellPage(
+              autoInitializeIM: false,
+              pagesOverride: <Widget>[
+                Text('conversation body'),
+                SizedBox(),
+                SizedBox(),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey<String>('home-im-connection-banner')),
+        findsOneWidget,
+      );
+      expect(find.text('正在重连，消息会在连接恢复后发送'), findsOneWidget);
+      expect(find.byType(WKTabShell), findsOneWidget);
+      expect(find.text('conversation body'), findsOneWidget);
+    },
+  );
+
+  testWidgets('home shell hides connection banner after sync completes', (
+    tester,
+  ) async {
+    final service = _FakeIMService(() async => true)
+      ..setConnectionState(
+        const IMServiceState(
+          isInitialized: true,
+          isConnected: true,
+          connectionStatus: WKConnectStatus.syncCompleted,
+        ),
+      );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          imServiceProvider.overrideWith((ref) => service),
+          homeBadgeSnapshotProvider.overrideWith((ref) {
+            return HomeBadgeSnapshot();
+          }),
+        ],
+        child: const MaterialApp(
+          home: HomeShellPage(
+            autoInitializeIM: false,
+            pagesOverride: <Widget>[SizedBox(), SizedBox(), SizedBox()],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('home-im-connection-banner')),
+      findsNothing,
+    );
     expect(find.byType(WKTabShell), findsOneWidget);
   });
 
@@ -154,7 +244,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.byKey(_homeBootstrapRetryButtonKey));
     await tester.pump();
     await tester.pump();
 

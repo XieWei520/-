@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/user.dart';
 import '../../data/providers/auth_provider.dart';
 import '../../data/providers/runtime_capabilities_provider.dart';
+import '../../modules/customer_service/customer_service_badge.dart';
 import '../../modules/vip/vip_badge.dart';
 import '../../service/api/common_api.dart';
 import '../../service/api/user_api.dart';
@@ -338,6 +339,14 @@ class _MyInfoPageState extends ConsumerState<MyInfoPage> {
   Widget _buildBody() {
     final shortNo = (_user?.shortNo ?? '').trim();
     final isVipUser = (_user?.vipLevel ?? 0) == 1;
+    final isCustomerServiceUser = _user?.isCustomerService == true;
+    final identityBadges = <Widget>[
+      if (isVipUser) const VipBadge(),
+      if (isCustomerServiceUser)
+        const CustomerServiceBadge(
+          key: ValueKey<String>('my-info-customer-service-badge'),
+        ),
+    ];
     final runtimeCapabilities = _resolveRuntimeCapabilities();
     final isShortNoImmutable = _isShortNoImmutable(runtimeCapabilities);
 
@@ -361,11 +370,23 @@ class _MyInfoPageState extends ConsumerState<MyInfoPage> {
                   : (_user?.name ?? '').trim(),
               onTap: _isUpdating ? null : _editName,
             ),
-            if (isVipUser)
-              const WKSettingsCell(
-                title: '身份',
+            if (identityBadges.isNotEmpty)
+              WKSettingsCell(
+                title: '\u8eab\u4efd',
                 showArrow: false,
-                trailing: VipBadge(),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (
+                      var index = 0;
+                      index < identityBadges.length;
+                      index++
+                    ) ...[
+                      if (index > 0) const SizedBox(width: 6),
+                      identityBadges[index],
+                    ],
+                  ],
+                ),
               ),
             WKSettingsCell(
               title: '悟空号',

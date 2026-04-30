@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/service/api/common_api.dart';
@@ -30,12 +30,15 @@ void main() {
 
     test('parses short number edit switch from appconfig body', () {
       final capabilities = AppRuntimeCapabilities.fromAppConfigBody(
-        body: {'web_url': 'http://103.207.68.33:82', 'shortno_edit_off': 1},
+        body: {
+          'web_url': 'https://infoequity.qingyunshe.top',
+          'shortno_edit_off': 1,
+        },
         webLoginReachable: false,
         webLoginStatusMessage: 'Web disabled',
       );
 
-      expect(capabilities.webLoginUrl, 'http://103.207.68.33:82');
+      expect(capabilities.webLoginUrl, 'https://infoequity.qingyunshe.top');
       expect(capabilities.shortNoEditable, isFalse);
       expect(capabilities.phoneSearchEnabled, isTrue);
       expect(capabilities.pcWebLoginEntryEnabled, isFalse);
@@ -43,7 +46,10 @@ void main() {
 
     test('treats short number editing as enabled when switch is off', () {
       final capabilities = AppRuntimeCapabilities.fromAppConfigBody(
-        body: {'web_url': 'http://103.207.68.33:82', 'shortno_edit_off': 0},
+        body: {
+          'web_url': 'https://infoequity.qingyunshe.top',
+          'shortno_edit_off': 0,
+        },
         webLoginReachable: true,
         webLoginStatusMessage: 'Web enabled',
       );
@@ -63,22 +69,45 @@ void main() {
     });
   });
 
-  test('getChatBackgrounds parses server-backed chat background list', () async {
-    final originalAdapter = ApiClient.instance.dio.httpClientAdapter;
-    ApiClient.instance.dio.httpClientAdapter = _ChatBackgroundAdapter();
-    addTearDown(() {
-      ApiClient.instance.dio.httpClientAdapter = originalAdapter;
-    });
+  test(
+    'getChatBackgrounds parses server-backed chat background list',
+    () async {
+      final originalAdapter = ApiClient.instance.dio.httpClientAdapter;
+      ApiClient.instance.dio.httpClientAdapter = _ChatBackgroundAdapter();
+      addTearDown(() {
+        ApiClient.instance.dio.httpClientAdapter = originalAdapter;
+      });
 
-    final options = await CommonApi.instance.getChatBackgrounds();
+      final options = await CommonApi.instance.getChatBackgrounds();
 
-    expect(options, hasLength(2));
-    expect(options.first.url, 'file/preview/common/chatbg/default/1_b.svg');
-    expect(options.first.isSvg, isTrue);
-    expect(options.first.lightColors, <String>['a6B0CDEB', 'a69FB0EA']);
-    expect(options.last.url, 'file/preview/common/chatbg/default/14_b.jpg');
-    expect(options.last.isSvg, isFalse);
-  });
+      expect(options, hasLength(2));
+      expect(options.first.url, 'file/preview/common/chatbg/default/1_b.svg');
+      expect(options.first.isSvg, isTrue);
+      expect(options.first.lightColors, <String>['a6B0CDEB', 'a69FB0EA']);
+      expect(options.last.url, 'file/preview/common/chatbg/default/14_b.jpg');
+      expect(options.last.isSvg, isFalse);
+    },
+  );
+
+  test(
+    'getAppNewVersion requests the current native platform family',
+    () async {
+      final originalPlatform = debugDefaultTargetPlatformOverride;
+      final originalAdapter = ApiClient.instance.dio.httpClientAdapter;
+      final adapter = _AppVersionCaptureAdapter();
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+      addTearDown(() {
+        debugDefaultTargetPlatformOverride = originalPlatform;
+        ApiClient.instance.dio.httpClientAdapter = originalAdapter;
+      });
+
+      final version = await CommonApi.instance.getAppNewVersion('1.0.0');
+
+      expect(adapter.requestedPath, '/v1/common/appversion/windows/1.0.0');
+      expect(version?.os, 'windows');
+    },
+  );
 }
 
 class _ChatBackgroundAdapter implements HttpClientAdapter {
@@ -105,6 +134,29 @@ class _ChatBackgroundAdapter implements HttpClientAdapter {
           'is_svg': 0,
         },
       ]),
+      200,
+      headers: <String, List<String>>{
+        Headers.contentTypeHeader: <String>[Headers.jsonContentType],
+      },
+    );
+  }
+}
+
+class _AppVersionCaptureAdapter implements HttpClientAdapter {
+  String? requestedPath;
+
+  @override
+  void close({bool force = false}) {}
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requestedPath = options.path;
+    return ResponseBody.fromString(
+      jsonEncode(<String, dynamic>{'os': 'windows', 'app_version': '1.0.1'}),
       200,
       headers: <String, List<String>>{
         Headers.contentTypeHeader: <String>[Headers.jsonContentType],

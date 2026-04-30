@@ -72,6 +72,7 @@ class RealtimeRolloutTelemetry
   RealtimeRolloutTelemetry({
     RealtimeTelemetryTransport? transport,
     this.flushInterval = const Duration(seconds: 30),
+    this.maxBufferedEvents = 512,
     RealtimeTelemetryClock? now,
   }) : _transport = transport ?? _discardTransport,
        _now = now ?? DateTime.now {
@@ -96,6 +97,7 @@ class RealtimeRolloutTelemetry
       'conversation_list_patch_apply_p95_ms';
 
   final Duration flushInterval;
+  final int maxBufferedEvents;
   final RealtimeTelemetryTransport _transport;
   final RealtimeTelemetryClock _now;
 
@@ -162,6 +164,7 @@ class RealtimeRolloutTelemetry
 
   Future<void> flush() {
     _flushQueue = _flushQueue.then((_) async {
+      final bufferedEventCount = _buffer.length;
       final pending = List<RealtimeTelemetryEvent>.from(
         _buffer,
         growable: true,
@@ -175,7 +178,12 @@ class RealtimeRolloutTelemetry
       }
       try {
         await _transport(List<RealtimeTelemetryEvent>.unmodifiable(pending));
-        _buffer.clear();
+        final clearCount = bufferedEventCount > _buffer.length
+            ? _buffer.length
+            : bufferedEventCount;
+        if (clearCount > 0) {
+          _buffer.removeRange(0, clearCount);
+        }
       } catch (_) {
         // Keep buffered events for the next flush attempt.
       }
@@ -218,6 +226,18 @@ class RealtimeRolloutTelemetry
         tags: tags,
       ),
     );
+    _trimBuffer();
+  }
+
+  void _trimBuffer() {
+    if (maxBufferedEvents <= 0) {
+      _buffer.clear();
+      return;
+    }
+    final overflow = _buffer.length - maxBufferedEvents;
+    if (overflow > 0) {
+      _buffer.removeRange(0, overflow);
+    }
   }
 
   RealtimeTelemetryEvent? _buildSessionHeartbeatEvent() {

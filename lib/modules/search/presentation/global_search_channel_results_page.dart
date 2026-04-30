@@ -61,16 +61,18 @@ class _GlobalSearchChannelResultsPageState
             Text(_error!),
             const SizedBox(height: 12),
             FilledButton(
-              key: const ValueKey<String>('global-search-channel-results-retry'),
+              key: const ValueKey<String>(
+                'global-search-channel-results-retry',
+              ),
               onPressed: _loadResults,
-              child: const Text('Retry'),
+              child: const Text('重试'),
             ),
           ],
         ),
       );
     }
     if (_items.isEmpty) {
-      return const Center(child: Text('No results'));
+      return const Center(child: Text('暂无结果'));
     }
     return ChatSearchResultsPage(items: _items, onTap: _openMessageHit);
   }

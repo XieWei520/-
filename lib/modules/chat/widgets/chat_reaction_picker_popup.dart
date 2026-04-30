@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wukong_im_app/wukong_base/msg/widget/wk_message_reaction.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 
 Future<String?> showChatReactionPicker({
   required BuildContext context,
@@ -28,6 +29,18 @@ Future<String?> showChatReactionPicker({
                   onEmojiSelected: (emoji) {
                     Navigator.of(dialogContext).pop(emoji);
                   },
+                  decoration: BoxDecoration(
+                    color: WKWebColors.surface,
+                    borderRadius: BorderRadius.circular(WKWebRadius.panel),
+                    border: Border.all(color: WKWebColors.borderWarm),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: WKWebColors.shadow,
+                        blurRadius: 20,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

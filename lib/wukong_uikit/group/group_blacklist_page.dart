@@ -93,9 +93,9 @@ class _GroupBlacklistPageState extends State<GroupBlacklistPage> {
 
     final selected = await openGroupMemberPicker(
       context,
-      title: 'Group blacklist',
-      submitLabel: 'Add',
-      emptyText: 'No eligible members available',
+      title: '群黑名单',
+      submitLabel: '添加',
+      emptyText: '暂无可添加成员',
       candidates: pickerCandidates,
     );
     if (selected == null || selected.isEmpty) {
@@ -118,7 +118,7 @@ class _GroupBlacklistPageState extends State<GroupBlacklistPage> {
       if (!mounted) {
         return;
       }
-      _showMessage('Failed to update blacklist');
+      _showMessage('黑名单更新失败');
     } finally {
       if (mounted) {
         setState(() => _isMutating = false);
@@ -150,7 +150,7 @@ class _GroupBlacklistPageState extends State<GroupBlacklistPage> {
       if (!mounted) {
         return;
       }
-      _showMessage('Failed to update blacklist');
+      _showMessage('黑名单更新失败');
     } finally {
       if (mounted) {
         setState(() {
@@ -161,19 +161,20 @@ class _GroupBlacklistPageState extends State<GroupBlacklistPage> {
     }
   }
 
-  Future<bool> _onWillPop() async {
-    Navigator.of(context).pop(_hasChanges);
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     final blacklistMembers = GroupModerationPolicy.blacklistMembers(_members);
 
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope<bool>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          return;
+        }
+        Navigator.of(context).pop(_hasChanges);
+      },
       child: WKSubPageScaffold(
-        title: 'Group blacklist',
+        title: '群黑名单',
         trailing: IconButton(
           key: const ValueKey<String>('group-blacklist-add'),
           icon: const Icon(Icons.add, color: WKColors.brand500),
@@ -186,7 +187,7 @@ class _GroupBlacklistPageState extends State<GroupBlacklistPage> {
             : blacklistMembers.isEmpty
             ? const Center(
                 child: Text(
-                  'No blacklisted members',
+                  '暂无黑名单成员',
                   style: TextStyle(fontSize: 14, color: WKColors.color999),
                 ),
               )
@@ -271,10 +272,10 @@ class _GroupBlacklistPageState extends State<GroupBlacklistPage> {
 
   String? _memberRoleLabel(GroupMember member) {
     if (member.isOwner) {
-      return 'Owner';
+      return '群主';
     }
     if (member.isAdmin) {
-      return 'Admin';
+      return '管理员';
     }
     return null;
   }

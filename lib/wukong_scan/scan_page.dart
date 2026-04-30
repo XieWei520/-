@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../core/platform/local_image_picker.dart';
 import 'scan_result_page.dart';
 import 'scan_service.dart';
 
@@ -21,7 +21,6 @@ class _ScanPageState extends State<ScanPage> {
     facing: CameraFacing.back,
     autoStart: true,
   );
-  final ImagePicker _picker = ImagePicker();
 
   bool _isSubmitting = false;
   bool _isAnalyzingImage = false;
@@ -87,11 +86,11 @@ class _ScanPageState extends State<ScanPage> {
       setState(() {
         _isAnalyzingImage = true;
       });
-      final picked = await _picker.pickImage(source: ImageSource.gallery);
-      if (picked == null) {
+      final imagePath = await pickSingleLocalImagePath();
+      if (imagePath == null) {
         return;
       }
-      await _scannerController.analyzeImage(picked.path);
+      await _scannerController.analyzeImage(imagePath);
     } catch (e) {
       _showSnack('解析图片失败: $e');
     } finally {
@@ -262,7 +261,8 @@ class _ScanPageState extends State<ScanPage> {
           maxLines: 6,
           decoration: const InputDecoration(
             labelText: '二维码内容',
-            hintText: '粘贴 http://103.207.68.33:8090/v1/qrcode/... 或其他二维码文本',
+            hintText:
+                '粘贴 https://infoequity.qingyunshe.top/v1/qrcode/... 或其他二维码文本',
             border: OutlineInputBorder(),
             alignLabelWithHint: true,
           ),

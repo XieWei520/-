@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'wk_colors.dart';
 import 'wk_design_tokens.dart';
+import 'wk_web_ui_tokens.dart';
 
 class WKTheme {
   WKTheme._();
@@ -26,10 +27,10 @@ class WKTheme {
   static ThemeData get themeData {
     const colorScheme = ColorScheme(
       brightness: Brightness.light,
-      primary: WKColors.brand500,
+      primary: WKWebColors.action,
       onPrimary: WKColors.white,
-      primaryContainer: WKColors.brand100,
-      onPrimaryContainer: WKColors.textPrimary,
+      primaryContainer: WKWebColors.actionSoft,
+      onPrimaryContainer: WKWebColors.textPrimary,
       secondary: WKColors.info,
       onSecondary: WKColors.white,
       secondaryContainer: Color(0xFFE6EDFF),
@@ -64,12 +65,14 @@ class WKTheme {
     return ThemeData(
       useMaterial3: false,
       colorScheme: colorScheme,
-      primaryColor: WKColors.brand500,
+      primaryColor: WKWebColors.action,
       scaffoldBackgroundColor: WKColors.pageBackground,
       canvasColor: WKColors.pageBackground,
-      splashColor: WKColors.brand500.withValues(alpha: 0.08),
-      highlightColor: WKColors.brand500.withValues(alpha: 0.04),
+      splashColor: WKWebColors.action.withValues(alpha: 0.08),
+      highlightColor: WKWebColors.action.withValues(alpha: 0.04),
       dividerColor: WKColors.outline,
+      fontFamily: WKFontFamily.primary,
+      fontFamilyFallback: WKTypography.fontFamilyFallback,
       iconTheme: const IconThemeData(color: WKColors.textSecondary, size: 22),
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
@@ -92,29 +95,29 @@ class WKTheme {
         backgroundColor: WKColors.surface,
         surfaceTintColor: Colors.transparent,
         height: 72,
-        indicatorColor: WKColors.brand100,
+        indicatorColor: WKWebColors.actionSoft,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return textTheme.labelSmall?.copyWith(
-            color: selected ? WKColors.brand500 : WKColors.textSecondary,
+            color: selected ? WKWebColors.action : WKColors.textSecondary,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
-            color: selected ? WKColors.brand500 : WKColors.textSecondary,
+            color: selected ? WKWebColors.action : WKColors.textSecondary,
             size: 22,
           );
         }),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: WKColors.pageBackground,
-        selectedItemColor: WKColors.brand500,
+        selectedItemColor: WKWebColors.action,
         unselectedItemColor: WKColors.textSecondary,
         elevation: 0,
         selectedLabelStyle: textTheme.labelSmall?.copyWith(
-          color: WKColors.brand500,
+          color: WKWebColors.action,
           fontWeight: FontWeight.w700,
         ),
         unselectedLabelStyle: textTheme.labelSmall?.copyWith(
@@ -124,9 +127,9 @@ class WKTheme {
       ),
       tabBarTheme: TabBarThemeData(
         dividerColor: Colors.transparent,
-        labelColor: WKColors.brand500,
+        labelColor: WKWebColors.action,
         unselectedLabelColor: WKColors.textSecondary,
-        indicatorColor: WKColors.brand500,
+        indicatorColor: WKWebColors.action,
         indicatorSize: TabBarIndicatorSize.label,
         labelStyle: textTheme.labelLarge,
         unselectedLabelStyle: textTheme.labelLarge?.copyWith(
@@ -168,7 +171,7 @@ class WKTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(WKRadius.lg),
-          borderSide: const BorderSide(color: WKColors.brand500, width: 1.2),
+          borderSide: const BorderSide(color: WKWebColors.action, width: 1.2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(WKRadius.lg),
@@ -181,7 +184,7 @@ class WKTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: WKColors.brand500,
+          backgroundColor: WKWebColors.action,
           foregroundColor: WKColors.white,
           disabledBackgroundColor: WKColors.outlineStrong,
           disabledForegroundColor: WKColors.white,
@@ -199,7 +202,7 @@ class WKTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: WKColors.brand500,
+          foregroundColor: WKWebColors.action,
           minimumSize: const Size(0, 52),
           padding: const EdgeInsets.symmetric(
             horizontal: WKSpace.lg,
@@ -214,17 +217,17 @@ class WKTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: WKColors.brand500,
+          foregroundColor: WKWebColors.action,
           textStyle: textTheme.labelLarge,
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: WKColors.brand500,
+        backgroundColor: WKWebColors.action,
         foregroundColor: WKColors.white,
         elevation: 0,
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: WKColors.brand500,
+        color: WKWebColors.action,
       ),
       cardTheme: CardThemeData(
         color: WKColors.surface,

@@ -20,11 +20,11 @@ class ApiConfig {
 
   static const String devBaseUrl = String.fromEnvironment(
     'WK_DEV_BASE_URL',
-    defaultValue: 'http://42.194.218.158',
+    defaultValue: 'https://infoequity.qingyunshe.top',
   );
   static const String prodBaseUrl = String.fromEnvironment(
     'WK_PROD_BASE_URL',
-    defaultValue: 'http://42.194.218.158',
+    defaultValue: 'https://infoequity.qingyunshe.top',
   );
 
   static String get baseUrl {
@@ -39,14 +39,25 @@ class ApiConfig {
 
   static const String devWsAddr = String.fromEnvironment(
     'WK_DEV_WS_ADDR',
-    defaultValue: '42.194.218.158:5100',
+    defaultValue: 'wss://infoequity.qingyunshe.top/ws',
   );
   static const String prodWsAddr = String.fromEnvironment(
     'WK_PROD_WS_ADDR',
-    defaultValue: '42.194.218.158:5100',
+    defaultValue: 'wss://infoequity.qingyunshe.top/ws',
   );
 
-  static String get wsAddr => AppConfig.isDevelopment ? devWsAddr : prodWsAddr;
+  static const String windowsDesktopTunnelBaseUrl = 'http://127.0.0.1:15001';
+  static const String windowsDesktopTunnelWsAddr = '127.0.0.1:15100';
+  static const String windowsDesktopTunnelMinioBaseUrl =
+      'http://127.0.0.1:15002';
+
+  static String get wsAddr {
+    final resolvedBaseUrl = baseUrl;
+    if (isWindowsDesktopTunnelBaseUrl(resolvedBaseUrl)) {
+      return windowsDesktopTunnelWsAddr;
+    }
+    return AppConfig.isDevelopment ? devWsAddr : prodWsAddr;
+  }
 
   static const String v1 = '/v1';
 
@@ -92,6 +103,9 @@ class ApiConfig {
   static const String conversationExtraSync = '$v1/conversation/extra/sync';
 
   static const String fileUpload = '$v1/file/upload';
+  static const String fileMultipartInit = '$v1/file/multipart/init';
+  static const String fileMultipartPart = '$v1/file/multipart/part';
+  static const String fileMultipartComplete = '$v1/file/multipart/complete';
   static const String reportCategories = '$v1/report/categories';
   static const String reports = '$v1/reports';
 
@@ -124,13 +138,53 @@ class ApiConfig {
 
     var normalized = value.replaceAll('\\', '/');
     normalized = normalized.replaceFirst(RegExp(r'^/+'), '');
+    if (isWindowsDesktopTunnelBaseUrl(baseUrl)) {
+      final normalizedUri = Uri.tryParse(normalized);
+      final minioTunnelUrl = _resolveWindowsDesktopTunnelMinioUrl(
+        normalizedUri?.path ?? normalized,
+        query: normalizedUri != null && normalizedUri.hasQuery
+            ? normalizedUri.query
+            : null,
+        fragment: normalizedUri != null && normalizedUri.hasFragment
+            ? normalizedUri.fragment
+            : null,
+      );
+      if (minioTunnelUrl.isNotEmpty) {
+        return minioTunnelUrl;
+      }
+    }
+    if (normalized.startsWith('minio/')) {
+      return '$baseUrl/$normalized';
+    }
     if (!normalized.startsWith('v1/')) {
       normalized = 'v1/$normalized';
     }
     return '$baseUrl/$normalized';
   }
 
-  static String resolveMediaUrl(String? urlOrPath) => resolveUrl(urlOrPath);
+  static String resolveMediaUrl(String? urlOrPath) {
+    final value = urlOrPath?.trim() ?? '';
+    if (value.isEmpty) {
+      return '';
+    }
+    final lowerValue = value.toLowerCase();
+    if (lowerValue.startsWith('http://') || lowerValue.startsWith('https://')) {
+      return _normalizeSelfHostedAbsoluteUrl(value);
+    }
+
+    final normalized = value
+        .replaceAll('\\', '/')
+        .replaceFirst(RegExp(r'^/+'), '');
+    if (_isRawObjectStorageMediaPath(normalized)) {
+      if (isWindowsDesktopTunnelBaseUrl(baseUrl)) {
+        return Uri.parse(
+          windowsDesktopTunnelMinioBaseUrl,
+        ).replace(path: '/$normalized').toString();
+      }
+      return '$baseUrl/minio/$normalized';
+    }
+    return resolveUrl(value);
+  }
 
   static String normalizeUploadUrl(String? urlOrPath) {
     final resolved = resolveUrl(urlOrPath);
@@ -169,11 +223,25 @@ class ApiConfig {
     return value.replaceFirst(RegExp(r'/+$'), '');
   }
 
+  static bool isWindowsDesktopTunnelBaseUrl(String value) {
+    return _normalizeRuntimeBaseUrl(value) == windowsDesktopTunnelBaseUrl;
+  }
+
   static String _normalizeSelfHostedAbsoluteUrl(String value) {
     final targetUri = Uri.tryParse(value);
     final baseUri = Uri.tryParse(baseUrl);
     if (targetUri == null || baseUri == null) {
       return value;
+    }
+    if (isWindowsDesktopTunnelBaseUrl(baseUrl)) {
+      final minioTunnelUrl = _resolveWindowsDesktopTunnelMinioUrl(
+        targetUri.path.replaceFirst(RegExp(r'^/+'), ''),
+        query: targetUri.hasQuery ? targetUri.query : null,
+        fragment: targetUri.hasFragment ? targetUri.fragment : null,
+      );
+      if (minioTunnelUrl.isNotEmpty) {
+        return minioTunnelUrl;
+      }
     }
     if (_sameAuthority(targetUri, baseUri) ||
         !_shouldRewriteSelfHostedAbsoluteUrl(targetUri)) {
@@ -195,6 +263,61 @@ class ApiConfig {
         normalizedPath.startsWith('/minio/') ||
         normalizedPath.startsWith('/v1/file/preview') ||
         normalizedPath.startsWith('/v1/file/download');
+  }
+
+  static String _resolveWindowsDesktopTunnelMinioUrl(
+    String normalizedPath, {
+    String? query,
+    String? fragment,
+  }) {
+    final path = _windowsDesktopTunnelMinioPath(normalizedPath);
+    if (path.isEmpty) {
+      return '';
+    }
+    return Uri.parse(
+      windowsDesktopTunnelMinioBaseUrl,
+    ).replace(path: path, query: query, fragment: fragment).toString();
+  }
+
+  static String _windowsDesktopTunnelMinioPath(String normalizedPath) {
+    final value = normalizedPath
+        .replaceAll('\\', '/')
+        .replaceFirst(RegExp(r'^/+'), '');
+    for (final prefix in <String>[
+      'minio/',
+      'v1/file/preview/',
+      'v1/file/download/',
+    ]) {
+      if (value.startsWith(prefix)) {
+        return '/${value.substring(prefix.length)}';
+      }
+    }
+    return '';
+  }
+
+  static bool _isRawObjectStorageMediaPath(String normalizedPath) {
+    final value = normalizedPath.trim().toLowerCase();
+    if (value.isEmpty ||
+        value.startsWith('v1/') ||
+        value.startsWith('minio/')) {
+      return false;
+    }
+    for (final prefix in <String>[
+      'chat/',
+      'common/',
+      'avatar/',
+      'group/',
+      'moment/',
+      'report/',
+      'download/',
+      'sticker/',
+      'chatbg/',
+    ]) {
+      if (value.startsWith(prefix)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static bool _sameAuthority(Uri left, Uri right) {

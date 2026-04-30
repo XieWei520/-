@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -204,56 +206,104 @@ class WKSettingsCell extends StatelessWidget {
         splashColor: WKColors.screenBgSelected,
         child: Padding(
           padding: padding,
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  textAlign: centerTitle ? TextAlign.center : TextAlign.start,
-                  style: TextStyle(
-                    fontFamily: WKFontFamily.primary,
-                    fontSize: 16,
-                    color: enabled ? resolvedTitleColor : WKColors.color999,
-                  ),
-                ),
-              ),
-              if (!centerTitle)
-                trailing ??
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (value != null && value!.trim().isNotEmpty) ...[
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 180),
-                            child: Text(
-                              value!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.end,
-                              style: const TextStyle(
-                                fontFamily: WKFontFamily.primary,
-                                fontSize: 16,
-                                color: WKColors.color999,
-                              ),
-                            ),
-                          ),
-                          if (showArrow) const SizedBox(width: 10),
-                        ],
-                        if (showArrow)
-                          Opacity(
-                            opacity: enabled ? 1 : 0.4,
-                            child: WKReferenceAssets.image(
-                              WKReferenceAssets.arrowRight,
-                              width: 14,
-                              height: 14,
-                            ),
-                          ),
-                      ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxTrailingWidth = math.min(
+                220.0,
+                math.max(0.0, constraints.maxWidth * 0.58),
+              );
+              final resolvedTrailing = centerTitle
+                  ? null
+                  : _buildTrailing(maxTrailingWidth);
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: centerTitle ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: centerTitle
+                          ? TextAlign.center
+                          : TextAlign.start,
+                      style: TextStyle(
+                        fontFamily: WKFontFamily.primary,
+                        fontSize: 16,
+                        color: enabled ? resolvedTitleColor : WKColors.color999,
+                      ),
                     ),
-            ],
+                  ),
+                  if (resolvedTrailing != null)
+                    Flexible(
+                      fit: FlexFit.loose,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxTrailingWidth),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          widthFactor: 1,
+                          child: resolvedTrailing,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
       ),
+    );
+  }
+
+  Widget? _buildTrailing(double maxTrailingWidth) {
+    final customTrailing = trailing;
+    if (customTrailing != null) {
+      return FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerRight,
+        child: customTrailing,
+      );
+    }
+
+    if ((value == null || value!.trim().isEmpty) && !showArrow) {
+      return null;
+    }
+
+    final valueMaxWidth = math.max(
+      0.0,
+      maxTrailingWidth - (showArrow ? 24.0 : 0.0),
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (value != null && value!.trim().isNotEmpty) ...[
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: valueMaxWidth),
+            child: Text(
+              value!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
+              style: const TextStyle(
+                fontFamily: WKFontFamily.primary,
+                fontSize: 16,
+                color: WKColors.color999,
+              ),
+            ),
+          ),
+          if (showArrow) const SizedBox(width: 10),
+        ],
+        if (showArrow)
+          Opacity(
+            opacity: enabled ? 1 : 0.4,
+            child: WKReferenceAssets.image(
+              WKReferenceAssets.arrowRight,
+              width: 14,
+              height: 14,
+            ),
+          ),
+      ],
     );
   }
 }

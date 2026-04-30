@@ -5,6 +5,7 @@ import '../../core/utils/crypto_utils.dart';
 import '../../core/utils/storage_utils.dart';
 import '../../data/models/mail_list_contact.dart';
 import '../../data/models/user.dart';
+import '../../modules/customer_service/customer_service_identity.dart';
 import 'api_client.dart';
 
 class UserApi {
@@ -95,13 +96,13 @@ class UserApi {
   }) async {
     final normalizedUid = uid.trim();
     if (normalizedUid.isEmpty) {
-      throw Exception('User uid is required');
+      throw Exception('用户标识不能为空');
     }
     if (chatPassword.isEmpty) {
-      throw Exception('Chat password is required');
+      throw Exception('聊天密码不能为空');
     }
     if (loginPassword.isEmpty) {
-      throw Exception('Login password is required');
+      throw Exception('登录密码不能为空');
     }
 
     final response = await _client.post(
@@ -112,7 +113,7 @@ class UserApi {
       },
       cancelToken: cancelToken,
     );
-    _ensureSuccess(response, fallback: 'Set chat password failed');
+    _ensureSuccess(response, fallback: '设置聊天密码失败');
   }
 
   Future<void> updateUserInfo({
@@ -307,15 +308,28 @@ class UserApi {
 }
 
 class CustomerServiceAccount {
-  const CustomerServiceAccount({required this.uid, required this.name});
+  const CustomerServiceAccount({
+    required this.uid,
+    required this.name,
+    this.avatar,
+    this.category = customerServiceCategory,
+  });
 
   final String uid;
   final String name;
+  final String? avatar;
+  final String category;
+
+  bool get isCustomerService => isCustomerServiceCategory(category);
 
   factory CustomerServiceAccount.fromJson(Map<String, dynamic> json) {
     return CustomerServiceAccount(
       uid: (json['uid'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
+      avatar: json['avatar']?.toString(),
+      category:
+          normalizePublicAccountCategory(json['category']?.toString()) ??
+          customerServiceCategory,
     );
   }
 }

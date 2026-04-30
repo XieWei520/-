@@ -64,7 +64,7 @@ class AppRouteResolver {
   };
 
   static String _normalizePath(String location) {
-    final path = Uri.parse(location).path.trim();
+    final path = Uri.tryParse(location.trim())?.path.trim() ?? '';
     if (path.isEmpty) {
       return AppRouteLocation.root;
     }

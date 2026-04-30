@@ -2,17 +2,17 @@
 
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
-import '../../core/utils/platform_utils.dart';
+import '../../core/platform/local_image_picker.dart';
 import '../../core/utils/storage_utils.dart';
 import '../../data/models/friend.dart';
 import '../../data/models/group.dart';
 import '../../data/models/user.dart';
+import '../../data/providers/channel_provider.dart';
 import '../../modules/group_reminder/group_reminder_page.dart';
 import '../../modules/report/report_page.dart';
 import '../../modules/chat/channel_settings_common.dart';
@@ -415,7 +415,6 @@ class GroupDetailPage extends StatefulWidget {
 }
 
 class _GroupDetailPageState extends State<GroupDetailPage> {
-  final ImagePicker _avatarPicker = ImagePicker();
   GroupInfo? _group;
   List<GroupMember> _members = const <GroupMember>[];
   bool _isLoading = true;
@@ -431,6 +430,8 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
   bool _joinGroupRemind = false;
   bool _allowViewHistory = true;
   bool _allowMemberPinnedMessage = false;
+  String _pendingUploadedGroupAvatar = '';
+  String _groupAvatarBeforeUpload = '';
   Timer? _forbiddenTicker;
 
   String get _currentUid => StorageUtils.getUid()?.trim() ?? '';
@@ -553,7 +554,8 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
           }
         }(),
       ]);
-      final group = results[0] as GroupInfo;
+      var group = results[0] as GroupInfo;
+      group = _applyPendingGroupAvatarOverride(group);
       final members = results[1] as List<GroupMember>;
       final friends = results[2] as List<Friend>;
       final currentUser = results[3] as UserInfo?;
@@ -582,6 +584,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         chatPwdOn: _isChatPwdOn ? 1 : 0,
         msgAutoDelete: _messageAutoDeleteSeconds,
       );
+      _syncGroupConversationCache(group);
       _refreshForbiddenTicker();
     } catch (e) {
       if (!mounted) {
@@ -590,6 +593,59 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
       setState(() => _isLoading = false);
       _showMessage('加载群资料失败：$e');
     }
+  }
+
+  void _syncGroupConversationCache(GroupInfo group) {
+    if (!mounted) {
+      return;
+    }
+    try {
+      ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(myGroupListProvider.notifier).upsertGroup(group);
+    } catch (_) {
+      // The group detail can be mounted in isolated tests/routes without the
+      // app-level ProviderScope; cache sync is best effort and must not block
+      // the detail page refresh.
+    }
+  }
+
+  GroupInfo _applyPendingGroupAvatarOverride(GroupInfo group) {
+    final pendingAvatar = _pendingUploadedGroupAvatar.trim();
+    if (pendingAvatar.isEmpty) {
+      return group;
+    }
+
+    final serverAvatar = (group.avatar ?? '').trim();
+    final previousAvatar = _groupAvatarBeforeUpload.trim();
+    final serverIsOld =
+        serverAvatar.isEmpty ||
+        (previousAvatar.isNotEmpty &&
+            _sameAvatarIdentity(serverAvatar, previousAvatar)) ||
+        _sameAvatarIdentity(serverAvatar, pendingAvatar);
+    if (serverIsOld) {
+      return group.copyWith(avatar: pendingAvatar);
+    }
+
+    _pendingUploadedGroupAvatar = '';
+    _groupAvatarBeforeUpload = '';
+    return group;
+  }
+
+  bool _sameAvatarIdentity(String first, String second) {
+    return _avatarIdentity(first) == _avatarIdentity(second);
+  }
+
+  String _avatarIdentity(String value) {
+    final normalized = value.trim();
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) {
+      return normalized;
+    }
+    return uri
+        .replace(queryParameters: const <String, String>{}, fragment: '')
+        .toString();
   }
 
   int _resolveMemberRole(GroupInfo group, List<GroupMember> members) {
@@ -625,13 +681,13 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
           final resolvedRemark = _firstNonEmptyText(
             member.remark,
             friend?.remark,
-            isCurrentUser ? currentUser?.remark : null,
+            isCurrentUser ? currentUser.remark : null,
           );
           final resolvedName = _firstNonEmptyText(
             member.name,
             friend?.name,
-            isCurrentUser ? currentUser?.name : null,
-            isCurrentUser ? currentUser?.username : null,
+            isCurrentUser ? currentUser.name : null,
+            isCurrentUser ? currentUser.username : null,
             member.uid,
           );
 
@@ -1227,11 +1283,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         ],
       ),
       title: const Text('群头像'),
-      subtitle: Text(
-        _canEditGroupAvatar
-            ? '点击更换当前群头像'
-            : '仅群主或管理员可修改',
-      ),
+      subtitle: Text(_canEditGroupAvatar ? '点击更换当前群头像' : '仅群主或管理员可修改'),
       trailing: Icon(
         Icons.chevron_right_rounded,
         color: canEdit ? WKColors.color999 : WKColors.colorCCC,
@@ -1531,19 +1583,12 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: Colors.blue[100],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: _group?.avatar != null && _group!.avatar!.trim().isNotEmpty
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(_group!.avatar!, fit: BoxFit.cover),
-                  )
-                : const Icon(Icons.group, size: 30, color: Colors.blue),
+          WKAvatar(
+            url: _group?.avatar,
+            name: groupName.isEmpty ? '群聊' : groupName,
+            size: 60,
+            isGroup: true,
+            borderRadius: BorderRadius.circular(8),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1665,9 +1710,6 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
 
   Widget _buildMemberItem(GroupMember member) {
     final displayName = (member.remark ?? member.name ?? member.uid).trim();
-    final placeholder = displayName.isEmpty
-        ? '?'
-        : displayName[0].toUpperCase();
 
     return GestureDetector(
       onTap: _isUpdating ? null : () => _navigateToUserDetail(member.uid),
@@ -1675,28 +1717,11 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         children: [
           Stack(
             children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.blue[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: member.avatar != null && member.avatar!.trim().isNotEmpty
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(member.avatar!, fit: BoxFit.cover),
-                      )
-                    : Center(
-                        child: Text(
-                          placeholder,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
-                          ),
-                        ),
-                      ),
+              WKAvatar(
+                url: member.avatar,
+                name: displayName.isEmpty ? member.uid : displayName,
+                size: 50,
+                borderRadius: BorderRadius.circular(8),
               ),
               if (member.isOwner)
                 Positioned(
@@ -2447,18 +2472,27 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
     await _runAction(
       () async {
         final uploader = widget.uploadAvatarImage;
-        final updatedAvatar = (uploader != null
-                ? await uploader(widget.channelId, normalizedPath)
-                : await GroupApi.instance.uploadGroupAvatar(
-                    widget.channelId,
-                    normalizedPath,
-                  ))
-            .trim();
+        final updatedAvatar =
+            (uploader != null
+                    ? await uploader(widget.channelId, normalizedPath)
+                    : await GroupApi.instance.uploadGroupAvatar(
+                        widget.channelId,
+                        normalizedPath,
+                      ))
+                .trim();
 
         await _evictGroupAvatarCache(previousAvatar);
         await _evictGroupAvatarCache(updatedAvatar);
-        await _refreshGroupAvatarCacheKey();
+        if (updatedAvatar.isNotEmpty) {
+          _groupAvatarBeforeUpload = previousAvatar;
+          _pendingUploadedGroupAvatar = updatedAvatar;
+        }
         await _loadData(showLoading: false);
+        if (updatedAvatar.isNotEmpty) {
+          _applyUploadedGroupAvatar(updatedAvatar);
+          await _updateGroupChannelAvatar(updatedAvatar);
+        }
+        await _refreshGroupAvatarCacheKey();
       },
       successMessage: '群头像已更新',
       failurePrefix: '更新群头像失败',
@@ -2471,31 +2505,42 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
       return injectedPicker();
     }
 
-    if (PlatformUtils.isDesktop) {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
-        allowMultiple: false,
-        withData: false,
-      );
-      return result?.files.single.path;
-    }
-
-    final file = await _avatarPicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1024,
-    );
-    return file?.path;
+    return pickSingleLocalImagePath(imageQuality: 85, maxWidth: 1024);
   }
 
-  Future<void> _refreshGroupAvatarCacheKey() async {
+  void _applyUploadedGroupAvatar(String avatar) {
+    final normalizedAvatar = avatar.trim();
+    final currentGroup = _group;
+    if (!mounted || normalizedAvatar.isEmpty || currentGroup == null) {
+      return;
+    }
+    final updatedGroup = currentGroup.copyWith(avatar: normalizedAvatar);
+    setState(() => _group = updatedGroup);
+    _syncGroupConversationCache(updatedGroup);
+  }
+
+  Future<void> _updateGroupChannelAvatar(String avatar) async {
+    final normalizedAvatar = avatar.trim();
+    if (normalizedAvatar.isEmpty) {
+      return;
+    }
+    var channel = await WKIM.shared.channelManager.getChannel(
+      widget.channelId,
+      widget.channelType,
+    );
+    channel ??= WKChannel(widget.channelId, widget.channelType);
+    channel.avatar = normalizedAvatar;
+    WKIM.shared.channelManager.addOrUpdateChannel(channel);
+  }
+
+  Future<String> _refreshGroupAvatarCacheKey() async {
     final avatarCacheKey = DateTime.now().microsecondsSinceEpoch.toString();
     await WKIM.shared.channelManager.updateAvatarCacheKey(
       widget.channelId,
       widget.channelType,
       avatarCacheKey,
     );
+    return avatarCacheKey;
   }
 
   Future<void> _evictGroupAvatarCache(String? avatarUrl) async {

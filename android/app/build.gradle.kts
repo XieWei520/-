@@ -17,6 +17,11 @@ if (hasGoogleServicesConfig) {
     apply(plugin = "com.google.gms.google-services")
 }
 
+val wkPublicRelease =
+    providers.gradleProperty("wkPublicRelease")
+        .map { it.equals("true", ignoreCase = true) }
+        .getOrElse(false)
+
 android {
     namespace = "com.im.wukong_im_app"
     compileSdk = flutter.compileSdkVersion

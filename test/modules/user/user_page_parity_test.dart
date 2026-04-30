@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
 import 'package:wukong_im_app/modules/favorites/favorites_page.dart';
+import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
 import 'package:wukong_im_app/modules/settings/account_security_page.dart';
 import 'package:wukong_im_app/modules/settings/notification_settings_page.dart';
 import 'package:wukong_im_app/modules/settings/privacy_settings_page.dart';
@@ -233,6 +234,8 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Me'), findsOneWidget);
 
       final menuItemElements = find
           .byWidgetPredicate((widget) {
@@ -486,6 +489,166 @@ void main() {
     );
   });
 
+  testWidgets('UserPage shows customer service badge in profile header', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1080, 2400);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authProvider.overrideWith((ref) {
+            return _TestAuthNotifier(
+              ref,
+              initialState: AuthState(
+                isLoggedIn: true,
+                isRestoringSession: false,
+                userInfo: UserInfo(
+                  uid: 'cs_self',
+                  name: 'Support',
+                  category: 'customerService',
+                ),
+              ),
+            );
+          }),
+          authCurrentUserLoaderProvider.overrideWithValue(() async => null),
+          authDraftSyncProvider.overrideWithValue(() async {}),
+          userPageVersionLoaderProvider.overrideWithValue(() async => null),
+          slotRegistryProvider.overrideWithValue(SlotRegistry()),
+        ],
+        child: const MaterialApp(home: UserPage()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Support'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('user-profile-customer-service-badge')),
+      findsOneWidget,
+    );
+    expect(find.byType(CustomerServiceBadge), findsOneWidget);
+  });
+
+  testWidgets(
+    'UserPage profile header truncates long names and badges without narrow-screen overflow',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      const longName =
+          'Very Long Merchant Display Name That Should Truncate Safely';
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authProvider.overrideWith((ref) {
+              return _TestAuthNotifier(
+                ref,
+                initialState: AuthState(
+                  isLoggedIn: true,
+                  isRestoringSession: false,
+                  userInfo: UserInfo(
+                    uid: 'dense_header',
+                    name: longName,
+                    category: 'customerService',
+                    vipLevel: 1,
+                  ),
+                ),
+              );
+            }),
+            authCurrentUserLoaderProvider.overrideWithValue(() async => null),
+            authDraftSyncProvider.overrideWithValue(() async {}),
+            userPageVersionLoaderProvider.overrideWithValue(() async => null),
+            slotRegistryProvider.overrideWithValue(SlotRegistry()),
+          ],
+          child: const MaterialApp(home: UserPage()),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(longName), findsOneWidget);
+      expect(find.byType(VipBadge), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('user-profile-customer-service-badge'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'UserPage profile header wraps name and badges on extra narrow screens',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(240, 640);
+      tester.view.padding = const FakeViewPadding(top: 44);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPadding);
+
+      const longName =
+          'Extremely Long Customer Service Merchant Name With Multiple Labels';
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authProvider.overrideWith((ref) {
+              return _TestAuthNotifier(
+                ref,
+                initialState: AuthState(
+                  isLoggedIn: true,
+                  isRestoringSession: false,
+                  userInfo: UserInfo(
+                    uid: 'extra_narrow_header',
+                    name: longName,
+                    category: 'customerService',
+                    vipLevel: 1,
+                  ),
+                ),
+              );
+            }),
+            authCurrentUserLoaderProvider.overrideWithValue(() async => null),
+            authDraftSyncProvider.overrideWithValue(() async {}),
+            userPageVersionLoaderProvider.overrideWithValue(() async => null),
+            slotRegistryProvider.overrideWithValue(SlotRegistry()),
+          ],
+          child: MaterialApp(
+            builder: (context, child) {
+              return MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(1.8)),
+                child: child!,
+              );
+            },
+            home: const UserPage(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(longName), findsOneWidget);
+      expect(find.byType(VipBadge), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('user-profile-customer-service-badge'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets(
     'WKSettingsSwitchCell uses Android-style compact switch control',
     (tester) async {
@@ -501,6 +664,20 @@ void main() {
       expect(find.byType(Switch), findsNothing);
     },
   );
+
+  testWidgets('user page can render inside warm Web frame', (tester) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: UserPage(forceWebFrameForTesting: true)),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('user-web-frame')),
+      findsOneWidget,
+    );
+  });
 }
 
 String _readUserMenuTitle(WidgetTester tester, String sid) {

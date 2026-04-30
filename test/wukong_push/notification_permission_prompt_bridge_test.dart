@@ -32,13 +32,21 @@ void main() {
       unawaited(endpointManager.invoke(showOpenNotificationDialogEndpoint));
       await tester.pumpAndSettle();
 
-      expect(find.text('Enable notifications'), findsOneWidget);
+      expect(find.text('\u5f00\u542f\u901a\u77e5'), findsOneWidget);
       expect(
-        find.text('Open Settings'),
+        find.text(
+          '\u8bf7\u5f00\u542f\u901a\u77e5\u6743\u9650\uff0c'
+          '\u4ee5\u4fbf\u65b0\u6d88\u606f\u548c\u901a\u8bdd'
+          '\u9080\u8bf7\u80fd\u591f\u53ca\u65f6\u63d0\u9192\u4f60\u3002',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('\u6253\u5f00\u8bbe\u7f6e'),
         findsOneWidget,
       );
 
-      await tester.tap(find.text('Open Settings'));
+      await tester.tap(find.text('\u6253\u5f00\u8bbe\u7f6e'));
       await tester.pumpAndSettle();
 
       expect(find.byType(_FakeNotificationSettingsPage), findsOneWidget);
@@ -70,7 +78,7 @@ void main() {
       bridge.bindNavigator(navigatorKey);
       await tester.pumpAndSettle();
 
-      expect(find.text('Enable notifications'), findsOneWidget);
+      expect(find.text('\u5f00\u542f\u901a\u77e5'), findsOneWidget);
     },
   );
 }

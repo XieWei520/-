@@ -4,6 +4,8 @@ import 'package:wukongimfluttersdk/db/const.dart';
 import 'package:wukongimfluttersdk/db/wk_db_helper.dart';
 
 import '../domain/search_models.dart';
+import 'search_date_bucket_background_query.dart'
+    if (dart.library.io) 'search_date_bucket_background_query_io.dart';
 
 @immutable
 class SearchDateBucket {
@@ -18,20 +20,58 @@ class SearchDateBucket {
   final int anchorOrderSeq;
 }
 
+typedef SearchDatabaseProvider = Database? Function();
+
+class SearchDateBucketQueryRunner {
+  Future<List<Map<String, Object?>>> run({
+    required Database database,
+    required String sql,
+    required List<Object?> arguments,
+    bool forceBackground = false,
+  }) async {
+    if (_shouldUseBackgroundQuery(forceBackground)) {
+      final databasePath = database.path;
+      if (databasePath.isNotEmpty) {
+        return runSearchDateBucketBackgroundQuery(
+          databasePath: databasePath,
+          sql: sql,
+          arguments: arguments,
+        );
+      }
+    }
+    return database.rawQuery(sql, arguments);
+  }
+
+  bool _shouldUseBackgroundQuery(bool forceBackground) {
+    return forceBackground ||
+        (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows);
+  }
+}
+
 class SearchLocalTimelineDataSource {
+  SearchLocalTimelineDataSource({
+    SearchDatabaseProvider? databaseProvider,
+    SearchDateBucketQueryRunner? queryRunner,
+  }) : _databaseProvider = databaseProvider ?? WKDBHelper.shared.getDB,
+       _queryRunner = queryRunner ?? SearchDateBucketQueryRunner();
+
+  final SearchDatabaseProvider _databaseProvider;
+  final SearchDateBucketQueryRunner _queryRunner;
+
   Future<List<SearchDateBucket>> loadDateBuckets({
     required String channelId,
     required int channelType,
   }) async {
-    final Database? db = WKDBHelper.shared.getDB();
+    final Database? db = _databaseProvider();
     if (db == null) {
       return const <SearchDateBucket>[];
     }
 
-    final rows = await db.rawQuery(_loadDateBucketsSql, <Object?>[
-      channelId,
-      channelType,
-    ]);
+    final rows = await _queryRunner.run(
+      database: db,
+      sql: loadDateBucketsSql,
+      arguments: <Object?>[channelId, channelType],
+    );
 
     return rows
         .map(
@@ -46,7 +86,8 @@ class SearchLocalTimelineDataSource {
   }
 }
 
-const String _loadDateBucketsSql = '''
+const String loadDateBucketsSql =
+    '''
 SELECT
   strftime('%Y-%m-%d', datetime(${WKDBConst.tableMessage}.timestamp, 'unixepoch', 'localtime')) AS day_key,
   COUNT(*) AS message_count,
@@ -71,9 +112,8 @@ List<SearchDateMonthSection> buildDateCalendarSections({
     return const <SearchDateMonthSection>[];
   }
 
-  final sortedBuckets = List<SearchDateBucket>.from(
-    buckets,
-  )..sort((left, right) => left.dayKey.compareTo(right.dayKey));
+  final sortedBuckets = List<SearchDateBucket>.from(buckets)
+    ..sort((left, right) => left.dayKey.compareTo(right.dayKey));
   final bucketByDay = <String, SearchDateBucket>{
     for (final bucket in sortedBuckets) bucket.dayKey: bucket,
   };

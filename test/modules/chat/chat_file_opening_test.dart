@@ -27,10 +27,52 @@ void main() {
 
     expect(target, isNotNull);
     expect(target!.type, ChatFileOpenTargetType.remoteUrl);
+    final uri = Uri.parse(target.value);
+    expect(uri.path, '/minio/contract.pdf');
     expect(
-      target.value,
-      ApiConfig.resolveMediaUrl('/v1/file/download/contract.pdf'),
+      uri.queryParameters['response-content-disposition'],
+      'attachment; filename="合同.pdf"',
     );
+  });
+
+  test('uses attachment semantics for remote preview file urls', () {
+    final target = resolveChatFileOpenTarget(
+      structuredPayload: <String, dynamic>{
+        'name': 'contract.pdf',
+        'url': '/v1/file/preview/chat/1/u_self/contract.pdf',
+      },
+    );
+
+    expect(target, isNotNull);
+    expect(target!.type, ChatFileOpenTargetType.remoteUrl);
+
+    final uri = Uri.parse(target.value);
+    expect(uri.path, '/minio/chat/1/u_self/contract.pdf');
+    expect(
+      uri.queryParameters['response-content-disposition'],
+      'attachment; filename="contract.pdf"',
+    );
+  });
+
+  test('treats chat object paths as remote minio targets, not local files', () {
+    final target = resolveChatFileOpenTarget(
+      structuredPayload: <String, dynamic>{
+        'name': 'report.pdf',
+        'path': '/chat/1/u_self/report.pdf',
+      },
+    );
+
+    expect(target, isNotNull);
+    expect(target!.type, ChatFileOpenTargetType.remoteUrl);
+    expect(Uri.parse(target.value).path, '/minio/chat/1/u_self/report.pdf');
+  });
+
+  test('rejects malformed absolute remote file urls', () {
+    final target = resolveChatFileOpenTarget(
+      structuredPayload: <String, dynamic>{'download_url': 'https://'},
+    );
+
+    expect(target, isNull);
   });
 
   test('returns null when no usable open target exists', () {

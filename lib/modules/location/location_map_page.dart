@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/utils/map_service.dart';
 import '../../core/utils/platform_utils.dart';
+import 'location_position_service.dart';
 
 class LocationMapPage extends StatefulWidget {
   final LatLng? initialPosition;
@@ -57,7 +57,7 @@ class _LocationMapPageState extends State<LocationMapPage> {
         }
       }
 
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await isDeviceLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted) {
           setState(() {
@@ -70,9 +70,7 @@ class _LocationMapPageState extends State<LocationMapPage> {
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      final position = await getCurrentDeviceLocation();
       _center = LatLng(position.latitude, position.longitude);
       if (mounted) {
         setState(() => _statusMessage = null);

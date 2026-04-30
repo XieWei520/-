@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
+import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/modules/vip/vip_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_guard.dart';
@@ -120,6 +121,63 @@ void main() {
     expect(find.text('Alice'), findsOneWidget);
     expect(find.byType(VipBadge), findsOneWidget);
   });
+
+  testWidgets(
+    'user detail page shows customer service badge near nickname for service account',
+    (tester) async {
+      await tester.pumpWidget(
+        wrapWithApp(
+          UserDetailPage(
+            uid: 'cs_001',
+            skipInitialLoad: true,
+            initialUserOverride: UserInfo(
+              uid: 'cs_001',
+              name: 'Support',
+              category: 'customerService',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Support'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('user-detail-customer-service-badge'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(CustomerServiceBadge), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'user detail header wraps dense badges without narrow-screen overflow',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(240, 640);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        wrapWithApp(
+          UserDetailPage(
+            uid: 'cs_vip_dense',
+            skipInitialLoad: true,
+            initialUserOverride: UserInfo(
+              uid: 'cs_vip_dense',
+              name: 'Support account with an extremely long display name',
+              category: 'customerService',
+              vipLevel: 1,
+              sex: 1,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'user detail page shows Android join-group description from server detail',

@@ -41,7 +41,7 @@ class _AuthWebLoginConfirmPageState
       }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Web 登录已确认')));
+      ).showSnackBar(const SnackBar(content: Text('网页端登录已确认')));
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) {
@@ -61,15 +61,15 @@ class _AuthWebLoginConfirmPageState
   Widget build(BuildContext context) {
     final normalizedCode = widget.authCode.trim();
     final canSubmit = !_isSubmitting && normalizedCode.isNotEmpty;
-    final webLoginDescription = '请确认本次 ${AppConfig.appName} Web/PC 登录由你本人发起。';
+    final webLoginDescription = '请确认本次 ${AppConfig.appName} 网页端/电脑端登录由你本人发起。';
 
     return AuthPageScaffold(
-      title: '确认 Web 登录',
-      subtitle: '检测到来自 PC/Web 的登录授权请求',
+      title: '确认网页端登录',
+      subtitle: '检测到来自网页端/电脑端的登录授权请求',
       statusBanner: normalizedCode.isEmpty
           ? const AuthStatusBanner(
               key: ValueKey<String>('auth-status-banner'),
-              message: '未找到有效的 Web 登录授权码',
+              message: '未找到有效的网页端登录授权码',
               tone: AuthStatusBannerTone.warning,
               leadingIcon: Icons.warning_amber_rounded,
             )

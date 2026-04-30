@@ -55,7 +55,7 @@ class _ChatSearchModeBarState extends State<ChatSearchModeBar> {
             onChanged: widget.onChanged,
             onSubmitted: widget.onSubmitted,
             decoration: const InputDecoration(
-              hintText: 'Search chat history',
+              hintText: '搜索聊天记录',
               border: InputBorder.none,
             ),
           ),

@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 
-/// Call notification types
-enum CallNotificationType {
-  incoming,
-  outgoing,
+import '../../widgets/wk_avatar.dart';
+import '../../widgets/wk_web_ui_tokens.dart';
+
+class _CallNotificationActionColors {
+  const _CallNotificationActionColors._();
+
+  static const Color rejectBackground = Color(0xFFB91C1C);
+  static const Color acceptBackground = Color(0xFF0F766E);
+  static const Color foreground = Colors.white;
 }
+
+/// Call notification types
+enum CallNotificationType { incoming, outgoing }
 
 /// Call notification data
 class CallNotificationData {
@@ -107,31 +115,31 @@ class _IncomingCallWidgetState extends State<_IncomingCallWidget> {
       left: 16,
       right: 16,
       child: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(16),
+        type: MaterialType.transparency,
         child: Container(
+          key: const ValueKey<String>('call-notification-card'),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: WKWebColors.surface,
+            borderRadius: BorderRadius.circular(WKWebRadius.panel),
+            border: Border.all(color: WKWebColors.borderWarm),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: WKWebColors.shadow,
+                blurRadius: 24,
+                offset: Offset(0, 10),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.blue[100],
-                    child: Text(
-                      widget.data.channelName.isNotEmpty
-                          ? widget.data.channelName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                        color: Colors.blue,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  WKAvatar(
+                    url: widget.data.avatar,
+                    name: widget.data.channelName,
+                    size: 48,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -162,24 +170,30 @@ class _IncomingCallWidgetState extends State<_IncomingCallWidget> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
+                      key: const ValueKey<String>('call-notification-reject'),
                       onPressed: widget.onReject,
                       icon: const Icon(Icons.call_end),
                       label: const Text('拒绝'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
+                        backgroundColor:
+                            _CallNotificationActionColors.rejectBackground,
+                        foregroundColor:
+                            _CallNotificationActionColors.foreground,
                       ),
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton.icon(
+                      key: const ValueKey<String>('call-notification-accept'),
                       onPressed: widget.onAccept,
                       icon: const Icon(Icons.call),
                       label: const Text('接听'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
+                        backgroundColor:
+                            _CallNotificationActionColors.acceptBackground,
+                        foregroundColor:
+                            _CallNotificationActionColors.foreground,
                       ),
                     ),
                   ),
@@ -205,13 +219,21 @@ class _OutgoingCallWidget extends StatelessWidget {
       left: 16,
       right: 16,
       child: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(16),
+        type: MaterialType.transparency,
         child: Container(
+          key: const ValueKey<String>('call-outgoing-notification-card'),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: WKWebColors.surface,
+            borderRadius: BorderRadius.circular(WKWebRadius.panel),
+            border: Border.all(color: WKWebColors.borderWarm),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: WKWebColors.shadow,
+                blurRadius: 24,
+                offset: Offset(0, 10),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -235,10 +257,7 @@ class _OutgoingCallWidget extends StatelessWidget {
                     ),
                     Text(
                       data.callType == 1 ? '视频通话' : '语音通话',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                   ],
                 ),

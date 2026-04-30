@@ -85,7 +85,7 @@ ContactsStrings resolveContactsStrings({Locale? locale}) {
 const ContactsStrings _zhHansDefaults = ContactsStrings(
   newFriends: '新朋友',
   savedGroups: '保存的群聊',
-  contactsTitle: '通讯录',
+  contactsTitle: '联系人',
   contactsLoading: '加载通讯录中...',
   contactsLoadFailed: '通讯录加载失败',
   setRemark: '设置备注',

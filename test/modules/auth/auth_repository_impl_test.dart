@@ -1,11 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wukong_im_app/modules/auth/domain/auth_flow_models.dart';
 import 'package:wukong_im_app/modules/auth/data/auth_repository_impl.dart';
+import 'package:wukong_im_app/modules/auth/data/shared_prefs_auth_login_preferences_store.dart';
 import 'package:wukong_im_app/service/api/auth_api.dart';
 
 class _RecordingAuthApi implements AuthApi {
   Object? loginError;
+  final List<Object> loginResults = <Object>[];
+  int loginCalls = 0;
   String? lastRegisterUsername;
   String? lastRegisterPassword;
   String? lastRegisterZone;
@@ -33,6 +35,14 @@ class _RecordingAuthApi implements AuthApi {
     String password, {
     String zone = '86',
   }) async {
+    loginCalls += 1;
+    if (loginResults.isNotEmpty) {
+      final next = loginResults.removeAt(0);
+      if (next is Exception || next is Error) {
+        throw next;
+      }
+      return next as LoginResp;
+    }
     if (loginError != null) {
       throw loginError!;
     }
@@ -182,5 +192,191 @@ void main() {
       expect(result.token, 'http-token-login');
       expect(result.imToken, 'im-token-login');
     });
+
+    test(
+      'retries through the local desktop tunnel after public TLS handshake failure',
+      () async {
+        final authApi = _RecordingAuthApi()
+          ..loginResults.addAll(<Object>[
+            DioException(
+              requestOptions: RequestOptions(path: '/v1/user/login'),
+              type: DioExceptionType.unknown,
+              message: 'HandshakeException: Connection terminated during handshake',
+            ),
+            LoginResp(
+              code: 0,
+              data: LoginData(
+                uid: 'uid-local-tunnel',
+                token: 'token-local-tunnel',
+                phone: '13800138000',
+              ),
+            ),
+          ]);
+        final baseUrlStore = _MemoryAuthApiBaseUrlPreferencesStore();
+        var syncedBaseUrl = false;
+        final repository = AuthRepositoryImpl(
+          authApi: authApi,
+          authApiBaseUrlStore: baseUrlStore,
+          enableDesktopTunnelAutoFallback: true,
+          localDesktopTunnelAvailabilityChecker: () async => true,
+          syncHttpBaseUrlWithConfig: () {
+            syncedBaseUrl = true;
+          },
+          readApiBaseUrl: () => 'https://infoequity.qingyunshe.top',
+        );
+
+        final result = await repository.loginWithPhone(
+          zone: '0086',
+          phone: '19212455075',
+          password: 'xixiewei',
+        );
+
+        expect(result.success, isTrue);
+        expect(authApi.loginCalls, 2);
+        expect(baseUrlStore.value, 'http://127.0.0.1:15001');
+        expect(syncedBaseUrl, isTrue);
+      },
+    );
+
+    test(
+      'retries through the local desktop tunnel after public TLS connection reset',
+      () async {
+        final authApi = _RecordingAuthApi()
+          ..loginResults.addAll(<Object>[
+            DioException(
+              requestOptions: RequestOptions(path: '/v1/user/login'),
+              type: DioExceptionType.connectionError,
+              message: 'Connection reset by peer',
+            ),
+            LoginResp(
+              code: 0,
+              data: LoginData(
+                uid: 'uid-local-tunnel-reset',
+                token: 'token-local-tunnel-reset',
+                phone: '13800138000',
+              ),
+            ),
+          ]);
+        final baseUrlStore = _MemoryAuthApiBaseUrlPreferencesStore();
+        var syncedBaseUrl = false;
+        final repository = AuthRepositoryImpl(
+          authApi: authApi,
+          authApiBaseUrlStore: baseUrlStore,
+          enableDesktopTunnelAutoFallback: true,
+          localDesktopTunnelAvailabilityChecker: () async => true,
+          syncHttpBaseUrlWithConfig: () {
+            syncedBaseUrl = true;
+          },
+          readApiBaseUrl: () => 'https://infoequity.qingyunshe.top',
+        );
+
+        final result = await repository.loginWithPhone(
+          zone: '0086',
+          phone: '19212455075',
+          password: 'xixiewei',
+        );
+
+        expect(result.success, isTrue);
+        expect(authApi.loginCalls, 2);
+        expect(baseUrlStore.value, 'http://127.0.0.1:15001');
+        expect(syncedBaseUrl, isTrue);
+      },
+    );
+
+    test(
+      'keeps the original failure when desktop tunnel fallback is unavailable',
+      () async {
+        final authApi = _RecordingAuthApi()
+          ..loginError = DioException(
+            requestOptions: RequestOptions(path: '/v1/user/login'),
+            type: DioExceptionType.unknown,
+            message: 'HandshakeException: Connection terminated during handshake',
+          );
+        final baseUrlStore = _MemoryAuthApiBaseUrlPreferencesStore();
+        var syncedBaseUrl = false;
+        final repository = AuthRepositoryImpl(
+          authApi: authApi,
+          authApiBaseUrlStore: baseUrlStore,
+          enableDesktopTunnelAutoFallback: true,
+          localDesktopTunnelAvailabilityChecker: () async => false,
+          syncHttpBaseUrlWithConfig: () {
+            syncedBaseUrl = true;
+          },
+          readApiBaseUrl: () => 'https://infoequity.qingyunshe.top',
+        );
+
+        final result = await repository.loginWithPhone(
+          zone: '0086',
+          phone: '19212455075',
+          password: 'xixiewei',
+        );
+
+        expect(result.success, isFalse);
+        expect(
+          result.message,
+          'HandshakeException: Connection terminated during handshake',
+        );
+        expect(authApi.loginCalls, 1);
+        expect(baseUrlStore.value, isEmpty);
+        expect(syncedBaseUrl, isFalse);
+      },
+    );
+
+    test(
+      'restores the original API base URL when the desktop tunnel retry also fails',
+      () async {
+        final authApi = _RecordingAuthApi()
+          ..loginResults.addAll(<Object>[
+            DioException(
+              requestOptions: RequestOptions(path: '/v1/user/login'),
+              type: DioExceptionType.unknown,
+              message: 'HandshakeException: Connection terminated during handshake',
+            ),
+            DioException(
+              requestOptions: RequestOptions(path: '/v1/user/login'),
+              type: DioExceptionType.connectionError,
+              message: 'Connection refused',
+            ),
+          ]);
+        final baseUrlStore = _MemoryAuthApiBaseUrlPreferencesStore();
+        var syncCalls = 0;
+        final repository = AuthRepositoryImpl(
+          authApi: authApi,
+          authApiBaseUrlStore: baseUrlStore,
+          enableDesktopTunnelAutoFallback: true,
+          localDesktopTunnelAvailabilityChecker: () async => true,
+          syncHttpBaseUrlWithConfig: () {
+            syncCalls += 1;
+          },
+          readApiBaseUrl: () => baseUrlStore.value.isEmpty
+              ? 'https://infoequity.qingyunshe.top'
+              : baseUrlStore.value,
+        );
+
+        final result = await repository.loginWithPhone(
+          zone: '0086',
+          phone: '19212455075',
+          password: 'xixiewei',
+        );
+
+        expect(result.success, isFalse);
+        expect(result.message, 'Connection refused');
+        expect(authApi.loginCalls, 2);
+        expect(baseUrlStore.value, isEmpty);
+        expect(syncCalls, 2);
+      },
+    );
   });
+}
+
+class _MemoryAuthApiBaseUrlPreferencesStore extends AuthApiBaseUrlPreferencesStore {
+  String value = '';
+
+  @override
+  Future<String> load() async => value;
+
+  @override
+  Future<void> save(String value) async {
+    this.value = value.trim();
+  }
 }

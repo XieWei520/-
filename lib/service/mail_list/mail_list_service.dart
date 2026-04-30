@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_contacts/flutter_contacts.dart' as fc;
 
+import '../../core/utils/platform_utils.dart';
 import '../../data/models/mail_list_contact.dart';
 import '../api/user_api.dart';
 
@@ -124,7 +123,7 @@ class FlutterMailListContactSource implements MailListContactSource {
 
   @override
   Future<List<MailListDeviceContact>> readContacts() async {
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!PlatformUtils.isAndroid && !PlatformUtils.isIOS) {
       return const <MailListDeviceContact>[];
     }
 

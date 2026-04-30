@@ -8,6 +8,7 @@ class GroupRobotIdentitySection extends StatelessWidget {
   final TextEditingController displayNameController;
   final String displayAvatar;
   final bool isBusy;
+  final ValueChanged<String>? onDisplayNameChanged;
   final Future<void> Function()? onUploadAvatar;
   final VoidCallback? onClearAvatar;
 
@@ -17,6 +18,7 @@ class GroupRobotIdentitySection extends StatelessWidget {
     required this.displayNameController,
     required this.displayAvatar,
     required this.isBusy,
+    this.onDisplayNameChanged,
     this.onUploadAvatar,
     this.onClearAvatar,
   });
@@ -53,6 +55,8 @@ class GroupRobotIdentitySection extends StatelessWidget {
             controller: displayNameController,
             enabled: !isBusy,
             maxLength: 32,
+            textInputAction: TextInputAction.done,
+            onChanged: isBusy ? null : onDisplayNameChanged,
             decoration: const InputDecoration(
               labelText: '机器人显示名称（仅 IM 群内）',
               hintText: '留空则沿用官方机器人名称',

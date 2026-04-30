@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../core/cache/media_cache_manager.dart';
 import '../data/models/chat_background_option.dart';
 import '../wukong_uikit/setting/setting_preferences.dart';
 import 'wk_colors.dart';
@@ -10,11 +11,13 @@ class ChatBackgroundSurface extends StatelessWidget {
     super.key,
     this.option,
     this.fallbackStyle = WKChatBackgroundStyle.classic,
+    this.fallbackColor,
     this.child,
   });
 
   final ChatBackgroundOption? option;
   final WKChatBackgroundStyle fallbackStyle;
+  final Color? fallbackColor;
   final Widget? child;
 
   @override
@@ -25,8 +28,9 @@ class ChatBackgroundSurface extends StatelessWidget {
         _ChatBackgroundFill(
           option: option,
           fallbackStyle: fallbackStyle,
+          fallbackColor: fallbackColor,
         ),
-        if (child != null) child!,
+        ?child,
       ],
     );
   }
@@ -36,10 +40,12 @@ class _ChatBackgroundFill extends StatelessWidget {
   const _ChatBackgroundFill({
     required this.option,
     required this.fallbackStyle,
+    this.fallbackColor,
   });
 
   final ChatBackgroundOption? option;
   final WKChatBackgroundStyle fallbackStyle;
+  final Color? fallbackColor;
 
   @override
   Widget build(BuildContext context) {
@@ -73,14 +79,29 @@ class _ChatBackgroundFill extends StatelessWidget {
     }
 
     if (option != null && !option!.isSvg && option!.resolvedUrl.isNotEmpty) {
-      return Container(
-        color: WKColors.homeBg,
-        child: Image.network(
-          option!.resolvedUrl,
-          key: const ValueKey<String>('chat-background-image'),
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox.expand(),
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+          return Container(
+            color: WKColors.homeBg,
+            child: CachedMediaImage(
+              key: const ValueKey<String>('chat-background-image'),
+              imageUrl: option!.resolvedUrl,
+              cacheKey: option!.resolvedUrl,
+              maxWidth: _resolveDecodeBound(
+                constraints.maxWidth,
+                devicePixelRatio,
+              ),
+              maxHeight: _resolveDecodeBound(
+                constraints.maxHeight,
+                devicePixelRatio,
+              ),
+              fit: BoxFit.cover,
+              errorWidget: (_, _, _) => const SizedBox.expand(),
+              placeholder: (_, _) => const SizedBox.expand(),
+            ),
+          );
+        },
       );
     }
 
@@ -96,7 +117,12 @@ class _ChatBackgroundFill extends StatelessWidget {
       );
     }
 
-    return DecoratedBox(decoration: _legacyDecoration(fallbackStyle));
+    return DecoratedBox(
+      key: const ValueKey<String>('chat-background-fallback'),
+      decoration: fallbackColor != null
+          ? BoxDecoration(color: fallbackColor)
+          : _legacyDecoration(fallbackStyle),
+    );
   }
 
   List<Color> _resolvePalette(BuildContext context) {
@@ -104,8 +130,8 @@ class _ChatBackgroundFill extends StatelessWidget {
       return const <Color>[];
     }
     final brightness = Theme.of(context).brightness;
-    final preferred = brightness == Brightness.dark &&
-            option!.darkColors.isNotEmpty
+    final preferred =
+        brightness == Brightness.dark && option!.darkColors.isNotEmpty
         ? option!.darkColors
         : option!.lightColors;
     final colors = preferred
@@ -117,6 +143,13 @@ class _ChatBackgroundFill extends StatelessWidget {
     }
     return const <Color>[];
   }
+}
+
+int? _resolveDecodeBound(double logicalSize, double devicePixelRatio) {
+  if (!logicalSize.isFinite || logicalSize <= 0 || devicePixelRatio <= 0) {
+    return null;
+  }
+  return (logicalSize * devicePixelRatio).ceil();
 }
 
 class _GlowBlob extends StatelessWidget {
@@ -141,10 +174,7 @@ class _GlowBlob extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
-              colors: [
-                color,
-                color.withValues(alpha: 0),
-              ],
+              colors: [color, color.withValues(alpha: 0)],
             ),
           ),
         ),
@@ -162,16 +192,10 @@ BoxDecoration _legacyDecoration(WKChatBackgroundStyle style) {
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [
-          WKColors.brand100,
-          WKColors.homeBg,
-          WKColors.homeBg,
-        ],
+        colors: [WKColors.brand100, WKColors.homeBg, WKColors.homeBg],
       ),
     ),
-    WKChatBackgroundStyle.paper => const BoxDecoration(
-      color: WKColors.white,
-    ),
+    WKChatBackgroundStyle.paper => const BoxDecoration(color: WKColors.white),
   };
 }
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -310,6 +311,129 @@ void main() {
         expect(channel.remoteExtraMap['flame'], 1);
         expect(channel.remoteExtraMap['flame_second'], 30);
         expect(channel.remoteExtraMap['chat_pwd_on'], 1);
+      },
+    );
+
+    test(
+      'uploadGroupAvatar persists returned avatar url on group info endpoint',
+      () async {
+        const groupNo = 'g_avatar_upload_persist';
+        final tempDir = await Directory.systemTemp.createTemp(
+          'wukong_group_avatar_test_',
+        );
+        addTearDown(() async {
+          try {
+            if (await tempDir.exists()) {
+              await tempDir.delete(recursive: true);
+            }
+          } catch (_) {
+            // Windows can keep MultipartFile handles open briefly after a
+            // failed RED run; cleanup is best-effort for this temp directory.
+          }
+        });
+        final avatarFile = File('${tempDir.path}/avatar.png');
+        await avatarFile.writeAsBytes(const <int>[1, 2, 3, 4]);
+
+        final adapter = _RoutingJsonAdapter((options) {
+          final method = options.method.toUpperCase();
+          final path = options.uri.path;
+
+          if (method == 'POST' &&
+              path == '${ApiConfig.groups}/$groupNo/avatar') {
+            return _MockJsonResponse(const <String, dynamic>{
+              'code': 0,
+              'data': <String, dynamic>{
+                'avatar': 'groups/g_avatar_upload_persist/avatar.png',
+              },
+            });
+          }
+          if (method == 'PUT' && path == '${ApiConfig.groups}/$groupNo') {
+            return _MockJsonResponse(const <String, dynamic>{'code': 0});
+          }
+
+          return _MockJsonResponse(<String, dynamic>{
+            'code': 404,
+            'msg': 'Unhandled request: $method $path',
+          }, statusCode: 404);
+        });
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+
+        final avatar = await GroupApi.instance.uploadGroupAvatar(
+          groupNo,
+          avatarFile.path,
+        );
+
+        expect(avatar, 'groups/g_avatar_upload_persist/avatar.png');
+        final updateRequest = adapter.requests.firstWhere(
+          (request) =>
+              request.method.toUpperCase() == 'PUT' &&
+              request.uri.path == '${ApiConfig.groups}/$groupNo',
+        );
+        expect(
+          updateRequest.data,
+          containsPair('avatar', 'groups/g_avatar_upload_persist/avatar.png'),
+        );
+      },
+    );
+
+    test(
+      'uploadGroupAvatar persists canonical avatar url when upload response has no avatar',
+      () async {
+        const groupNo = 'g_avatar_upload_code_only';
+        final tempDir = await Directory.systemTemp.createTemp(
+          'wukong_group_avatar_empty_response_test_',
+        );
+        addTearDown(() async {
+          try {
+            if (await tempDir.exists()) {
+              await tempDir.delete(recursive: true);
+            }
+          } catch (_) {}
+        });
+        final avatarFile = File('${tempDir.path}/avatar.png');
+        await avatarFile.writeAsBytes(const <int>[5, 6, 7, 8]);
+
+        final adapter = _RoutingJsonAdapter((options) {
+          final method = options.method.toUpperCase();
+          final path = options.uri.path;
+
+          if (method == 'POST' &&
+              path == '${ApiConfig.groups}/$groupNo/avatar') {
+            return _MockJsonResponse(const <String, dynamic>{'code': 0});
+          }
+          if (method == 'PUT' && path == '${ApiConfig.groups}/$groupNo') {
+            return _MockJsonResponse(const <String, dynamic>{'code': 0});
+          }
+
+          return _MockJsonResponse(<String, dynamic>{
+            'code': 404,
+            'msg': 'Unhandled request: $method $path',
+          }, statusCode: 404);
+        });
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+
+        final avatar = await GroupApi.instance.uploadGroupAvatar(
+          groupNo,
+          avatarFile.path,
+        );
+
+        expect(avatar, contains('/v1/groups/$groupNo/avatar'));
+        expect(avatar, contains('t='));
+        final updateRequest = adapter.requests.firstWhere(
+          (request) =>
+              request.method.toUpperCase() == 'PUT' &&
+              request.uri.path == '${ApiConfig.groups}/$groupNo',
+        );
+        expect(
+          updateRequest.data,
+          containsPair(
+            'avatar',
+            allOf(
+              contains('/v1/groups/$groupNo/avatar'),
+              isNot(contains('t=')),
+            ),
+          ),
+        );
       },
     );
 

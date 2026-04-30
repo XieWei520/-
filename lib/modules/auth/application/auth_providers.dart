@@ -1,9 +1,6 @@
-import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/storage_utils.dart';
-import '../../../core/utils/platform_utils.dart';
 import '../../../core/config/im_config.dart';
 import '../../../data/providers/auth_provider.dart';
 import '../../../service/api/api_client.dart';
@@ -17,9 +14,8 @@ import '../domain/auth_flow_models.dart';
 import '../domain/auth_login_preferences_store.dart';
 import '../domain/auth_repository.dart';
 import 'auth_flow_controller.dart';
+import 'auth_profile_avatar_picker.dart';
 import 'device_session_controller.dart';
-
-typedef AuthProfileAvatarPicker = Future<String?> Function();
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepositoryImpl(
@@ -98,25 +94,7 @@ final authBootstrapCoordinatorProvider = Provider<AuthBootstrapCoordinator>((
 final authProfileAvatarPickerProvider = Provider<AuthProfileAvatarPicker>((
   ref,
 ) {
-  final picker = ImagePicker();
-  return () async {
-    if (PlatformUtils.isDesktop) {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'],
-        allowMultiple: false,
-        withData: false,
-      );
-      return result?.files.single.path;
-    }
-
-    final file = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1024,
-    );
-    return file?.path;
-  };
+  return createAuthProfileAvatarPicker();
 });
 
 final authFlowControllerProvider =

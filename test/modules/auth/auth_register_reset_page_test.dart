@@ -479,7 +479,9 @@ void main() {
 
     expect(find.text('创建账号'), findsOneWidget);
     expect(find.text('信息平权'), findsWidgets);
+    expect(find.text('InfoEquity'), findsNothing);
     expect(find.text('让全天下的人没有信息差'), findsOneWidget);
+    expect(find.text('用手机号创建信息平权账号'), findsOneWidget);
     expect(find.byKey(const ValueKey('auth-brand-panel')), findsOneWidget);
     expect(find.byKey(const ValueKey('auth-form-panel')), findsOneWidget);
     expect(find.byKey(const ValueKey('auth-page-panel')), findsOneWidget);
@@ -648,6 +650,24 @@ void main() {
     await tester.pump();
 
     expect(tester.widget<AuthActionButton>(buttonFinder).onPressed, isNotNull);
+  });
+
+  testWidgets('register send-code button fits on mobile viewport', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    final repository = _RecordingAuthRepository();
+
+    await _pumpRegisterPage(tester, repository: repository);
+
+    final buttonFinder = find.byKey(registerSendCodeActionKey);
+    expect(buttonFinder, findsOneWidget);
+    expect(find.text(AuthCopy.getCodeButton), findsOneWidget);
+    final size = tester.getSize(buttonFinder);
+    expect(size.height, greaterThanOrEqualTo(40));
+    expect(size.width, greaterThanOrEqualTo(96));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -974,10 +994,7 @@ void main() {
       await _pumpResetPage(tester, repository: repository);
 
       expect(find.text(AuthCopy.resetPasswordTitle), findsOneWidget);
-      expect(
-        find.text('通过短信验证码恢复${AppConfig.appName}访问权限'),
-        findsOneWidget,
-      );
+      expect(find.text('通过短信验证码恢复${AppConfig.appName}访问权限'), findsOneWidget);
       expect(find.byKey(const ValueKey('auth-page-panel')), findsOneWidget);
       expect(find.byKey(const ValueKey('auth-status-banner')), findsOneWidget);
       expect(

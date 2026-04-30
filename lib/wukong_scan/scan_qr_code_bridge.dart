@@ -1,15 +1,13 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../wukong_base/endpoint/endpoint_handler.dart';
 import '../wukong_base/endpoint/endpoint_manager.dart';
 import '../wukong_base/endpoint/entity/scan_result_menu.dart';
 import '../wukong_base/endpoint/menu/endpoint_menu.dart';
+import 'scan_qr_code_image.dart';
 import 'scan_result_page.dart';
 import 'scan_service.dart';
 
@@ -23,8 +21,7 @@ class ScanQrCodeBridge {
     ScanQrImageAnalyzer? analyzeImageBytes,
     ScanQrResultProcessor? processScanResult,
   }) : _endpointManager = endpointManager ?? EndpointManager.getInstance(),
-       _analyzeImageBytes =
-           analyzeImageBytes ?? _defaultAnalyzeImageBytes,
+       _analyzeImageBytes = analyzeImageBytes ?? defaultAnalyzeScanQrImageBytes,
        _processScanResult =
            processScanResult ?? ScanService.instance.processScanResult;
 
@@ -63,7 +60,7 @@ class ScanQrCodeBridge {
     void Function(String codeContent)? onResult,
   }) async {
     ensureRegistered();
-    final imageBytes = await _loadImageBytes(imageSource);
+    final imageBytes = await loadScanQrImageBytes(imageSource);
     if (imageBytes == null || imageBytes.isEmpty) {
       onResult?.call('');
       return false;
@@ -109,77 +106,9 @@ class ScanQrCodeBridge {
     final result = await _processScanResult(parsedContent);
     unawaited(
       navigatorState.push(
-        MaterialPageRoute<void>(
-          builder: (_) => ScanResultPage(result: result),
-        ),
+        MaterialPageRoute<void>(builder: (_) => ScanResultPage(result: result)),
       ),
     );
     return parsedContent;
-  }
-
-  Future<Uint8List?> _loadImageBytes(String imageSource) async {
-    final normalizedSource = imageSource.trim();
-    if (normalizedSource.isEmpty) {
-      return null;
-    }
-
-    final uri = Uri.tryParse(normalizedSource);
-    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
-      final client = HttpClient();
-      try {
-        final request = await client.getUrl(uri);
-        final response = await request.close();
-        if (response.statusCode >= 400) {
-          return null;
-        }
-        return consolidateHttpClientResponseBytes(response);
-      } finally {
-        client.close(force: true);
-      }
-    }
-
-    final path = normalizedSource.startsWith('file://')
-        ? Uri.parse(normalizedSource).toFilePath()
-        : normalizedSource;
-    final file = File(path);
-    if (!await file.exists()) {
-      return null;
-    }
-    return file.readAsBytes();
-  }
-
-  static Future<String?> _defaultAnalyzeImageBytes(Uint8List imageBytes) async {
-    if (kIsWeb || imageBytes.isEmpty) {
-      return null;
-    }
-
-    final tempFile = File(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}'
-      'wk_qr_${DateTime.now().microsecondsSinceEpoch}.png',
-    );
-    final controller = MobileScannerController(autoStart: false);
-    try {
-      await tempFile.writeAsBytes(imageBytes, flush: true);
-      final capture = await controller.analyzeImage(tempFile.path);
-      if (capture == null) {
-        return null;
-      }
-      for (final barcode in capture.barcodes) {
-        final rawValue = barcode.rawValue?.trim() ?? '';
-        if (rawValue.isNotEmpty) {
-          return rawValue;
-        }
-        final displayValue = barcode.displayValue?.trim() ?? '';
-        if (displayValue.isNotEmpty) {
-          return displayValue;
-        }
-      }
-      return null;
-    } finally {
-      controller.dispose();
-      if (await tempFile.exists()) {
-        await tempFile.delete();
-      }
-    }
   }
 }

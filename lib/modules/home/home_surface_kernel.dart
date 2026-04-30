@@ -57,6 +57,13 @@ final homeSurfaceKernelProvider = Provider<HomeSurfaceKernel>((ref) {
 typedef HomeConversationBootstrapRefresher = Future<void> Function();
 typedef HomeContactsBootstrapRefresher = Future<void> Function();
 
+@visibleForTesting
+bool shouldPersistHomeContactsLocally({required bool isWeb}) => !isWeb;
+
+final homeShouldPersistContactsLocallyProvider = Provider<bool>((ref) {
+  return shouldPersistHomeContactsLocally(isWeb: kIsWeb);
+});
+
 final homeConversationBootstrapRefresherProvider =
     Provider<HomeConversationBootstrapRefresher>((ref) {
       return () async {
@@ -71,7 +78,9 @@ final homeContactsBootstrapRefresherProvider =
           return;
         }
         final friends = await FriendApi.instance.getFriends();
-        await ContactsDB.instance.insertOrUpdateAll(friends);
+        if (ref.read(homeShouldPersistContactsLocallyProvider)) {
+          await ContactsDB.instance.insertOrUpdateAll(friends);
+        }
       };
     });
 

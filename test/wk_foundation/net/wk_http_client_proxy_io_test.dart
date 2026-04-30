@@ -6,9 +6,9 @@ void main() {
     test('treats websocket requests to the api host as direct', () {
       expect(
         shouldBypassNativeProxyForUri(
-          apiBaseUri: Uri.parse('http://42.194.218.158'),
+          apiBaseUri: Uri.parse('https://infoequity.qingyunshe.top'),
           requestUri: Uri.parse(
-            'ws://42.194.218.158/v1/realtime/session/events/ws',
+            'wss://infoequity.qingyunshe.top/v1/realtime/session/events/ws',
           ),
         ),
         isTrue,
@@ -26,9 +26,9 @@ void main() {
 
       expect(
         shouldBypassNativeProxyForUri(
-          apiBaseUri: Uri.parse('http://42.194.218.158'),
+          apiBaseUri: Uri.parse('https://infoequity.qingyunshe.top'),
           requestUri: Uri.parse(
-            'http://42.194.218.158:0/v1/realtime/session/events/ws',
+            'https://infoequity.qingyunshe.top:0/v1/realtime/session/events/ws',
           ),
         ),
         isTrue,

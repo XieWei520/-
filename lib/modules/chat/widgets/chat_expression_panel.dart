@@ -118,7 +118,7 @@ class ChatExpressionPanel extends StatelessWidget {
             key: const ValueKey<String>('chat-expression-gif-search-field'),
             onChanged: onGifQueryChanged,
             decoration: const InputDecoration(
-              hintText: '\u641c\u7d22 GIF',
+              hintText: '搜索动图',
               prefixIcon: Icon(Icons.search_rounded),
             ),
           ),
@@ -145,7 +145,7 @@ class ChatExpressionPanel extends StatelessWidget {
                     onTap: () => onGifSelected(result),
                     child: const DecoratedBox(
                       decoration: BoxDecoration(color: Color(0xFFF3F6FA)),
-                      child: Center(child: Text('GIF')),
+                      child: Center(child: Text('动图')),
                     ),
                   );
                 },
@@ -171,7 +171,13 @@ class ChatExpressionPanel extends StatelessWidget {
               'chat-expression-sticker-${sticker.stickerId}',
             ),
             onTap: () => onStickerSelected(category.id, sticker),
-            child: Image.asset(sticker.previewKey, fit: BoxFit.contain),
+            child: Image.asset(
+              sticker.previewKey,
+              fit: BoxFit.contain,
+              cacheWidth: 128,
+              cacheHeight: 128,
+              filterQuality: FilterQuality.medium,
+            ),
           );
         },
       );

@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
 
 import '../domain/search_models.dart';
 import '../domain/search_repository.dart';
+import 'local_file_probe.dart';
 import 'local_search_service.dart';
 import 'search_local_timeline_data_source.dart';
 import 'search_remote_data_source.dart';
@@ -19,7 +19,7 @@ class SearchRepositoryImpl implements SearchRepository {
        _localSearchService = localSearchService ?? LocalSearchService(),
        _now = now ?? DateTime.now,
        _localImagePathExists =
-           localImagePathExists ?? _defaultLocalImagePathExists;
+           localImagePathExists ?? defaultLocalImagePathExists;
 
   final SearchRemoteDataSource _remoteDataSource;
   final SearchLocalTimelineDataSource _localTimelineDataSource;
@@ -120,10 +120,6 @@ class SearchRepositoryImpl implements SearchRepository {
       );
     }
     return mappedItems.toList(growable: false);
-  }
-
-  static Future<bool> _defaultLocalImagePathExists(String path) {
-    return File(path).exists();
   }
 
   @override

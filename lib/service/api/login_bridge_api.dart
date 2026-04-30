@@ -154,7 +154,7 @@ class LoginBridgeApi {
 
   Future<void> quitPc() async {
     final response = await _client.post('/v1/user/pc/quit');
-    _throwIfFailed(response, fallbackMessage: '退出 PC/Web 登录失败');
+    _throwIfFailed(response, fallbackMessage: '退出电脑端/网页端登录失败');
   }
 
   Future<List<LoginBridgeDeviceRecord>> getDevices() async {

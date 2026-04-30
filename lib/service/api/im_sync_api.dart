@@ -5,6 +5,7 @@ import 'package:wukongimfluttersdk/entity/msg.dart';
 import '../../realtime/session/session_event_frame.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import 'api_client.dart';
+import 'im_route_info.dart';
 
 class IMSyncApi {
   IMSyncApi._();
@@ -129,16 +130,21 @@ class IMSyncApi {
   }
 
   Future<String> fetchUserConnectAddr({required String uid}) async {
+    final route = await fetchUserConnectRoute(uid: uid);
+    return route.tcpAddr;
+  }
+
+  Future<ImRouteInfo> fetchUserConnectRoute({required String uid}) async {
     final normalizedUid = uid.trim();
     if (normalizedUid.isEmpty) {
-      return '';
+      return const ImRouteInfo.empty();
     }
 
     final response = await _client.get(
       '/v1/users/${Uri.encodeComponent(normalizedUid)}/im',
     );
     final data = _unwrapMap(response.data);
-    return _readString(data['tcp_addr']);
+    return ImRouteInfo.fromMap(data);
   }
 
   Future<void> ackConversationSync({
@@ -335,20 +341,28 @@ class IMSyncApi {
     if (raw is List) {
       return raw;
     }
-    if (raw is Map<String, dynamic>) {
-      final data = raw['data'];
-      if (data is List) {
-        return data;
+    List<dynamic> readNestedList(Map<String, dynamic> map) {
+      for (final key in const <String>['data', 'events', 'items', 'list']) {
+        final value = map[key];
+        if (value is List) {
+          return value;
+        }
+        if (value is Map) {
+          final nested = readNestedList(Map<String, dynamic>.from(value));
+          if (nested.isNotEmpty) {
+            return nested;
+          }
+        }
       }
       return const <dynamic>[];
     }
+
+    if (raw is Map<String, dynamic>) {
+      return readNestedList(raw);
+    }
     if (raw is Map) {
       final map = Map<String, dynamic>.from(raw);
-      final data = map['data'];
-      if (data is List) {
-        return data;
-      }
-      return const <dynamic>[];
+      return readNestedList(map);
     }
     return const <dynamic>[];
   }

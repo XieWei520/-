@@ -4,7 +4,9 @@ import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 import '../../data/providers/auth_provider.dart';
+import '../../service/api/user_api.dart';
 import '../chat/chat_page.dart';
+import '../customer_service/customer_service_identity.dart';
 
 const String vipCustomerServiceUid = 'system_kefu';
 const String vipRequiredMessage =
@@ -12,16 +14,48 @@ const String vipRequiredMessage =
 
 bool isVipUser(UserInfo? user) => user?.vipLevel == 1;
 
+typedef VipCustomerServicesLoader =
+    Future<List<CustomerServiceAccount>> Function();
+
+CustomerServiceAccount? selectVipCustomerService(
+  Iterable<CustomerServiceAccount> services,
+) {
+  for (final service in services) {
+    if (service.uid.trim().isNotEmpty) {
+      return service;
+    }
+  }
+  return null;
+}
+
+Future<CustomerServiceAccount?> resolveVipCustomerService({
+  VipCustomerServicesLoader? loader,
+}) async {
+  final services = await (loader ?? UserApi.instance.getCustomerServices)();
+  return selectVipCustomerService(services);
+}
+
 Future<void> openVipCustomerServiceChat(BuildContext context) async {
+  CustomerServiceAccount? service;
+  try {
+    service = await resolveVipCustomerService();
+  } catch (_) {
+    service = null;
+  }
   if (!context.mounted) {
     return;
   }
+  final serviceUid = service?.uid.trim() ?? '';
+  final serviceName = service?.name.trim() ?? '';
+  final channelId = serviceUid.isNotEmpty ? serviceUid : vipCustomerServiceUid;
+  final channelName = serviceName.isNotEmpty ? serviceName : '默认客服';
   await Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => const ChatPage(
-        channelId: vipCustomerServiceUid,
+      builder: (_) => ChatPage(
+        channelId: channelId,
         channelType: WKChannelType.personal,
-        channelName: '管理员',
+        channelName: channelName,
+        channelCategory: customerServiceCategory,
       ),
     ),
   );

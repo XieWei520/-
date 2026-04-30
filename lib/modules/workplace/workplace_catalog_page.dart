@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/cache/media_cache_manager.dart';
 import '../settings/settings_strings.dart';
 import '../settings/settings_surface_widgets.dart';
 import '../../wukong_scan/scan_webview_page.dart';
@@ -169,9 +170,9 @@ class _WorkplaceCatalogPageState extends State<WorkplaceCatalogPage> {
     try {
       if (inAppUrl.isNotEmpty) {
         if (mounted) {
-          Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => _buildWebviewPage(inAppUrl)));
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => _buildWebviewPage(inAppUrl)),
+          );
         }
       } else {
         final opened = await _launchUrlExternally(uri!);
@@ -430,7 +431,7 @@ class _WorkplaceCatalogPageState extends State<WorkplaceCatalogPage> {
                 onTap: () => _openBanner(banner),
               );
             },
-            separatorBuilder: (_, __) => const SizedBox(width: WKSpace.md),
+            separatorBuilder: (_, _) => const SizedBox(width: WKSpace.md),
             itemCount: _state.banners.length,
           ),
         ),
@@ -626,11 +627,28 @@ class _BannerCard extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         height: 72,
-        child: Image.network(
-          cover,
-          key: ValueKey<String>('workplace-banner-cover-${banner.bannerNo}'),
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildBannerFallback(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+            return CachedMediaImage(
+              key: ValueKey<String>(
+                'workplace-banner-cover-${banner.bannerNo}',
+              ),
+              imageUrl: cover,
+              cacheKey: cover,
+              maxWidth: _resolveWorkplaceDecodeBound(
+                constraints.maxWidth,
+                devicePixelRatio,
+              ),
+              maxHeight: _resolveWorkplaceDecodeBound(
+                constraints.maxHeight,
+                devicePixelRatio,
+              ),
+              fit: BoxFit.cover,
+              placeholder: (_, _) => _buildBannerFallback(),
+              errorWidget: (_, _, _) => _buildBannerFallback(),
+            );
+          },
         ),
       ),
     );
@@ -684,7 +702,7 @@ class _WorkplaceAppTile extends StatelessWidget {
         : app.description;
     final showReorderControls = moveUpAction != null || moveDownAction != null;
     return ListTile(
-      leading: _buildIconAvatar(title),
+      leading: _buildIconAvatar(context, title),
       title: Text(title),
       subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
       trailing: Wrap(
@@ -723,20 +741,30 @@ class _WorkplaceAppTile extends StatelessWidget {
     );
   }
 
-  Widget _buildIconAvatar(String title) {
+  Widget _buildIconAvatar(BuildContext context, String title) {
     final icon = app.icon.trim();
     if (icon.isEmpty) {
       return _buildFallbackAvatar(title);
     }
+    final decodeSize = _resolveWorkplaceDecodeBound(
+      40,
+      MediaQuery.devicePixelRatioOf(context),
+    );
     return ClipOval(
       child: SizedBox(
         width: 40,
         height: 40,
-        child: Image.network(
-          icon,
+        child: CachedMediaImage(
+          imageUrl: icon,
+          cacheKey: icon,
           key: iconKey,
+          width: 40,
+          height: 40,
+          maxWidth: decodeSize,
+          maxHeight: decodeSize,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildFallbackAvatar(title),
+          placeholder: (_, _) => _buildFallbackAvatar(title),
+          errorWidget: (_, _, _) => _buildFallbackAvatar(title),
         ),
       ),
     );
@@ -752,4 +780,11 @@ class _WorkplaceAppTile extends StatelessWidget {
       ),
     );
   }
+}
+
+int? _resolveWorkplaceDecodeBound(double logicalSize, double devicePixelRatio) {
+  if (!logicalSize.isFinite || logicalSize <= 0 || devicePixelRatio <= 0) {
+    return null;
+  }
+  return (logicalSize * devicePixelRatio).ceil();
 }

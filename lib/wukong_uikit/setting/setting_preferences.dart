@@ -143,20 +143,15 @@ class WKSettingPreferences {
   }
 
   static String fontScaleLabel(double scale, [Locale? locale]) {
-    final isEnglish =
-        resolveSettingsStrings(
-          locale: locale ?? WidgetsBinding.instance.platformDispatcher.locale,
-        ) ==
-        enUsSettingsStrings;
     switch (fontScaleToIndex(scale)) {
       case 0:
-        return isEnglish ? 'Small' : '小';
+        return '小';
       case 2:
-        return isEnglish ? 'Large' : '大';
+        return '大';
       case 3:
-        return isEnglish ? 'Extra Large' : '特大';
+        return '特大';
       default:
-        return isEnglish ? 'Standard' : '标准';
+        return '标准';
     }
   }
 
@@ -321,28 +316,23 @@ class WKSettingPreferences {
     String? channelId,
     int? channelType,
   }) {
-    final isEnglish =
-        resolveSettingsStrings(
-          locale: locale ?? WidgetsBinding.instance.platformDispatcher.locale,
-        ) ==
-        enUsSettingsStrings;
     if (getSelectedChatBackground(
           channelId: channelId,
           channelType: channelType,
         ) !=
         null) {
-      return isEnglish ? 'Server Background' : '服务器背景';
+      return '服务器背景';
     }
     switch (getChatBackgroundStyle(
       channelId: channelId,
       channelType: channelType,
     )) {
       case WKChatBackgroundStyle.sunrise:
-        return isEnglish ? 'Warm Gradient' : '暖色渐变';
+        return '暖色渐变';
       case WKChatBackgroundStyle.paper:
-        return isEnglish ? 'Paper White' : '纯净白底';
+        return '纯净白底';
       case WKChatBackgroundStyle.classic:
-        return isEnglish ? 'Classic Gray' : '默认浅灰';
+        return '默认浅灰';
     }
   }
 

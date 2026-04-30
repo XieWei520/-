@@ -75,7 +75,7 @@ void main() {
         resolveCacheDirectories: () async => <Directory>[accessible, blocked],
         clearAdditionalCaches: () async {},
         measureDirectoryBytes: (directory) async {
-          if (directory.path == blocked.path) {
+          if (directory is Directory && directory.path == blocked.path) {
             throw FileSystemException(
               'Directory listing failed',
               blocked.path,
@@ -87,6 +87,39 @@ void main() {
       );
 
       expect(await service.getTotalCacheBytes(), 12);
+    },
+  );
+
+  test(
+    'cache size falls back to zero when cache roots cannot be resolved',
+    () async {
+      final service = CacheCleanService(
+        resolveCacheDirectories: () async {
+          throw const FileSystemException('cache root unavailable');
+        },
+        clearAdditionalCaches: () async {},
+      );
+
+      expect(await service.getTotalCacheBytes(), 0);
+    },
+  );
+
+  test(
+    'clearAllCache still runs additional cleanup when roots cannot resolve',
+    () async {
+      var extraCleared = false;
+      final service = CacheCleanService(
+        resolveCacheDirectories: () async {
+          throw const FileSystemException('cache root unavailable');
+        },
+        clearAdditionalCaches: () async {
+          extraCleared = true;
+        },
+      );
+
+      await expectLater(service.clearAllCache(), completes);
+
+      expect(extraCleared, isTrue);
     },
   );
 
