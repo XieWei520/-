@@ -9,6 +9,8 @@ The Windows desktop client should alert the user when an incoming IM message arr
 
 The existing project already has Web message alert planning in `lib/wukong_push/notification/web_message_alert_plan.dart` and routes incoming realtime messages through `IMService._handleNewMessages` in `lib/service/im/im_service.dart`. Windows push registration is not currently part of `PushService`; mobile push remains Android/iOS-focused. For Windows desktop, the correct first implementation path is therefore local alerts from the realtime IM message callback.
 
+Because Windows has no mobile-style push fallback in the current app, the Windows IM session must remain connected while the window is minimized or hidden. Existing mobile lifecycle disconnect behavior should remain unchanged.
+
 Microsoft's notification guidance says notifications should be informative and valuable, should not be noisy, and should be used for cases where the user is not currently inside the app. This design follows that model: system cards are reserved for background/minimized states, while foreground messages use a short, unobtrusive sound.
 
 Reference: https://learn.microsoft.com/en-us/windows/apps/design/shell/tiles-and-notifications/toast-ux-guidance
@@ -19,6 +21,7 @@ Reference: https://learn.microsoft.com/en-us/windows/apps/design/shell/tiles-and
 - Show a Windows system notification card when the app is minimized, hidden, or not focused.
 - Avoid noisy notification storms by coalescing frequent messages from the same conversation.
 - Reuse existing message preview and mute/self-message filtering semantics where possible.
+- Keep the Windows realtime IM connection alive while minimized so local alerts can be delivered.
 - Keep mobile push behavior and Web notification behavior unchanged.
 
 ## Non-Goals
@@ -42,6 +45,7 @@ The layer should have three separable responsibilities:
 
 2. Presentation policy
    - If the platform is not Windows, do nothing.
+   - On Windows, do not disconnect the realtime IM session only because the app is minimized or hidden.
    - If the app is focused and visible, play only a short foreground tick.
    - If the app is minimized, hidden, or unfocused, show a Windows notification card and play the normal message sound through the notification system or local audio fallback.
    - If focus/minimized state cannot be read, prefer the less disruptive foreground behavior when the app lifecycle says resumed, and background behavior when lifecycle is hidden/paused.
