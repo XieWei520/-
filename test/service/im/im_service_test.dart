@@ -308,6 +308,28 @@ void main() {
     });
 
     test(
+      'windows desktop notification mode keeps realtime connected in background',
+      () {
+        expect(
+          shouldDisconnectForBackgroundLifecycle(
+            isWeb: false,
+            hasActiveCallOrPendingSetup: false,
+            keepRealtimeForDesktopNotifications: true,
+          ),
+          isFalse,
+        );
+
+        expect(
+          shouldDisconnectForBackgroundLifecycle(
+            isWeb: false,
+            hasActiveCallOrPendingSetup: false,
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test(
       'recovered channel_status restores current calls and clears stale ones',
       () {
         final dynamic service = IMService();

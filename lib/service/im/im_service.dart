@@ -298,8 +298,9 @@ Future<bool> startSessionRuntimeForInit({
 bool shouldDisconnectForBackgroundLifecycle({
   required bool isWeb,
   required bool hasActiveCallOrPendingSetup,
+  bool keepRealtimeForDesktopNotifications = false,
 }) {
-  if (isWeb) {
+  if (isWeb || keepRealtimeForDesktopNotifications) {
     return false;
   }
   return !hasActiveCallOrPendingSetup;
@@ -1830,6 +1831,8 @@ class IMService extends StateNotifier<IMServiceState>
     if (!shouldDisconnectForBackgroundLifecycle(
       isWeb: kIsWeb,
       hasActiveCallOrPendingSetup: shouldKeepConnectionInBackground(),
+      keepRealtimeForDesktopNotifications:
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.windows,
     )) {
       return;
     }
