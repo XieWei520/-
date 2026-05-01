@@ -486,9 +486,15 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
     return Scaffold(
       key: const ValueKey<String>('contacts-web-frame'),
       backgroundColor: WKWebColors.pageWarm,
-      body: Padding(
-        padding: const EdgeInsets.all(WKSpace.md),
-        child: WKWebPanel(child: content.body ?? const SizedBox.shrink()),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 920),
+          child: WKWebPanel(
+            key: const ValueKey<String>('contacts-web-panel'),
+            margin: const EdgeInsets.all(WKSpace.md),
+            child: content.body ?? const SizedBox.shrink(),
+          ),
+        ),
       ),
     );
   }

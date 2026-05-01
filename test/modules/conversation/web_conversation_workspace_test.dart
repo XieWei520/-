@@ -2,8 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/models/chat_session.dart';
 import 'package:wukong_im_app/modules/conversation/web_conversation_workspace.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 
 void main() {
+  test('desktop conversation workspace policy includes native Windows', () {
+    expect(
+      shouldUseDesktopConversationWorkspace(
+        isWeb: false,
+        platform: TargetPlatform.windows,
+        viewportWidth: 1200,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldUseDesktopConversationWorkspace(
+        isWeb: false,
+        platform: TargetPlatform.android,
+        viewportWidth: 1200,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldUseDesktopConversationWorkspace(
+        isWeb: true,
+        platform: TargetPlatform.android,
+        viewportWidth: 1200,
+      ),
+      isTrue,
+    );
+  });
+
   test('desktop workspace decision uses Web viewport and preserves native', () {
     expect(
       shouldUseWebConversationWorkspace(isWeb: true, viewportWidth: 1023),
@@ -55,13 +83,22 @@ void main() {
   testWidgets('wide workspace can display the right context pane', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 720);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(
       const MaterialApp(
-        home: WebConversationWorkspaceScaffold(
-          listPane: Text('list'),
-          chatPane: Text('chat'),
-          rightContextPane: Text('context'),
-          showRightContext: true,
+        home: SizedBox(
+          width: 1280,
+          height: 720,
+          child: WebConversationWorkspaceScaffold(
+            listPane: Text('list'),
+            chatPane: Text('chat'),
+            rightContextPane: Text('context'),
+            showRightContext: true,
+          ),
         ),
       ),
     );
@@ -72,6 +109,49 @@ void main() {
     );
     expect(find.text('context'), findsOneWidget);
   });
+
+  testWidgets(
+    'workspace adapts panes instead of overflowing when right context is requested on a tight width',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: SizedBox(
+            width: 760,
+            height: 640,
+            child: WebConversationWorkspaceScaffold(
+              listPane: Text('list'),
+              chatPane: Text('chat'),
+              rightContextPane: Text('context'),
+              showRightContext: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('web-conversation-right-pane')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .getSize(
+              find.byKey(const ValueKey<String>('web-conversation-list-pane')),
+            )
+            .width,
+        lessThanOrEqualTo(WKWebSizes.conversationListWidth),
+      );
+      expect(
+        tester
+            .getSize(
+              find.byKey(const ValueKey<String>('web-conversation-chat-pane')),
+            )
+            .width,
+        greaterThan(0),
+      );
+    },
+  );
 
   testWidgets('conversation workbench shows approved title and sections', (
     tester,
@@ -198,13 +278,22 @@ void main() {
   testWidgets('wide workspace can display the approved workbench panel', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 720);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(
       const MaterialApp(
-        home: WebConversationWorkspaceScaffold(
-          listPane: Text('list'),
-          chatPane: Text('chat'),
-          rightContextPane: ConversationWorkbenchPanel(),
-          showRightContext: true,
+        home: SizedBox(
+          width: 1280,
+          height: 720,
+          child: WebConversationWorkspaceScaffold(
+            listPane: Text('list'),
+            chatPane: Text('chat'),
+            rightContextPane: ConversationWorkbenchPanel(),
+            showRightContext: true,
+          ),
         ),
       ),
     );
@@ -216,4 +305,106 @@ void main() {
     expect(find.text('会话工作台'), findsOneWidget);
     expect(find.text('会话信息'), findsNothing);
   });
+
+  testWidgets(
+    'desktop workspace still shows workbench at Windows scaled logical width',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(944, 640);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: SizedBox(
+            width: 944,
+            height: 640,
+            child: WebConversationWorkspaceScaffold(
+              listPane: Text('list'),
+              chatPane: Text('chat'),
+              rightContextPane: ConversationWorkbenchPanel(),
+              showRightContext: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('web-conversation-right-pane')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('conversation-workbench-toggle')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'workspace toggle can collapse and expand the conversation workbench',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1280, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      var expanded = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              return SizedBox(
+                width: 1280,
+                height: 720,
+                child: WebConversationWorkspaceScaffold(
+                  listPane: const Text('list'),
+                  chatPane: const Text('chat'),
+                  rightContextPane: const ConversationWorkbenchPanel(),
+                  showRightContext: true,
+                  workbenchExpanded: expanded,
+                  onWorkbenchExpandedChanged: (value) {
+                    setState(() => expanded = value);
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('web-conversation-right-pane')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('conversation-workbench-toggle')),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('web-conversation-right-pane')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('conversation-workbench-toggle')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('conversation-workbench-toggle')),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('web-conversation-right-pane')),
+        findsOneWidget,
+      );
+    },
+  );
 }

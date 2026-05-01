@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_activity_registry.dart';
 import 'package:wukong_im_app/data/models/wk_custom_content.dart';
@@ -126,6 +128,37 @@ void main() {
       );
     },
   );
+
+  group('startSessionRuntimeForInit', () {
+    test('returns true when native session runtime starts', () async {
+      final started = await startSessionRuntimeForInit(start: () async {});
+
+      expect(started, isTrue);
+    });
+
+    test('returns false when native session runtime throws', () async {
+      Object? capturedError;
+
+      final started = await startSessionRuntimeForInit(
+        start: () async => throw StateError('handshake failed'),
+        onError: (error, stackTrace) {
+          capturedError = error;
+        },
+      );
+
+      expect(started, isFalse);
+      expect(capturedError, isA<StateError>());
+    });
+
+    test('returns false when native session runtime stalls', () async {
+      final started = await startSessionRuntimeForInit(
+        start: () => Completer<void>().future,
+        timeout: const Duration(milliseconds: 20),
+      );
+
+      expect(started, isFalse);
+    });
+  });
 
   group('resolveImCommandSideEffects', () {
     test('friendAccept refreshes friends and friend requests', () {

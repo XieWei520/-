@@ -277,108 +277,160 @@ class MessageBubble extends StatelessWidget {
     final bubbleDecoration = _bubbleDecoration(effectiveContentType);
     final useWarmTextColors =
         webStyle && isSelf && _isTextLikeContent(effectiveContentType);
-    final bubble = GestureDetector(
-      onTap: effectiveContentType == MsgContentType.robotCard ? null : onTap,
-      onLongPress: onLongPress,
-      onSecondaryTapDown: onSecondaryTapDown,
-      child: Container(
-        key: const ValueKey<String>('message-bubble-body'),
-        constraints: BoxConstraints(
-          maxWidth: effectiveContentType == MsgContentType.robotCard
-              ? math.min(MediaQuery.of(context).size.width * 0.88, 460)
-              : MediaQuery.of(context).size.width * 0.72,
-        ),
-        padding: bubblePadding,
-        decoration: bubbleDecoration,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (showPinnedIndicator) ...[
-              _PinnedMessageIndicator(
-                isSelf: isSelf,
-                useWarmTextColors: useWarmTextColors,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final laneWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final bubble = GestureDetector(
+          onTap: effectiveContentType == MsgContentType.robotCard
+              ? null
+              : onTap,
+          onLongPress: onLongPress,
+          onSecondaryTapDown: onSecondaryTapDown,
+          child: Container(
+            key: const ValueKey<String>('message-bubble-body'),
+            constraints: BoxConstraints(
+              maxWidth: _resolveBubbleMaxWidth(
+                laneWidth: laneWidth,
+                effectiveContentType: effectiveContentType,
               ),
-              const SizedBox(height: 6),
-            ],
-            _buildContent(
-              context: context,
-              previewText: model.previewText,
-              effectiveContentType: effectiveContentType,
-              useWarmTextColors: useWarmTextColors,
             ),
-            if (showInlineMeta) ...[
-              const SizedBox(height: 10),
-              _CompactMessageStatusBadge(
-                status: resolvedStatusInfo,
-                isSelf: isSelf,
-                timeText: timeText,
-                insideBubble: true,
-                useWarmTextColors: useWarmTextColors,
-                onRetrySend: onRetrySend,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Row(
-        mainAxisAlignment: isSelf
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isSelf) ...[
-            WKAvatar(
-              url: resolvedParticipant.avatarUrl,
-              name: resolvedParticipant.displayName,
-              size: 40,
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
+            padding: bubblePadding,
+            decoration: bubbleDecoration,
             child: Column(
-              crossAxisAlignment: isSelf
-                  ? CrossAxisAlignment.end
-                  : CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (showGroupSenderName) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(left: 2, bottom: 4),
-                    child: Text(
-                      resolvedParticipant.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: WKColors.getNameColorFromString(
-                          resolvedParticipant.displayName,
-                        ),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
+                if (showPinnedIndicator) ...[
+                  _PinnedMessageIndicator(
+                    isSelf: isSelf,
+                    useWarmTextColors: useWarmTextColors,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+                _buildContent(
+                  context: context,
+                  previewText: model.previewText,
+                  effectiveContentType: effectiveContentType,
+                  useWarmTextColors: useWarmTextColors,
+                ),
+                if (showInlineMeta) ...[
+                  const SizedBox(height: 10),
+                  _CompactMessageStatusBadge(
+                    status: resolvedStatusInfo,
+                    isSelf: isSelf,
+                    timeText: timeText,
+                    insideBubble: true,
+                    useWarmTextColors: useWarmTextColors,
+                    onRetrySend: onRetrySend,
                   ),
                 ],
-                bubble,
               ],
             ),
           ),
-          if (isSelf) ...[
-            const SizedBox(width: 8),
-            WKAvatar(
-              url: resolvedParticipant.avatarUrl,
-              name: resolvedParticipant.displayName,
-              size: 40,
-            ),
-          ],
-        ],
-      ),
+        );
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Row(
+            mainAxisAlignment: isSelf
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!isSelf) ...[
+                WKAvatar(
+                  url: resolvedParticipant.avatarUrl,
+                  name: resolvedParticipant.displayName,
+                  size: 40,
+                ),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: isSelf
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (showGroupSenderName) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(left: 2, bottom: 4),
+                        child: Text(
+                          resolvedParticipant.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: WKColors.getNameColorFromString(
+                              resolvedParticipant.displayName,
+                            ),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0,
+                          ),
+                        ),
+                      ),
+                    ],
+                    bubble,
+                  ],
+                ),
+              ),
+              if (isSelf) ...[
+                const SizedBox(width: 8),
+                WKAvatar(
+                  url: resolvedParticipant.avatarUrl,
+                  name: resolvedParticipant.displayName,
+                  size: 40,
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  double _resolveBubbleMaxWidth({
+    required double laneWidth,
+    required int effectiveContentType,
+  }) {
+    final avatarAndGapWidth = 48.0;
+    final horizontalOuterPadding = 24.0;
+    final availableWidth = math.max(
+      0,
+      laneWidth - avatarAndGapWidth - horizontalOuterPadding,
+    );
+    if (availableWidth <= 0) {
+      return 0;
+    }
+
+    final upperBound = effectiveContentType == MsgContentType.robotCard
+        ? math.min(availableWidth, WKWebSizes.messageBubbleRobotMaxWidth)
+        : math.min(
+            availableWidth,
+            webStyle ? WKWebSizes.messageBubbleMaxWidth : availableWidth,
+          );
+    final desiredWidth = effectiveContentType == MsgContentType.robotCard
+        ? upperBound
+        : availableWidth * WKWebSizes.messageBubbleWidthRatio;
+    final lowerBound = math.min(WKWebSizes.messageBubbleMinWidth, upperBound);
+    return desiredWidth.clamp(lowerBound, upperBound).toDouble();
+  }
+
+  Size _resolveAdaptiveMediaSize(
+    BoxConstraints constraints, {
+    required double preferredWidth,
+    required double preferredHeight,
+  }) {
+    final maxWidth = constraints.maxWidth.isFinite
+        ? constraints.maxWidth
+        : preferredWidth;
+    final width = math.min(preferredWidth, math.max(0.0, maxWidth));
+    if (width <= 0 || preferredWidth <= 0) {
+      return Size.zero;
+    }
+    return Size(width, preferredHeight * (width / preferredWidth));
   }
 
   EdgeInsets _bubblePaddingFor(int effectiveContentType) {
@@ -841,69 +893,79 @@ class MessageBubble extends StatelessWidget {
       url = ApiConfig.resolveMediaUrl(localPath);
       localPath = '';
     }
-    if (url.isEmpty && !_isLocalMediaPath(localPath)) {
-      return _mediaFallback(
-        icon: Icons.broken_image_outlined,
-        width: 200,
-        height: 200,
-      );
-    }
-    final decodeRequest = resolveMediaDecodeRequest(
-      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-      logicalWidth: 200,
-      logicalHeight: 200,
-      intrinsicWidth: intrinsicWidth,
-      intrinsicHeight: intrinsicHeight,
-    );
-
-    Widget buildRemoteImage() {
-      if (url.isEmpty) {
-        return _mediaFallback(
-          icon: Icons.broken_image_outlined,
-          width: 200,
-          height: 200,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mediaSize = _resolveAdaptiveMediaSize(
+          constraints,
+          preferredWidth: 200,
+          preferredHeight: 200,
         );
-      }
-      return CachedMediaImage(
-        imageUrl: url,
-        cacheKey: url,
-        width: 200,
-        height: 200,
-        maxWidth: decodeRequest.cacheWidth,
-        maxHeight: decodeRequest.cacheHeight,
-        fit: BoxFit.cover,
-        errorWidget: (context, url, error) => _mediaFallback(
-          icon: Icons.broken_image_outlined,
-          width: 200,
-          height: 200,
-        ),
-        placeholder: (context, url) => _mediaFallback(
-          width: 200,
-          height: 200,
-          child: const CircularProgressIndicator(),
-        ),
-      );
-    }
+        if (url.isEmpty && !_isLocalMediaPath(localPath)) {
+          return _mediaFallback(
+            icon: Icons.broken_image_outlined,
+            width: mediaSize.width,
+            height: mediaSize.height,
+          );
+        }
+        final decodeRequest = resolveMediaDecodeRequest(
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+          logicalWidth: mediaSize.width,
+          logicalHeight: mediaSize.height,
+          intrinsicWidth: intrinsicWidth,
+          intrinsicHeight: intrinsicHeight,
+        );
 
-    final localImageProvider = _isLocalMediaPath(localPath)
-        ? resolveLocalMediaImageProvider(localPath)
-        : null;
+        Widget buildRemoteImage() {
+          if (url.isEmpty) {
+            return _mediaFallback(
+              icon: Icons.broken_image_outlined,
+              width: mediaSize.width,
+              height: mediaSize.height,
+            );
+          }
+          return CachedMediaImage(
+            imageUrl: url,
+            cacheKey: url,
+            width: mediaSize.width,
+            height: mediaSize.height,
+            maxWidth: decodeRequest.cacheWidth,
+            maxHeight: decodeRequest.cacheHeight,
+            fit: BoxFit.cover,
+            errorWidget: (context, url, error) => _mediaFallback(
+              icon: Icons.broken_image_outlined,
+              width: mediaSize.width,
+              height: mediaSize.height,
+            ),
+            placeholder: (context, url) => _mediaFallback(
+              width: mediaSize.width,
+              height: mediaSize.height,
+              child: const CircularProgressIndicator(),
+            ),
+          );
+        }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(WKRadius.md),
-      child: localImageProvider != null
-          ? Image(
-              image: ResizeImage.resizeIfNeeded(
-                decodeRequest.cacheWidth,
-                decodeRequest.cacheHeight,
-                localImageProvider,
-              ),
-              width: 200,
-              height: 200,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => buildRemoteImage(),
-            )
-          : buildRemoteImage(),
+        final localImageProvider = _isLocalMediaPath(localPath)
+            ? resolveLocalMediaImageProvider(localPath)
+            : null;
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(WKRadius.md),
+          child: localImageProvider != null
+              ? Image(
+                  image: ResizeImage.resizeIfNeeded(
+                    decodeRequest.cacheWidth,
+                    decodeRequest.cacheHeight,
+                    localImageProvider,
+                  ),
+                  width: mediaSize.width,
+                  height: mediaSize.height,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      buildRemoteImage(),
+                )
+              : buildRemoteImage(),
+        );
+      },
     );
   }
 
@@ -917,63 +979,73 @@ class MessageBubble extends StatelessWidget {
       intrinsicWidth = content.width;
       intrinsicHeight = content.height;
     }
-    if (url.isEmpty) {
-      return _mediaFallback(
-        icon: Icons.gif_box_outlined,
-        width: 200,
-        height: 200,
-      );
-    }
-    final decodeRequest = resolveMediaDecodeRequest(
-      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-      logicalWidth: 200,
-      logicalHeight: 200,
-      intrinsicWidth: intrinsicWidth,
-      intrinsicHeight: intrinsicHeight,
-    );
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(WKRadius.md),
-      child: Stack(
-        alignment: Alignment.bottomRight,
-        children: [
-          CachedMediaImage(
-            imageUrl: url,
-            cacheKey: url,
-            width: 200,
-            height: 200,
-            maxWidth: decodeRequest.cacheWidth,
-            maxHeight: decodeRequest.cacheHeight,
-            fit: BoxFit.cover,
-            errorWidget: (context, url, error) => _mediaFallback(
-              icon: Icons.gif_box_outlined,
-              width: 200,
-              height: 200,
-            ),
-            placeholder: (context, url) => _mediaFallback(
-              width: 200,
-              height: 200,
-              child: const CircularProgressIndicator(),
-            ),
-          ),
-          Container(
-            margin: const EdgeInsets.all(4),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(
-              color: Colors.black45,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              '\u52a8\u56fe',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mediaSize = _resolveAdaptiveMediaSize(
+          constraints,
+          preferredWidth: 200,
+          preferredHeight: 200,
+        );
+        if (url.isEmpty) {
+          return _mediaFallback(
+            icon: Icons.gif_box_outlined,
+            width: mediaSize.width,
+            height: mediaSize.height,
+          );
+        }
+        final decodeRequest = resolveMediaDecodeRequest(
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+          logicalWidth: mediaSize.width,
+          logicalHeight: mediaSize.height,
+          intrinsicWidth: intrinsicWidth,
+          intrinsicHeight: intrinsicHeight,
+        );
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(WKRadius.md),
+          child: Stack(
+            alignment: Alignment.bottomRight,
+            children: [
+              CachedMediaImage(
+                imageUrl: url,
+                cacheKey: url,
+                width: mediaSize.width,
+                height: mediaSize.height,
+                maxWidth: decodeRequest.cacheWidth,
+                maxHeight: decodeRequest.cacheHeight,
+                fit: BoxFit.cover,
+                errorWidget: (context, url, error) => _mediaFallback(
+                  icon: Icons.gif_box_outlined,
+                  width: mediaSize.width,
+                  height: mediaSize.height,
+                ),
+                placeholder: (context, url) => _mediaFallback(
+                  width: mediaSize.width,
+                  height: mediaSize.height,
+                  child: const CircularProgressIndicator(),
+                ),
               ),
-            ),
+              Container(
+                margin: const EdgeInsets.all(4),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  '动图',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -998,32 +1070,122 @@ class MessageBubble extends StatelessWidget {
             'download_url',
             'file_url',
           ]);
-    final decodeRequest = resolveMediaDecodeRequest(
-      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-      logicalWidth: 160,
-      logicalHeight: 160,
-    );
     final fallbackText = typedContent is WKStickerContent
         ? (typedContent.fallbackText.trim().isEmpty
               ? '[贴纸]'
               : typedContent.fallbackText.trim())
         : '[贴纸]';
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(WKRadius.md),
-      child: SizedBox(
-        key: const ValueKey<String>('message-sticker-body'),
-        width: 160,
-        height: 160,
-        child: _buildStickerAsset(
-          animationKey: animationKey,
-          previewKey: previewKey,
-          localPath: localPath,
-          url: url,
-          fallbackText: fallbackText,
-          decodeRequest: decodeRequest,
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mediaSize = _resolveAdaptiveMediaSize(
+          constraints,
+          preferredWidth: 160,
+          preferredHeight: 160,
+        );
+        final decodeRequest = resolveMediaDecodeRequest(
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+          logicalWidth: mediaSize.width,
+          logicalHeight: mediaSize.height,
+        );
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(WKRadius.md),
+          child: SizedBox(
+            key: const ValueKey<String>('message-sticker-body'),
+            width: mediaSize.width,
+            height: mediaSize.height,
+            child: _buildStickerAsset(
+              animationKey: animationKey,
+              previewKey: previewKey,
+              localPath: localPath,
+              url: url,
+              fallbackText: fallbackText,
+              decodeRequest: decodeRequest,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVideoContent(BuildContext context) {
+    var cover = '';
+    var intrinsicWidth = 0;
+    var intrinsicHeight = 0;
+    if (message.messageContent is WKVideoContent) {
+      final content = message.messageContent as WKVideoContent;
+      cover = ApiConfig.resolveMediaUrl(content.cover);
+      intrinsicWidth = content.width;
+      intrinsicHeight = content.height;
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mediaSize = _resolveAdaptiveMediaSize(
+          constraints,
+          preferredWidth: 200,
+          preferredHeight: 150,
+        );
+        final decodeRequest = resolveMediaDecodeRequest(
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+          logicalWidth: mediaSize.width,
+          logicalHeight: mediaSize.height,
+          intrinsicWidth: intrinsicWidth,
+          intrinsicHeight: intrinsicHeight,
+        );
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(WKRadius.md),
+              child: cover.isNotEmpty
+                  ? CachedMediaImage(
+                      imageUrl: cover,
+                      cacheKey: cover,
+                      width: mediaSize.width,
+                      height: mediaSize.height,
+                      maxWidth: decodeRequest.cacheWidth,
+                      maxHeight: decodeRequest.cacheHeight,
+                      fit: BoxFit.cover,
+                      errorWidget: (context, url, error) => _mediaFallback(
+                        icon: Icons.videocam_rounded,
+                        width: mediaSize.width,
+                        height: mediaSize.height,
+                        backgroundColor: WKColors.textSecondary,
+                        iconColor: WKColors.white.withValues(alpha: 0.72),
+                      ),
+                      placeholder: (context, url) => _mediaFallback(
+                        width: mediaSize.width,
+                        height: mediaSize.height,
+                        backgroundColor: WKColors.textSecondary,
+                        child: const CircularProgressIndicator(),
+                      ),
+                    )
+                  : _mediaFallback(
+                      icon: Icons.videocam_rounded,
+                      width: mediaSize.width,
+                      height: mediaSize.height,
+                      backgroundColor: WKColors.textSecondary,
+                      iconColor: WKColors.white.withValues(alpha: 0.72),
+                    ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: WKColors.black.withValues(alpha: 0.42),
+                borderRadius: BorderRadius.circular(WKRadius.pill),
+              ),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: WKColors.white,
+                size: 24,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1163,76 +1325,6 @@ class MessageBubble extends StatelessWidget {
           '$duration"',
           style: TextStyle(
             color: isSelf ? WKColors.sendText : WKColors.receiveText,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVideoContent(BuildContext context) {
-    var cover = '';
-    var intrinsicWidth = 0;
-    var intrinsicHeight = 0;
-    if (message.messageContent is WKVideoContent) {
-      final content = message.messageContent as WKVideoContent;
-      cover = ApiConfig.resolveMediaUrl(content.cover);
-      intrinsicWidth = content.width;
-      intrinsicHeight = content.height;
-    }
-    final decodeRequest = resolveMediaDecodeRequest(
-      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-      logicalWidth: 200,
-      logicalHeight: 150,
-      intrinsicWidth: intrinsicWidth,
-      intrinsicHeight: intrinsicHeight,
-    );
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(WKRadius.md),
-          child: cover.isNotEmpty
-              ? CachedMediaImage(
-                  imageUrl: cover,
-                  cacheKey: cover,
-                  width: 200,
-                  height: 150,
-                  maxWidth: decodeRequest.cacheWidth,
-                  maxHeight: decodeRequest.cacheHeight,
-                  fit: BoxFit.cover,
-                  errorWidget: (context, url, error) => _mediaFallback(
-                    icon: Icons.videocam_rounded,
-                    width: 200,
-                    height: 150,
-                    backgroundColor: WKColors.textSecondary,
-                    iconColor: WKColors.white.withValues(alpha: 0.72),
-                  ),
-                  placeholder: (context, url) => _mediaFallback(
-                    width: 200,
-                    height: 150,
-                    backgroundColor: WKColors.textSecondary,
-                    child: const CircularProgressIndicator(),
-                  ),
-                )
-              : _mediaFallback(
-                  icon: Icons.videocam_rounded,
-                  width: 200,
-                  height: 150,
-                  backgroundColor: WKColors.textSecondary,
-                  iconColor: WKColors.white.withValues(alpha: 0.72),
-                ),
-        ),
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: WKColors.black.withValues(alpha: 0.42),
-            borderRadius: BorderRadius.circular(WKRadius.pill),
-          ),
-          child: const Icon(
-            Icons.play_arrow_rounded,
-            color: WKColors.white,
-            size: 24,
           ),
         ),
       ],

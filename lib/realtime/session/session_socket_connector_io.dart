@@ -11,6 +11,9 @@ SessionSocket createDefaultSessionSocket(
     IOWebSocketChannel.connect(
       uri,
       headers: headers,
+      // Native sockets can send auth/control headers directly. Keep the
+      // browser-only subprotocol tunnel out of the IO path because the current
+      // production gateway rejects those subprotocols with HTTP 400.
       pingInterval: const Duration(seconds: 20),
       connectTimeout: const Duration(seconds: 10),
       customClient: createNativeProxyAwareHttpClient(),

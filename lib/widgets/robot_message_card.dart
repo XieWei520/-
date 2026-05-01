@@ -161,30 +161,34 @@ class _RobotMessageCardState extends State<RobotMessageCard> {
                                 ),
                               ),
                               if (widget.data.badge.isNotEmpty)
-                                Container(
-                                  margin: const EdgeInsets.only(left: 12),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0x1AF5B971),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: const Color(0x33F5B971),
+                                Flexible(
+                                  child: Container(
+                                    margin: const EdgeInsets.only(left: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
                                     ),
-                                  ),
-                                  child: Text(
-                                    widget.data.badge,
-                                    style: TextStyle(
-                                      color: const Color(0xFFF6C98F),
-                                      fontSize: 11,
-                                      height: 1,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.6,
-                                      fontFamily: WKFontFamily.primary,
-                                      fontFamilyFallback:
-                                          WKTypography.fontFamilyFallback,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0x1AF5B971),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: const Color(0x33F5B971),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      widget.data.badge,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: const Color(0xFFF6C98F),
+                                        fontSize: 11,
+                                        height: 1,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.6,
+                                        fontFamily: WKFontFamily.primary,
+                                        fontFamilyFallback:
+                                            WKTypography.fontFamilyFallback,
+                                      ),
                                     ),
                                   ),
                                 ),

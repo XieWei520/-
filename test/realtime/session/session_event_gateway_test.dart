@@ -239,6 +239,25 @@ void main() {
   );
 
   test(
+    'gateway rethrows readiness failure even when socket close stalls',
+    () async {
+      final socket = _StallingCloseSessionSocket(
+        readyError: StateError('handshake failed'),
+      );
+      final gateway = SessionEventGateway(connect: (uri, {headers}) => socket);
+
+      await expectLater(
+        gateway
+            .open(Uri.parse('ws://example.com'))
+            .timeout(const Duration(milliseconds: 100)),
+        throwsA(isA<StateError>()),
+      );
+      expect(socket.readyCalls, 1);
+      expect(socket.closeCalls, 1);
+    },
+  );
+
+  test(
     'maps conversation.updated frame to conversation patch control event',
     () {
       final frame = SessionEventFrame.fromJson(<String, dynamic>{
@@ -377,37 +396,40 @@ void main() {
     expect(updated.lastMessageDigest, '');
   });
 
-  test('gateway records inbound and decode-error telemetry for malformed frames', () async {
-    final controller = StreamController<Object?>.broadcast();
-    addTearDown(controller.close);
-    final telemetry = _RecordingGatewayTelemetry();
+  test(
+    'gateway records inbound and decode-error telemetry for malformed frames',
+    () async {
+      final controller = StreamController<Object?>.broadcast();
+      addTearDown(controller.close);
+      final telemetry = _RecordingGatewayTelemetry();
 
-    final gateway = SessionEventGateway(
-      connect: (uri, {headers}) => _FakeSessionSocket(controller.stream),
-      telemetry: telemetry,
-    );
+      final gateway = SessionEventGateway(
+        connect: (uri, {headers}) => _FakeSessionSocket(controller.stream),
+        telemetry: telemetry,
+      );
 
-    final stream = await gateway.open(
-      Uri.parse('ws://example.com?v=1&device_session_id=sess_decode_01'),
-    );
-    final failure = Completer<void>();
-    final subscription = stream.listen(
-      (_) {},
-      onError: (_) {
-        if (!failure.isCompleted) {
-          failure.complete();
-        }
-      },
-    );
-    addTearDown(subscription.cancel);
+      final stream = await gateway.open(
+        Uri.parse('ws://example.com?v=1&device_session_id=sess_decode_01'),
+      );
+      final failure = Completer<void>();
+      final subscription = stream.listen(
+        (_) {},
+        onError: (_) {
+          if (!failure.isCompleted) {
+            failure.complete();
+          }
+        },
+      );
+      addTearDown(subscription.cancel);
 
-    controller.add(Uint8List.fromList(<int>[0x01, 0x02, 0x03]));
-    await failure.future.timeout(const Duration(seconds: 1));
+      controller.add(Uint8List.fromList(<int>[0x01, 0x02, 0x03]));
+      await failure.future.timeout(const Duration(seconds: 1));
 
-    expect(telemetry.boundSessionIds, <String>['sess_decode_01']);
-    expect(telemetry.inboundControlFrames, 1);
-    expect(telemetry.decodeErrors, 1);
-  });
+      expect(telemetry.boundSessionIds, <String>['sess_decode_01']);
+      expect(telemetry.inboundControlFrames, 1);
+      expect(telemetry.decodeErrors, 1);
+    },
+  );
 }
 
 class _FakeSessionSocket implements SessionSocket {
@@ -445,6 +467,30 @@ class _ReadyAwareFakeSessionSocket implements SessionSocket {
   @override
   Future<void> close([int? code, String? reason]) async {
     closeCalls += 1;
+  }
+}
+
+class _StallingCloseSessionSocket implements SessionSocket {
+  _StallingCloseSessionSocket({required this.readyError})
+    : stream = const Stream<Object?>.empty();
+
+  final Object readyError;
+  int readyCalls = 0;
+  int closeCalls = 0;
+
+  @override
+  final Stream<Object?> stream;
+
+  @override
+  Future<void> ready() async {
+    readyCalls += 1;
+    throw readyError;
+  }
+
+  @override
+  Future<void> close([int? code, String? reason]) {
+    closeCalls += 1;
+    return Completer<void>().future;
   }
 }
 

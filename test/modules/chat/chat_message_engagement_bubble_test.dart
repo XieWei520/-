@@ -10,6 +10,7 @@ import 'package:wukong_im_app/modules/chat/chat_scene_providers.dart';
 import 'package:wukong_im_app/modules/chat/chat_voice_playback_controller.dart';
 import 'package:wukong_im_app/modules/chat/message_forwarding.dart';
 import 'package:wukong_im_app/modules/chat/widgets/chat_message_engagement_bubble.dart';
+import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/wukong_base/msg/reaction_manager.dart';
 import 'package:wukong_im_app/wukong_base/utils/audio_record_manager.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -18,6 +19,14 @@ import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
+  setUp(() {
+    WKAvatar.setBytesLoaderForTesting((_) async => null);
+  });
+
+  tearDown(() {
+    WKAvatar.setBytesLoaderForTesting(null);
+  });
+
   group('ChatMessageEngagementBubble', () {
     const session = ChatSession(
       channelId: 'c-1',
@@ -129,9 +138,7 @@ void main() {
       await tester.pump();
 
       expect(
-        find.byKey(
-          ValueKey<String>('chat-voice-bubble-$expectedVoiceKey'),
-        ),
+        find.byKey(ValueKey<String>('chat-voice-bubble-$expectedVoiceKey')),
         findsOneWidget,
       );
     });
@@ -139,27 +146,28 @@ void main() {
     testWidgets(
       'does not render inline add reaction button even when callback exists',
       (tester) async {
-      final message = _buildMessage(messageId: 'm-3');
-      final gateway = _FakeChatSceneGateway(
-        preparedByMessageId: const <String, List<MessageReaction>>{},
-      );
+        final message = _buildMessage(messageId: 'm-3');
+        final gateway = _FakeChatSceneGateway(
+          preparedByMessageId: const <String, List<MessageReaction>>{},
+        );
 
-      await tester.pumpWidget(
-        _buildHarness(
-          child: ChatMessageEngagementBubble(
-            session: session,
-            model: ChatMessageMapper().map(message, currentUid: 'u_self'),
-            gateway: gateway,
-            onAddReaction: () {},
+        await tester.pumpWidget(
+          _buildHarness(
+            child: ChatMessageEngagementBubble(
+              session: session,
+              model: ChatMessageMapper().map(message, currentUid: 'u_self'),
+              gateway: gateway,
+              onAddReaction: () {},
+            ),
           ),
-        ),
-      );
+        );
 
-      expect(
-        find.byKey(const ValueKey<String>('message-reaction-add')),
-        findsNothing,
-      );
-    });
+        expect(
+          find.byKey(const ValueKey<String>('message-reaction-add')),
+          findsNothing,
+        );
+      },
+    );
 
     testWidgets(
       'only matching reaction stream updates affect the target message',

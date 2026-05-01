@@ -18,8 +18,8 @@ void main() {
   );
 
   test('conversation header uses readable tab title when connected', () {
-    expect(resolveConversationHeaderTitle(WKConnectStatus.success), '聊天');
-    expect(resolveConversationHeaderTitle(WKConnectStatus.syncCompleted), '聊天');
+    expect(resolveConversationHeaderTitle(WKConnectStatus.success), '消息');
+    expect(resolveConversationHeaderTitle(WKConnectStatus.syncCompleted), '消息');
   });
 
   group('conversation preferred info maps', () {

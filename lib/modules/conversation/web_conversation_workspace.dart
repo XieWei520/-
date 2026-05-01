@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
@@ -15,6 +17,29 @@ bool shouldUseWebConversationWorkspace({
   required double viewportWidth,
 }) {
   return isWeb && WKWebBreakpoints.useDesktopWorkbench(viewportWidth);
+}
+
+@visibleForTesting
+bool shouldUseDesktopConversationWorkspace({
+  required bool isWeb,
+  required TargetPlatform platform,
+  required double viewportWidth,
+}) {
+  return WKWebBreakpoints.useDesktopWorkbench(viewportWidth) &&
+      (isWeb || _isDesktopPlatform(platform));
+}
+
+bool _isDesktopPlatform(TargetPlatform platform) {
+  switch (platform) {
+    case TargetPlatform.macOS:
+    case TargetPlatform.windows:
+    case TargetPlatform.linux:
+      return true;
+    case TargetPlatform.android:
+    case TargetPlatform.iOS:
+    case TargetPlatform.fuchsia:
+      return false;
+  }
 }
 
 class WebConversationWorkspaceSelection {
@@ -50,6 +75,7 @@ class WebConversationWorkspace extends StatefulWidget {
 
 class _WebConversationWorkspaceState extends State<WebConversationWorkspace> {
   WebConversationWorkspaceSelection? _selection;
+  bool _workbenchExpanded = true;
 
   void _openConversation(
     WKUIConversationMsg conversation,
@@ -79,15 +105,20 @@ class _WebConversationWorkspaceState extends State<WebConversationWorkspace> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportWidth = MediaQuery.sizeOf(context).width;
-        if (!shouldUseWebConversationWorkspace(
+        if (!shouldUseDesktopConversationWorkspace(
           isWeb: kIsWeb,
+          platform: defaultTargetPlatform,
           viewportWidth: viewportWidth,
         )) {
           return const ConversationListPage();
         }
         final selection = _selection;
         return WebConversationWorkspaceScaffold(
-          showRightContext: WKWebBreakpoints.showRightContext(viewportWidth),
+          showRightContext: WKWebBreakpoints.useDesktopWorkbench(viewportWidth),
+          workbenchExpanded: _workbenchExpanded,
+          onWorkbenchExpandedChanged: (expanded) {
+            setState(() => _workbenchExpanded = expanded);
+          },
           listPane: ConversationListPage(
             embedded: true,
             selectedConversationKey: selection?.key,
@@ -119,47 +150,208 @@ class WebConversationWorkspaceScaffold extends StatelessWidget {
     required this.chatPane,
     this.rightContextPane,
     this.showRightContext = false,
+    this.workbenchExpanded = true,
+    this.onWorkbenchExpandedChanged,
   });
 
   final Widget listPane;
   final Widget chatPane;
   final Widget? rightContextPane;
   final bool showRightContext;
+  final bool workbenchExpanded;
+  final ValueChanged<bool>? onWorkbenchExpandedChanged;
+
+  static const double _workbenchToggleStripWidth = 44;
+  static const double _workbenchMinWidth = 260;
+  static const double _workbenchDividerWidth = 3;
+  static const double _chatPaneCompactMinWidth = 240;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final workspaceWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final listWidth = _resolveConversationListWidth(workspaceWidth);
+        final rightContextWidth = _resolveRightContextWidth(
+          workspaceWidth,
+          listWidth,
+        );
+        final canUseRightContext =
+            showRightContext &&
+            rightContextPane != null &&
+            rightContextWidth != null;
+        final showExpandedRightContext =
+            canUseRightContext && workbenchExpanded;
+
+        return Container(
+          key: const ValueKey<String>('web-conversation-workspace'),
+          color: WKWebColors.pageWarm,
+          child: Row(
+            children: [
+              SizedBox(
+                key: const ValueKey<String>('web-conversation-list-pane'),
+                width: listWidth,
+                child: listPane,
+              ),
+              const VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: WKWebColors.borderWarm,
+              ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      right: _reservedRightContextWidth(
+                        canUseRightContext: canUseRightContext,
+                        showExpandedRightContext: showExpandedRightContext,
+                        rightContextWidth: rightContextWidth,
+                      ),
+                      child: KeyedSubtree(
+                        key: const ValueKey<String>(
+                          'web-conversation-chat-pane',
+                        ),
+                        child: chatPane,
+                      ),
+                    ),
+                    if (canUseRightContext)
+                      Positioned(
+                        top: 0,
+                        right: showExpandedRightContext ? rightContextWidth : 0,
+                        bottom: 0,
+                        width: _workbenchToggleStripWidth,
+                        child: _ConversationWorkbenchToggleRail(
+                          expanded: showExpandedRightContext,
+                          onPressed: () => onWorkbenchExpandedChanged?.call(
+                            !showExpandedRightContext,
+                          ),
+                        ),
+                      ),
+                    if (showExpandedRightContext)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        width: rightContextWidth,
+                        child: KeyedSubtree(
+                          key: const ValueKey<String>(
+                            'web-conversation-right-pane',
+                          ),
+                          child: rightContextPane!,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  double _resolveConversationListWidth(double workspaceWidth) {
+    if (!workspaceWidth.isFinite || workspaceWidth <= 0) {
+      return WKWebSizes.conversationListWidth;
+    }
+    final scaledWidth = workspaceWidth * 0.36;
+    final maxWidth =
+        workspaceWidth <=
+            WKWebSizes.conversationListMinWidth + WKWebSizes.chatPaneMinWidth
+        ? workspaceWidth * 0.42
+        : WKWebSizes.conversationListWidth;
+    final boundedMax = maxWidth.clamp(
+      WKWebSizes.conversationListMinWidth,
+      WKWebSizes.conversationListWidth,
+    );
+    return scaledWidth
+        .clamp(WKWebSizes.conversationListMinWidth, boundedMax)
+        .toDouble();
+  }
+
+  double? _resolveRightContextWidth(double workspaceWidth, double listWidth) {
+    if (!workspaceWidth.isFinite) {
+      return WKWebSizes.chatRightContextWidth;
+    }
+    final availableRightContextWidth =
+        workspaceWidth -
+        listWidth -
+        _resolveChatPaneMinWidth(workspaceWidth) -
+        _workbenchToggleStripWidth -
+        _workbenchDividerWidth;
+    if (availableRightContextWidth < _workbenchMinWidth) {
+      return null;
+    }
+    return math
+        .min(WKWebSizes.chatRightContextWidth, availableRightContextWidth)
+        .clamp(_workbenchMinWidth, WKWebSizes.chatRightContextWidth)
+        .toDouble();
+  }
+
+  double _reservedRightContextWidth({
+    required bool canUseRightContext,
+    required bool showExpandedRightContext,
+    required double? rightContextWidth,
+  }) {
+    if (!canUseRightContext) {
+      return 0;
+    }
+    return _workbenchToggleStripWidth +
+        (showExpandedRightContext ? rightContextWidth ?? 0 : 0);
+  }
+
+  double _resolveChatPaneMinWidth(double workspaceWidth) {
+    if (!workspaceWidth.isFinite || workspaceWidth <= 0) {
+      return WKWebSizes.chatPaneMinWidth;
+    }
+    return math.min(
+      WKWebSizes.chatPaneMinWidth,
+      math.max(_chatPaneCompactMinWidth, workspaceWidth * 0.24),
+    );
+  }
+}
+
+class _ConversationWorkbenchToggleRail extends StatelessWidget {
+  const _ConversationWorkbenchToggleRail({
+    required this.expanded,
+    required this.onPressed,
+  });
+
+  final bool expanded;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: const ValueKey<String>('web-conversation-workspace'),
-      color: WKWebColors.pageWarm,
-      child: Row(
-        children: [
-          SizedBox(
-            key: const ValueKey<String>('web-conversation-list-pane'),
-            width: WKWebSizes.conversationListWidth,
-            child: listPane,
-          ),
-          const VerticalDivider(
-            width: 1,
-            thickness: 1,
-            color: WKWebColors.borderWarm,
-          ),
-          Expanded(
-            key: const ValueKey<String>('web-conversation-chat-pane'),
-            child: chatPane,
-          ),
-          if (showRightContext && rightContextPane != null) ...[
-            const VerticalDivider(
-              width: 1,
-              thickness: 1,
-              color: WKWebColors.borderWarm,
+      color: WKWebColors.surface,
+      padding: const EdgeInsets.only(top: WKSpace.md),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Tooltip(
+          message: expanded ? '收起会话工作台' : '展开会话工作台',
+          child: IconButton(
+            key: const ValueKey<String>('conversation-workbench-toggle'),
+            onPressed: onPressed,
+            icon: Icon(
+              expanded
+                  ? Icons.keyboard_double_arrow_right_rounded
+                  : Icons.keyboard_double_arrow_left_rounded,
             ),
-            SizedBox(
-              key: const ValueKey<String>('web-conversation-right-pane'),
-              width: WKWebSizes.chatRightContextWidth,
-              child: rightContextPane,
+            color: WKWebColors.action,
+            style: IconButton.styleFrom(
+              backgroundColor: WKWebColors.actionSoft,
+              hoverColor: WKWebColors.borderWarm,
+              fixedSize: const Size(32, 32),
+              minimumSize: const Size(32, 32),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(WKWebRadius.control),
+              ),
             ),
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }

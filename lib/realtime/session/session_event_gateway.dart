@@ -41,7 +41,7 @@ class SessionEventGateway {
     try {
       await socket.ready();
     } catch (_) {
-      await socket.close();
+      unawaited(_closeSocketBestEffort(socket));
       rethrow;
     }
     _socket = socket;
@@ -137,5 +137,14 @@ class SessionEventGateway {
       return;
     }
     _telemetry?.bindSessionId(sessionId);
+  }
+
+  Future<void> _closeSocketBestEffort(SessionSocket socket) async {
+    try {
+      await socket.close().timeout(const Duration(seconds: 1));
+    } catch (_) {
+      // Readiness already failed; socket cleanup must not mask or block the
+      // original handshake error.
+    }
   }
 }

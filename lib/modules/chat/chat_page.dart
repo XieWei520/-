@@ -12,7 +12,7 @@ import 'chat_password_runtime.dart';
 import 'chat_page_shell.dart';
 
 export 'chat_contact_picker_dialog.dart' show ContactPickerDialog;
-export 'chat_page_shell.dart' show ChatPageShell;
+export 'chat_page_shell.dart' show ChatPageShell, shouldUseWarmWorkbenchStyle;
 export 'forward_message_page.dart' show ForwardMessagePage;
 
 class ChatPage extends ConsumerStatefulWidget {

@@ -275,6 +275,36 @@ bool shouldStartNativeSessionRuntime({required bool isWeb}) {
   return !isWeb;
 }
 
+typedef SessionRuntimeInitStarter = Future<void> Function();
+typedef SessionRuntimeInitErrorHandler =
+    void Function(Object error, StackTrace stackTrace);
+
+@visibleForTesting
+Future<bool> startSessionRuntimeForInit({
+  required SessionRuntimeInitStarter start,
+  Duration timeout = const Duration(seconds: 5),
+  SessionRuntimeInitErrorHandler? onError,
+}) async {
+  try {
+    await start().timeout(timeout);
+    return true;
+  } catch (error, stackTrace) {
+    onError?.call(error, stackTrace);
+    return false;
+  }
+}
+
+@visibleForTesting
+bool shouldDisconnectForBackgroundLifecycle({
+  required bool isWeb,
+  required bool hasActiveCallOrPendingSetup,
+}) {
+  if (isWeb) {
+    return false;
+  }
+  return !hasActiveCallOrPendingSetup;
+}
+
 class _RecoveredCallingKey {
   const _RecoveredCallingKey({
     required this.channelId,
@@ -542,10 +572,21 @@ class IMService extends StateNotifier<IMServiceState>
       _registerMessageContents();
       _bindSdkCallbacks();
       if (shouldStartNativeSessionRuntime(isWeb: kIsWeb)) {
-        await _startSessionRuntime(
-          token: credentials.apiToken,
-          deviceSessionId: credentials.deviceSessionId,
+        final sessionRuntimeStarted = await startSessionRuntimeForInit(
+          start: () => _startSessionRuntime(
+            token: credentials.apiToken,
+            deviceSessionId: credentials.deviceSessionId,
+          ),
+          onError: (Object error, StackTrace stackTrace) {
+            debugPrint(
+              'Session runtime unavailable during IM init; continuing: $error',
+            );
+            debugPrint('$stackTrace');
+          },
         );
+        if (!sessionRuntimeStarted) {
+          unawaited(_sessionRuntime.stop());
+        }
       }
 
       WKIM.shared.connectionManager.connect();
@@ -1786,7 +1827,10 @@ class IMService extends StateNotifier<IMServiceState>
         _initializedDeviceSessionId == null) {
       return;
     }
-    if (shouldKeepConnectionInBackground()) {
+    if (!shouldDisconnectForBackgroundLifecycle(
+      isWeb: kIsWeb,
+      hasActiveCallOrPendingSetup: shouldKeepConnectionInBackground(),
+    )) {
       return;
     }
     _lifecycleDisconnected = true;

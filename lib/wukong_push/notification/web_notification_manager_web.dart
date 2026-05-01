@@ -17,20 +17,15 @@ class WebNotificationManager {
   final AudioPlayer _foregroundPlayer = AudioPlayer(
     playerId: 'wk_web_notification_foreground',
   );
-  final AudioPlayer _backgroundPlayer = AudioPlayer(
-    playerId: 'wk_web_notification_background',
-  );
   final AudioPlayer _unlockPlayer = AudioPlayer(
     playerId: 'wk_web_notification_unlock',
   );
 
   String _foregroundSoundAssetPath = 'audio/im_tick.wav';
-  String _messageSoundAssetPath = 'audio/im_message.wav';
   String _unlockSoundAssetPath = 'audio/silence.wav';
   String? _notificationIcon = 'icons/Icon-192.png';
   String _notificationTag = 'wk-im-new-message';
   double _foregroundVolume = 0.35;
-  double _backgroundVolume = 1.0;
   double _unlockVolume = 1.0;
   Duration _foregroundSoundMaxDuration = const Duration(milliseconds: 180);
   Duration _titleBlinkInterval = const Duration(milliseconds: 500);
@@ -54,6 +49,8 @@ class WebNotificationManager {
   /// 此方法应在用户产生点击交互时调用，例如登录按钮、进入聊天按钮等。
   /// 浏览器通常只允许“用户手势触发”的代码请求 Notification 权限，
   /// 并且音频自动播放限制也需要在用户手势里通过一次极短播放来解锁。
+  /// 后台系统弹窗的提示音不再播放自定义音频，而是通过 Notification
+  /// options 的 silent: false 交给浏览器/操作系统使用默认通知声音。
   ///
   /// 不建议在 main()、initState() 或自动登录流程里首次调用，因为那通常
   /// 不属于浏览器认可的用户手势，可能导致权限弹窗不出现或提示音被静音。
@@ -70,12 +67,10 @@ class WebNotificationManager {
     Duration titleBlinkInterval = const Duration(milliseconds: 500),
   }) {
     _foregroundSoundAssetPath = foregroundSoundAssetPath;
-    _messageSoundAssetPath = messageSoundAssetPath;
     _unlockSoundAssetPath = unlockSoundAssetPath;
     _notificationIcon = notificationIcon;
     _notificationTag = notificationTag;
     _foregroundVolume = _normalizeVolume(foregroundVolume);
-    _backgroundVolume = _normalizeVolume(backgroundVolume);
     _unlockVolume = _normalizeVolume(unlockVolume);
     _foregroundSoundMaxDuration = foregroundSoundMaxDuration;
     _titleBlinkInterval = titleBlinkInterval;
@@ -153,7 +148,9 @@ class WebNotificationManager {
         return;
       }
 
-      await _playBackgroundMessageSound();
+      // 后台/最小化时不要再用 audioplayers 播放自定义消息音。
+      // Web 没有“直接调用系统默认提示音”的 API；正确做法是创建不静音的
+      // Notification，让浏览器和操作系统按用户当前通知设置播放默认声音。
       _showSystemNotification(title: title, body: body);
       startTitleBlink();
     } catch (error, stackTrace) {
@@ -176,7 +173,6 @@ class WebNotificationManager {
 
     await Future.wait<void>([
       _foregroundPlayer.dispose(),
-      _backgroundPlayer.dispose(),
       _unlockPlayer.dispose(),
     ]);
   }
@@ -233,7 +229,6 @@ class WebNotificationManager {
     try {
       await Future.wait<void>([
         _foregroundPlayer.setReleaseMode(ReleaseMode.stop),
-        _backgroundPlayer.setReleaseMode(ReleaseMode.stop),
         _unlockPlayer.setReleaseMode(ReleaseMode.stop),
       ]);
     } catch (error, stackTrace) {
@@ -256,19 +251,6 @@ class WebNotificationManager {
       });
     } catch (error, stackTrace) {
       _logError('播放前台极短提示音失败', error, stackTrace);
-    }
-  }
-
-  Future<void> _playBackgroundMessageSound() async {
-    try {
-      await _safeStop(_backgroundPlayer);
-      await _backgroundPlayer.play(
-        AssetSource(_messageSoundAssetPath),
-        volume: _backgroundVolume,
-        mode: PlayerMode.lowLatency,
-      );
-    } catch (error, stackTrace) {
-      _logError('播放后台新消息提示音失败', error, stackTrace);
     }
   }
 
@@ -309,7 +291,8 @@ class WebNotificationManager {
         body: body,
         tag: _notificationTag,
         renotify: true,
-        silent: true,
+        // false 表示不静音，是否真正播放默认提示音由浏览器/系统通知设置决定。
+        silent: false,
         requireInteraction: false,
       );
     }
@@ -320,7 +303,8 @@ class WebNotificationManager {
       icon: icon,
       badge: 'icons/Icon-maskable-192.png',
       renotify: true,
-      silent: true,
+      // false 表示不静音，是否真正播放默认提示音由浏览器/系统通知设置决定。
+      silent: false,
       requireInteraction: false,
     );
   }

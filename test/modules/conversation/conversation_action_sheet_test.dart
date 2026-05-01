@@ -32,8 +32,8 @@ void main() {
         find.byKey(const ValueKey<String>('conversation-delete')),
         findsOneWidget,
       );
-      expect(find.text('Pin conversation'), findsOneWidget);
-      expect(find.text('Unpin conversation'), findsNothing);
+      expect(find.text('置顶会话'), findsOneWidget);
+      expect(find.text('取消置顶'), findsNothing);
     });
 
     testWidgets('shows unpin title when conversation is pinned', (
@@ -52,8 +52,8 @@ void main() {
         ),
       );
 
-      expect(find.text('Unpin conversation'), findsOneWidget);
-      expect(find.text('Pin conversation'), findsNothing);
+      expect(find.text('取消置顶'), findsOneWidget);
+      expect(find.text('置顶会话'), findsNothing);
     });
 
     testWidgets('tap pin closes sheet and returns next pinned state', (

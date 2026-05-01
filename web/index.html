@@ -44,13 +44,6 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script>
-    window.flutterConfiguration = Object.assign({}, window.flutterConfiguration || {}, {
-      // Keep Flutter Web font fallback requests on this host. The bundled
-      // app fonts cover the UI text, and local 404s are fast if the engine
-      // probes extra fallback shards.
-      fontFallbackBaseUrl: 'assets/flutter-font-fallback/',
-    });
-
     (function wkMaybeClearLegacyFlutterServiceWorkers() {
       var bootstrapLoaded = false;
       function wkRegisterPwaServiceWorker() {

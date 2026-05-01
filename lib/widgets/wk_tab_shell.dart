@@ -45,10 +45,12 @@ class WKTabShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final useDesktopRail =
-            forceDesktopRailForTesting ||
-            (kIsWeb &&
-                WKWebBreakpoints.useDesktopWorkbench(constraints.maxWidth));
+        final useDesktopRail = shouldUseDesktopRailShell(
+          isWeb: kIsWeb,
+          platform: defaultTargetPlatform,
+          viewportWidth: constraints.maxWidth,
+          forceDesktopRail: forceDesktopRailForTesting,
+        );
         if (useDesktopRail) {
           return _buildDesktopRailShell(context);
         }
@@ -97,7 +99,7 @@ class WKTabShell extends StatelessWidget {
             key: const ValueKey<String>('wk_tab_shell_web_rail'),
             width: WKWebSizes.railWidth,
             color: WKWebColors.surface,
-            padding: const EdgeInsets.symmetric(vertical: WKSpace.sm),
+            padding: const EdgeInsets.symmetric(vertical: WKSpace.md),
             child: Column(
               children: [
                 const _WKWebBrandMark(),
@@ -118,11 +120,40 @@ class WKTabShell extends StatelessWidget {
           ),
           Expanded(
             key: const ValueKey<String>('wk_tab_shell_web_page_host'),
-            child: IndexedStack(index: currentIndex, children: pages),
+            child: IndexedStack(
+              index: currentIndex,
+              sizing: StackFit.expand,
+              children: pages,
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+@visibleForTesting
+bool shouldUseDesktopRailShell({
+  required bool isWeb,
+  required TargetPlatform platform,
+  required double viewportWidth,
+  bool forceDesktopRail = false,
+}) {
+  return forceDesktopRail ||
+      (WKWebBreakpoints.useDesktopWorkbench(viewportWidth) &&
+          (isWeb || _isDesktopPlatform(platform)));
+}
+
+bool _isDesktopPlatform(TargetPlatform platform) {
+  switch (platform) {
+    case TargetPlatform.macOS:
+    case TargetPlatform.windows:
+    case TargetPlatform.linux:
+      return true;
+    case TargetPlatform.android:
+    case TargetPlatform.iOS:
+    case TargetPlatform.fuchsia:
+      return false;
   }
 }
 
@@ -139,8 +170,8 @@ class _WKWebBrandMark extends StatelessWidget {
         child: ExcludeSemantics(
           child: Container(
             key: const ValueKey<String>('wk_tab_shell_brand_mark'),
-            width: 48,
-            height: 48,
+            width: 50,
+            height: 50,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: WKWebColors.action,
@@ -162,7 +193,7 @@ class _WKWebBrandMark extends StatelessWidget {
                 fontSize: 12,
                 height: 1.08,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 0.2,
+                letterSpacing: 0,
               ),
             ),
           ),
@@ -296,8 +327,8 @@ class _WKWebRailItem extends StatelessWidget {
               onTap: onTap,
               borderRadius: BorderRadius.circular(WKWebRadius.control),
               child: Container(
-                width: 48,
-                height: 48,
+                width: 50,
+                height: 50,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: selected ? WKWebColors.actionSoft : Colors.transparent,

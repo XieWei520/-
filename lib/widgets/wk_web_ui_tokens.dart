@@ -38,19 +38,24 @@ class WKWebRadius {
   WKWebRadius._();
 
   static const double control = WKRadius.sm;
-  static const double panel = 10;
+  static const double panel = WKRadius.md;
   static const double avatar = 12;
 }
 
 class WKWebSizes {
   WKWebSizes._();
 
-  static const double railWidth = 64;
-  static const double conversationListWidth = 336;
-  static const double conversationListMinWidth = 300;
-  static const double chatRightContextWidth = 280;
+  static const double railWidth = 72;
+  static const double conversationListWidth = 350;
+  static const double conversationListMinWidth = 260;
+  static const double chatRightContextWidth = 304;
+  static const double chatPaneMinWidth = 420;
   static const double conversationRowHeight = 76;
   static const double composerMinHeight = 72;
+  static const double messageBubbleMinWidth = 96;
+  static const double messageBubbleMaxWidth = 560;
+  static const double messageBubbleRobotMaxWidth = 460;
+  static const double messageBubbleWidthRatio = 0.72;
 }
 
 class WKWebPanel extends StatelessWidget {

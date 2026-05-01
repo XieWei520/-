@@ -16,6 +16,33 @@ void main() {
     expect(shouldStartNativeSessionRuntime(isWeb: true), isFalse);
   });
 
+  test('web IM keeps websocket alive while page is backgrounded', () {
+    expect(
+      shouldDisconnectForBackgroundLifecycle(
+        isWeb: true,
+        hasActiveCallOrPendingSetup: false,
+      ),
+      isFalse,
+    );
+  });
+
+  test('native IM may disconnect in background when no call is active', () {
+    expect(
+      shouldDisconnectForBackgroundLifecycle(
+        isWeb: false,
+        hasActiveCallOrPendingSetup: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldDisconnectForBackgroundLifecycle(
+        isWeb: false,
+        hasActiveCallOrPendingSetup: true,
+      ),
+      isFalse,
+    );
+  });
+
   test('IMService source does not import dart io directly', () {
     final source = File('lib/service/im/im_service.dart').readAsStringSync();
 

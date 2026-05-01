@@ -6,6 +6,8 @@ import 'package:wukong_im_app/app/navigation/app_route_location.dart';
 import 'package:wukong_im_app/app/navigation/app_router.dart';
 import 'package:wukong_im_app/app/navigation/auth_route_page.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
+import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
+import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 
 void main() {
   test('buildAuthRoutePage applies the shared auth transition contract', () {
@@ -34,10 +36,13 @@ void main() {
   testWidgets(
     'auth route pageBuilder preserves default route settings semantics',
     (tester) async {
+      final telemetry = RealtimeRolloutTelemetry(flushInterval: Duration.zero);
+      addTearDown(telemetry.dispose);
       final container = ProviderContainer(
         overrides: [
           authCurrentUserLoaderProvider.overrideWithValue(() async => null),
           authDraftSyncProvider.overrideWithValue(() async {}),
+          realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
         ],
       );
       addTearDown(container.dispose);

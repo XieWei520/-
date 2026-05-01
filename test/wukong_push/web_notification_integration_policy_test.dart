@@ -40,6 +40,19 @@ void main() {
     },
   );
 
+  test(
+    'background browser notifications use the system notification sound',
+    () {
+      final source = File(
+        'lib/wukong_push/notification/web_notification_manager_web.dart',
+      ).readAsStringSync();
+
+      expect(source, contains('silent: false'));
+      expect(source, isNot(contains('silent: true')));
+      expect(source, isNot(contains('await _playBackgroundMessageSound();')));
+    },
+  );
+
   test('pubspec declares bundled notification audio assets', () {
     final source = File('pubspec.yaml').readAsStringSync();
 

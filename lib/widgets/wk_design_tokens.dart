@@ -62,9 +62,10 @@ class WKTypography {
     'sans-serif',
   ];
 
+  // CanvasKit can resolve the bundled emoji shard reliably, but system emoji
+  // family names are less predictable in browser text rendering, so web keeps
+  // the packaged color emoji font first.
   static const List<String> webFontFamilyFallback = [
-    'Apple Color Emoji',
-    'Segoe UI Emoji',
     'Noto Color Emoji',
     'WKChineseWebSubset',
     'Microsoft YaHei UI',

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +31,7 @@ import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
+import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
 import 'package:wukong_im_app/wk_endpoint/core/slot_entry.dart';
 import 'package:wukong_im_app/wk_endpoint/core/slot_registry.dart';
@@ -57,14 +59,35 @@ import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
+Override _testRealtimeTelemetryOverride() {
+  return realtimeRolloutTelemetryProvider.overrideWith((ref) {
+    final telemetry = RealtimeRolloutTelemetry(flushInterval: Duration.zero);
+    ref.onDispose(telemetry.dispose);
+    return telemetry;
+  });
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('desktop chat pages use the warm workbench style on Windows', () {
+    final previousOverride = debugDefaultTargetPlatformOverride;
+    addTearDown(() => debugDefaultTargetPlatformOverride = previousOverride);
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+
+    expect(shouldUseWarmWorkbenchStyle(), isTrue);
+  });
+
   setUpAll(() async {
+    WKAvatar.setBytesLoaderForTesting((_) async => null);
     SharedPreferences.setMockInitialValues({});
     await StorageUtils.init();
     await StorageUtils.setUid('u_self');
     ApiClient.instance.dio.httpClientAdapter = _ImmediateSuccessAdapter();
+  });
+
+  tearDownAll(() {
+    WKAvatar.setBytesLoaderForTesting(null);
   });
 
   setUp(() {
@@ -79,6 +102,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
+        _testRealtimeTelemetryOverride(),
         messageListProvider.overrideWith(
           (ref, session) =>
               _EmptyMessageListNotifier(session.channelId, session.channelType),
@@ -349,6 +373,7 @@ void main() {
         ..messageContent = WKTextContent('hello kernel');
       final container = ProviderContainer(
         overrides: [
+          _testRealtimeTelemetryOverride(),
           conversationPatchTelemetryProvider.overrideWithValue(
             _NoopConversationPatchTelemetry(),
           ),
@@ -414,6 +439,7 @@ void main() {
       final readCalls = <List<String>>[];
       final container = ProviderContainer(
         overrides: [
+          _testRealtimeTelemetryOverride(),
           conversationPatchTelemetryProvider.overrideWithValue(
             _NoopConversationPatchTelemetry(),
           ),
@@ -474,6 +500,7 @@ void main() {
       final flameRuntime = _SpyChatFlameMessageRuntime();
       final container = ProviderContainer(
         overrides: [
+          _testRealtimeTelemetryOverride(),
           messageListProvider.overrideWith(
             (ref, providedSession) => _EmptyMessageListNotifier(
               providedSession.channelId,
@@ -521,6 +548,7 @@ void main() {
 
       final container = ProviderContainer(
         overrides: [
+          _testRealtimeTelemetryOverride(),
           messageListProvider.overrideWith(
             (ref, providedSession) => _EmptyMessageListNotifier(
               providedSession.channelId,
@@ -612,6 +640,7 @@ void main() {
         ..messageContent = imageContent;
       final container = ProviderContainer(
         overrides: [
+          _testRealtimeTelemetryOverride(),
           conversationPatchTelemetryProvider.overrideWithValue(
             _NoopConversationPatchTelemetry(),
           ),
@@ -644,7 +673,8 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey<String>('message-bubble-body')),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       expect(find.byType(ImageViewer), findsOneWidget);
       expect(

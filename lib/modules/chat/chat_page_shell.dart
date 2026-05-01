@@ -119,6 +119,11 @@ bool shouldTriggerOlderMessageLoad({
 }
 
 @visibleForTesting
+bool shouldUseWarmWorkbenchStyle() {
+  return PlatformUtils.isWeb || PlatformUtils.isDesktop;
+}
+
+@visibleForTesting
 double chatListCacheExtent({
   required double viewportHeight,
   required TargetPlatform platform,
@@ -756,7 +761,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     final keyboardInset = PlatformUtils.isMobile
         ? MediaQuery.viewInsetsOf(context).bottom
         : 0.0;
-    final useWarmWebStyle = PlatformUtils.isWeb;
+    final useWarmWorkbenchStyle = shouldUseWarmWorkbenchStyle();
 
     return PopScope<void>(
       onPopInvokedWithResult: (didPop, result) {
@@ -765,12 +770,12 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         }
       },
       child: Scaffold(
-        backgroundColor: useWarmWebStyle
+        backgroundColor: useWarmWorkbenchStyle
             ? WKWebColors.pageWarm
             : WKColors.homeBg,
         resizeToAvoidBottomInset: false,
         appBar: AppBar(
-          backgroundColor: useWarmWebStyle
+          backgroundColor: useWarmWorkbenchStyle
               ? WKWebColors.surface
               : WKColors.homeBg,
           surfaceTintColor: Colors.transparent,
@@ -925,7 +930,9 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                 key: const ValueKey<String>('chat-background-surface'),
                 option: selectedChatBackground,
                 fallbackStyle: fallbackBackgroundStyle,
-                fallbackColor: useWarmWebStyle ? WKWebColors.pageWarm : null,
+                fallbackColor: useWarmWorkbenchStyle
+                    ? WKWebColors.pageWarm
+                    : null,
               ),
             ),
             AnimatedPadding(
@@ -1055,7 +1062,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                       onBuild: widget.onViewportBuild,
                       onPinnedMessageToggled: _handlePinnedMessageToggled,
                       restoreAnchor: _restoreAnchor,
-                      webStyle: useWarmWebStyle,
+                      webStyle: useWarmWorkbenchStyle,
                       onPersistenceSnapshotChanged:
                           _handleViewportPersistenceSnapshotChanged,
                       onRestoreAnchorApplied: widget.onRestoreAnchorApplied,
@@ -1067,7 +1074,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                     robotMenus: _robotMenus,
                     showCallActions: _showCallActions(),
                     showGroupCallAction: _showGroupCallAction(),
-                    webStyle: useWarmWebStyle,
+                    webStyle: useWarmWorkbenchStyle,
                     onAudioCallTap: () =>
                         unawaited(_handleCallActionTap(CallType.audio)),
                     onVideoCallTap: () =>
@@ -2978,121 +2985,143 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
   }) {
     final canSend =
         composerState.text.trim().isNotEmpty && !_isSubmittingComposer;
-    late final Widget inlineActionButton;
-    if (flameEnabled) {
-      inlineActionButton = _ComposerToolbarButton(
-        key: const ValueKey<String>('chat-flame-toggle-button'),
-        asset: WKReferenceAssets.flameSmall,
-        artworkExtent: _composerActionIconExtent,
-        fit: BoxFit.contain,
-        onTap: composerController.toggleFlamePanel,
-      );
-    } else {
-      inlineActionButton = _ComposerToolbarButton(
-        key: const ValueKey<String>('chat-compose-rich-text-button'),
-        asset: WKReferenceAssets.chatRichEdit,
-        artworkExtent: _composerActionIconExtent,
-        fit: BoxFit.contain,
-        onTap: () => unawaited(
-          _executeChatAction(ChatActionId.composeRichText, composerController),
-        ),
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            constraints.maxWidth.isFinite && constraints.maxWidth < 360;
+        final gap = compact ? 6.0 : 8.0;
+        final actionExtent = compact ? 42.0 : _composerActionButtonExtent;
+        final iconExtent = compact ? 22.0 : _composerActionIconExtent;
+        late final Widget inlineActionButton;
+        if (flameEnabled) {
+          inlineActionButton = _ComposerToolbarButton(
+            key: const ValueKey<String>('chat-flame-toggle-button'),
+            asset: WKReferenceAssets.flameSmall,
+            extent: actionExtent,
+            artworkExtent: iconExtent,
+            fit: BoxFit.contain,
+            onTap: composerController.toggleFlamePanel,
+          );
+        } else {
+          inlineActionButton = _ComposerToolbarButton(
+            key: const ValueKey<String>('chat-compose-rich-text-button'),
+            asset: WKReferenceAssets.chatRichEdit,
+            extent: actionExtent,
+            artworkExtent: iconExtent,
+            fit: BoxFit.contain,
+            onTap: () => unawaited(
+              _executeChatAction(
+                ChatActionId.composeRichText,
+                composerController,
+              ),
+            ),
+          );
+        }
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Expanded(
-          child: composerState.showVoiceInput
-              ? ValueListenableBuilder<ChatVoiceRecordingState>(
-                  valueListenable: voiceService.recordingStateListenable,
-                  builder: (context, voiceState, _) {
-                    return ChatVoicePressHoldButton(
-                      key: const ValueKey<String>('chat-voice-record-button'),
-                      isRecording: _isVoiceSessionActive(voiceState),
-                      onHoldStart: _startVoiceRecording,
-                      onCancelZoneChanged: voiceService.setCancelCandidate,
-                      onHoldRelease: (isInCancelZone) => _finishVoiceRecording(
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: composerState.showVoiceInput
+                  ? ValueListenableBuilder<ChatVoiceRecordingState>(
+                      valueListenable: voiceService.recordingStateListenable,
+                      builder: (context, voiceState, _) {
+                        return ChatVoicePressHoldButton(
+                          key: const ValueKey<String>(
+                            'chat-voice-record-button',
+                          ),
+                          isRecording: _isVoiceSessionActive(voiceState),
+                          onHoldStart: _startVoiceRecording,
+                          onCancelZoneChanged: voiceService.setCancelCandidate,
+                          onHoldRelease: (isInCancelZone) =>
+                              _finishVoiceRecording(
+                                composerController,
+                                shouldSend: !isInCancelZone,
+                              ),
+                          onHoldAbort: _cancelVoiceRecording,
+                        );
+                      },
+                    )
+                  : CallbackShortcuts(
+                      bindings: <ShortcutActivator, VoidCallback>{
+                        const SingleActivator(
+                          LogicalKeyboardKey.enter,
+                          shift: true,
+                        ): () => _insertTextAtCursor(
+                          '\n',
+                          composerController,
+                          mentionsController,
+                        ),
+                        const SingleActivator(
+                          LogicalKeyboardKey.numpadEnter,
+                          shift: true,
+                        ): () => _insertTextAtCursor(
+                          '\n',
+                          composerController,
+                          mentionsController,
+                        ),
+                        const SingleActivator(LogicalKeyboardKey.enter): () =>
+                            _handleKeyboardSend(
+                              composerController,
+                              mentionsController,
+                            ),
+                        const SingleActivator(
+                          LogicalKeyboardKey.numpadEnter,
+                        ): () => _handleKeyboardSend(
+                          composerController,
+                          mentionsController,
+                        ),
+                      },
+                      child: TextField(
+                        key: const ValueKey<String>('chat-input-field'),
+                        controller: _textController,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontFamily: WKFontFamily.primary,
+                          fontFamilyFallback: WKTypography.fontFamilyFallback,
+                        ),
+                        onTap: composerController.hidePanels,
+                        onChanged: (value) => _handleTextChanged(
+                          value,
+                          composerController,
+                          mentionsController,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '\u8f93\u5165\u6d88\u606f',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          filled: true,
+                          fillColor: WKColors.surfaceSoft,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: compact ? 12 : 16,
+                            vertical: 8,
+                          ),
+                        ),
+                        maxLines: 4,
+                        minLines: 1,
+                      ),
+                    ),
+            ),
+            SizedBox(width: gap),
+            inlineActionButton,
+            if (!composerState.showVoiceInput) ...[
+              SizedBox(width: gap),
+              _ComposerSendButton(
+                enabled: canSend,
+                extent: actionExtent,
+                iconExtent: iconExtent,
+                onTap: canSend
+                    ? () => _handleSendPressed(
                         composerController,
-                        shouldSend: !isInCancelZone,
-                      ),
-                      onHoldAbort: _cancelVoiceRecording,
-                    );
-                  },
-                )
-              : CallbackShortcuts(
-                  bindings: <ShortcutActivator, VoidCallback>{
-                    const SingleActivator(
-                      LogicalKeyboardKey.enter,
-                      shift: true,
-                    ): () => _insertTextAtCursor(
-                      '\n',
-                      composerController,
-                      mentionsController,
-                    ),
-                    const SingleActivator(
-                      LogicalKeyboardKey.numpadEnter,
-                      shift: true,
-                    ): () => _insertTextAtCursor(
-                      '\n',
-                      composerController,
-                      mentionsController,
-                    ),
-                    const SingleActivator(LogicalKeyboardKey.enter): () =>
-                        _handleKeyboardSend(
-                          composerController,
-                          mentionsController,
-                        ),
-                    const SingleActivator(LogicalKeyboardKey.numpadEnter): () =>
-                        _handleKeyboardSend(
-                          composerController,
-                          mentionsController,
-                        ),
-                  },
-                  child: TextField(
-                    key: const ValueKey<String>('chat-input-field'),
-                    controller: _textController,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontFamily: WKFontFamily.primary,
-                      fontFamilyFallback: WKTypography.fontFamilyFallback,
-                    ),
-                    onTap: composerController.hidePanels,
-                    onChanged: (value) => _handleTextChanged(
-                      value,
-                      composerController,
-                      mentionsController,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: '\u8f93\u5165\u6d88\u606f',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: WKColors.surfaceSoft,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                    maxLines: 4,
-                    minLines: 1,
-                  ),
-                ),
-        ),
-        const SizedBox(width: 8),
-        inlineActionButton,
-        if (!composerState.showVoiceInput) ...[
-          const SizedBox(width: 8),
-          _ComposerSendButton(
-            enabled: canSend,
-            onTap: canSend
-                ? () =>
-                      _handleSendPressed(composerController, mentionsController)
-                : null,
-          ),
-        ],
-      ],
+                        mentionsController,
+                      )
+                    : null,
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 
@@ -4717,26 +4746,25 @@ class _ComposerToolbarButton extends StatelessWidget {
     super.key,
     required this.asset,
     this.onTap,
+    this.extent = _composerActionButtonExtent,
     this.artworkExtent = _composerToolbarArtworkExtent,
     this.fit = BoxFit.fill,
   });
 
   final String asset;
   final VoidCallback? onTap;
+  final double extent;
   final double artworkExtent;
   final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: _composerActionButtonExtent,
-      height: _composerActionButtonExtent,
+      width: extent,
+      height: extent,
       child: IconButton(
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
-          width: _composerActionButtonExtent,
-          height: _composerActionButtonExtent,
-        ),
+        constraints: BoxConstraints.tightFor(width: extent, height: extent),
         onPressed: onTap ?? () {},
         icon: asset.trim().isEmpty
             ? SizedBox(width: artworkExtent, height: artworkExtent)
@@ -4817,10 +4845,17 @@ class _ComposerCallToolbarButton extends StatelessWidget {
 }
 
 class _ComposerSendButton extends StatefulWidget {
-  const _ComposerSendButton({required this.enabled, this.onTap});
+  const _ComposerSendButton({
+    required this.enabled,
+    this.onTap,
+    this.extent = _composerActionButtonExtent,
+    this.iconExtent = _composerActionIconExtent,
+  });
 
   final bool enabled;
   final VoidCallback? onTap;
+  final double extent;
+  final double iconExtent;
 
   @override
   State<_ComposerSendButton> createState() => _ComposerSendButtonState();
@@ -4862,20 +4897,20 @@ class _ComposerSendButtonState extends State<_ComposerSendButton> {
             : const Duration(milliseconds: 140),
         curve: Curves.easeOutCubic,
         child: SizedBox(
-          width: _composerActionButtonExtent,
-          height: _composerActionButtonExtent,
+          width: widget.extent,
+          height: widget.extent,
           child: IconButton(
             key: const ValueKey<String>('chat-send-button'),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(
-              width: _composerActionButtonExtent,
-              height: _composerActionButtonExtent,
+            constraints: BoxConstraints.tightFor(
+              width: widget.extent,
+              height: widget.extent,
             ),
             onPressed: widget.enabled ? widget.onTap : null,
             icon: WKReferenceAssets.image(
               WKReferenceAssets.chatSend,
-              width: _composerActionIconExtent,
-              height: _composerActionIconExtent,
+              width: widget.iconExtent,
+              height: widget.iconExtent,
               tint: widget.enabled ? WKColors.brand500 : WKColors.popupText,
             ),
           ),

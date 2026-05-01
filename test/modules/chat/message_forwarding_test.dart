@@ -47,13 +47,13 @@ void main() {
         (target) => target.channelId == 'g2002',
       );
       expect(groupTarget.isGroup, isTrue);
-      expect(groupTarget.subtitle, 'Group chat');
+      expect(groupTarget.subtitle, '群聊');
 
       final personalTarget = targets.firstWhere(
         (target) => target.channelId == 'u_bob',
       );
       expect(personalTarget.isGroup, isFalse);
-      expect(personalTarget.subtitle, 'Direct chat');
+      expect(personalTarget.subtitle, '单聊');
       expect(personalTarget.displayName, 'Bobby');
     },
   );

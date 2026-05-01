@@ -3,6 +3,7 @@ import 'dart:ui' show SemanticsAction;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/widgets/wk_tab_shell.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 
 void main() {
   final items = <WKTabShellItemData>[
@@ -14,6 +15,33 @@ void main() {
     ),
     const WKTabShellItemData(label: 'Me', normalIcon: '', selectedIcon: ''),
   ];
+
+  test('desktop rail policy includes native Windows workspaces', () {
+    expect(
+      shouldUseDesktopRailShell(
+        isWeb: false,
+        platform: TargetPlatform.windows,
+        viewportWidth: 1200,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldUseDesktopRailShell(
+        isWeb: false,
+        platform: TargetPlatform.android,
+        viewportWidth: 1200,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldUseDesktopRailShell(
+        isWeb: true,
+        platform: TargetPlatform.android,
+        viewportWidth: 1200,
+      ),
+      isTrue,
+    );
+  });
 
   testWidgets('desktop Web rail replaces bottom tabs when forced', (
     tester,
@@ -120,6 +148,84 @@ void main() {
     } finally {
       semanticsHandle.dispose();
     }
+  });
+
+  testWidgets('desktop Web rail follows the approved adaptive preview sizing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 1200,
+          height: 800,
+          child: WKTabShell(
+            currentIndex: 0,
+            items: items,
+            pages: const <Widget>[
+              Text('chat page'),
+              Text('contacts page'),
+              Text('mine page'),
+            ],
+            onTap: (_) {},
+            forceDesktopRailForTesting: true,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('wk_tab_shell_web_rail')))
+          .width,
+      WKWebSizes.railWidth,
+    );
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey<String>('wk_tab_shell_brand_mark')),
+      ),
+      const Size(50, 50),
+    );
+  });
+
+  testWidgets('desktop rail constrains pages to the remaining host width', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 1200,
+          height: 800,
+          child: WKTabShell(
+            currentIndex: 0,
+            items: items,
+            pages: const <Widget>[
+              ColoredBox(
+                key: ValueKey<String>('desktop-constrained-page'),
+                color: Colors.red,
+              ),
+              SizedBox(),
+              SizedBox(),
+            ],
+            onTap: (_) {},
+            forceDesktopRailForTesting: true,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey<String>('desktop-constrained-page')),
+          )
+          .width,
+      1200 - WKWebSizes.railWidth - 1,
+    );
   });
 
   testWidgets('bottom tabs remain available when desktop rail is not used', (

@@ -26,6 +26,7 @@ import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/service/api/user_api.dart';
 import 'package:wukong_im_app/widgets/wk_main_top_bar.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 import 'package:wukong_im_app/wukong_base/endpoint/entity/contacts_menu.dart';
 
 void main() {
@@ -101,7 +102,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Contacts'), findsOneWidget);
+    expect(find.text('联系人'), findsOneWidget);
     expect(find.text('\u65b0\u670b\u53cb'), findsOneWidget);
     expect(find.text('\u4fdd\u5b58\u7684\u7fa4\u804a'), findsOneWidget);
     expect(find.text('\u670b\u53cb\u5708'), findsOneWidget);
@@ -534,11 +535,7 @@ void main() {
       wrapWithApp(
         ContactsPage(
           friendsStateOverride: AsyncValue.data([
-            Friend.fromJson({
-              'uid': 'u_vip',
-              'name': 'VIP Alice',
-              'vip_level': 1,
-            }),
+            Friend(uid: 'u_vip', name: 'VIP Alice', vipLevel: 1),
           ]),
           requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
           contactPresenceOverrides: const {},
@@ -681,7 +678,7 @@ void main() {
 
       await tester.tap(find.byType(WKTopBarActionButton).last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add friend'));
+      await tester.tap(find.text('添加好友'));
       await tester.pumpAndSettle();
 
       expect(find.text(vipRequiredMessage), findsOneWidget);
@@ -692,7 +689,7 @@ void main() {
 
       await tester.tap(find.byType(WKTopBarActionButton).last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Create group'));
+      await tester.tap(find.text('创建群聊'));
       await tester.pumpAndSettle();
 
       expect(find.text(vipRequiredMessage), findsOneWidget);
@@ -701,6 +698,11 @@ void main() {
   );
 
   testWidgets('contacts page can render inside warm Web frame', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(home: ContactsPage(forceWebFrameForTesting: true)),
@@ -712,6 +714,13 @@ void main() {
       find.byKey(const ValueKey<String>('contacts-web-frame')),
       findsOneWidget,
     );
+    final panelFinder = find.byKey(
+      const ValueKey<String>('contacts-web-panel'),
+    );
+    expect(panelFinder, findsOneWidget);
+    expect(tester.getSize(panelFinder).width, lessThanOrEqualTo(920));
+    final panel = tester.widget<WKWebPanel>(panelFinder);
+    expect(panel.color, WKWebColors.surface);
   });
 }
 

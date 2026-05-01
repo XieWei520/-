@@ -414,6 +414,88 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets(
+    'workplace app tile keeps actions within a narrow mobile layout',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final service = WorkplaceCatalogService(
+        fetchBanners: () async => const <WorkplaceBanner>[],
+        fetchAddedApps: () async => const <WorkplaceApp>[
+          WorkplaceApp(
+            appId: 'collaboration-suite',
+            sortNum: 1,
+            icon: '',
+            name: 'Very Long Collaboration Suite Name',
+            description:
+                'A detailed workplace tool description that must wrap safely.',
+            appCategory: 'oa',
+            status: 1,
+            jumpType: 0,
+            appRoute: '',
+            webRoute: 'https://suite.example.com',
+            isPaidApp: 0,
+            isAdded: true,
+          ),
+          WorkplaceApp(
+            appId: 'docs',
+            sortNum: 2,
+            icon: '',
+            name: 'Docs',
+            description: 'Documentation',
+            appCategory: 'oa',
+            status: 1,
+            jumpType: 0,
+            appRoute: '',
+            webRoute: 'https://docs.example.com',
+            isPaidApp: 0,
+            isAdded: true,
+          ),
+        ],
+        fetchRecordedApps: () async => const <WorkplaceApp>[],
+        fetchCategories: () async => const <WorkplaceCategory>[],
+        fetchAppsByCategory: (_) async => const <WorkplaceApp>[],
+      );
+
+      await tester.pumpWidget(
+        _buildHost(
+          WorkplaceCatalogPage(
+            service: service,
+            launchUrlExternally: (_) async => true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+
+      final tileFinder = find.byKey(
+        const ValueKey<String>('workplace-my-app-collaboration-suite'),
+      );
+      final actionsFinder = find.byKey(
+        const ValueKey<String>('workplace-app-actions-collaboration-suite'),
+      );
+      expect(tileFinder, findsOneWidget);
+      expect(actionsFinder, findsOneWidget);
+
+      final tileRect = tester.getRect(tileFinder);
+      final actionsRect = tester.getRect(actionsFinder);
+      expect(actionsRect.left, greaterThanOrEqualTo(tileRect.left));
+      expect(actionsRect.right, lessThanOrEqualTo(tileRect.right));
+      expect(
+        actionsRect.top,
+        greaterThan(
+          tester
+              .getBottomLeft(find.text('Very Long Collaboration Suite Name'))
+              .dy,
+        ),
+      );
+    },
+  );
 }
 
 Widget _buildHost(Widget home) {

@@ -9,7 +9,7 @@ void main() {
 
       expect(strings.newFriends, '新朋友');
       expect(strings.savedGroups, '保存的群聊');
-      expect(strings.contactsTitle, '通讯录');
+      expect(strings.contactsTitle, '联系人');
       expect(strings.newFriendsTitle, '新朋友');
       expect(strings.selectContactsTitle, '选择联系人');
       expect(strings.confirmWithCount(2), '确定(2)');
@@ -23,7 +23,7 @@ void main() {
 
         expect(strings.newFriends, '新朋友');
         expect(strings.savedGroups, '保存的群聊');
-        expect(strings.contactsTitle, '通讯录');
+        expect(strings.contactsTitle, '联系人');
         expect(strings.newFriendsTitle, '新朋友');
         expect(strings.selectContactsTitle, '选择联系人');
         expect(strings.confirmWithCount(2), '确定(2)');

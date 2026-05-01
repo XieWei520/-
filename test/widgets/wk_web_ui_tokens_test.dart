@@ -41,6 +41,16 @@ void main() {
     expect(WKWebBreakpoints.showRightContext(1280), isTrue);
   });
 
+  test('Web preview layout tokens expose adaptive pane and bubble limits', () {
+    expect(WKWebSizes.railWidth, 72);
+    expect(WKWebSizes.conversationListWidth, 350);
+    expect(WKWebSizes.conversationListMinWidth, 260);
+    expect(WKWebSizes.chatRightContextWidth, 304);
+    expect(WKWebSizes.chatPaneMinWidth, 420);
+    expect(WKWebSizes.messageBubbleMaxWidth, 560);
+    expect(WKWebSizes.messageBubbleWidthRatio, 0.72);
+  });
+
   testWidgets('WKWebPanel paints warm border and stable radius', (
     tester,
   ) async {

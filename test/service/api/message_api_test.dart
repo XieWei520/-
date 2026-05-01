@@ -197,6 +197,37 @@ void main() {
       expect(requestedPaths, <String>['/v1/conversation/clearUnread']);
     });
 
+    test('markAsRead treats missing remote messages as idempotent', () async {
+      RequestOptions? capturedOptions;
+      final adapter = _RoutingJsonAdapter((options) {
+        if (options.method.toUpperCase() == 'POST' &&
+            options.uri.path == '/v1/message/readed') {
+          capturedOptions = options;
+          return _MockJsonResponse(<String, dynamic>{
+            'code': 400,
+            'msg': '没有读取到消息！',
+          }, statusCode: 400);
+        }
+
+        return _MockJsonResponse(<String, dynamic>{
+          'code': 404,
+          'msg': 'Unhandled request: ${options.method} ${options.uri.path}',
+        }, statusCode: 404);
+      });
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+
+      await MessageApi.instance.markAsRead(
+        channelId: 'u_stale_receipt',
+        channelType: WKChannelType.personal,
+        messageIds: <String>[' 2048641330791223300 ', '2048641330791223300'],
+      );
+
+      expect(capturedOptions, isNotNull);
+      expect(capturedOptions!.data['message_ids'], <String>[
+        '2048641330791223300',
+      ]);
+    });
+
     test(
       'revokeMessage sends revoke identity and channel coordinates as query params',
       () async {
@@ -237,39 +268,42 @@ void main() {
       },
     );
 
-    test('deleteMessage sends delete-msg array contract expected by server', () async {
-      RequestOptions? capturedOptions;
-      final adapter = _RoutingJsonAdapter((options) {
-        if (options.method.toUpperCase() == 'DELETE' &&
-            options.uri.path == '/v1/message') {
-          capturedOptions = options;
-          return _MockJsonResponse(<String, dynamic>{'code': 0});
-        }
+    test(
+      'deleteMessage sends delete-msg array contract expected by server',
+      () async {
+        RequestOptions? capturedOptions;
+        final adapter = _RoutingJsonAdapter((options) {
+          if (options.method.toUpperCase() == 'DELETE' &&
+              options.uri.path == '/v1/message') {
+            capturedOptions = options;
+            return _MockJsonResponse(<String, dynamic>{'code': 0});
+          }
 
-        return _MockJsonResponse(<String, dynamic>{
-          'code': 404,
-          'msg': 'Unhandled request: ${options.method} ${options.uri.path}',
-        }, statusCode: 404);
-      });
-      ApiClient.instance.dio.httpClientAdapter = adapter;
+          return _MockJsonResponse(<String, dynamic>{
+            'code': 404,
+            'msg': 'Unhandled request: ${options.method} ${options.uri.path}',
+          }, statusCode: 404);
+        });
+        ApiClient.instance.dio.httpClientAdapter = adapter;
 
-      final dynamic api = MessageApi.instance;
-      await api.deleteMessage(
-        messageId: '1046196978106142720',
-        messageSeq: 77,
-        channelId: 'u-delete-target',
-        channelType: WKChannelType.personal,
-      );
+        final dynamic api = MessageApi.instance;
+        await api.deleteMessage(
+          messageId: '1046196978106142720',
+          messageSeq: 77,
+          channelId: 'u-delete-target',
+          channelType: WKChannelType.personal,
+        );
 
-      expect(capturedOptions, isNotNull);
-      expect(capturedOptions!.data, isA<List<dynamic>>());
-      final payload = (capturedOptions!.data as List<dynamic>).single as Map;
-      expect(payload['message_id'], '1046196978106142720');
-      expect(payload['message_seq'], 77);
-      expect(payload['channel_id'], 'u-delete-target');
-      expect(payload['channel_type'], WKChannelType.personal);
-      expect(payload.containsKey('client_msg_no'), isFalse);
-    });
+        expect(capturedOptions, isNotNull);
+        expect(capturedOptions!.data, isA<List<dynamic>>());
+        final payload = (capturedOptions!.data as List<dynamic>).single as Map;
+        expect(payload['message_id'], '1046196978106142720');
+        expect(payload['message_seq'], 77);
+        expect(payload['channel_id'], 'u-delete-target');
+        expect(payload['channel_type'], WKChannelType.personal);
+        expect(payload.containsKey('client_msg_no'), isFalse);
+      },
+    );
   });
 }
 

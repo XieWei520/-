@@ -66,12 +66,21 @@ class AuthActionButton extends StatelessWidget {
               ),
             ),
           )
-        : Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (leading != null) ...[leading!, const SizedBox(width: 8)],
-              Text(label, style: labelStyle),
-            ],
+        : FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (leading != null) ...[leading!, const SizedBox(width: 8)],
+                Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.visible,
+                  style: labelStyle,
+                ),
+              ],
+            ),
           );
 
     final Widget button = _isPrimary

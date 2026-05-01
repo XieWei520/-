@@ -1130,6 +1130,124 @@ void main() {
       },
     );
 
+    testWidgets(
+      'rich media bubbles shrink rendered media to narrow Android lane',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(320, 720);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        Widget host(WKMsg message) {
+          return MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 320,
+                child: MessageBubble(
+                  model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+                  participant: const MessageParticipantInfo(
+                    displayName: 'Me',
+                    avatarUrl: null,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        final imageMessage = WKMsg()
+          ..fromUID = 'u_me'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.image
+          ..messageContent = (WKImageContent(918, 352)
+            ..url = '/uploads/narrow-panel.png')
+          ..status = WKSendMsgResult.sendSuccess;
+
+        await tester.pumpWidget(host(imageMessage));
+
+        var bubbleWidth = tester
+            .getSize(find.byKey(const ValueKey<String>('message-bubble-body')))
+            .width;
+        var cachedMedia = tester.widget<CachedMediaImage>(
+          find.byType(CachedMediaImage),
+        );
+        expect(cachedMedia.width, lessThan(200));
+        expect(cachedMedia.width, lessThanOrEqualTo(bubbleWidth - 20 + 0.1));
+        expect(tester.takeException(), isNull);
+
+        final videoMessage = WKMsg()
+          ..fromUID = 'u_me'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.video
+          ..messageContent = (WKVideoContent()
+            ..cover = '/uploads/narrow-cover.jpg'
+            ..width = 1920
+            ..height = 1080)
+          ..status = WKSendMsgResult.sendSuccess;
+
+        await tester.pumpWidget(host(videoMessage));
+
+        bubbleWidth = tester
+            .getSize(find.byKey(const ValueKey<String>('message-bubble-body')))
+            .width;
+        cachedMedia = tester.widget<CachedMediaImage>(
+          find.byType(CachedMediaImage),
+        );
+        expect(cachedMedia.width, lessThan(200));
+        expect(cachedMedia.width, lessThanOrEqualTo(bubbleWidth - 20 + 0.1));
+        expect(cachedMedia.height, closeTo(cachedMedia.width! * 0.75, 0.1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('sticker bubble shrinks body to narrow Android lane', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.sticker
+        ..messageContent = WKStickerContent(
+          packId: 'narrow',
+          stickerId: 'fallback',
+          fallbackText: '[贴纸]',
+        )
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              child: MessageBubble(
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+                participant: const MessageParticipantInfo(
+                  displayName: 'Me',
+                  avatarUrl: null,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final bubbleWidth = tester
+          .getSize(find.byKey(const ValueKey<String>('message-bubble-body')))
+          .width;
+      final stickerBody = tester.widget<SizedBox>(
+        find.byKey(const ValueKey<String>('message-sticker-body')),
+      );
+      expect(stickerBody.width, lessThan(160));
+      expect(stickerBody.width, lessThanOrEqualTo(bubbleWidth - 20 + 0.1));
+      expect(stickerBody.height, stickerBody.width);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('remote image bubble uses the shared media cache pipeline', (
       tester,
     ) async {
@@ -1633,6 +1751,139 @@ void main() {
       },
     );
 
+    testWidgets(
+      'file location card reply and system bubbles stay within narrow Android lane',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(280, 700);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final cases = <WKMsg>[
+          WKMsg()
+            ..fromUID = 'u_peer'
+            ..channelType = WKChannelType.personal
+            ..contentType = WkMessageContentType.unknown
+            ..messageContent = WKUnknownContent()
+            ..content =
+                '{"type":${WkMessageContentType.file},"name":"extremely-long-product-manual-name-that-must-ellipsis.pdf","size":2048}',
+          WKMsg()
+            ..fromUID = 'u_peer'
+            ..channelType = WKChannelType.personal
+            ..contentType = WkMessageContentType.unknown
+            ..messageContent = WKUnknownContent()
+            ..content =
+                '{"type":${WkMessageContentType.location},"title":"Very Long Location Title That Should Ellipsis","address":"Long address line that should wrap without overflowing the message lane"}',
+          WKMsg()
+            ..fromUID = 'u_peer'
+            ..channelType = WKChannelType.personal
+            ..contentType = WkMessageContentType.card
+            ..messageContent = WKCardContent(
+              'u_card',
+              'Long Contact Display Name That Should Ellipsis Safely',
+            ),
+          WKMsg()
+            ..fromUID = 'u_peer'
+            ..channelType = WKChannelType.personal
+            ..contentType = WkMessageContentType.text
+            ..messageContent = (WKTextContent('reply body stays readable')
+              ..reply = (WKReply()
+                ..fromName = 'Reply Author With Long Name'
+                ..payload = WKTextContent(
+                  'quoted message text that should wrap safely',
+                ))),
+          WKMsg()
+            ..fromUID = 'u_peer'
+            ..channelType = WKChannelType.group
+            ..contentType = WkMessageContentType.unknown
+            ..messageContent = WKUnknownContent()
+            ..content =
+                '{"content":"Long system notice should render readable wrapped text instead of raw json","type":1001}',
+        ];
+
+        for (final message in cases) {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: SizedBox(
+                  width: 280,
+                  child: MessageBubble(
+                    model: ChatMessageMapper().map(
+                      message,
+                      currentUid: 'u_self',
+                    ),
+                    participant: const MessageParticipantInfo(
+                      displayName: 'Peer',
+                      avatarUrl: null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+
+          final bubbleFinder = find.byKey(
+            const ValueKey<String>('message-bubble-body'),
+          );
+          if (bubbleFinder.evaluate().isNotEmpty) {
+            final bubbleWidth = tester.getSize(bubbleFinder).width;
+            expect(bubbleWidth, lessThanOrEqualTo(280));
+          }
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
+
+    testWidgets(
+      'robot card bubble constrains long badge in a narrow Android lane',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(260, 700);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final message = WKMsg()
+          ..fromUID = 'u_robot'
+          ..channelType = WKChannelType.group
+          ..contentType = MsgContentType.robotCard
+          ..messageContent = (WKRobotCardContent()
+            ..robotProvider = 'feishu'
+            ..robotName = 'Very Long Robot Name That Should Truncate'
+            ..title = 'A long robot card title that should wrap safely'
+            ..body = 'Long robot card body content that stays inside the card.'
+            ..badge = 'EXTREMELY_LONG_NOTICE_BADGE_FOR_TESTING'
+            ..linkUrl = 'https://example.com/detail'
+            ..plainText = 'robot card narrow lane');
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 260,
+                child: MessageBubble(
+                  model: ChatMessageMapper().map(message, currentUid: 'u_self'),
+                  participant: const MessageParticipantInfo(
+                    displayName: 'Robot',
+                    avatarUrl: null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final bubbleWidth = tester
+            .getSize(find.byKey(const ValueKey<String>('message-bubble-body')))
+            .width;
+        final cardWidth = tester
+            .getSize(find.byKey(const ValueKey<String>('robot-message-card')))
+            .width;
+
+        expect(cardWidth, lessThanOrEqualTo(bubbleWidth + 0.1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('warm Web text bubble uses approved outgoing color', (
       tester,
     ) async {
@@ -1660,6 +1911,46 @@ void main() {
       final decoration = body.decoration! as BoxDecoration;
       expect(decoration.color, const Color(0xFFFFEDD5));
     });
+
+    testWidgets(
+      'warm Web text bubble caps itself to the chat lane instead of the whole window',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(1440, 900);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final message = WKMsg()
+          ..fromUID = 'u_me'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.text
+          ..messageContent = WKTextContent(
+            'This warm web message is intentionally long so the bubble has to wrap within the approved max width rather than stretching across the whole desktop workspace.',
+          )
+          ..status = WKSendMsgResult.sendSuccess;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                webStyle: true,
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          tester
+              .getSize(
+                find.byKey(const ValueKey<String>('message-bubble-body')),
+              )
+              .width,
+          lessThanOrEqualTo(WKWebSizes.messageBubbleMaxWidth),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets(
       'warm Web outgoing text bubble uses dark readable content and metadata colors',

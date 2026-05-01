@@ -17,6 +17,7 @@ import 'package:wukong_im_app/modules/vip/vip_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_management_page.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/widgets/wk_colors.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 import 'package:wukong_im_app/wk_endpoint/core/slot_entry.dart';
 import 'package:wukong_im_app/wk_endpoint/core/slot_registry.dart';
 import 'package:wukong_im_app/wk_endpoint/providers/slot_registry_provider.dart';
@@ -235,7 +236,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.text('Me'), findsOneWidget);
+      expect(find.text('我的'), findsOneWidget);
 
       final menuItemElements = find
           .byWidgetPredicate((widget) {
@@ -677,6 +678,35 @@ void main() {
       find.byKey(const ValueKey<String>('user-web-frame')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('user web profile header uses approved warm adaptive card', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1280, 900);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: UserPage(forceWebFrameForTesting: true)),
+      ),
+    );
+    await tester.pump();
+
+    final cardFinder = find.byKey(const ValueKey<String>('user-profile-card'));
+    expect(cardFinder, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('user-profile-accent')),
+      findsOneWidget,
+    );
+
+    final card = tester.widget<Container>(cardFinder);
+    final decoration = card.decoration as BoxDecoration;
+    expect(decoration.color, WKWebColors.surfaceSoft);
+    expect(decoration.borderRadius, BorderRadius.circular(WKWebRadius.panel));
+    expect((decoration.border as Border).top.color, WKWebColors.borderWarm);
   });
 }
 

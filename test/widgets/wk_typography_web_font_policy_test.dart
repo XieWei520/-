@@ -28,15 +28,14 @@ void main() {
     expect(fallback, isNot(contains('Noto Sans CJK SC')));
     expect(fallback, isNot(contains('Source Han Sans SC')));
     expect(fallback, isNot(contains('Roboto')));
-    expect(fallback, contains('Apple Color Emoji'));
-    expect(fallback, contains('Segoe UI Emoji'));
+    expect(fallback.first, 'Noto Color Emoji');
     expect(fallback, contains('Noto Color Emoji'));
     expect(
-      fallback.indexOf('Segoe UI Emoji'),
+      fallback.indexOf('Noto Color Emoji'),
       lessThan(fallback.indexOf('WKChineseWebSubset')),
     );
     expect(
-      fallback.indexOf('Segoe UI Emoji'),
+      fallback.indexOf('Noto Color Emoji'),
       lessThan(fallback.indexOf('Segoe UI')),
     );
   });
@@ -51,13 +50,7 @@ void main() {
       expect(fallback, isNot(contains('Noto Sans CJK SC')));
       expect(fallback, isNot(contains('Source Han Sans SC')));
       expect(fallback, isNot(contains('Roboto')));
-      expect(fallback, contains('Apple Color Emoji'));
-      expect(fallback, contains('Segoe UI Emoji'));
       expect(fallback, contains('Noto Color Emoji'));
-      expect(
-        fallback.indexOf('Segoe UI Emoji'),
-        lessThan(fallback.indexOf('Segoe UI')),
-      );
       expect(WKTypography.fontFamilyFallback, same(fallback));
     },
   );

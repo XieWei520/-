@@ -404,110 +404,153 @@ class _ProfileHeader extends StatelessWidget {
         final headerWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final contentHorizontalPadding = headerWidth < 280 ? 16.0 : 24.0;
+        final contentHorizontalPadding = headerWidth < 280
+            ? WKSpace.md
+            : WKSpace.xl;
+        final avatarSize = headerWidth < 320 ? 76.0 : 88.0;
+        final accentHeight = headerWidth < 320 ? 68.0 : 78.0;
 
-        return ConstrainedBox(
-          constraints: BoxConstraints(minHeight: 245, minWidth: headerWidth),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: WKReferenceAssets.image(
-                    WKReferenceAssets.myBackground,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 50,
-                right: 30,
-                child: GestureDetector(
-                  key: const ValueKey<String>('user_profile_qr'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onQrTap,
-                  child: WKReferenceAssets.image(
-                    WKReferenceAssets.qrCode,
-                    width: 22,
-                    height: 22,
-                    tint: WKColors.popupText,
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: double.infinity,
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 18),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(height: 100),
-                        GestureDetector(
-                          key: const ValueKey<String>('user_profile_avatar'),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: onAvatarTap,
-                          child: WKAvatar(url: avatarUrl, name: name, size: 90),
-                        ),
-                        const SizedBox(height: 15),
-                        Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: contentHorizontalPadding,
-                          ),
-                          child: LayoutBuilder(
-                            builder: (context, identityConstraints) {
-                              final textScale = MediaQuery.textScalerOf(
-                                context,
-                              ).scale(1);
-                              final useCompactBadges =
-                                  identityConstraints.maxWidth < 300 ||
-                                  textScale > 1.2;
-
-                              return Wrap(
-                                alignment: WrapAlignment.center,
-                                runAlignment: WrapAlignment.center,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                spacing: 8,
-                                runSpacing: 5,
-                                children: [
-                                  ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      maxWidth: identityConstraints.maxWidth,
-                                    ),
-                                    child: Text(
-                                      name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontFamily: WKFontFamily.title,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
-                                        color: WKColors.colorDark,
-                                      ),
-                                    ),
-                                  ),
-                                  if (showVipBadge)
-                                    VipBadge(compact: useCompactBadges),
-                                  if (showCustomerServiceBadge)
-                                    CustomerServiceBadge(
-                                      key: const ValueKey<String>(
-                                        'user-profile-customer-service-badge',
-                                      ),
-                                      compact: useCompactBadges,
-                                    ),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(
+            WKSpace.md,
+            WKSpace.md,
+            WKSpace.md,
+            WKSpace.lg,
+          ),
+          child: Container(
+            key: const ValueKey<String>('user-profile-card'),
+            width: double.infinity,
+            constraints: const BoxConstraints(minHeight: 224),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: WKWebColors.surfaceSoft,
+              borderRadius: BorderRadius.circular(WKWebRadius.panel),
+              border: Border.all(color: WKWebColors.borderWarm),
+              boxShadow: WKShadows.soft,
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: accentHeight,
+                  child: Container(
+                    key: const ValueKey<String>('user-profile-accent'),
+                    decoration: const BoxDecoration(
+                      color: WKWebColors.actionSoft,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(WKWebRadius.panel),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                Positioned(
+                  top: WKSpace.lg,
+                  right: WKSpace.lg,
+                  child: GestureDetector(
+                    key: const ValueKey<String>('user_profile_qr'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onQrTap,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: WKWebColors.surface,
+                        borderRadius: BorderRadius.circular(
+                          WKWebRadius.control,
+                        ),
+                        border: Border.all(color: WKWebColors.borderWarm),
+                      ),
+                      child: WKReferenceAssets.image(
+                        WKReferenceAssets.qrCode,
+                        width: 20,
+                        height: 20,
+                        tint: WKWebColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    contentHorizontalPadding,
+                    accentHeight - 24,
+                    contentHorizontalPadding,
+                    WKSpace.lg,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        key: const ValueKey<String>('user_profile_avatar'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onAvatarTap,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: WKWebColors.surface,
+                            shape: BoxShape.circle,
+                          ),
+                          child: WKAvatar(
+                            url: avatarUrl,
+                            name: name,
+                            size: avatarSize,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: WKSpace.md),
+                      LayoutBuilder(
+                        builder: (context, identityConstraints) {
+                          final textScale = MediaQuery.textScalerOf(
+                            context,
+                          ).scale(1);
+                          final useCompactBadges =
+                              identityConstraints.maxWidth < 300 ||
+                              textScale > 1.2;
+
+                          return Wrap(
+                            alignment: WrapAlignment.center,
+                            runAlignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: WKSpace.xs,
+                            runSpacing: WKSpace.xs,
+                            children: [
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: identityConstraints.maxWidth,
+                                ),
+                                child: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontFamily: WKFontFamily.title,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    color: WKWebColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              if (showVipBadge)
+                                VipBadge(compact: useCompactBadges),
+                              if (showCustomerServiceBadge)
+                                CustomerServiceBadge(
+                                  key: const ValueKey<String>(
+                                    'user-profile-customer-service-badge',
+                                  ),
+                                  compact: useCompactBadges,
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

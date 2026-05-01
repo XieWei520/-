@@ -211,12 +211,12 @@ String resolveConversationHeaderTitle(int connectionStatus) {
     case WKConnectStatus.connecting:
       return '连接中...';
     case WKConnectStatus.syncMsg:
-      return '同步中...';
+      return '同步消息中...';
     case WKConnectStatus.noNetwork:
     case WKConnectStatus.fail:
-      return '未连接';
+      return '连接已断开';
     default:
-      return '聊天';
+      return '消息';
   }
 }
 

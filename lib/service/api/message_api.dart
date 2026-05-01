@@ -56,6 +56,25 @@ class MessageApi {
     return response != null && _isNotFoundResponse(response);
   }
 
+  bool _isMissingMessageReadResponse(Response<dynamic> response) {
+    final body = _resolveBody(response.data);
+    final code = body['code'];
+    final status = body['status'];
+    final message = (body['msg'] ?? body['message'] ?? '').toString();
+    final isBadRequest =
+        response.statusCode == 400 ||
+        (code is num && code.toInt() == 400) ||
+        (status is num && status.toInt() == 400);
+    return isBadRequest &&
+        (message.contains('没有读取到消息') ||
+            message.toLowerCase().contains('message not found'));
+  }
+
+  bool _isMissingMessageReadError(DioException error) {
+    final response = error.response;
+    return response != null && _isMissingMessageReadResponse(response);
+  }
+
   Future<SyncMessagesResp> syncMessages({
     required int lastSeq,
     int limit = 50,
@@ -269,15 +288,25 @@ class MessageApi {
       return;
     }
 
-    final response = await _client.post(
-      '/v1/message/readed',
-      data: {
-        'channel_id': channelId,
-        'channel_type': channelType,
-        'message_ids': normalizedMessageIds,
-      },
-    );
-    _ensureSuccess(response, fallback: '鏍囪宸茶澶辫触');
+    try {
+      final response = await _client.post(
+        '/v1/message/readed',
+        data: {
+          'channel_id': channelId,
+          'channel_type': channelType,
+          'message_ids': normalizedMessageIds,
+        },
+      );
+      if (_isMissingMessageReadResponse(response)) {
+        return;
+      }
+      _ensureSuccess(response, fallback: 'message read receipt failed');
+    } on DioException catch (error) {
+      if (_isMissingMessageReadError(error)) {
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> clearUnread({

@@ -771,7 +771,7 @@ void main() {
       find.byKey(const ValueKey<String>('auth-web-login-description')),
       findsOneWidget,
     );
-    expect(find.textContaining('Web'), findsWidgets);
+    expect(find.textContaining('网页端'), findsWidgets);
   });
 
   testWidgets('third login polling is serialized and handles failed status', (

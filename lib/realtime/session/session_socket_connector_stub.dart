@@ -1,12 +1,18 @@
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'session_socket.dart';
+import 'session_socket_auth.dart';
 
 SessionSocket createDefaultSessionSocket(
   Uri uri, {
   Map<String, String>? headers,
 }) {
-  return _WebSessionSocket(WebSocketChannel.connect(uri));
+  return _WebSessionSocket(
+    WebSocketChannel.connect(
+      uri,
+      protocols: buildBrowserSessionSocketProtocols(headers),
+    ),
+  );
 }
 
 class _WebSessionSocket implements SessionSocket {

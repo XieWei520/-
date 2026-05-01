@@ -701,43 +701,104 @@ class _WorkplaceAppTile extends StatelessWidget {
         ? (app.webRoute.trim().isNotEmpty ? app.webRoute : app.appRoute)
         : app.description;
     final showReorderControls = moveUpAction != null || moveDownAction != null;
-    return ListTile(
-      leading: _buildIconAvatar(context, title),
-      title: Text(title),
-      subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-      trailing: Wrap(
-        spacing: WKSpace.xs,
-        children: [
-          TextButton(
-            key: ValueKey<String>('workplace-app-open-${app.appId}'),
-            onPressed: busy ? null : onOpen,
-            child: Text(openLabel),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final horizontalPadding = availableWidth < 340
+            ? WKSpace.md
+            : WKSpace.lg;
+        final innerWidth = availableWidth - (horizontalPadding * 2);
+        final compact = innerWidth < 500;
+        final actionAreaMaxWidth = compact ? innerWidth : 284.0;
+        final actionLabelMaxWidth =
+            (compact ? (innerWidth - WKSpace.xs) / 2 : 116.0)
+                .clamp(72.0, 128.0)
+                .toDouble();
+        final details = _WorkplaceAppTileDetails(
+          title: title,
+          subtitle: subtitle,
+        );
+        final actions = ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: actionAreaMaxWidth),
+          child: Wrap(
+            key: ValueKey<String>('workplace-app-actions-${app.appId}'),
+            spacing: WKSpace.xs,
+            runSpacing: WKSpace.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              TextButton(
+                key: ValueKey<String>('workplace-app-open-${app.appId}'),
+                onPressed: busy ? null : onOpen,
+                child: _WorkplaceActionLabel(
+                  label: openLabel,
+                  maxWidth: actionLabelMaxWidth,
+                ),
+              ),
+              FilledButton.tonal(
+                key: ValueKey<String>('workplace-app-toggle-${app.appId}'),
+                onPressed: busy ? null : onToggle,
+                child: _WorkplaceActionLabel(
+                  label: app.isAdded ? removeLabel : addLabel,
+                  maxWidth: actionLabelMaxWidth,
+                ),
+              ),
+              if (showReorderControls)
+                IconButton(
+                  key: ValueKey<String>('workplace-app-move-up-${app.appId}'),
+                  onPressed: busy ? null : moveUpAction,
+                  icon: const Icon(Icons.arrow_upward_rounded),
+                  color: WKColors.color999,
+                ),
+              if (showReorderControls)
+                IconButton(
+                  key: ValueKey<String>('workplace-app-move-down-${app.appId}'),
+                  onPressed: busy ? null : moveDownAction,
+                  icon: const Icon(Icons.arrow_downward_rounded),
+                  color: WKColors.color999,
+                ),
+            ],
           ),
-          FilledButton.tonal(
-            key: ValueKey<String>('workplace-app-toggle-${app.appId}'),
-            onPressed: busy ? null : onToggle,
-            child: Text(app.isAdded ? removeLabel : addLabel),
+        );
+        final leading = _buildIconAvatar(context, title);
+
+        return Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: WKSpace.sm,
           ),
-          if (showReorderControls)
-            IconButton(
-              key: ValueKey<String>('workplace-app-move-up-${app.appId}'),
-              onPressed: busy ? null : moveUpAction,
-              icon: const Icon(Icons.arrow_upward_rounded),
-              color: WKColors.color999,
-            ),
-          if (showReorderControls)
-            IconButton(
-              key: ValueKey<String>('workplace-app-move-down-${app.appId}'),
-              onPressed: busy ? null : moveDownAction,
-              icon: const Icon(Icons.arrow_downward_rounded),
-              color: WKColors.color999,
-            ),
-        ],
-      ),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: WKSpace.lg,
-        vertical: WKSpace.xs,
-      ),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        leading,
+                        const SizedBox(width: WKSpace.md),
+                        Expanded(child: details),
+                      ],
+                    ),
+                    const SizedBox(height: WKSpace.sm),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: actions,
+                    ),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    leading,
+                    const SizedBox(width: WKSpace.md),
+                    Expanded(child: details),
+                    const SizedBox(width: WKSpace.md),
+                    actions,
+                  ],
+                ),
+        );
+      },
     );
   }
 
@@ -777,6 +838,58 @@ class _WorkplaceAppTile extends StatelessWidget {
       child: Text(
         title.isEmpty ? '?' : title.substring(0, 1).toUpperCase(),
         style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _WorkplaceAppTileDetails extends StatelessWidget {
+  const _WorkplaceAppTileDetails({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: WKSpace.xxs),
+        Text(
+          subtitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: WKColors.color999),
+        ),
+      ],
+    );
+  }
+}
+
+class _WorkplaceActionLabel extends StatelessWidget {
+  const _WorkplaceActionLabel({required this.label, required this.maxWidth});
+
+  final String label;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_agreement_block.dart';
+import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_action_button.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_experience_tokens.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_flow_shell.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_form_field.dart';
@@ -265,6 +266,33 @@ void main() {
     final size = tester.getSize(toggleFinder);
     expect(size.width, greaterThanOrEqualTo(44));
     expect(size.height, greaterThanOrEqualTo(44));
+  });
+
+  testWidgets('AuthActionButton adapts long labels without layout overflow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 120,
+              child: AuthActionButton(
+                label: 'Continue with secure device handoff',
+                onPressed: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byType(AuthActionButton)),
+      const Size(120, AuthExperienceTokens.actionButtonHeight),
+    );
   });
 
   testWidgets('AuthAgreementBlock renders links as focusable controls', (

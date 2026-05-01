@@ -42,20 +42,24 @@ void main() {
     'web entrypoint only clears legacy Flutter caches when explicitly requested',
     () {
       final index = File('web/index.html').readAsStringSync();
+      final bootstrap = File('web/flutter_bootstrap.js').readAsStringSync();
 
       expect(index, contains('wkMaybeClearLegacyFlutterServiceWorkers'));
       expect(index, contains('wk_reset_sw'));
       expect(index, contains('loadBootstrap();'));
-      expect(index, contains('fontFallbackBaseUrl'));
-      expect(index, contains('assets/flutter-font-fallback/'));
       expect(index, contains('navigator.serviceWorker.getRegistrations'));
       expect(index, contains('caches.keys'));
       expect(index, contains('!shouldResetLegacyWorkers'));
       expect(index, isNot(contains('wkClearLegacyFlutterServiceWorkers')));
+      expect(index, isNot(contains('window.flutterConfiguration')));
+      expect(index, isNot(contains('fontFallbackBaseUrl')));
       expect(
         index,
         isNot(contains('<script src="flutter_bootstrap.js" async></script>')),
       );
+
+      expect(bootstrap, contains('fontFallbackBaseUrl'));
+      expect(bootstrap, contains('assets/flutter-font-fallback/'));
     },
   );
 
