@@ -10,18 +10,18 @@ void main() {
   group('buildWebMessageAlertPlan', () {
     test('builds a personal incoming text alert from channel display name', () {
       final message =
-          _textMessage(fromUid: 'alice', channelId: 'alice', text: '你好，Web')
+          _textMessage(fromUid: 'alice', channelId: 'alice', text: 'hello web')
             ..setFrom(
               WKChannel('alice', WKChannelType.personal)
-                ..channelRemark = 'Alice 备注'
+                ..channelRemark = 'Alice remark'
                 ..channelName = 'Alice',
             );
 
       final plan = buildWebMessageAlertPlan(message, currentUid: 'me');
 
       expect(plan, isNotNull);
-      expect(plan!.title, 'Alice 备注');
-      expect(plan.body, '你好，Web');
+      expect(plan!.title, 'Alice remark');
+      expect(plan.body, 'hello web');
     });
 
     test('builds a group incoming alert with sender and group names', () {
@@ -30,30 +30,31 @@ void main() {
               fromUid: 'alice',
               channelId: 'group-1',
               channelType: WKChannelType.group,
-              text: '群消息',
+              text: 'group message',
             )
             ..setMemberOfFrom(WKChannelMember()..memberName = 'Alice')
             ..setChannelInfo(
-              WKChannel('group-1', WKChannelType.group)..channelName = '产品群',
+              WKChannel('group-1', WKChannelType.group)
+                ..channelName = 'Product group',
             );
 
       final plan = buildWebMessageAlertPlan(message, currentUid: 'me');
 
       expect(plan, isNotNull);
-      expect(plan!.title, 'Alice · 产品群');
-      expect(plan.body, '群消息');
+      expect(plan!.title, 'Alice - Product group');
+      expect(plan.body, 'group message');
     });
 
     test('skips self messages and invisible internal messages', () {
       final selfMessage = _textMessage(
         fromUid: 'me',
         channelId: 'alice',
-        text: '我自己发的',
+        text: 'self',
       );
       final internalMessage = _textMessage(
         fromUid: 'alice',
         channelId: 'alice',
-        text: '内部指令',
+        text: 'internal',
       )..contentType = WkMessageContentType.insideMsg;
 
       expect(buildWebMessageAlertPlan(selfMessage, currentUid: 'me'), isNull);
