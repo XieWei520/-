@@ -38,6 +38,8 @@ import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import '../../wukong_base/msg/msg_content_type.dart';
 import '../../wukong_base/db/db_helper.dart';
+import '../../wukong_push/notification/desktop_message_alert_manager.dart';
+import '../../wukong_push/notification/message_alert_plan.dart';
 import '../../wukong_push/notification/web_message_alert_plan.dart';
 import '../../wukong_push/notification/web_notification_manager.dart';
 import '../api/file_api.dart';
@@ -430,6 +432,7 @@ class IMService extends StateNotifier<IMServiceState>
   bool _listenersBound = false;
   bool _lifecycleObserverBound = false;
   bool _lifecycleDisconnected = false;
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   String? _initializedUid;
   String? _initializedApiToken;
   String? _initializedToken;
@@ -1186,6 +1189,8 @@ class IMService extends StateNotifier<IMServiceState>
       }
       if (kIsWeb) {
         _scheduleWebMessageAlert(message, currentUid: currentUid);
+      } else if (defaultTargetPlatform == TargetPlatform.windows) {
+        _scheduleDesktopMessageAlert(message, currentUid: currentUid);
       }
     }
   }
@@ -1204,6 +1209,27 @@ class IMService extends StateNotifier<IMServiceState>
       );
     } catch (error, stackTrace) {
       debugPrint('Web message alert scheduling failed: $error');
+      debugPrint('$stackTrace');
+    }
+  }
+
+  void _scheduleDesktopMessageAlert(
+    WKMsg message, {
+    required String currentUid,
+  }) {
+    try {
+      final plan = buildMessageAlertPlan(message, currentUid: currentUid);
+      if (plan == null) {
+        return;
+      }
+      unawaited(
+        DesktopMessageAlertManager.instance.showNewMessageAlert(
+          plan: plan,
+          lifecycleState: _appLifecycleState,
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Desktop message alert scheduling failed: $error');
       debugPrint('$stackTrace');
     }
   }
@@ -1757,6 +1783,7 @@ class IMService extends StateNotifier<IMServiceState>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
     switch (state) {
       case AppLifecycleState.resumed:
         _resumeAfterLifecycleDisconnect();
