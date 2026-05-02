@@ -360,6 +360,106 @@ void main() {
     );
 
     test(
+      'ignores pending call fallback responses after stop invalidates the loop',
+      () async {
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        var fetchCount = 0;
+        final fetchCompleter = Completer<List<CallRoom>>();
+        final loop = PendingCallRecoveryLoop(
+          callStore: store,
+          fetchPendingCalls: ({required fallback}) {
+            fetchCount++;
+            expect(fallback, isTrue);
+            return fetchCompleter.future;
+          },
+          currentUidReader: () => 'u_self',
+          degradedThreshold: Duration.zero,
+          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+          delay: (_) => Completer<void>().future,
+        );
+        addTearDown(loop.stop);
+
+        loop.setGatewayDegradationReader((_) => true);
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 1);
+        expect(store.state.isActive, isFalse);
+
+        loop.stop();
+        fetchCompleter.complete(<CallRoom>[
+          CallRoom(
+            roomId: 'room_stale_stop_01',
+            callerUid: 'u_peer',
+            calleeUid: 'u_self',
+            callType: CallType.video,
+            status: CallRoomStatus.pending,
+            callerName: 'Peer',
+          ),
+        ]);
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(store.state.isActive, isFalse);
+        expect(store.state.roomId, isNot('room_stale_stop_01'));
+        expect(store.state.status, CallLifecycleStatus.idle);
+      },
+    );
+
+    test(
+      'uses a positive degradation wake delay when threshold is zero and reader stays false',
+      () async {
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        var fetchCount = 0;
+        final scheduledDelays = <Duration>[];
+        final delayCompleters = <Completer<void>>[];
+        final loop = PendingCallRecoveryLoop(
+          callStore: store,
+          fetchPendingCalls: ({required fallback}) async {
+            fetchCount++;
+            return <CallRoom>[];
+          },
+          currentUidReader: () => 'u_self',
+          degradedThreshold: Duration.zero,
+          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+          delay: (delay) {
+            scheduledDelays.add(delay);
+            final completer = Completer<void>();
+            delayCompleters.add(completer);
+            return completer.future;
+          },
+        );
+        addTearDown(loop.stop);
+
+        loop.setGatewayDegradationReader((_) => false);
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 0);
+        expect(scheduledDelays, <Duration>[Duration(milliseconds: 1)]);
+
+        delayCompleters.single.complete();
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 0);
+        expect(scheduledDelays, <Duration>[
+          Duration(milliseconds: 1),
+          Duration(milliseconds: 1),
+        ]);
+      },
+    );
+
+    test(
       'can disable safety polling and only poll when gateway is degraded',
       () async {
         final store = CallStore(machine: const CallStateMachine());

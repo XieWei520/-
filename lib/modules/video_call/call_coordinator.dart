@@ -131,10 +131,25 @@ class PendingCallRecoveryLoop {
   }
 
   Future<int> syncOnce() async {
-    if (!shouldPoll) {
+    return _syncOnceWhileCurrent(() => shouldPoll);
+  }
+
+  Future<int> _syncOnceForGeneration(int generation) async {
+    return _syncOnceWhileCurrent(() => generation == _generation && shouldPoll);
+  }
+
+  Future<int> _syncOnceWhileCurrent(bool Function() isCurrent) async {
+    if (!isCurrent()) {
       return 0;
     }
     final rooms = await _fetchPendingCalls(fallback: true);
+    if (!isCurrent()) {
+      return 0;
+    }
+    return _applyPendingRooms(rooms);
+  }
+
+  int _applyPendingRooms(List<CallRoom> rooms) {
     var accepted = 0;
     for (final room in rooms) {
       final event = _mapRoom(room);
@@ -230,7 +245,7 @@ class PendingCallRecoveryLoop {
 
   Future<void> _wakeAfterDegradationThreshold(int generation) async {
     try {
-      await _delay(degradedThreshold);
+      await _delay(_degradationWakeDelay);
     } catch (error, stackTrace) {
       debugPrint('Pending call fallback degradation wake failed: $error');
       debugPrint('$stackTrace');
@@ -254,14 +269,14 @@ class PendingCallRecoveryLoop {
     try {
       while (generation == _generation && shouldPoll) {
         try {
-          final accepted = await syncOnce();
-          if (!shouldPoll || accepted > 0) {
+          final accepted = await _syncOnceForGeneration(generation);
+          if (generation != _generation || !shouldPoll || accepted > 0) {
             break;
           }
         } catch (error, stackTrace) {
           debugPrint('Pending call fallback poll failed: $error');
           debugPrint('$stackTrace');
-          if (!shouldPoll) {
+          if (generation != _generation || !shouldPoll) {
             break;
           }
         }
@@ -279,6 +294,13 @@ class PendingCallRecoveryLoop {
         _scheduleDegradationWakeIfNeeded();
       }
     }
+  }
+
+  Duration get _degradationWakeDelay {
+    if (degradedThreshold > Duration.zero) {
+      return degradedThreshold;
+    }
+    return const Duration(milliseconds: 1);
   }
 
   Duration _nextDelay() {
