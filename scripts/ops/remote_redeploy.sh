@@ -8,17 +8,55 @@ BACKUP_DIR="${REMOTE_ROOT}/backups/releases"
 RELEASE_BASE_URL="${RELEASE_BASE_URL:-}"
 ALLOW_HTTP_RELEASE_PROBES="${ALLOW_HTTP_RELEASE_PROBES:-0}"
 
+trim_release_base_url_edges() {
+  local value="$1"
+  value="${value//$'\r'/}"
+  value="${value//$'\n'/}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s\n' "${value}"
+}
+
+normalize_release_base_url() {
+  local base_url="$1"
+  base_url="$(trim_release_base_url_edges "${base_url}")"
+
+  if (( ${#base_url} >= 2 )); then
+    local first_char="${base_url:0:1}"
+    local last_char="${base_url: -1}"
+    if [[ ( "${first_char}" == '"' && "${last_char}" == '"' ) || ( "${first_char}" == "'" && "${last_char}" == "'" ) ]]; then
+      base_url="${base_url:1:${#base_url}-2}"
+      base_url="$(trim_release_base_url_edges "${base_url}")"
+    fi
+  fi
+
+  local base_url_lc="${base_url,,}"
+  while [[ "${base_url}" == */ && "${base_url_lc}" != "http://" && "${base_url_lc}" != "https://" ]]; do
+    base_url="${base_url%/}"
+    base_url_lc="${base_url,,}"
+  done
+
+  printf '%s\n' "${base_url}"
+}
+
 resolve_release_base_url() {
   if [[ -n "${RELEASE_BASE_URL}" ]]; then
-    printf '%s\n' "${RELEASE_BASE_URL%/}"
-    return 0
+    local explicit_base_url=""
+    explicit_base_url="$(normalize_release_base_url "${RELEASE_BASE_URL}")"
+    if [[ -n "${explicit_base_url}" ]]; then
+      printf '%s\n' "${explicit_base_url}"
+      return 0
+    fi
   fi
 
   local env_base_url=""
   env_base_url="$(grep -E '^TSDD_BASE_URL=' "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
   if [[ -n "${env_base_url}" ]]; then
-    printf '%s\n' "${env_base_url%/}"
-    return 0
+    env_base_url="$(normalize_release_base_url "${env_base_url}")"
+    if [[ -n "${env_base_url}" ]]; then
+      printf '%s\n' "${env_base_url}"
+      return 0
+    fi
   fi
 
   printf '%s\n' 'https://infoequity.qingyunshe.top'
@@ -26,7 +64,8 @@ resolve_release_base_url() {
 
 assert_release_base_url_safe() {
   local base_url="$1"
-  if [[ "${base_url}" == http://* && "${ALLOW_HTTP_RELEASE_PROBES}" != "1" ]]; then
+  local base_url_lc="${base_url,,}"
+  if [[ "${base_url_lc}" == http://* && "${ALLOW_HTTP_RELEASE_PROBES}" != "1" ]]; then
     cat >&2 <<EOF
 Refusing production release probes over HTTP: ${base_url}
 Use RELEASE_BASE_URL=https://infoequity.qingyunshe.top or set ALLOW_HTTP_RELEASE_PROBES=1 only for an explicit local-only diagnostic.
