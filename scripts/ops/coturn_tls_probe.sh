@@ -15,7 +15,7 @@ docker compose --env-file .env exec -T coturn sh -lc 'id; test -r /etc/coturn/ce
 echo "== coturn recent TLS/config warnings =="
 docker compose --env-file .env logs --tail=200 coturn 2>/dev/null \
   | grep -Ei 'bad configuration|cannot find private key|cannot start TLS|DTLS|TLS|WARNING|ERROR' \
-  | sed -E 's/(static-auth-secret|realm|user|password|secret|key)([^[:space:]]*)[=:][^[:space:]]+/\1\2=<redacted>/Ig' \
+  | sed -E 's/(static-auth-secret|realm|user|password|secret|key)([^[:space:]:=]*)([[:space:]]*[:=][[:space:]]*)[^[:space:]]+/\1\2\3<redacted>/Ig' \
   || true
 
 echo "== STUN 3478 probe =="
@@ -28,4 +28,13 @@ docker compose --env-file .env exec -T coturn turnutils_uclient \
 
 echo "== TURNS 5349 TLS handshake probe =="
 docker compose --env-file .env exec -T coturn sh -lc \
-  "printf '' | openssl s_client -connect ${TURN_HOST}:5349 -servername ${TURN_REALM} -brief 2>/dev/null | head -20"
+  '
+host=$1
+realm=$2
+tmp="${TMPDIR:-/tmp}/coturn_tls_probe.$$"
+trap '\''rm -f "${tmp}"'\'' EXIT
+openssl_status=0
+openssl s_client -connect "${host}:5349" -servername "${realm}" -brief </dev/null >"${tmp}" 2>/dev/null || openssl_status=$?
+head -20 "${tmp}"
+exit "${openssl_status}"
+' sh "${TURN_HOST}" "${TURN_REALM}"
