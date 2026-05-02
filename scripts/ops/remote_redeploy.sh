@@ -5,6 +5,35 @@ REMOTE_ROOT="${1:-/opt/wukongim-prod/src/deploy/production}"
 ENV_FILE="${REMOTE_ROOT}/.env"
 TIMESTAMP="$(date +%Y%m%d%H%M%S)"
 BACKUP_DIR="${REMOTE_ROOT}/backups/releases"
+RELEASE_BASE_URL="${RELEASE_BASE_URL:-}"
+ALLOW_HTTP_RELEASE_PROBES="${ALLOW_HTTP_RELEASE_PROBES:-0}"
+
+resolve_release_base_url() {
+  if [[ -n "${RELEASE_BASE_URL}" ]]; then
+    printf '%s\n' "${RELEASE_BASE_URL%/}"
+    return 0
+  fi
+
+  local env_base_url=""
+  env_base_url="$(grep -E '^TSDD_BASE_URL=' "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+  if [[ -n "${env_base_url}" ]]; then
+    printf '%s\n' "${env_base_url%/}"
+    return 0
+  fi
+
+  printf '%s\n' 'https://infoequity.qingyunshe.top'
+}
+
+assert_release_base_url_safe() {
+  local base_url="$1"
+  if [[ "${base_url}" == http://* && "${ALLOW_HTTP_RELEASE_PROBES}" != "1" ]]; then
+    cat >&2 <<EOF
+Refusing production release probes over HTTP: ${base_url}
+Use RELEASE_BASE_URL=https://infoequity.qingyunshe.top or set ALLOW_HTTP_RELEASE_PROBES=1 only for an explicit local-only diagnostic.
+EOF
+    return 1
+  fi
+}
 
 : "${BUILD_VERSION:?BUILD_VERSION is required}"
 : "${BUILD_COMMIT:?BUILD_COMMIT is required}"
@@ -57,11 +86,14 @@ docker compose --env-file .env up -d --no-deps tsdd-api callgateway
 wait_for_health tsdd-api 180
 wait_for_health callgateway 180
 
-echo "== smoke =="
-python3 scripts/smoke_test.py --base-url http://127.0.0.1 --timeout 10
+RELEASE_BASE_URL="$(resolve_release_base_url)"
+assert_release_base_url_safe "${RELEASE_BASE_URL}"
 
-echo "== perf =="
-python3 scripts/perf_probe.py --base-url http://127.0.0.1 --samples 20 --timeout 10
+echo "== smoke (${RELEASE_BASE_URL}) =="
+python3 scripts/smoke_test.py --base-url "${RELEASE_BASE_URL}" --timeout 10
+
+echo "== perf (${RELEASE_BASE_URL}) =="
+python3 scripts/perf_probe.py --base-url "${RELEASE_BASE_URL}" --samples 20 --timeout 10
 
 python3 - "${ENV_FILE}" <<'PY'
 import os
