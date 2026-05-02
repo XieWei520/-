@@ -411,7 +411,57 @@ void main() {
     );
 
     test(
-      'uses a positive degradation wake delay when threshold is zero and reader stays false',
+      'starts a fresh poll after stop/start invalidates an in-flight poll',
+      () async {
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        var fetchCount = 0;
+        final fetchCompleters = <Completer<List<CallRoom>>>[];
+        final loop = PendingCallRecoveryLoop(
+          callStore: store,
+          fetchPendingCalls: ({required fallback}) {
+            fetchCount++;
+            expect(fallback, isTrue);
+            final completer = Completer<List<CallRoom>>();
+            fetchCompleters.add(completer);
+            return completer.future;
+          },
+          currentUidReader: () => 'u_self',
+          degradedThreshold: Duration.zero,
+          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+          delay: (_) => Completer<void>().future,
+        );
+        addTearDown(() {
+          loop.stop();
+          for (final completer in fetchCompleters) {
+            if (!completer.isCompleted) {
+              completer.complete(<CallRoom>[]);
+            }
+          }
+        });
+
+        loop.setGatewayDegradationReader((_) => true);
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 1);
+        expect(store.state.isActive, isFalse);
+
+        loop.stop();
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 2);
+        expect(fetchCompleters, hasLength(2));
+        expect(store.state.isActive, isFalse);
+      },
+    );
+
+    test(
+      'uses safety polling interval as the zero-threshold wake delay floor',
       () async {
         final store = CallStore(machine: const CallStateMachine());
         addTearDown(store.dispose);
@@ -427,6 +477,7 @@ void main() {
           },
           currentUidReader: () => 'u_self',
           degradedThreshold: Duration.zero,
+          safetyPollingInterval: const Duration(milliseconds: 50),
           backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
           delay: (delay) {
             scheduledDelays.add(delay);
@@ -444,7 +495,7 @@ void main() {
         await Future<void>.delayed(Duration.zero);
 
         expect(fetchCount, 0);
-        expect(scheduledDelays, <Duration>[Duration(milliseconds: 1)]);
+        expect(scheduledDelays, <Duration>[Duration(milliseconds: 50)]);
 
         delayCompleters.single.complete();
 
@@ -453,8 +504,8 @@ void main() {
 
         expect(fetchCount, 0);
         expect(scheduledDelays, <Duration>[
-          Duration(milliseconds: 1),
-          Duration(milliseconds: 1),
+          Duration(milliseconds: 50),
+          Duration(milliseconds: 50),
         ]);
       },
     );

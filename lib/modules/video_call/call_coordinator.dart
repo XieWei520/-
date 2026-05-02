@@ -219,7 +219,7 @@ class PendingCallRecoveryLoop {
       return;
     }
     _degradationWakeGeneration = null;
-    if (_runningGeneration != null) {
+    if (_runningGeneration == _generation) {
       return;
     }
     final generation = ++_generation;
@@ -288,10 +288,12 @@ class PendingCallRecoveryLoop {
       if (_runningGeneration == generation) {
         _runningGeneration = null;
       }
-      if (shouldPoll) {
-        _ensureLoop();
-      } else {
-        _scheduleDegradationWakeIfNeeded();
+      if (generation == _generation) {
+        if (shouldPoll) {
+          _ensureLoop();
+        } else {
+          _scheduleDegradationWakeIfNeeded();
+        }
       }
     }
   }
@@ -299,6 +301,9 @@ class PendingCallRecoveryLoop {
   Duration get _degradationWakeDelay {
     if (degradedThreshold > Duration.zero) {
       return degradedThreshold;
+    }
+    if (safetyPollingInterval > Duration.zero) {
+      return safetyPollingInterval;
     }
     return const Duration(milliseconds: 1);
   }
