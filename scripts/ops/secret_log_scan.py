@@ -73,6 +73,8 @@ _AUTHORIZATION_ASSIGNMENT_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+_STRUCTURED_FIELD_BOUNDARY_RE = re.compile(r"\s+[A-Za-z_][A-Za-z0-9_-]*\s*[:=]")
+
 
 class _InputReadError(Exception):
     pass
@@ -104,13 +106,32 @@ def _redacted_value(value: str) -> str:
     return "<redacted>"
 
 
+def _split_unquoted_authorization_value(value: str) -> tuple[str, str]:
+    boundary = _STRUCTURED_FIELD_BOUNDARY_RE.search(value)
+    if boundary is None:
+        return value, ""
+
+    return value[: boundary.start()], value[boundary.start() :]
+
+
 def _redact_line(line: str) -> tuple[int, str]:
     line_findings = 0
 
     def redact_authorization(match: re.Match[str]) -> str:
         nonlocal line_findings
+        value = match.group("value")
+        trailing_text = ""
+
+        if not (
+            len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}
+        ):
+            value, trailing_text = _split_unquoted_authorization_value(value)
+
+        if not value.strip():
+            return match.group(0)
+
         line_findings += 1
-        return f"{match.group('prefix')}{_redacted_value(match.group('value'))}"
+        return f"{match.group('prefix')}{_redacted_value(value)}{trailing_text}"
 
     def redact(match: re.Match[str]) -> str:
         nonlocal line_findings

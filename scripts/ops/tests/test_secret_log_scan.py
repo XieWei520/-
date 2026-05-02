@@ -75,17 +75,26 @@ class SecretLogScanTests(unittest.TestCase):
         self.assertNotIn("token1", result.redacted_report)
         self.assertNotIn("token2", result.redacted_report)
 
-    def test_redacts_authorization_to_end_of_line_when_unquoted_delimiter_is_ambiguous(
-        self,
-    ) -> None:
-        result = scan_text("Authorization: Basic abc status=401", source="auth")
+    def test_preserves_and_scans_fields_after_unquoted_authorization_value(self) -> None:
+        result = scan_text(
+            "Authorization: Bearer token1 token2 password=rawpass status=401",
+            source="auth",
+        )
 
-        self.assertEqual(result.finding_count, 1)
+        self.assertEqual(result.finding_count, 2)
         self.assertIn("Authorization", result.redacted_report)
+        self.assertIn("password=<redacted>", result.redacted_report)
+        self.assertIn("status=401", result.redacted_report)
         self.assertIn("<redacted>", result.redacted_report)
-        self.assertNotIn("Basic", result.redacted_report)
-        self.assertNotIn("abc", result.redacted_report)
-        self.assertNotIn("status=401", result.redacted_report)
+        self.assertNotIn("token1", result.redacted_report)
+        self.assertNotIn("token2", result.redacted_report)
+        self.assertNotIn("rawpass", result.redacted_report)
+
+    def test_ignores_empty_authorization_value(self) -> None:
+        result = scan_text("Authorization:", source="auth")
+
+        self.assertEqual(result.finding_count, 0)
+        self.assertEqual(result.redacted_report, "")
 
     def test_redacts_multiple_secret_fields_on_same_line(self) -> None:
         text = '{"actToken":"raw1","password":"raw2"}'
