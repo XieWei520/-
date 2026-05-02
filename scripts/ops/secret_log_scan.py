@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -24,17 +25,24 @@ _SAFE_TOKEN_FIELDS = {
     "token_sha256_prefix",
 }
 
-_DANGEROUS_WORD = (
-    r"acttoken|expecttoken|authorization|api[_-]?key|api[_-]?secret|"
-    r"password|secret|credential|token"
+_DANGEROUS_FIELD_TERMS = (
+    "acttoken",
+    "expecttoken",
+    "authorization",
+    "apikey",
+    "apisecret",
+    "password",
+    "secret",
+    "credential",
+    "token",
 )
 
-_SECRET_FIELD_RE = re.compile(
-    rf"""
+_FIELD_ASSIGNMENT_RE = re.compile(
+    r"""
     (?P<prefix>
         (?<![A-Za-z0-9_-])
         (?P<field_quote>["']?)
-        (?P<field>[A-Za-z_][A-Za-z0-9_-]*(?:{_DANGEROUS_WORD})[A-Za-z0-9_-]*)
+        (?P<field>[A-Za-z_][A-Za-z0-9_-]*)
         (?P=field_quote)
         \s*[:=]\s*
     )
@@ -48,8 +56,24 @@ _SECRET_FIELD_RE = re.compile(
 )
 
 
+class _InputReadError(Exception):
+    pass
+
+
+def _normalized_field(field: str) -> str:
+    return field.lower().replace("-", "_")
+
+
 def _is_safe_metadata_field(field: str) -> bool:
-    return field.lower().replace("-", "_") in _SAFE_TOKEN_FIELDS
+    return _normalized_field(field) in _SAFE_TOKEN_FIELDS
+
+
+def _is_secret_field(field: str) -> bool:
+    if _is_safe_metadata_field(field):
+        return False
+
+    compact_field = _normalized_field(field).replace("_", "")
+    return any(term in compact_field for term in _DANGEROUS_FIELD_TERMS)
 
 
 def _redacted_value(value: str) -> str:
@@ -58,25 +82,57 @@ def _redacted_value(value: str) -> str:
     return "<redacted>"
 
 
+def _redact_line(line: str) -> tuple[int, str]:
+    line_findings = 0
+
+    def redact(match: re.Match[str]) -> str:
+        nonlocal line_findings
+        if not _is_secret_field(match.group("field")):
+            return match.group(0)
+
+        line_findings += 1
+        return f"{match.group('prefix')}{_redacted_value(match.group('value'))}"
+
+    redacted_line = _FIELD_ASSIGNMENT_RE.sub(redact, line)
+    return line_findings, redacted_line
+
+
+def _docker_log_payload(line: str) -> str | None:
+    stripped = line.lstrip()
+    if not stripped.startswith("{"):
+        return None
+
+    try:
+        payload = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    log_value = payload.get("log")
+    if not isinstance(log_value, str):
+        return None
+
+    return log_value
+
+
 def scan_text(text: str, *, source: str = "stdin") -> ScanResult:
     finding_count = 0
     report_lines: list[str] = []
 
     for line_number, line in enumerate(text.splitlines(), start=1):
-        line_findings = 0
+        scan_lines = [line]
+        docker_payload = _docker_log_payload(line)
+        if docker_payload is not None:
+            scan_lines = docker_payload.splitlines()
 
-        def redact(match: re.Match[str]) -> str:
-            nonlocal finding_count, line_findings
-            if _is_safe_metadata_field(match.group("field")):
-                return match.group(0)
+        for scan_line in scan_lines:
+            line_findings, redacted_line = _redact_line(scan_line)
+            finding_count += line_findings
 
-            finding_count += 1
-            line_findings += 1
-            return f"{match.group('prefix')}{_redacted_value(match.group('value'))}"
-
-        redacted_line = _SECRET_FIELD_RE.sub(redact, line)
-        if line_findings:
-            report_lines.append(f"{source}:{line_number}: {redacted_line}")
+            if line_findings:
+                report_lines.append(f"{source}:{line_number}: {redacted_line}")
 
     return ScanResult(finding_count, "\n".join(report_lines))
 
@@ -87,13 +143,20 @@ def _scan_inputs(paths: Iterable[str], *, source: str | None) -> ScanResult:
 
     path_list = list(paths)
     if not path_list:
-        result = scan_text(sys.stdin.read(), source=source or "stdin")
+        stdin_text = sys.stdin.buffer.read().decode("utf-8", errors="replace")
+        result = scan_text(stdin_text, source=source or "stdin")
         return result
 
     for raw_path in path_list:
         path = Path(raw_path)
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            detail = exc.strerror or str(exc)
+            raise _InputReadError(f"{path}: {detail}") from exc
+
         result = scan_text(
-            path.read_text(encoding="utf-8", errors="replace"),
+            text,
             source=source or str(path),
         )
         total_findings += result.finding_count
@@ -111,7 +174,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", help="Source label for reports.")
     args = parser.parse_args(argv)
 
-    result = _scan_inputs(args.paths, source=args.source)
+    try:
+        result = _scan_inputs(args.paths, source=args.source)
+    except _InputReadError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     if result.redacted_report:
         print(result.redacted_report)
 
