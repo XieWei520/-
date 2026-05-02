@@ -231,7 +231,7 @@ void main() {
     });
 
     test(
-      'default safety polling interval is short enough for incoming rings',
+      'defaults to degradation-only polling with the approved backoff schedule',
       () {
         final loop = PendingCallRecoveryLoop(
           callStore: CallStore(machine: const CallStateMachine()),
@@ -240,58 +240,64 @@ void main() {
         );
         addTearDown(loop.stop);
 
-        expect(loop.safetyPollingInterval, const Duration(seconds: 2));
+        expect(loop.enableSafetyPolling, isFalse);
+        expect(loop.degradedThreshold, const Duration(seconds: 6));
+        expect(loop.backoffSchedule, <Duration>[
+          Duration(seconds: 2),
+          Duration(seconds: 5),
+          Duration(seconds: 15),
+          Duration(seconds: 30),
+          Duration(seconds: 60),
+        ]);
       },
     );
 
-    test(
-      'pulls pending invites by safety polling when app is foreground',
-      () async {
-        final store = CallStore(machine: const CallStateMachine());
-        addTearDown(store.dispose);
+    test('does not poll by default until the gateway is degraded', () async {
+      final store = CallStore(machine: const CallStateMachine());
+      addTearDown(store.dispose);
 
-        var fetchCount = 0;
-        final loop = PendingCallRecoveryLoop(
-          callStore: store,
-          fetchPendingCalls: ({required fallback}) async {
-            fetchCount++;
-            expect(fallback, isTrue);
-            return <CallRoom>[
-              CallRoom(
-                roomId: 'room_pending_01',
-                callerUid: 'u_peer',
-                calleeUid: 'u_self',
-                callType: CallType.video,
-                status: CallRoomStatus.pending,
-                callerName: 'Peer',
-              ),
-            ];
-          },
-          currentUidReader: () => 'u_self',
-          degradedThreshold: Duration.zero,
-          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
-          delay: (_) => Completer<void>().future,
-        );
-        addTearDown(loop.stop);
+      var fetchCount = 0;
+      final loop = PendingCallRecoveryLoop(
+        callStore: store,
+        fetchPendingCalls: ({required fallback}) async {
+          fetchCount++;
+          expect(fallback, isTrue);
+          return <CallRoom>[
+            CallRoom(
+              roomId: 'room_pending_01',
+              callerUid: 'u_peer',
+              calleeUid: 'u_self',
+              callType: CallType.video,
+              status: CallRoomStatus.pending,
+              callerName: 'Peer',
+            ),
+          ];
+        },
+        currentUidReader: () => 'u_self',
+        degradedThreshold: Duration.zero,
+        backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+        delay: (_) => Completer<void>().future,
+      );
+      addTearDown(loop.stop);
 
-        loop.setForeground(false);
-        loop.setGatewayDegradationReader((_) => false);
-        loop.start();
+      loop.setGatewayDegradationReader((_) => false);
+      loop.start();
 
-        await Future<void>.delayed(Duration.zero);
-        expect(fetchCount, 0);
-        expect(store.state.isActive, isFalse);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
 
-        loop.setForeground(true);
+      expect(fetchCount, 0);
+      expect(store.state.isActive, isFalse);
 
-        await Future<void>.delayed(Duration.zero);
-        await Future<void>.delayed(Duration.zero);
+      loop.setGatewayDegradationReader((_) => true);
 
-        expect(fetchCount, 1);
-        expect(store.state.roomId, 'room_pending_01');
-        expect(store.state.status, CallLifecycleStatus.invited);
-      },
-    );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(fetchCount, 1);
+      expect(store.state.roomId, 'room_pending_01');
+      expect(store.state.status, CallLifecycleStatus.invited);
+    });
 
     test(
       'can disable safety polling and only poll when gateway is degraded',
