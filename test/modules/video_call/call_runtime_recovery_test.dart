@@ -300,6 +300,66 @@ void main() {
     });
 
     test(
+      'wakes degradation-only polling when a passive reader later reports degraded',
+      () async {
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        var degraded = false;
+        var fetchCount = 0;
+        final scheduledDelays = <Duration>[];
+        final delayCompleters = <Completer<void>>[];
+        final loop = PendingCallRecoveryLoop(
+          callStore: store,
+          fetchPendingCalls: ({required fallback}) async {
+            fetchCount++;
+            expect(fallback, isTrue);
+            return <CallRoom>[
+              CallRoom(
+                roomId: 'room_pending_02',
+                callerUid: 'u_peer',
+                calleeUid: 'u_self',
+                callType: CallType.video,
+                status: CallRoomStatus.pending,
+                callerName: 'Peer',
+              ),
+            ];
+          },
+          currentUidReader: () => 'u_self',
+          degradedThreshold: const Duration(seconds: 6),
+          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+          delay: (delay) {
+            scheduledDelays.add(delay);
+            final completer = Completer<void>();
+            delayCompleters.add(completer);
+            return completer.future;
+          },
+        );
+        addTearDown(loop.stop);
+
+        loop.setGatewayDegradationReader((_) => degraded);
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 0);
+        expect(store.state.isActive, isFalse);
+        expect(scheduledDelays, <Duration>[Duration(seconds: 6)]);
+
+        degraded = true;
+        delayCompleters.single.complete();
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 1);
+        expect(store.state.roomId, 'room_pending_02');
+        expect(store.state.status, CallLifecycleStatus.invited);
+      },
+    );
+
+    test(
       'can disable safety polling and only poll when gateway is degraded',
       () async {
         final store = CallStore(machine: const CallStateMachine());

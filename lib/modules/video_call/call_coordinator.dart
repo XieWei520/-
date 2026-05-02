@@ -71,6 +71,7 @@ class PendingCallRecoveryLoop {
   int _attempt = 0;
   int _generation = 0;
   int? _runningGeneration;
+  int? _degradationWakeGeneration;
   bool Function(Duration threshold)? _isGatewayDegradedFor;
 
   bool get shouldPoll {
@@ -94,6 +95,7 @@ class PendingCallRecoveryLoop {
   void stop() {
     _started = false;
     _attempt = 0;
+    _degradationWakeGeneration = null;
     _generation++;
   }
 
@@ -106,6 +108,7 @@ class PendingCallRecoveryLoop {
     if (_isForeground) {
       _ensureLoop();
     } else {
+      _degradationWakeGeneration = null;
       _generation++;
     }
   }
@@ -122,7 +125,9 @@ class PendingCallRecoveryLoop {
       return;
     }
     _attempt = 0;
+    _degradationWakeGeneration = null;
     _generation++;
+    _ensureLoop();
   }
 
   Future<int> syncOnce() async {
@@ -194,12 +199,55 @@ class PendingCallRecoveryLoop {
   }
 
   void _ensureLoop() {
-    if (!shouldPoll || _runningGeneration != null) {
+    if (!shouldPoll) {
+      _scheduleDegradationWakeIfNeeded();
+      return;
+    }
+    _degradationWakeGeneration = null;
+    if (_runningGeneration != null) {
       return;
     }
     final generation = ++_generation;
     _runningGeneration = generation;
     unawaited(_run(generation));
+  }
+
+  void _scheduleDegradationWakeIfNeeded() {
+    if (!_canPoll || enableSafetyPolling || _isGatewayDegradedFor == null) {
+      return;
+    }
+    if (_isGatewayDegradedFor?.call(degradedThreshold) ?? false) {
+      _ensureLoop();
+      return;
+    }
+    if (_degradationWakeGeneration == _generation) {
+      return;
+    }
+    final generation = _generation;
+    _degradationWakeGeneration = generation;
+    unawaited(_wakeAfterDegradationThreshold(generation));
+  }
+
+  Future<void> _wakeAfterDegradationThreshold(int generation) async {
+    try {
+      await _delay(degradedThreshold);
+    } catch (error, stackTrace) {
+      debugPrint('Pending call fallback degradation wake failed: $error');
+      debugPrint('$stackTrace');
+      if (_degradationWakeGeneration == generation) {
+        _degradationWakeGeneration = null;
+      }
+      return;
+    }
+    if (_degradationWakeGeneration != generation || generation != _generation) {
+      return;
+    }
+    _degradationWakeGeneration = null;
+    if (shouldPoll) {
+      _ensureLoop();
+      return;
+    }
+    _scheduleDegradationWakeIfNeeded();
   }
 
   Future<void> _run(int generation) async {
@@ -227,6 +275,8 @@ class PendingCallRecoveryLoop {
       }
       if (shouldPoll) {
         _ensureLoop();
+      } else {
+        _scheduleDegradationWakeIfNeeded();
       }
     }
   }
