@@ -155,6 +155,9 @@ cd "${REMOTE_ROOT}"
 test -f "${ENV_FILE}"
 mkdir -p "${BACKUP_DIR}"
 
+RELEASE_BASE_URL="$(resolve_release_base_url)"
+assert_release_base_url_safe "${RELEASE_BASE_URL}"
+
 cp "${ENV_FILE}" "${BACKUP_DIR}/.env.before-${TIMESTAMP}"
 grep '^BUILD_' "${ENV_FILE}" > "${BACKUP_DIR}/build-before-${TIMESTAMP}.env" || true
 
@@ -169,9 +172,6 @@ echo "== rollout =="
 docker compose --env-file .env up -d --no-deps tsdd-api callgateway
 wait_for_health tsdd-api 180
 wait_for_health callgateway 180
-
-RELEASE_BASE_URL="$(resolve_release_base_url)"
-assert_release_base_url_safe "${RELEASE_BASE_URL}"
 
 echo "== smoke (${RELEASE_BASE_URL}) =="
 python3 scripts/smoke_test.py --base-url "${RELEASE_BASE_URL}" --timeout 10

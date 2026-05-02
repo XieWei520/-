@@ -83,6 +83,20 @@ shift
     $content | Should Match 'perf_probe\.py\s+--base-url\s+"\$\{RELEASE_BASE_URL\}"'
   }
 
+  It 'validates the release probe base URL before compose build and rollout' {
+    $content = Get-Content -Path $scriptPath -Raw
+
+    $assertIndex = $content.IndexOf('assert_release_base_url_safe "${RELEASE_BASE_URL}"')
+    $buildIndex = $content.IndexOf('docker compose --env-file .env build')
+    $upIndex = $content.IndexOf('docker compose --env-file .env up -d --no-deps')
+
+    $assertIndex | Should Not Be -1
+    $buildIndex | Should Not Be -1
+    $upIndex | Should Not Be -1
+    $assertIndex | Should BeLessThan $buildIndex
+    $assertIndex | Should BeLessThan $upIndex
+  }
+
   It 'preserves trailing slash in query values while normalizing release base URLs' {
     $result = Invoke-RemoteRedeployHelper `
       -FunctionName 'normalize_release_base_url' `
