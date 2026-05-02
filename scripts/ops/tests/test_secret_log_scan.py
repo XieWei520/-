@@ -54,6 +54,39 @@ class SecretLogScanTests(unittest.TestCase):
                 self.assertIn("<redacted>", result.redacted_report)
                 self.assertNotIn("raw", result.redacted_report)
 
+    def test_redacts_entire_basic_authorization_value(self) -> None:
+        credential = "dXNlcjpwYXNz"
+
+        result = scan_text(f"Authorization: Basic {credential}", source="auth")
+
+        self.assertEqual(result.finding_count, 1)
+        self.assertIn("Authorization", result.redacted_report)
+        self.assertIn("<redacted>", result.redacted_report)
+        self.assertNotIn("Basic", result.redacted_report)
+        self.assertNotIn(credential, result.redacted_report)
+
+    def test_redacts_authorization_values_with_trailing_tokens(self) -> None:
+        result = scan_text("Authorization: Bearer token1 token2", source="auth")
+
+        self.assertEqual(result.finding_count, 1)
+        self.assertIn("Authorization", result.redacted_report)
+        self.assertIn("<redacted>", result.redacted_report)
+        self.assertNotIn("Bearer", result.redacted_report)
+        self.assertNotIn("token1", result.redacted_report)
+        self.assertNotIn("token2", result.redacted_report)
+
+    def test_redacts_authorization_to_end_of_line_when_unquoted_delimiter_is_ambiguous(
+        self,
+    ) -> None:
+        result = scan_text("Authorization: Basic abc status=401", source="auth")
+
+        self.assertEqual(result.finding_count, 1)
+        self.assertIn("Authorization", result.redacted_report)
+        self.assertIn("<redacted>", result.redacted_report)
+        self.assertNotIn("Basic", result.redacted_report)
+        self.assertNotIn("abc", result.redacted_report)
+        self.assertNotIn("status=401", result.redacted_report)
+
     def test_redacts_multiple_secret_fields_on_same_line(self) -> None:
         text = '{"actToken":"raw1","password":"raw2"}'
 

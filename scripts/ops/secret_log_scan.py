@@ -55,6 +55,24 @@ _FIELD_ASSIGNMENT_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+_AUTHORIZATION_ASSIGNMENT_RE = re.compile(
+    r"""
+    (?P<prefix>
+        (?<![A-Za-z0-9_-])
+        (?P<field_quote>["']?)
+        (?P<field>Authorization)
+        (?P=field_quote)
+        \s*[:=]\s*
+    )
+    (?P<value>
+        "(?:\\.|[^"\\])*"
+        |'(?:\\.|[^'\\])*'
+        |[^\r\n]*
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
 
 class _InputReadError(Exception):
     pass
@@ -66,6 +84,10 @@ def _normalized_field(field: str) -> str:
 
 def _is_safe_metadata_field(field: str) -> bool:
     return _normalized_field(field) in _SAFE_TOKEN_FIELDS
+
+
+def _is_authorization_field(field: str) -> bool:
+    return _normalized_field(field) == "authorization"
 
 
 def _is_secret_field(field: str) -> bool:
@@ -85,14 +107,21 @@ def _redacted_value(value: str) -> str:
 def _redact_line(line: str) -> tuple[int, str]:
     line_findings = 0
 
+    def redact_authorization(match: re.Match[str]) -> str:
+        nonlocal line_findings
+        line_findings += 1
+        return f"{match.group('prefix')}{_redacted_value(match.group('value'))}"
+
     def redact(match: re.Match[str]) -> str:
         nonlocal line_findings
-        if not _is_secret_field(match.group("field")):
+        field = match.group("field")
+        if _is_authorization_field(field) or not _is_secret_field(field):
             return match.group(0)
 
         line_findings += 1
         return f"{match.group('prefix')}{_redacted_value(match.group('value'))}"
 
+    line = _AUTHORIZATION_ASSIGNMENT_RE.sub(redact_authorization, line)
     redacted_line = _FIELD_ASSIGNMENT_RE.sub(redact, line)
     return line_findings, redacted_line
 
