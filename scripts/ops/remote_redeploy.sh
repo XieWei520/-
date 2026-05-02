@@ -17,9 +17,48 @@ trim_release_base_url_edges() {
   printf '%s\n' "${value}"
 }
 
+strip_release_base_url_inline_comment() {
+  local value="$1"
+  local result=""
+  local quote=""
+  local char=""
+  local i=0
+
+  for (( i = 0; i < ${#value}; i++ )); do
+    char="${value:i:1}"
+
+    if [[ -n "${quote}" ]]; then
+      result+="${char}"
+      if [[ "${char}" == "${quote}" ]]; then
+        quote=""
+      fi
+      continue
+    fi
+
+    case "${char}" in
+      \"|\')
+        quote="${char}"
+        result+="${char}"
+        ;;
+      '#')
+        if [[ -z "${result}" || "${result}" == *[[:space:]] ]]; then
+          break
+        fi
+        result+="${char}"
+        ;;
+      *)
+        result+="${char}"
+        ;;
+    esac
+  done
+
+  trim_release_base_url_edges "${result}"
+}
+
 normalize_release_base_url() {
   local base_url="$1"
   base_url="$(trim_release_base_url_edges "${base_url}")"
+  base_url="$(strip_release_base_url_inline_comment "${base_url}")"
 
   if (( ${#base_url} >= 2 )); then
     local first_char="${base_url:0:1}"
@@ -31,10 +70,12 @@ normalize_release_base_url() {
   fi
 
   local base_url_lc="${base_url,,}"
-  while [[ "${base_url}" == */ && "${base_url_lc}" != "http://" && "${base_url_lc}" != "https://" ]]; do
-    base_url="${base_url%/}"
-    base_url_lc="${base_url,,}"
-  done
+  if [[ "${base_url}" != *'?'* && "${base_url}" != *'#'* ]]; then
+    while [[ "${base_url}" == */ && "${base_url_lc}" != "http://" && "${base_url_lc}" != "https://" ]]; do
+      base_url="${base_url%/}"
+      base_url_lc="${base_url,,}"
+    done
+  fi
 
   printf '%s\n' "${base_url}"
 }
@@ -73,6 +114,10 @@ EOF
     return 1
   fi
 }
+
+if [[ "${REMOTE_REDEPLOY_HELPERS_ONLY:-0}" == "1" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 : "${BUILD_VERSION:?BUILD_VERSION is required}"
 : "${BUILD_COMMIT:?BUILD_COMMIT is required}"
