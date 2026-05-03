@@ -24,7 +24,30 @@ class MysqlBackupRestoreScriptTests(unittest.TestCase):
         self.assertRegex(source, r"(?m)^umask 077$")
         self.assertIn('chmod 700 "${OUTPUT_DIR}"', source)
         self.assertIn('chmod 600 "${BACKUP_PATH}"', source)
-        self.assertIn('chmod 600 "${BACKUP_PATH}.sha256"', source)
+        self.assertIn('chmod 600 "${CHECKSUM_PATH}"', source)
+
+    def test_backup_script_uses_unique_temp_files_and_atomic_moves(self) -> None:
+        source = BACKUP.read_text(encoding="utf-8")
+
+        self.assertNotIn('TMP_PATH="${BACKUP_PATH}.tmp"', source)
+        self.assertIn('TMP_BACKUP="$(mktemp "${OUTPUT_DIR%/}/.${FILENAME##*/}.XXXXXX")"', source)
+        self.assertIn('TMP_SHA256="$(mktemp "${OUTPUT_DIR%/}/.${FILENAME##*/}.sha256.XXXXXX")"', source)
+        self.assertIn('trap cleanup_tmp EXIT', source)
+        self.assertIn('rm -f "${TMP_BACKUP}"', source)
+        self.assertIn('rm -f "${TMP_SHA256}"', source)
+        self.assertIn('mv -f -T "${TMP_BACKUP}" "${BACKUP_PATH}"', source)
+        self.assertIn('mv -f -T "${TMP_SHA256}" "${CHECKSUM_PATH}"', source)
+        self.assertIn('sha256sum "${BACKUP_PATH}" > "${TMP_SHA256}"', source)
+        self.assertNotIn('> "${BACKUP_PATH}.sha256"', source)
+
+    def test_backup_script_rejects_symlink_or_non_regular_outputs(self) -> None:
+        source = BACKUP.read_text(encoding="utf-8")
+
+        self.assertIn('[[ ! -L "${OUTPUT_DIR}" ]] || die "Backup output directory must not be a symlink: ${OUTPUT_DIR}"', source)
+        self.assertIn('[[ ! -L "${BACKUP_PATH}" ]] || die "Backup path must not be a symlink: ${BACKUP_PATH}"', source)
+        self.assertIn('[[ ! -e "${BACKUP_PATH}" || -f "${BACKUP_PATH}" ]] || die "Backup path exists and is not a regular file: ${BACKUP_PATH}"', source)
+        self.assertIn('[[ ! -L "${CHECKSUM_PATH}" ]] || die "Checksum path must not be a symlink: ${CHECKSUM_PATH}"', source)
+        self.assertIn('[[ ! -e "${CHECKSUM_PATH}" || -f "${CHECKSUM_PATH}" ]] || die "Checksum path exists and is not a regular file: ${CHECKSUM_PATH}"', source)
 
     def test_restore_script_does_not_source_compose_env(self) -> None:
         source = RESTORE.read_text(encoding="utf-8")

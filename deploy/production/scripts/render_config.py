@@ -5,6 +5,7 @@ import argparse
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 PLACEHOLDER_PATTERN = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}")
@@ -14,6 +15,7 @@ DEFAULT_TEMPLATE_DIR = ROOT_DIR / "config"
 DEFAULT_OUT_DIR = ROOT_DIR / "rendered"
 PRIVATE_DIR_MODE = 0o700
 PRIVATE_FILE_MODE = 0o600
+PRIVATE_UMASK = 0o077
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,7 +51,13 @@ def find_unresolved_placeholders(content: str) -> list[str]:
 
 
 def ensure_private_dir(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise ValueError(f"Refusing to use symlink directory: {path}")
+    path.mkdir(mode=PRIVATE_DIR_MODE, parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise ValueError(f"Refusing to use symlink directory: {path}")
+    if not path.is_dir():
+        raise ValueError(f"Output directory path exists and is not a directory: {path}")
     os.chmod(path, PRIVATE_DIR_MODE)
 
 
@@ -58,13 +66,50 @@ def ensure_private_output_parent(out_dir: Path, output_parent: Path) -> None:
     try:
         relative_parent = output_parent.relative_to(out_dir)
     except ValueError:
-        ensure_private_dir(output_parent)
-        return
+        raise ValueError(f"Output parent escapes output directory: {output_parent}")
 
     current = out_dir
     for part in relative_parent.parts:
         current = current / part
         ensure_private_dir(current)
+
+
+def ensure_safe_output_file(output_file: Path) -> None:
+    if output_file.is_symlink():
+        raise ValueError(f"Refusing to write symlink output file: {output_file}")
+    if output_file.exists() and not output_file.is_file():
+        raise ValueError(f"Output path exists and is not a regular file: {output_file}")
+
+
+def write_private_file_atomically(output_file: Path, rendered_content: str) -> None:
+    ensure_safe_output_file(output_file)
+    temp_path: Path | None = None
+    fd: int | None = None
+
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{output_file.name}.",
+            suffix=".tmp",
+            dir=output_file.parent,
+        )
+        temp_path = Path(temp_name)
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, PRIVATE_FILE_MODE)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = None
+            handle.write(rendered_content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, PRIVATE_FILE_MODE)
+        ensure_safe_output_file(output_file)
+        os.replace(temp_path, output_file)
+        temp_path = None
+        os.chmod(output_file, PRIVATE_FILE_MODE)
+    finally:
+        if fd is not None:
+            os.close(fd)
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
 
 
 def render_templates(template_dir: Path, out_dir: Path, env: dict[str, str]) -> None:
@@ -93,14 +138,15 @@ def render_templates(template_dir: Path, out_dir: Path, env: dict[str, str]) -> 
         )
         raise ValueError(f"Unresolved placeholders found after rendering:\n{issues}")
 
-    ensure_private_dir(out_dir)
-    for output_file, rendered_content in rendered_outputs:
-        ensure_private_output_parent(out_dir, output_file.parent)
-        output_file.touch(mode=PRIVATE_FILE_MODE, exist_ok=True)
-        os.chmod(output_file, PRIVATE_FILE_MODE)
-        output_file.write_text(rendered_content, encoding="utf-8")
-        os.chmod(output_file, PRIVATE_FILE_MODE)
-        print(f"Rendered: {output_file}")
+    previous_umask = os.umask(PRIVATE_UMASK)
+    try:
+        ensure_private_dir(out_dir)
+        for output_file, rendered_content in rendered_outputs:
+            ensure_private_output_parent(out_dir, output_file.parent)
+            write_private_file_atomically(output_file, rendered_content)
+            print(f"Rendered: {output_file}")
+    finally:
+        os.umask(previous_umask)
 
 
 def main() -> None:

@@ -86,7 +86,9 @@ MYSQL_ROOT_PASSWORD="$(read_env_value MYSQL_ROOT_PASSWORD)"
 [[ -n "${MYSQL_ROOT_PASSWORD}" ]] || die "MYSQL_ROOT_PASSWORD is missing from .env."
 
 OUTPUT_DIR="${OUTPUT_DIR:-${PROD_DIR}/backups/mysql}"
+[[ ! -L "${OUTPUT_DIR}" ]] || die "Backup output directory must not be a symlink: ${OUTPUT_DIR}"
 mkdir -p "${OUTPUT_DIR}"
+[[ -d "${OUTPUT_DIR}" ]] || die "Backup output directory is not a directory: ${OUTPUT_DIR}"
 chmod 700 "${OUTPUT_DIR}"
 
 if [[ -z "${FILENAME}" ]]; then
@@ -94,10 +96,22 @@ if [[ -z "${FILENAME}" ]]; then
 fi
 
 BACKUP_PATH="${OUTPUT_DIR%/}/${FILENAME}"
-TMP_PATH="${BACKUP_PATH}.tmp"
+CHECKSUM_PATH="${BACKUP_PATH}.sha256"
+[[ ! -L "${BACKUP_PATH}" ]] || die "Backup path must not be a symlink: ${BACKUP_PATH}"
+[[ ! -e "${BACKUP_PATH}" || -f "${BACKUP_PATH}" ]] || die "Backup path exists and is not a regular file: ${BACKUP_PATH}"
+[[ ! -L "${CHECKSUM_PATH}" ]] || die "Checksum path must not be a symlink: ${CHECKSUM_PATH}"
+[[ ! -e "${CHECKSUM_PATH}" || -f "${CHECKSUM_PATH}" ]] || die "Checksum path exists and is not a regular file: ${CHECKSUM_PATH}"
+
+TMP_BACKUP=""
+TMP_SHA256=""
 
 cleanup_tmp() {
-    rm -f "${TMP_PATH}"
+    if [[ -n "${TMP_BACKUP}" ]]; then
+        rm -f "${TMP_BACKUP}"
+    fi
+    if [[ -n "${TMP_SHA256}" ]]; then
+        rm -f "${TMP_SHA256}"
+    fi
 }
 trap cleanup_tmp EXIT
 
@@ -105,18 +119,25 @@ log "Checking mysql service state."
 docker compose --env-file .env ps mysql >/dev/null 2>&1 || die "mysql service is not available via docker compose."
 
 log "Creating backup: ${BACKUP_PATH}"
+TMP_BACKUP="$(mktemp "${OUTPUT_DIR%/}/.${FILENAME##*/}.XXXXXX")"
 docker compose --env-file .env exec -T mysql sh -c \
     "exec mysqldump --single-transaction --quick --routines --events --triggers --set-gtid-purged=OFF -uroot -p\"\$MYSQL_ROOT_PASSWORD\" \"$MYSQL_DATABASE\"" \
-    | gzip -c > "${TMP_PATH}"
+    | gzip -c > "${TMP_BACKUP}"
 
-[[ -s "${TMP_PATH}" ]] || die "Backup file is empty: ${TMP_PATH}"
-mv "${TMP_PATH}" "${BACKUP_PATH}"
+[[ -s "${TMP_BACKUP}" ]] || die "Backup file is empty: ${TMP_BACKUP}"
+chmod 600 "${TMP_BACKUP}"
+mv -f -T "${TMP_BACKUP}" "${BACKUP_PATH}"
+TMP_BACKUP=""
 chmod 600 "${BACKUP_PATH}"
 
 if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "${BACKUP_PATH}" > "${BACKUP_PATH}.sha256"
-    chmod 600 "${BACKUP_PATH}.sha256"
-    log "Checksum written: ${BACKUP_PATH}.sha256"
+    TMP_SHA256="$(mktemp "${OUTPUT_DIR%/}/.${FILENAME##*/}.sha256.XXXXXX")"
+    sha256sum "${BACKUP_PATH}" > "${TMP_SHA256}"
+    chmod 600 "${TMP_SHA256}"
+    mv -f -T "${TMP_SHA256}" "${CHECKSUM_PATH}"
+    TMP_SHA256=""
+    chmod 600 "${CHECKSUM_PATH}"
+    log "Checksum written: ${CHECKSUM_PATH}"
 fi
 
 trap - EXIT

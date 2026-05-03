@@ -221,6 +221,10 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
             if line.strip() and not line.lstrip().startswith("#")
         }
         required_patterns = {
+            ".env",
+            ".env.*",
+            "!.env.example",
+            "!**/.env.example",
             ".git",
             "**/.git",
             "deploy/production/.env",
@@ -368,7 +372,7 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
                 violations.append(rel)
             if path.is_file() and path.suffix.lower() in DENIED_SUFFIXES:
                 violations.append(rel)
-            if path.name == ".env" or path.name.startswith(".env.bak"):
+            if path.name == ".env" or (path.name.startswith(".env.") and path.name != ".env.example"):
                 violations.append(rel)
 
         self.assertEqual([], sorted(set(violations)), "Denied runtime, secret, or build artifact paths were found")
