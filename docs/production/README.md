@@ -3,6 +3,7 @@
 ## Task Tracking
 - Implementation checkpoints: `docs/production/implementation-log.md`
 - WuKongIM token redaction deployment verification: `docs/production/2026-05-03-wukongim-token-redaction-verification.md`
+- Dirty branch cleanup backup record: `docs/production/2026-05-03-dirty-branch-cleanup.md`
 
 ## Operator Entry Points
 - Stress testing: `ops/stress/README.md`
