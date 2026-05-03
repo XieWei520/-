@@ -7,19 +7,47 @@ import sys
 from pathlib import Path
 
 CONNECT_SOURCE = Path("internal/user/handler/event_connect.go")
-RAW_FIELD_RE = re.compile(r'zap\.String\("(?P<field>expectToken|actToken)",\s*(?P<value>device\.Token|connectPacket\.Token)\)')
-MANAGER_RAW_RE = re.compile(r'zap\.String\("token",\s*connectPacket\.Token\)')
-DIRECT_TOKEN_LOG_RE = re.compile(r'zap\.String\("[^"]*",\s*(device\.Token|connectPacket\.Token)\)')
+TOKEN_FINGERPRINT_SIGNATURE = "func tokenFingerprint(token string) string"
+RAW_FIELD_RE = re.compile(r'zap\.String\(\s*"(?P<field>expectToken|actToken)"\s*,\s*(?P<value>device\.Token|connectPacket\.Token)\s*\)')
+MANAGER_RAW_RE = re.compile(r'zap\.String\(\s*"token"\s*,\s*connectPacket\.Token\s*\)')
+DIRECT_TOKEN_LOG_RE = re.compile(
+    r'zap\.(?P<constructor>[A-Za-z][A-Za-z0-9_]*)\(\s*"(?P<field>[^"]*)"\s*,\s*(?P<value>device\.Token|connectPacket\.Token)\s*\)'
+)
+RAW_TOKEN_RETURN_RE = re.compile(r'\breturn\s+token\b')
 REQUIRED_SNIPPETS = (
     '"crypto/sha256"',
     '"encoding/hex"',
-    "func tokenFingerprint(token string) string",
+    TOKEN_FINGERPRINT_SIGNATURE,
     'zap.String("stage", "manager_token")',
     'zap.String("tokenHash", tokenFingerprint(connectPacket.Token))',
     'zap.String("stage", "device_token")',
     'zap.String("expectedTokenHash", tokenFingerprint(device.Token))',
     'zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token))',
 )
+REQUIRED_FINGERPRINT_BODY_SNIPPETS = (
+    "sha256.Sum256([]byte(token))",
+    "hex.EncodeToString(sum[:])[:12]",
+)
+
+
+def extract_function_body(text: str, signature: str) -> str | None:
+    signature_start = text.find(signature)
+    if signature_start == -1:
+        return None
+    body_start = text.find("{", signature_start + len(signature))
+    if body_start == -1:
+        return None
+
+    depth = 0
+    for index in range(body_start, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[body_start + 1:index]
+    return None
 
 
 def verify_source(root: Path) -> list[str]:
@@ -33,12 +61,20 @@ def verify_source(root: Path) -> list[str]:
     if MANAGER_RAW_RE.search(text):
         failures.append('manager raw token log still uses zap.String("token", connectPacket.Token)')
     for match in DIRECT_TOKEN_LOG_RE.finditer(text):
-        snippet = match.group(0)
-        if "tokenFingerprint(" not in snippet:
-            failures.append(f"direct token value is still logged: {snippet}")
+        failures.append(f"direct token value is still logged via zap.{match.group('constructor')}: {match.group(0)}")
     for required in REQUIRED_SNIPPETS:
         if required not in text:
             failures.append(f"missing required redaction snippet: {required}")
+
+    fingerprint_body = extract_function_body(text, TOKEN_FINGERPRINT_SIGNATURE)
+    if fingerprint_body is None:
+        failures.append(f"missing {TOKEN_FINGERPRINT_SIGNATURE} body")
+    else:
+        if RAW_TOKEN_RETURN_RE.search(fingerprint_body):
+            failures.append("tokenFingerprint must not return raw token with return token")
+        for required in REQUIRED_FINGERPRINT_BODY_SNIPPETS:
+            if required not in fingerprint_body:
+                failures.append(f"missing required tokenFingerprint hash snippet: {required}")
     return failures
 
 

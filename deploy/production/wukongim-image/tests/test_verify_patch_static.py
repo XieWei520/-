@@ -24,6 +24,26 @@ class VerifyPatchStaticTests(unittest.TestCase):
     def _run(self, root: Path) -> subprocess.CompletedProcess[bytes]:
         return subprocess.run([sys.executable, str(SCRIPT), str(root)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+    def _hash_only_source(self, extra_logs: str = "") -> str:
+        return '''
+            package handler
+            import (
+                "crypto/sha256"
+                "encoding/hex"
+                "go.uber.org/zap"
+            )
+            func tokenFingerprint(token string) string {
+                if token == "" { return "empty" }
+                sum := sha256.Sum256([]byte(token))
+                return hex.EncodeToString(sum[:])[:12]
+            }
+            func f() {
+                h.Error("manager token verify fail", zap.String("stage", "manager_token"), zap.String("tokenHash", tokenFingerprint(connectPacket.Token)))
+                h.Error("token verify fail", zap.String("stage", "device_token"), zap.String("expectedTokenHash", tokenFingerprint(device.Token)), zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token)))
+        ''' + extra_logs + '''
+            }
+        '''
+
     def test_rejects_raw_act_and_expect_token_fields(self) -> None:
         root = self._write_source('''
             package handler
@@ -49,7 +69,7 @@ class VerifyPatchStaticTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn(b"manager raw token", result.stderr.lower())
 
-    def test_accepts_hash_only_redacted_logging(self) -> None:
+    def test_rejects_token_fingerprint_that_returns_raw_token(self) -> None:
         root = self._write_source('''
             package handler
             import (
@@ -59,7 +79,46 @@ class VerifyPatchStaticTests(unittest.TestCase):
             )
             func tokenFingerprint(token string) string {
                 if token == "" { return "empty" }
-                sum := sha256.Sum256([]byte(token))
+                return token
+            }
+            func f() {
+                h.Error("manager token verify fail", zap.String("stage", "manager_token"), zap.String("tokenHash", tokenFingerprint(connectPacket.Token)))
+                h.Error("token verify fail", zap.String("stage", "device_token"), zap.String("expectedTokenHash", tokenFingerprint(device.Token)), zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token)))
+            }
+        ''')
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"return token", result.stderr)
+
+    def test_rejects_zap_any_raw_connect_token(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Error("token leak", zap.Any("token", connectPacket.Token))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"zap.Any", result.stderr)
+        self.assertIn(b"connectPacket.Token", result.stderr)
+
+    def test_rejects_direct_device_token_with_unplanned_zap_field(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Error("token leak", zap.Reflect("unexpectedField", device.Token))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"zap.Reflect", result.stderr)
+        self.assertIn(b"device.Token", result.stderr)
+
+    def test_rejects_hash_looking_source_missing_required_hash_snippet(self) -> None:
+        root = self._write_source('''
+            package handler
+            import (
+                "crypto/sha256"
+                "encoding/hex"
+                "go.uber.org/zap"
+            )
+            func tokenFingerprint(token string) string {
+                if token == "" { return "empty" }
+                sum := []byte(token)
                 return hex.EncodeToString(sum[:])[:12]
             }
             func f() {
@@ -67,6 +126,12 @@ class VerifyPatchStaticTests(unittest.TestCase):
                 h.Error("token verify fail", zap.String("stage", "device_token"), zap.String("expectedTokenHash", tokenFingerprint(device.Token)), zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token)))
             }
         ''')
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"sha256.Sum256", result.stderr)
+
+    def test_accepts_hash_only_redacted_logging(self) -> None:
+        root = self._write_source(self._hash_only_source())
         result = self._run(root)
         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
         self.assertEqual(result.stdout, b"WuKongIM token log patch static verification passed\n")
