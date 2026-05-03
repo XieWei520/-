@@ -143,8 +143,13 @@ def redact_text(text: str) -> str:
             except json.JSONDecodeError:
                 pass
             else:
+                redacted_prefix = SENSITIVE_FIELD_RE.sub(
+                    _redact_sensitive_field,
+                    text[:json_start],
+                )
+                redacted_prefix = HIGH_ENTROPY_VALUE_RE.sub(REDACTION, redacted_prefix)
                 return (
-                    text[:json_start]
+                    redacted_prefix
                     + json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
                 )
         redacted = SENSITIVE_FIELD_RE.sub(_redact_sensitive_field, text)

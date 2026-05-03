@@ -13,6 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = ROOT.parents[1]
 
 REQUIRED_FILES = (
     "README.md",
@@ -190,7 +191,7 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
         compose = (ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
         dockerfile_paths = re.findall(r"^\s*dockerfile:\s*([^#\n]+?)\s*$", compose, re.MULTILINE)
 
-        repo_root = ROOT.parents[1].resolve()
+        repo_root = REPO_ROOT.resolve()
         missing: list[str] = []
         for raw_path in dockerfile_paths:
             dockerfile = raw_path.strip().strip("\"'")
@@ -204,6 +205,73 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
                 missing.append(dockerfile)
 
         self.assertEqual([], missing, f"Compose build.dockerfile paths must exist: {missing}")
+
+    def test_wide_compose_build_context_has_root_dockerignore_guards(self) -> None:
+        compose = (ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
+        self.assertRegex(compose, r"(?m)^\s*context:\s*\.\./\.\.\s*$")
+
+        dockerignore = REPO_ROOT / ".dockerignore"
+        self.assertTrue(
+            dockerignore.is_file(),
+            "Compose uses the repo root as Docker build context, so root .dockerignore is required.",
+        )
+        patterns = {
+            line.strip()
+            for line in dockerignore.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        required_patterns = {
+            ".git",
+            "**/.git",
+            "deploy/production/.env",
+            "deploy/production/.env.bak*",
+            "deploy/production/rendered/",
+            "deploy/production/logs/",
+            "deploy/production/data/",
+            "deploy/production/backups/",
+            "deploy/production/certs/",
+            "deploy/production/keys/",
+            "**/__pycache__/",
+            "**/*.pyc",
+            "build/",
+            "**/build/",
+            "**/*.pem",
+            "**/*.key",
+            "**/*.sql",
+            "**/*.db",
+            "**/*.sqlite",
+            "**/*.sqlite3",
+            "**/*.log",
+            "**/*.gz",
+            "**/*.zip",
+            "**/*.tar",
+            "**/*.tgz",
+            "**/*.p12",
+            "**/*.pfx",
+            "**/*.jks",
+        }
+
+        self.assertEqual([], sorted(required_patterns - patterns))
+
+    def test_dockerfile_documents_full_backend_source_layout_requirement(self) -> None:
+        combined = "\n".join(
+            [
+                (ROOT / "Dockerfile.tsdd").read_text(encoding="utf-8"),
+                (ROOT / "README.md").read_text(encoding="utf-8"),
+            ]
+        ).lower()
+        required_phrases = (
+            "complete backend source layout",
+            "flutter worktree snapshot",
+            "go.mod",
+            "go.sum",
+            "serverlib",
+            "main.go",
+            "configs",
+        )
+
+        missing = [phrase for phrase in required_phrases if phrase not in combined]
+        self.assertEqual([], missing)
 
     def test_secret_scan_skip_helper_only_skips_python_tests(self) -> None:
         should_skip = (

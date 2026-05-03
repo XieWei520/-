@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -11,6 +12,8 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_ENV_FILE = ROOT_DIR / ".env"
 DEFAULT_TEMPLATE_DIR = ROOT_DIR / "config"
 DEFAULT_OUT_DIR = ROOT_DIR / "rendered"
+PRIVATE_DIR_MODE = 0o700
+PRIVATE_FILE_MODE = 0o600
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,6 +48,25 @@ def find_unresolved_placeholders(content: str) -> list[str]:
     return sorted(set(PLACEHOLDER_PATTERN.findall(content)))
 
 
+def ensure_private_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    os.chmod(path, PRIVATE_DIR_MODE)
+
+
+def ensure_private_output_parent(out_dir: Path, output_parent: Path) -> None:
+    ensure_private_dir(out_dir)
+    try:
+        relative_parent = output_parent.relative_to(out_dir)
+    except ValueError:
+        ensure_private_dir(output_parent)
+        return
+
+    current = out_dir
+    for part in relative_parent.parts:
+        current = current / part
+        ensure_private_dir(current)
+
+
 def render_templates(template_dir: Path, out_dir: Path, env: dict[str, str]) -> None:
     rendered_outputs: list[tuple[Path, str]] = []
     unresolved: list[tuple[str, list[str]]] = []
@@ -71,10 +93,13 @@ def render_templates(template_dir: Path, out_dir: Path, env: dict[str, str]) -> 
         )
         raise ValueError(f"Unresolved placeholders found after rendering:\n{issues}")
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    ensure_private_dir(out_dir)
     for output_file, rendered_content in rendered_outputs:
-        output_file.parent.mkdir(parents=True, exist_ok=True)
+        ensure_private_output_parent(out_dir, output_file.parent)
+        output_file.touch(mode=PRIVATE_FILE_MODE, exist_ok=True)
+        os.chmod(output_file, PRIVATE_FILE_MODE)
         output_file.write_text(rendered_content, encoding="utf-8")
+        os.chmod(output_file, PRIVATE_FILE_MODE)
         print(f"Rendered: {output_file}")
 
 

@@ -1,0 +1,42 @@
+# Root Docker build context guardrails for deploy/production/docker-compose.yaml.
+# The production compose file uses ../.. as context, so deny runtime secrets,
+# local state, caches, archives, and build artifacts at the repository boundary.
+
+.git
+**/.git
+
+deploy/production/.env
+deploy/production/.env.bak*
+deploy/production/rendered/
+deploy/production/logs/
+deploy/production/data/
+deploy/production/backup/
+deploy/production/backups/
+deploy/production/certs/
+deploy/production/keys/
+
+**/__pycache__/
+**/*.pyc
+
+build/
+**/build/
+dist/
+**/dist/
+node_modules/
+**/node_modules/
+.dart_tool/
+
+**/*.pem
+**/*.key
+**/*.sql
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.log
+**/*.gz
+**/*.zip
+**/*.tar
+**/*.tgz
+**/*.p12
+**/*.pfx
+**/*.jks

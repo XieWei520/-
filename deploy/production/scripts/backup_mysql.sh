@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 usage() {
     cat <<'EOF'
@@ -86,6 +87,7 @@ MYSQL_ROOT_PASSWORD="$(read_env_value MYSQL_ROOT_PASSWORD)"
 
 OUTPUT_DIR="${OUTPUT_DIR:-${PROD_DIR}/backups/mysql}"
 mkdir -p "${OUTPUT_DIR}"
+chmod 700 "${OUTPUT_DIR}"
 
 if [[ -z "${FILENAME}" ]]; then
     FILENAME="${MYSQL_DATABASE}_$(date +%Y%m%d_%H%M%S).sql.gz"
@@ -109,9 +111,11 @@ docker compose --env-file .env exec -T mysql sh -c \
 
 [[ -s "${TMP_PATH}" ]] || die "Backup file is empty: ${TMP_PATH}"
 mv "${TMP_PATH}" "${BACKUP_PATH}"
+chmod 600 "${BACKUP_PATH}"
 
 if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "${BACKUP_PATH}" > "${BACKUP_PATH}.sha256"
+    chmod 600 "${BACKUP_PATH}.sha256"
     log "Checksum written: ${BACKUP_PATH}.sha256"
 fi
 

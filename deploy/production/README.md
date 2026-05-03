@@ -17,6 +17,14 @@ It is intended to keep the deployment templates, operational scripts, and local 
 - Selected allowlisted `scripts/test_*.py` script-level regression tests for the included operational helpers.
 - `tests/test_production_snapshot_safety.py` repository safety checks for the snapshot.
 
+## Docker build context requirement
+
+`docker-compose.yaml` deliberately uses `../..` as the build context for `tsdd-api` and `callgateway`, because `Dockerfile.tsdd` is only usable inside the complete backend source layout from the production/backend repository. That layout must provide `go.mod`, `go.sum`, `serverlib/`, `main.go`, `configs/`, and `assets/` at the context root.
+
+This Flutter worktree snapshot does not contain that backend layout and should not be padded with fake backend files for reproducibility. Use the Dockerfile from a complete backend source layout, or build/pull an already produced backend image in frontend-only worktrees.
+
+Because the context is the repository root, the root `.dockerignore` carries the build-context safety guardrails that keep runtime secrets and build artifacts out of Docker sends.
+
 ## Explicitly excluded
 
 Do not commit production runtime state or secrets here. Excluded classes include:

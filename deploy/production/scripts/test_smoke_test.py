@@ -90,6 +90,28 @@ class SmokeBaseUrlTests(unittest.TestCase):
 
 
 class SmokeRedactionTests(unittest.TestCase):
+    def test_redact_text_redacts_sensitive_prefix_before_json_payload(self) -> None:
+        cases = (
+            (
+                'token=abc123 {"ok":true,"token":"def456"}',
+                ("abc123", "def456"),
+                ("token=<redacted>", '"token":"<redacted>"'),
+            ),
+            (
+                'dsn=mysql://user:pass@host/db {"data":{"api_key":"json-key-value"}}',
+                ("mysql://user:pass@host/db", "json-key-value"),
+                ("dsn=<redacted>", '"api_key":"<redacted>"'),
+            ),
+        )
+
+        for raw, secret_values, expected_fragments in cases:
+            with self.subTest(raw=raw.split(" ", 1)[0]):
+                rendered = redact_text(raw)
+                for value in secret_values:
+                    assert_absent_without_echo(self, value, rendered, "sensitive prefix/json value")
+                for fragment in expected_fragments:
+                    self.assertIn(fragment, rendered)
+
     def test_redact_text_covers_dsn_credential_and_pass_style_names(self) -> None:
         sensitive_values = {
             "mysqlDsn": "mysql://" + "redaction-db/app",

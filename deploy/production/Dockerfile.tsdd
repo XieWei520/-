@@ -1,3 +1,8 @@
+# This Dockerfile is intended only for a complete backend source layout used by
+# the production template build context. The context must include go.mod,
+# go.sum, serverlib/, main.go, configs/, and assets/. A Flutter worktree snapshot
+# alone is intentionally insufficient; do not add fake backend files just to make
+# this Dockerfile build from a frontend-only checkout.
 FROM golang:1.20 AS build
 
 ENV GOPROXY=https://goproxy.cn,direct

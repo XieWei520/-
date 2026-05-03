@@ -18,6 +18,14 @@ class MysqlBackupRestoreScriptTests(unittest.TestCase):
         self.assertIn("read_env_value", source)
         self.assertIn('docker compose --env-file .env exec -T mysql sh -c', source)
 
+    def test_backup_script_uses_private_umask_directory_and_file_modes(self) -> None:
+        source = BACKUP.read_text(encoding="utf-8")
+
+        self.assertRegex(source, r"(?m)^umask 077$")
+        self.assertIn('chmod 700 "${OUTPUT_DIR}"', source)
+        self.assertIn('chmod 600 "${BACKUP_PATH}"', source)
+        self.assertIn('chmod 600 "${BACKUP_PATH}.sha256"', source)
+
     def test_restore_script_does_not_source_compose_env(self) -> None:
         source = RESTORE.read_text(encoding="utf-8")
 
