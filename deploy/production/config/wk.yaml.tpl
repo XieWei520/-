@@ -10,7 +10,7 @@ external:
   ip: "{{EXTERNAL_IP}}"
   tcpAddr: ""
   wsAddr: "wss://{{PUBLIC_DOMAIN}}/ws"
-  apiUrl: "http://{{EXTERNAL_IP}}:{{PUBLIC_WK_API_PORT}}"
+  apiUrl: "{{WK_PUBLIC_API_URL}}"
 
 webhook:
   grpcAddr: "tsdd-api:6979"

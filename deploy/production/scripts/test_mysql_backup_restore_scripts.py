@@ -49,6 +49,13 @@ class MysqlBackupRestoreScriptTests(unittest.TestCase):
         self.assertIn('[[ ! -L "${CHECKSUM_PATH}" ]] || die "Checksum path must not be a symlink: ${CHECKSUM_PATH}"', source)
         self.assertIn('[[ ! -e "${CHECKSUM_PATH}" || -f "${CHECKSUM_PATH}" ]] || die "Checksum path exists and is not a regular file: ${CHECKSUM_PATH}"', source)
 
+    def test_backup_script_rejects_filename_path_traversal(self) -> None:
+        source = BACKUP.read_text(encoding="utf-8")
+
+        self.assertIn("validate_backup_filename", source)
+        self.assertIn('*/*|*\\\\*)', source)
+        self.assertIn('die "--filename must be a file name, not a path: ${FILENAME}"', source)
+
     def test_restore_script_does_not_source_compose_env(self) -> None:
         source = RESTORE.read_text(encoding="utf-8")
 

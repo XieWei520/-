@@ -76,6 +76,13 @@ def explain_http_base_url(base_url: str) -> str:
     )
 
 
+def safe_base_url_for_error(base_url: str) -> str:
+    parsed = urlparse(base_url)
+    if parsed.scheme and parsed.netloc:
+        return urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", "", ""))
+    return "<invalid-url>"
+
+
 def _is_loopback_host(hostname: str | None) -> bool:
     return (hostname or "").lower() in {"127.0.0.1", "localhost", "::1"}
 
@@ -83,10 +90,10 @@ def _is_loopback_host(hostname: str | None) -> bool:
 def validate_base_url(base_url: str, *, allow_http: bool = False) -> str:
     parsed = urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError(f"Invalid --base-url: {base_url}")
+        raise ValueError(f"Invalid --base-url: {safe_base_url_for_error(base_url)}")
     if parsed.query or parsed.fragment:
         raise ValueError(
-            f"Invalid --base-url: query/fragment are not allowed: {base_url}"
+            f"Invalid --base-url: query/fragment are not allowed: {safe_base_url_for_error(base_url)}"
         )
 
     normalized = urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", "", ""))

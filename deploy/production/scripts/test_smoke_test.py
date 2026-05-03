@@ -60,6 +60,23 @@ class SmokeBaseUrlTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "query|fragment|Invalid"):
                     validate_base_url(url)
 
+    def test_query_or_fragment_validation_error_does_not_echo_sensitive_tail(self) -> None:
+        secret_query = "tokenValue1234567890"
+        secret_fragment = "fragmentSecret1234567890"
+
+        for url, secret in (
+            (f"https://example.com/api?token={secret_query}", secret_query),
+            (f"https://example.com/api#{secret_fragment}", secret_fragment),
+        ):
+            with self.subTest(url=url.split("?", 1)[0].split("#", 1)[0]):
+                with self.assertRaises(ValueError) as caught:
+                    validate_base_url(url)
+
+                message = str(caught.exception)
+                assert_absent_without_echo(self, secret, message, "URL query/fragment secret")
+                self.assertNotIn("?", message)
+                self.assertNotIn("#", message)
+
     def test_normalizes_https_path_prefix_trailing_slash(self) -> None:
         self.assertEqual(
             validate_base_url("https://example.com/api/"),

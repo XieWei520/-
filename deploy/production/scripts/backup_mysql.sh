@@ -48,6 +48,15 @@ read_env_value() {
     ' .env
 }
 
+validate_backup_filename() {
+    [[ -n "${FILENAME}" ]] || die "--filename must not be empty."
+    case "${FILENAME}" in
+        .|..|*/*|*\\*)
+            die "--filename must be a file name, not a path: ${FILENAME}"
+            ;;
+    esac
+}
+
 OUTPUT_DIR=""
 FILENAME=""
 
@@ -94,6 +103,7 @@ chmod 700 "${OUTPUT_DIR}"
 if [[ -z "${FILENAME}" ]]; then
     FILENAME="${MYSQL_DATABASE}_$(date +%Y%m%d_%H%M%S).sql.gz"
 fi
+validate_backup_filename
 
 BACKUP_PATH="${OUTPUT_DIR%/}/${FILENAME}"
 CHECKSUM_PATH="${BACKUP_PATH}.sha256"

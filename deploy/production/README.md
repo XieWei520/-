@@ -10,6 +10,7 @@ It is intended to keep the deployment templates, operational scripts, and local 
 
 - `docker-compose.yaml` and `.env.example` for the production template shape.
 - `Dockerfile.tsdd` for the local `tsdd-api`/`callgateway` production image build.
+- `wukongim-image/Dockerfile.patched-binary` and helper scripts for the patched WuKongIM token-redaction image.
 - `config/*.tpl` renderer inputs for WukongIM, TSDD, TURN, and LiveKit.
 - `mysql/conf.d/production.cnf` production MySQL configuration.
 - `nginx/*.conf*` Nginx template/config files.
@@ -51,8 +52,10 @@ python deploy/production/tests/test_production_snapshot_safety.py
 python deploy/production/scripts/test_smoke_test.py
 python deploy/production/scripts/test_perf_probe.py
 python deploy/production/scripts/test_production_doctor.py
+python deploy/production/scripts/test_edge_exposure_config.py
+python deploy/production/scripts/test_mysql_backup_restore_scripts.py
 python -m py_compile deploy/production/scripts/render_config.py deploy/production/scripts/smoke_test.py deploy/production/scripts/perf_probe.py deploy/production/scripts/production_doctor.py deploy/production/tests/test_production_snapshot_safety.py
-bash -n deploy/production/scripts/backup_mysql.sh deploy/production/scripts/restore_mysql.sh deploy/production/scripts/bootstrap_server.sh
+bash -n deploy/production/wukongim-image/scripts/build_patched_image.sh deploy/production/wukongim-image/scripts/apply_remote_wukongim_image.sh deploy/production/scripts/backup_mysql.sh deploy/production/scripts/restore_mysql.sh deploy/production/scripts/bootstrap_server.sh
 ```
 
 If `bash` is not on `PATH` on Windows, prepend Git Bash first:

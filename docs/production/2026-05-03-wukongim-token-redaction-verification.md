@@ -32,7 +32,7 @@ WuKongIM token log patch static verification passed
 
 The upstream Dockerfile builds demo/web frontend assets through Yarn before compiling the Go server. That path was not used for the final production patch image because it had already blocked on external package/source fetches, while this change only replaces the Go server binary containing the token-log redaction patch.
 
-Final image build used the patched source and a minimal Dockerfile that:
+Final image build used the patched source and a minimal Dockerfile. The reproducible version of that Dockerfile is now committed at `deploy/production/wukongim-image/Dockerfile.patched-binary`; `deploy/production/wukongim-image/scripts/build_patched_image.sh` builds with it after applying and statically verifying the redaction patch. The Dockerfile:
 
 1. compiled `/home/app` from the patched Go source;
 2. kept the upstream generated `web/dist` in the Docker context so Go embed succeeds;
@@ -45,6 +45,23 @@ Remote build result:
 Successfully built c021f47b6e98
 Successfully tagged wukongim/wukongim:v2.2.4-redacted-20260503
 id=sha256:c021f47b6e98c28ae6b52314bf9198b15f761956396231ab452b244e27c85436 created=2026-05-03T13:28:52.348931738Z size=200343012
+```
+
+Post-review reproducibility check from the committed build path (`2026-05-03 22:20 +08:00`):
+
+```bash
+WUKONGIM_BUILD_ROOT=/home/ubuntu/wukongim-build-src-uploaded \
+WUKONGIM_SKIP_FETCH=1 \
+  bash /tmp/wukongim-committed-build-check/wukongim-image/scripts/build_patched_image.sh
+```
+
+Result:
+
+```text
+WuKongIM token log patch static verification passed
+Successfully built 0077ec62cf26
+Successfully tagged wukongim/wukongim:v2.2.4-redacted-20260503
+id=sha256:0077ec62cf269685a5542238fc42a8bf9cbe05a1f52c5cc161b704f106594b36 created=2026-05-03T14:20:12.225864224Z size=200338916
 ```
 
 ## Deployment Evidence
@@ -131,7 +148,12 @@ Then scan only a fresh post-rollback log window and run smoke/perf again before 
 
 ## Follow-up Note
 
-The production-host source fetch and the upstream full Dockerfile path were not reliable enough for this deployment window. Future hardening should update the checked-in build script so it can either:
+The production-host source fetch and the upstream full Dockerfile path were not reliable enough for this deployment window. The checked-in build path now supports the verified binary-only Dockerfile and a pre-fetched source tree:
 
-- build from a pre-uploaded verified source tree, or
-- use a Go-binary-only Dockerfile that avoids the upstream Yarn/demo/web build path when only the server binary is being patched.
+```bash
+WUKONGIM_BUILD_ROOT=/path/to/pinned-source \
+WUKONGIM_SKIP_FETCH=1 \
+  bash deploy/production/wukongim-image/scripts/build_patched_image.sh
+```
+
+When `WUKONGIM_SKIP_FETCH=1` is not set, the script still performs the normal clone/fetch path for hosts with reliable access to the upstream repository.

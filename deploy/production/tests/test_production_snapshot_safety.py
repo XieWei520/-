@@ -38,6 +38,7 @@ REQUIRED_FILES = (
     "scripts/backup_mysql.sh",
     "scripts/restore_mysql.sh",
     "scripts/bootstrap_server.sh",
+    "wukongim-image/Dockerfile.patched-binary",
     "scripts/test_smoke_test.py",
     "scripts/test_perf_probe.py",
     "scripts/test_production_doctor.py",
@@ -256,6 +257,34 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
         }
 
         self.assertEqual([], sorted(required_patterns - patterns))
+
+    def test_wukongim_compose_defaults_to_patched_redacted_image(self) -> None:
+        compose = (ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
+        env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+        upstream_image = "registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2"
+        patched_image = "wukongim/wukongim:v2.2.4-redacted-20260503"
+
+        self.assertIn(f"image: ${{WUKONGIM_IMAGE:-{patched_image}}}", compose)
+        self.assertIn(f"WUKONGIM_IMAGE={patched_image}", env_example)
+        self.assertNotIn(f"image: {upstream_image}", compose)
+
+    def test_wukongim_external_api_url_uses_https_edge_not_loopback_port(self) -> None:
+        wk_template = (ROOT / "config" / "wk.yaml.tpl").read_text(encoding="utf-8")
+        env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+
+        self.assertIn('apiUrl: "{{WK_PUBLIC_API_URL}}"', wk_template)
+        self.assertIn("WK_PUBLIC_API_URL=https://wemx.cc", env_example)
+        self.assertNotIn("http://{{EXTERNAL_IP}}:{{PUBLIC_WK_API_PORT}}", wk_template)
+
+    def test_wukongim_build_script_uses_committed_binary_dockerfile(self) -> None:
+        build_script = (ROOT / "wukongim-image" / "scripts" / "build_patched_image.sh").read_text(encoding="utf-8")
+        dockerfile = (ROOT / "wukongim-image" / "Dockerfile.patched-binary").read_text(encoding="utf-8")
+
+        self.assertIn("Dockerfile.patched-binary", build_script)
+        self.assertIn('docker build -f "${BINARY_DOCKERFILE}"', build_script)
+        self.assertIn("preserve_go_embed_assets_in_docker_context", build_script)
+        self.assertIn("FROM registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2", dockerfile)
+        self.assertIn("COPY --from=build /out/app /home/app", dockerfile)
 
     def test_dockerfile_documents_full_backend_source_layout_requirement(self) -> None:
         combined = "\n".join(

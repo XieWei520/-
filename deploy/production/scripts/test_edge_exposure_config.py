@@ -19,6 +19,9 @@ assert "proxy_pass http://wukongim_ws/;" in nginx_text, "nginx must rewrite /ws 
 assert "limit_req zone=ws_limit" in nginx_text, "nginx /ws location must apply the WS rate limit"
 
 assert 'wsAddr: "wss://{{PUBLIC_DOMAIN}}/ws"' in wk_template_text, "route metadata should advertise the TLS /ws edge"
+assert 'apiUrl: "{{WK_PUBLIC_API_URL}}"' in wk_template_text, "API metadata should advertise an HTTPS edge URL"
+assert "WK_PUBLIC_API_URL=https://wemx.cc" in (ROOT / ".env.example").read_text(encoding="utf-8"), "example env must set HTTPS API metadata"
+assert "http://{{EXTERNAL_IP}}:{{PUBLIC_WK_API_PORT}}" not in wk_template_text, "route metadata must not advertise a raw closed HTTP port"
 assert "{{PUBLIC_WS_PORT}}" not in wk_template_text, "route metadata must not advertise the raw WS port"
 assert "{{PUBLIC_TCP_PORT}}" not in wk_template_text, "route metadata must not advertise the raw TCP port"
 
