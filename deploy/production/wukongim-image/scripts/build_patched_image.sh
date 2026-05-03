@@ -37,6 +37,9 @@ log "Checking out upstream commit ${WUKONGIM_UPSTREAM_COMMIT}"
 git -C "${BUILD_ROOT}" checkout --detach "${WUKONGIM_UPSTREAM_COMMIT}"
 git -C "${BUILD_ROOT}" reset --hard "${WUKONGIM_UPSTREAM_COMMIT}"
 
+log "Cleaning upstream checkout"
+git -C "${BUILD_ROOT}" clean -ffdx
+
 log "Applying token redaction patch"
 git -C "${BUILD_ROOT}" apply "${PATCH_FILE}"
 
