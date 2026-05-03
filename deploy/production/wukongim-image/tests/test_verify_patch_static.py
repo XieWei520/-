@@ -372,6 +372,34 @@ class VerifyPatchStaticTests(unittest.TestCase):
         result = self._run(root)
         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
 
+    def test_rejects_sugared_error_raw_connect_token(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Sugar().Error("token leak", connectPacket.Token)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"Error", result.stderr)
+        self.assertIn(b"connectPacket.Token", result.stderr)
+
+    def test_rejects_sugared_info_spaced_device_token(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Sugar().Info("token leak", device . Token)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"Info", result.stderr)
+        self.assertIn(b"device", result.stderr)
+
+    def test_rejects_sugared_warn_and_debug_raw_tokens(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Sugar().Warn("token leak", connectPacket.Token)
+                h.Sugar().Debug("token leak", device.Token)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"Warn", result.stderr)
+        self.assertIn(b"Debug", result.stderr)
+
     def test_accepts_hash_only_redacted_logging(self) -> None:
         root = self._write_source(self._hash_only_source('''
                 if device.Token != connectPacket.Token {
