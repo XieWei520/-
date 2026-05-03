@@ -87,6 +87,13 @@ PATCHED_IMAGE=wukongim/wukongim:v2.2.4-redacted-20260503
 
 Compose emitted an existing orphan-container warning for `wukongim_prod-admin-nginx-1`; it did not block the `wukongim` recreate.
 
+Post-review template hardening was also synced to the production template directory after the reproducible build path was committed. The sync copied only non-secret template/script files, appended the new non-secret `.env` keys required by the hardened template, rendered configs, and recreated `wukongim`.
+
+```text
+BACKUP_DIR=/home/ubuntu/wukong-deploy-backups/template-hardening-20260503222347-2405494
+REMOTE_TEMPLATE_SYNC=ok
+```
+
 ## Container and Recent Log Verification
 
 Command:
@@ -109,6 +116,15 @@ scanner_rc=0
 ```
 
 Only recent post-restart logs were used for the release gate. Older Docker log history can still contain historical raw-token failures from the previous official image and should not be used as proof of the patched image behavior.
+
+Final post-template-sync verification (`2026-05-03 22:24 +08:00`):
+
+```text
+wukongim/wukongim:v2.2.4-redacted-20260503 running healthy
+recent log scan: scanner exit 0
+smoke test passed
+perf probe: failure_rate=0.0
+```
 
 ## HTTPS Smoke and Perf Verification
 
