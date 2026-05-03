@@ -322,6 +322,56 @@ class VerifyPatchStaticTests(unittest.TestCase):
         self.assertIn(b"missing required import", result.stderr)
         self.assertIn(b"missing func tokenFingerprint", result.stderr)
 
+    def test_rejects_zap_string_with_spaced_connect_token_selector(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Error("token leak", zap.String("token", connectPacket . Token))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"zap.String", result.stderr)
+        self.assertIn(b"connectPacket", result.stderr)
+
+    def test_rejects_zap_any_with_newline_connect_token_selector(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Error("token leak", zap.Any("token", connectPacket.
+                    Token))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"zap.Any", result.stderr)
+        self.assertIn(b"connectPacket", result.stderr)
+
+    def test_rejects_sugared_infow_with_spaced_device_token_selector(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Sugar().Infow("leak", "token", device . Token)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"Infow", result.stderr)
+        self.assertIn(b"device", result.stderr)
+
+    def test_accepts_allowed_token_fingerprint_calls_with_spaced_selectors(self) -> None:
+        root = self._write_source('''
+            package handler
+            import (
+                "crypto/sha256"
+                "encoding/hex"
+                "go.uber.org/zap"
+            )
+            func tokenFingerprint(token string) string {
+                if token == "" { return "empty" }
+                sum := sha256.Sum256([]byte(token))
+                return hex.EncodeToString(sum[:])[:12]
+            }
+            func f() {
+                h.Error("manager token verify fail", zap.String("stage", "manager_token"), zap.String("tokenHash", tokenFingerprint(connectPacket . Token)))
+                h.Error("token verify fail", zap.String("stage", "device_token"), zap.String("expectedTokenHash", tokenFingerprint(device.
+                    Token)), zap.String("actualTokenHash", tokenFingerprint(connectPacket . Token)))
+            }
+        ''')
+        result = self._run(root)
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+
     def test_accepts_hash_only_redacted_logging(self) -> None:
         root = self._write_source(self._hash_only_source('''
                 if device.Token != connectPacket.Token {

@@ -14,16 +14,17 @@ EXACT_TOKEN_FINGERPRINT_BODY = (
     "sum := sha256.Sum256([]byte(token)) "
     "return hex.EncodeToString(sum[:])[:12]"
 )
-RAW_FIELD_RE = re.compile(r'zap\.String\(\s*"(?P<field>expectToken|actToken)"\s*,\s*(?P<value>device\.Token|connectPacket\.Token)\s*\)')
-MANAGER_RAW_RE = re.compile(r'zap\.String\(\s*"token"\s*,\s*connectPacket\.Token\s*\)')
+RAW_FIELD_RE = re.compile(r'zap\.String\(\s*"(?P<field>expectToken|actToken)"\s*,\s*(?P<value>device\s*\.\s*Token|connectPacket\s*\.\s*Token)\s*\)')
+MANAGER_RAW_RE = re.compile(r'zap\.String\(\s*"token"\s*,\s*connectPacket\s*\.\s*Token\s*\)')
 ZAP_CALL_START_RE = re.compile(r'\bzap\.(?P<constructor>[A-Za-z][A-Za-z0-9_]*)\s*\(')
 LOGGING_CALL_START_RE = re.compile(r'\.(?P<constructor>Infow|Errorw|Warnw|Debugw|Infof|Errorf|Warnf|Debugf)\s*\(')
-TOKEN_VALUE_RE = re.compile(r'(?<![A-Za-z0-9_])(?:device\.Token|connectPacket\.Token)(?![A-Za-z0-9_])')
+TOKEN_SELECTOR_PATTERN = r'(?:device\s*\.\s*Token|connectPacket\s*\.\s*Token)'
+TOKEN_VALUE_RE = re.compile(r'(?<![A-Za-z0-9_])' + TOKEN_SELECTOR_PATTERN + r'(?![A-Za-z0-9_])')
 ALLOWED_TOKEN_FINGERPRINT_CALL_RE = re.compile(
     r'(?<![A-Za-z0-9_.])tokenFingerprint(?![A-Za-z0-9_])\s*\(\s*'
-    r'(?:device\.Token|connectPacket\.Token)\s*\)'
+    + TOKEN_SELECTOR_PATTERN + r'\s*\)'
 )
-UNSAFE_TOKEN_RETURN_RE = re.compile(r'\breturn\s+(?P<expr>[^\n;}]*(?:\btoken\b|device\.Token|connectPacket\.Token)[^\n;}]*)')
+UNSAFE_TOKEN_RETURN_RE = re.compile(r'\breturn\s+(?P<expr>[^\n;}]*(?:\btoken\b|' + TOKEN_SELECTOR_PATTERN + r')[^\n;}]*)')
 REQUIRED_IMPORTS = (
     "crypto/sha256",
     "encoding/hex",
@@ -36,7 +37,7 @@ REQUIRED_ZAP_FIELDS = (
     (
         'zap.String("tokenHash", tokenFingerprint(connectPacket.Token))',
         re.compile(
-            r'\Azap\.String\(\s*"tokenHash"\s*,\s*tokenFingerprint\(\s*connectPacket\.Token\s*\)\s*\)\Z',
+            r'\Azap\.String\(\s*"tokenHash"\s*,\s*tokenFingerprint\(\s*connectPacket\s*\.\s*Token\s*\)\s*\)\Z',
             re.DOTALL,
         ),
     ),
@@ -47,14 +48,14 @@ REQUIRED_ZAP_FIELDS = (
     (
         'zap.String("expectedTokenHash", tokenFingerprint(device.Token))',
         re.compile(
-            r'\Azap\.String\(\s*"expectedTokenHash"\s*,\s*tokenFingerprint\(\s*device\.Token\s*\)\s*\)\Z',
+            r'\Azap\.String\(\s*"expectedTokenHash"\s*,\s*tokenFingerprint\(\s*device\s*\.\s*Token\s*\)\s*\)\Z',
             re.DOTALL,
         ),
     ),
     (
         'zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token))',
         re.compile(
-            r'\Azap\.String\(\s*"actualTokenHash"\s*,\s*tokenFingerprint\(\s*connectPacket\.Token\s*\)\s*\)\Z',
+            r'\Azap\.String\(\s*"actualTokenHash"\s*,\s*tokenFingerprint\(\s*connectPacket\s*\.\s*Token\s*\)\s*\)\Z',
             re.DOTALL,
         ),
     ),
