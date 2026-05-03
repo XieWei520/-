@@ -47,7 +47,7 @@ Successfully tagged wukongim/wukongim:v2.2.4-redacted-20260503
 id=sha256:c021f47b6e98c28ae6b52314bf9198b15f761956396231ab452b244e27c85436 created=2026-05-03T13:28:52.348931738Z size=200343012
 ```
 
-Post-review reproducibility check from the committed build path (`2026-05-03 22:20 +08:00`):
+Post-review reproducibility check from the committed build path, re-run after the zero-context patch whitespace cleanup (`2026-05-03 23:13 +08:00`):
 
 ```bash
 WUKONGIM_BUILD_ROOT=/home/ubuntu/wukongim-build-src-uploaded \
@@ -92,6 +92,14 @@ Post-review template hardening was also synced to the production template direct
 ```text
 BACKUP_DIR=/home/ubuntu/wukong-deploy-backups/template-hardening-20260503222347-2405494
 REMOTE_TEMPLATE_SYNC=ok
+```
+
+After the patch bundle was converted to a zero-context patch to keep the committed range whitespace-clean, the final `wukongim-image/` template directory was synced again and verified on the host:
+
+```text
+BACKUP_DIR=/home/ubuntu/wukong-deploy-backups/wukongim-image-final-sync-20260503231358-2481368
+WUKONGIM_IMAGE_TEMPLATE_SYNC=ok
+verify_patch_static tests: 36 OK
 ```
 
 ## Container and Recent Log Verification
