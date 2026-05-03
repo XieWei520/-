@@ -140,6 +140,68 @@ void main() {
     );
   });
 
+  testWidgets('chat list row keys match child index callback identities', (
+    tester,
+  ) async {
+    const channelId = 'u_scroll_identity_keys';
+    const channelType = WKChannelType.personal;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          chatMarkConversationReadProvider.overrideWithValue(
+            (session, messageIds) async {},
+          ),
+          messageListProvider.overrideWith((ref, session) {
+            if (session.channelId == channelId &&
+                session.channelType == channelType) {
+              return _RecordingMessageListNotifier(
+                channelId,
+                channelType,
+                _buildMessages(
+                  channelId: channelId,
+                  channelType: channelType,
+                  count: 2,
+                ),
+              );
+            }
+            return _RecordingMessageListNotifier(
+              session.channelId,
+              session.channelType,
+              const <WKMsg>[],
+            );
+          }),
+        ],
+        child: const MaterialApp(
+          home: ChatPageShell(
+            channelId: channelId,
+            channelType: channelType,
+            channelName: 'Identity Keys',
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Consumer &&
+            widget.key == const ValueKey<String>('mid:m1'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Consumer &&
+            widget.key == const ValueKey<String>('message-consumer:mid:m1'),
+      ),
+      findsNothing,
+    );
+  });
+
   test('older-message load trigger tolerates near-tail scroll metrics', () {
     expect(shouldTriggerOlderMessageLoad(extentAfter: 299.5), isTrue);
     expect(shouldTriggerOlderMessageLoad(extentAfter: 300.5), isFalse);

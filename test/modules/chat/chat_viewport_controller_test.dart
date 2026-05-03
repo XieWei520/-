@@ -83,6 +83,31 @@ void main() {
       );
     });
 
+    test('preserves identity slice instance for status-only refreshes', () {
+      final controller = ChatViewportController(
+        mapper: ChatMessageMapper(),
+        currentUid: 'u_self',
+      );
+      final pending = WKMsg()
+        ..messageID = 'm1'
+        ..status = WKSendMsgResult.sendLoading
+        ..contentType = WkMessageContentType.text;
+      final delivered = WKMsg()
+        ..messageID = 'm1'
+        ..status = WKSendMsgResult.sendSuccess
+        ..contentType = WkMessageContentType.text;
+
+      controller.replaceAll(<WKMsg>[pending]);
+      final identitiesBefore = controller.state.identities;
+      controller.applyRefresh(delivered);
+
+      expect(
+        controller.state.items.single.message.status,
+        WKSendMsgResult.sendSuccess,
+      );
+      expect(identical(controller.state.identities, identitiesBefore), isTrue);
+    });
+
     test('patches by sequence keys when identity changes on refresh', () {
       final controller = ChatViewportController(
         mapper: ChatMessageMapper(),

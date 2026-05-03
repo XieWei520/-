@@ -50,6 +50,22 @@ import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'im_word_sync_models.dart';
 import 'local_attachment_file.dart';
+import 'coordinators/attachment_pipeline.dart' as attachment_pipeline;
+import 'coordinators/command_dispatcher.dart' as command_dispatcher;
+import 'coordinators/connection_coordinator.dart' as connection_coordinator;
+import 'coordinators/message_sync_coordinator.dart' as message_sync_coordinator;
+import 'message_outbox.dart';
+
+export 'coordinators/attachment_pipeline.dart'
+    show normalizeFileAttachmentMetadata;
+export 'coordinators/command_dispatcher.dart'
+    show
+        IMCommandSideEffect,
+        imSyncRemindersCommand,
+        imSyncMessageExtraCommand,
+        imSyncConversationExtraCommand,
+        imSyncPinnedMessageCommand,
+        resolveImCommandSideEffects;
 
 final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
   ref,
@@ -61,110 +77,11 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
   );
 });
 
-const String imSyncRemindersCommand = 'wk_sync_reminders';
-const String imSyncMessageExtraCommand = 'wk_sync_message_extra';
-const String imSyncConversationExtraCommand = 'wk_sync_conversation_extra';
-const String imSyncPinnedMessageCommand = 'syncPinnedMessage';
 const String _sensitiveWordsCacheKey = 'wk_sensitive_words';
 const String _sensitiveWordsVersionKey = 'wk_sensitive_words_version';
 const bool _preferProtobufControlProtocol = true;
 const String _protobufControlProtocol = 'protobuf';
 const String _realtimeControlProtocolHeader = 'X-Realtime-Control-Protocol';
-
-enum IMCommandSideEffect {
-  refreshFriendList,
-  refreshFriendRequests,
-  syncReminders,
-  syncMessageExtra,
-  syncConversationExtra,
-}
-
-Set<IMCommandSideEffect> resolveImCommandSideEffects(String rawCommand) {
-  switch (rawCommand.trim()) {
-    case 'friendAccept':
-      return const <IMCommandSideEffect>{
-        IMCommandSideEffect.refreshFriendList,
-        IMCommandSideEffect.refreshFriendRequests,
-      };
-    case 'friendRequest':
-      return const <IMCommandSideEffect>{
-        IMCommandSideEffect.refreshFriendRequests,
-      };
-    case imSyncRemindersCommand:
-      return const <IMCommandSideEffect>{IMCommandSideEffect.syncReminders};
-    case imSyncMessageExtraCommand:
-    case 'syncMessageExtra':
-    case imSyncPinnedMessageCommand:
-    case 'messageRevoke':
-      return const <IMCommandSideEffect>{IMCommandSideEffect.syncMessageExtra};
-    case imSyncConversationExtraCommand:
-      return const <IMCommandSideEffect>{
-        IMCommandSideEffect.syncConversationExtra,
-      };
-    default:
-      return const <IMCommandSideEffect>{};
-  }
-}
-
-void normalizeFileAttachmentMetadata(
-  WKFileContent content, {
-  required String localPath,
-  int? inferredSize,
-}) {
-  content.name = _safeAttachmentFileName(content.name, fallbackPath: localPath);
-  if (content.size <= 0 && inferredSize != null && inferredSize > 0) {
-    content.size = inferredSize;
-  } else if (content.size < 0) {
-    content.size = 0;
-  }
-  if (content.suffix.trim().isEmpty) {
-    content.suffix = _attachmentFileSuffix(
-      name: content.name,
-      fallbackPath: localPath,
-    );
-  }
-}
-
-String _safeAttachmentFileName(String name, {required String fallbackPath}) {
-  final fromName = _lastSafeAttachmentPathSegment(name);
-  if (fromName.isNotEmpty) {
-    return fromName;
-  }
-  final fromPath = _lastSafeAttachmentPathSegment(fallbackPath);
-  if (fromPath.isNotEmpty) {
-    return fromPath;
-  }
-  return 'file';
-}
-
-String _lastSafeAttachmentPathSegment(String value) {
-  final cleaned = value.trim().replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '');
-  if (cleaned.isEmpty) {
-    return '';
-  }
-  final segments = cleaned
-      .split(RegExp(r'[\\/]+'))
-      .map((segment) => segment.trim())
-      .where((segment) => segment.isNotEmpty)
-      .where((segment) => segment != '.' && segment != '..')
-      .toList(growable: false);
-  if (segments.isEmpty) {
-    return '';
-  }
-  return segments.last;
-}
-
-String _attachmentFileSuffix({
-  required String name,
-  required String fallbackPath,
-}) {
-  final safeName = _safeAttachmentFileName(name, fallbackPath: fallbackPath);
-  final dotIndex = safeName.lastIndexOf('.');
-  if (dotIndex <= 0 || dotIndex == safeName.length - 1) {
-    return '';
-  }
-  return safeName.substring(dotIndex + 1).trim().toLowerCase();
-}
 
 bool shouldReuseInitializedImSession({
   required String? initializedUid,
@@ -176,11 +93,17 @@ bool shouldReuseInitializedImSession({
   required int connectionStatus,
   required bool sessionRuntimeRunning,
 }) {
-  return initializedUid == uid &&
-      initializedToken == token &&
-      initializedDeviceSessionId == deviceSessionId &&
-      connectionStatus == WKConnectStatus.syncCompleted &&
-      sessionRuntimeRunning;
+  return const connection_coordinator.ConnectionCoordinator()
+      .shouldReuseInitializedSession(
+        initializedUid: initializedUid,
+        initializedToken: initializedToken,
+        initializedDeviceSessionId: initializedDeviceSessionId,
+        uid: uid,
+        token: token,
+        deviceSessionId: deviceSessionId,
+        connectionStatus: connectionStatus,
+        sessionRuntimeRunning: sessionRuntimeRunning,
+      );
 }
 
 @immutable
@@ -229,39 +152,20 @@ Uri buildSessionGatewayUri({
   required int lastAckedSeq,
   String? controlProtocol,
 }) {
-  final baseUri = Uri.parse(baseUrl);
-  final scheme = baseUri.scheme == 'https' ? 'wss' : 'ws';
-  final queryParameters = <String, String>{
-    'device_session_id': deviceSessionId,
-    'last_acked_seq': '$lastAckedSeq',
-    if (controlProtocol != null && controlProtocol.trim().isNotEmpty)
-      'control_protocol': controlProtocol.trim(),
-  };
-
-  if (baseUri.hasPort) {
-    return Uri(
-      scheme: scheme,
-      host: baseUri.host,
-      port: baseUri.port,
-      path: '/v1/realtime/session/events/ws',
-      queryParameters: queryParameters,
-    );
-  }
-
-  return Uri(
-    scheme: scheme,
-    host: baseUri.host,
-    path: '/v1/realtime/session/events/ws',
-    queryParameters: queryParameters,
-  );
+  return const connection_coordinator.ConnectionCoordinator()
+      .buildSessionGatewayUri(
+        baseUrl: baseUrl,
+        deviceSessionId: deviceSessionId,
+        lastAckedSeq: lastAckedSeq,
+        controlProtocol: controlProtocol,
+      );
 }
 
 String selectImConnectAddr(ImRouteInfo route, {required String fallbackAddr}) {
-  if (shouldPreferLocalFallbackImAddr(fallbackAddr) &&
-      isValidTcpConnectAddr(fallbackAddr)) {
-    return fallbackAddr.trim();
-  }
-  return route.resolvePreferredAddr(fallbackAddr: fallbackAddr);
+  return const connection_coordinator.ConnectionCoordinator().selectConnectAddr(
+    route,
+    fallbackAddr: fallbackAddr,
+  );
 }
 
 @visibleForTesting
@@ -269,12 +173,14 @@ bool shouldUseImLocalPersistence({
   required bool isWeb,
   required bool sdkAppMode,
 }) {
-  return !isWeb && sdkAppMode;
+  return const connection_coordinator.ConnectionCoordinator()
+      .shouldUseLocalPersistence(isWeb: isWeb, sdkAppMode: sdkAppMode);
 }
 
 @visibleForTesting
 bool shouldStartNativeSessionRuntime({required bool isWeb}) {
-  return !isWeb;
+  return const connection_coordinator.ConnectionCoordinator()
+      .shouldStartNativeSessionRuntime(isWeb: isWeb);
 }
 
 typedef SessionRuntimeInitStarter = Future<void> Function();
@@ -302,10 +208,13 @@ bool shouldDisconnectForBackgroundLifecycle({
   required bool hasActiveCallOrPendingSetup,
   bool keepRealtimeForDesktopNotifications = false,
 }) {
-  if (isWeb || keepRealtimeForDesktopNotifications) {
-    return false;
-  }
-  return !hasActiveCallOrPendingSetup;
+  return const connection_coordinator.ConnectionCoordinator()
+      .shouldDisconnectForBackgroundLifecycle(
+        isWeb: isWeb,
+        hasActiveCallOrPendingSetup: hasActiveCallOrPendingSetup,
+        keepRealtimeForDesktopNotifications:
+            keepRealtimeForDesktopNotifications,
+      );
 }
 
 class _RecoveredCallingKey {
@@ -331,16 +240,6 @@ _RecoveredCallingKey? _parseRecoveredCallingKey(String key) {
   }
 
   return _RecoveredCallingKey(channelId: channelId, channelType: channelType);
-}
-
-class _CommandChannelTarget {
-  const _CommandChannelTarget({
-    required this.channelId,
-    required this.channelType,
-  });
-
-  final String channelId;
-  final int channelType;
 }
 
 @immutable
@@ -460,6 +359,15 @@ class IMService extends StateNotifier<IMServiceState>
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
   final Map<String, VoidCallback> _vipExpiredHandlers =
       <String, VoidCallback>{};
+  final command_dispatcher.CommandDispatcher _commandDispatcher =
+      const command_dispatcher.CommandDispatcher();
+  final connection_coordinator.ConnectionCoordinator _connectionCoordinator =
+      const connection_coordinator.ConnectionCoordinator();
+  final message_sync_coordinator.MessageSyncCoordinator
+  _messageSyncCoordinator =
+      const message_sync_coordinator.MessageSyncCoordinator();
+  final attachment_pipeline.AttachmentPipeline _attachmentPipeline =
+      const attachment_pipeline.AttachmentPipeline();
 
   void registerVipExpiredHandler({
     required String key,
@@ -797,9 +705,9 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   void _handleCmd(WKCMD cmd) {
-    final normalizedCommand = cmd.cmd.trim();
-    final effects = resolveImCommandSideEffects(cmd.cmd);
-    if (normalizedCommand == 'vip_expired') {
+    final plan = _commandDispatcher.plan(cmd);
+    final effects = plan.effects;
+    if (plan.shouldNotifyVipExpired) {
       final vipExpiredHandlersSnapshot = List<VoidCallback>.from(
         _vipExpiredHandlers.values,
       );
@@ -815,17 +723,25 @@ class IMService extends StateNotifier<IMServiceState>
             WKIM.shared.channelManager.getChannel(channelId, channelType),
       ),
     );
-    if (effects.contains(IMCommandSideEffect.refreshFriendList)) {
+    if (effects.contains(
+      command_dispatcher.IMCommandSideEffect.refreshFriendList,
+    )) {
       _invalidateProvider?.call(friendListProvider);
     }
-    if (effects.contains(IMCommandSideEffect.refreshFriendRequests)) {
+    if (effects.contains(
+      command_dispatcher.IMCommandSideEffect.refreshFriendRequests,
+    )) {
       _invalidateProvider?.call(friendRequestListProvider);
     }
-    if (effects.contains(IMCommandSideEffect.syncConversationExtra)) {
+    if (effects.contains(
+      command_dispatcher.IMCommandSideEffect.syncConversationExtra,
+    )) {
       unawaited(_syncConversationExtras(reason: 'cmd:${cmd.cmd}'));
     }
-    if (effects.contains(IMCommandSideEffect.syncMessageExtra)) {
-      final target = _resolveCommandChannelTarget(cmd);
+    if (effects.contains(
+      command_dispatcher.IMCommandSideEffect.syncMessageExtra,
+    )) {
+      final target = plan.messageExtraTarget;
       if (target != null) {
         unawaited(
           _syncMessageExtras(
@@ -836,7 +752,9 @@ class IMService extends StateNotifier<IMServiceState>
         );
       }
     }
-    if (effects.contains(IMCommandSideEffect.syncReminders)) {
+    if (effects.contains(
+      command_dispatcher.IMCommandSideEffect.syncReminders,
+    )) {
       unawaited(_syncReminders(reason: 'cmd:${cmd.cmd}'));
     }
   }
@@ -1156,24 +1074,8 @@ class IMService extends StateNotifier<IMServiceState>
       ..version = extra.version;
   }
 
-  _CommandChannelTarget? _resolveCommandChannelTarget(WKCMD cmd) {
-    final param = cmd.param;
-    if (param is! Map) {
-      return null;
-    }
-    final channelId = _readDynamicString(param['channel_id']);
-    final channelType = _readDynamicInt(param['channel_type']);
-    if (channelId.isEmpty || channelType <= 0) {
-      return null;
-    }
-    return _CommandChannelTarget(
-      channelId: channelId,
-      channelType: channelType,
-    );
-  }
-
   String _messageExtraSyncKey(String channelId, int channelType) {
-    return '$channelType:$channelId';
+    return _messageSyncCoordinator.messageExtraSyncKey(channelId, channelType);
   }
 
   void _handleNewMessages(List<WKMsg> messages) {
@@ -1321,7 +1223,7 @@ class IMService extends StateNotifier<IMServiceState>
     }
 
     if (await _hasRequiredTables(db)) {
-      return true;
+      return _ensureMessageOutboxSchema(db);
     }
 
     final migrated = await _applySdkMigrations(db);
@@ -1329,7 +1231,26 @@ class IMService extends StateNotifier<IMServiceState>
       return false;
     }
 
-    return _waitForRequiredTables();
+    final ready = await _waitForRequiredTables();
+    if (!ready) {
+      return false;
+    }
+    final migratedDb = WKDBHelper.shared.getDB();
+    if (migratedDb == null) {
+      return false;
+    }
+    return _ensureMessageOutboxSchema(migratedDb);
+  }
+
+  Future<bool> _ensureMessageOutboxSchema(Database db) async {
+    try {
+      await ensureMessageOutboxSchema(db);
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('Ensuring message outbox schema failed: $error');
+      debugPrint('$stackTrace');
+      return false;
+    }
   }
 
   Future<bool> _hasRequiredTables(Database db) async {
@@ -1474,7 +1395,7 @@ class IMService extends StateNotifier<IMServiceState>
       channelType: wkMsg.channelType,
     );
     content.url = uploadedUrl;
-    normalizeFileAttachmentMetadata(
+    _attachmentPipeline.normalizeFileMetadata(
       content,
       localPath: localPath,
       inferredSize: content.size > 0
@@ -1712,8 +1633,12 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   bool shouldKeepConnectionInBackground({bool? hasActiveCallOrPendingSetup}) {
-    return hasActiveCallOrPendingSetup ??
-        VideoCallService.instance.hasActiveCallOrPendingSetup;
+    return !_connectionCoordinator.shouldDisconnectForBackgroundLifecycle(
+      isWeb: kIsWeb,
+      hasActiveCallOrPendingSetup:
+          hasActiveCallOrPendingSetup ??
+          VideoCallService.instance.hasActiveCallOrPendingSetup,
+    );
   }
 
   @visibleForTesting
@@ -1760,25 +1685,7 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   int resolveOfflineCommandAckSequence(Iterable<dynamic> messages) {
-    var maxMessageSeq = 0;
-    for (final message in messages) {
-      if (message is WKSyncMsg) {
-        if (message.messageSeq > maxMessageSeq) {
-          maxMessageSeq = message.messageSeq;
-        }
-        continue;
-      }
-
-      final raw = _asMap(message);
-      if (raw.isEmpty) {
-        continue;
-      }
-      final currentMessageSeq = _readDynamicInt(raw['message_seq']);
-      if (currentMessageSeq > maxMessageSeq) {
-        maxMessageSeq = currentMessageSeq;
-      }
-    }
-    return maxMessageSeq;
+    return _messageSyncCoordinator.resolveOfflineCommandAckSequence(messages);
   }
 
   @override
