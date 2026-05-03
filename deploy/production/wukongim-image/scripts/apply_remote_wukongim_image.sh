@@ -3,7 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PROD_ROOT="$(cd "${IMAGE_DIR}/../.." && pwd)"
+PROD_ROOT_SOURCE="${WUKONGIM_PROD_ROOT:-${IMAGE_DIR}/..}"
+PROD_ROOT="$(cd "${PROD_ROOT_SOURCE}" && pwd)"
 source "${IMAGE_DIR}/upstream.env"
 
 COMPOSE_FILE="${PROD_ROOT}/docker-compose.yaml"
@@ -16,8 +17,17 @@ log() { printf '[wukongim-apply] %s\n' "$*"; }
 restore_compose_on_error() {
   local exit_code=$?
   if [[ "${COMPOSE_MUTATED}" == "1" ]]; then
+    trap - ERR
     log "error: validation or restart failed; restoring ${COMPOSE_FILE} from ${BACKUP_DIR}/docker-compose.yaml" >&2
-    if ! cp "${BACKUP_DIR}/docker-compose.yaml" "${COMPOSE_FILE}"; then
+    if cp "${BACKUP_DIR}/docker-compose.yaml" "${COMPOSE_FILE}"; then
+      log "Attempting best-effort rollback restart for wukongim from restored compose" >&2
+      if ! (
+        cd "${PROD_ROOT}"
+        docker compose --env-file .env up -d --no-deps wukongim
+      ); then
+        log "warning: best-effort rollback restart failed; backup remains at ${BACKUP_DIR}" >&2
+      fi
+    else
       log "error: failed to restore ${COMPOSE_FILE}; backup remains at ${BACKUP_DIR}" >&2
     fi
   fi
