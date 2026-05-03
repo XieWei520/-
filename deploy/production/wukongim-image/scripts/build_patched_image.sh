@@ -69,7 +69,7 @@ log "Cleaning upstream checkout"
 git -C "${BUILD_ROOT}" clean -ffdx
 
 log "Applying token redaction patch"
-git -C "${BUILD_ROOT}" apply "${PATCH_FILE}"
+git -C "${BUILD_ROOT}" apply --unidiff-zero "${PATCH_FILE}"
 
 log "Running static patch verifier"
 python3 "${VERIFY_SCRIPT}" "${BUILD_ROOT}"

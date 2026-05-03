@@ -282,6 +282,7 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
 
         self.assertIn("Dockerfile.patched-binary", build_script)
         self.assertIn('docker build -f "${BINARY_DOCKERFILE}"', build_script)
+        self.assertIn('git -C "${BUILD_ROOT}" apply --unidiff-zero "${PATCH_FILE}"', build_script)
         self.assertIn("preserve_go_embed_assets_in_docker_context", build_script)
         self.assertIn("FROM registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2", dockerfile)
         self.assertIn("COPY --from=build /out/app /home/app", dockerfile)
