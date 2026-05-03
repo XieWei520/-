@@ -9,29 +9,20 @@ from pathlib import Path
 
 CONNECT_SOURCE = Path("internal/user/handler/event_connect.go")
 TOKEN_FINGERPRINT_SIGNATURE = "func tokenFingerprint(token string) string"
+EXACT_TOKEN_FINGERPRINT_BODY = (
+    'if token == "" { return "empty" } '
+    "sum := sha256.Sum256([]byte(token)) "
+    "return hex.EncodeToString(sum[:])[:12]"
+)
 RAW_FIELD_RE = re.compile(r'zap\.String\(\s*"(?P<field>expectToken|actToken)"\s*,\s*(?P<value>device\.Token|connectPacket\.Token)\s*\)')
 MANAGER_RAW_RE = re.compile(r'zap\.String\(\s*"token"\s*,\s*connectPacket\.Token\s*\)')
 ZAP_CALL_START_RE = re.compile(r'\bzap\.(?P<constructor>[A-Za-z][A-Za-z0-9_]*)\s*\(')
 TOKEN_VALUE_RE = re.compile(r'(?<![A-Za-z0-9_])(?:device\.Token|connectPacket\.Token)(?![A-Za-z0-9_])')
-ALLOWED_TOKEN_FINGERPRINT_CALL_RE = re.compile(r'tokenFingerprint\(\s*(?:device\.Token|connectPacket\.Token)\s*\)')
-FINGERPRINT_RETURN_RE = re.compile(r'\breturn\s+(?P<expr>[^}\n]+)')
-SAFE_TOKEN_FINGERPRINT_BODY_RE = re.compile(
-    r'''
-    \A\s*
-    if\s+token\s*==\s*""\s*\{\s*
-        return\s+"empty"\s*;?\s*
-    \}\s*;?\s*
-    sum\s*:=\s*sha256\.Sum256\(\s*\[\]\s*byte\s*\(\s*token\s*\)\s*\)\s*;?\s*
-    return\s+hex\.EncodeToString\(\s*sum\s*\[\s*:\s*\]\s*\)\s*\[\s*:\s*12\s*\]\s*;?\s*
-    \Z
-    ''',
-    re.DOTALL | re.VERBOSE,
+ALLOWED_TOKEN_FINGERPRINT_CALL_RE = re.compile(
+    r'(?<![A-Za-z0-9_.])tokenFingerprint(?![A-Za-z0-9_])\s*\(\s*'
+    r'(?:device\.Token|connectPacket\.Token)\s*\)'
 )
-EXPECTED_TOKEN_FINGERPRINT_BODY = (
-    'if token == "" { return "empty" }; '
-    'sum := sha256.Sum256([]byte(token)); '
-    'return hex.EncodeToString(sum[:])[:12]'
-)
+UNSAFE_TOKEN_RETURN_RE = re.compile(r'\breturn\s+(?P<expr>[^\n;}]*(?:\btoken\b|device\.Token|connectPacket\.Token)[^\n;}]*)')
 REQUIRED_SNIPPETS = (
     '"crypto/sha256"',
     '"encoding/hex"',
@@ -42,14 +33,52 @@ REQUIRED_SNIPPETS = (
     'zap.String("expectedTokenHash", tokenFingerprint(device.Token))',
     'zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token))',
 )
-ALLOWED_FINGERPRINT_RETURNS = {
-    '"empty"',
-    "hex.EncodeToString(sum[:])[:12]",
-}
 
 
 def strip_go_comments(text: str) -> str:
-    return re.sub(r'/\*.*?\*/|//[^\n]*', '', text, flags=re.DOTALL)
+    chars = list(text)
+    output: list[str] = []
+    index = 0
+    quote: str | None = None
+    escaped = False
+    while index < len(chars):
+        char = chars[index]
+        next_char = chars[index + 1] if index + 1 < len(chars) else ""
+        if quote is not None:
+            output.append(char)
+            if quote != "`" and escaped:
+                escaped = False
+            elif quote != "`" and char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {'"', "'", "`"}:
+            quote = char
+            output.append(char)
+            index += 1
+            continue
+        if char == "/" and next_char == "/":
+            output.extend("  ")
+            index += 2
+            while index < len(chars) and chars[index] != "\n":
+                output.append(" ")
+                index += 1
+            continue
+        if char == "/" and next_char == "*":
+            output.extend("  ")
+            index += 2
+            while index + 1 < len(chars) and not (chars[index] == "*" and chars[index + 1] == "/"):
+                output.append("\n" if chars[index] == "\n" else " ")
+                index += 1
+            if index + 1 < len(chars):
+                output.extend("  ")
+                index += 2
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
 
 
 def mask_go_strings_and_comments(text: str) -> str:
@@ -73,7 +102,7 @@ def mask_go_strings_and_comments(text: str) -> str:
                 index += 1
             index = min(index + 2, len(chars))
             for mask_index in range(start, index):
-                chars[mask_index] = " "
+                chars[mask_index] = "\n" if chars[mask_index] == "\n" else " "
             continue
         if char in {'"', "'", "`"}:
             quote = char
@@ -91,7 +120,7 @@ def mask_go_strings_and_comments(text: str) -> str:
                     break
                 index += 1
             for mask_index in range(start, index):
-                chars[mask_index] = " "
+                chars[mask_index] = "\n" if chars[mask_index] == "\n" else " "
             continue
         index += 1
     return "".join(chars)
@@ -102,23 +131,8 @@ def find_matching_paren(text: str, open_index: int) -> int | None:
     index = open_index
     quote: str | None = None
     escaped = False
-    in_line_comment = False
-    in_block_comment = False
     while index < len(text):
         char = text[index]
-        next_char = text[index + 1] if index + 1 < len(text) else ""
-        if in_line_comment:
-            if char == "\n":
-                in_line_comment = False
-            index += 1
-            continue
-        if in_block_comment:
-            if char == "*" and next_char == "/":
-                in_block_comment = False
-                index += 2
-            else:
-                index += 1
-            continue
         if quote is not None:
             if quote != "`" and escaped:
                 escaped = False
@@ -127,14 +141,6 @@ def find_matching_paren(text: str, open_index: int) -> int | None:
             elif char == quote:
                 quote = None
             index += 1
-            continue
-        if char == "/" and next_char == "/":
-            in_line_comment = True
-            index += 2
-            continue
-        if char == "/" and next_char == "*":
-            in_block_comment = True
-            index += 2
             continue
         if char in {'"', "'", "`"}:
             quote = char
@@ -177,28 +183,58 @@ def extract_function_body(text: str, signature: str) -> str | None:
         return None
 
     depth = 0
-    for index in range(body_start, len(text)):
+    index = body_start
+    quote: str | None = None
+    escaped = False
+    while index < len(text):
         char = text[index]
+        if quote is not None:
+            if quote != "`" and escaped:
+                escaped = False
+            elif quote != "`" and char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {'"', "'", "`"}:
+            quote = char
+            index += 1
+            continue
         if char == "{":
             depth += 1
         elif char == "}":
             depth -= 1
             if depth == 0:
                 return text[body_start + 1:index]
+        index += 1
     return None
+
+
+def normalize_token_fingerprint_body(body: str) -> str:
+    normalized = re.sub(r"\s+", " ", body).strip()
+    normalized = re.sub(r"\s*==\s*", " == ", normalized)
+    normalized = re.sub(r"\s*:=\s*", " := ", normalized)
+    normalized = re.sub(r"\s*\{\s*", " { ", normalized)
+    normalized = re.sub(r"\s*\}\s*", " } ", normalized)
+    normalized = re.sub(r"\[\s*:\s*\]", "[:]", normalized)
+    normalized = re.sub(r"\[\s*:\s*([0-9]+)\s*\]", r"[:\1]", normalized)
+    normalized = re.sub(r"\[\s*\]\s*byte", "[]byte", normalized)
+    normalized = re.sub(r"\(\s+", "(", normalized)
+    normalized = re.sub(r"\s+\)", ")", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
 
 
 def verify_token_fingerprint_body(fingerprint_body: str) -> list[str]:
     failures: list[str] = []
-    body_without_comments = strip_go_comments(fingerprint_body)
-    if not SAFE_TOKEN_FINGERPRINT_BODY_RE.fullmatch(body_without_comments):
-        failures.append(f"tokenFingerprint body must exactly match safe implementation: {EXPECTED_TOKEN_FINGERPRINT_BODY}")
-    returns = [match.group("expr").strip().rstrip(";").strip() for match in FINGERPRINT_RETURN_RE.finditer(body_without_comments)]
-    if not returns:
-        failures.append("tokenFingerprint has no return statements")
-    for return_expr in returns:
-        if return_expr not in ALLOWED_FINGERPRINT_RETURNS:
-            failures.append(f"unsafe tokenFingerprint return: return {return_expr}")
+    normalized_body = normalize_token_fingerprint_body(fingerprint_body)
+    if normalized_body != EXACT_TOKEN_FINGERPRINT_BODY:
+        failures.append(f"tokenFingerprint body must exactly match safe implementation: {EXACT_TOKEN_FINGERPRINT_BODY}")
+    masked_body = mask_go_strings_and_comments(fingerprint_body)
+    for match in UNSAFE_TOKEN_RETURN_RE.finditer(masked_body):
+        return_expr = match.group("expr").strip()
+        failures.append(f"unsafe tokenFingerprint return: return {return_expr}")
     return failures
 
 
@@ -206,7 +242,8 @@ def verify_source(root: Path) -> list[str]:
     source_path = root / CONNECT_SOURCE
     if not source_path.is_file():
         return [f"missing source file: {source_path}"]
-    text = source_path.read_text(encoding="utf-8", errors="replace")
+    raw_text = source_path.read_text(encoding="utf-8", errors="replace")
+    text = strip_go_comments(raw_text)
     failures: list[str] = []
     for match in RAW_FIELD_RE.finditer(text):
         failures.append(f"raw token log field {match.group('field')} still logs {match.group('value')}")

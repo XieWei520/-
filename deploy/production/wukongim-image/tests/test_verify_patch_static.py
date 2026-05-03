@@ -203,6 +203,63 @@ class VerifyPatchStaticTests(unittest.TestCase):
         self.assertIn(b"zap.String", result.stderr)
         self.assertIn(b"fmt.Sprintf", result.stderr)
 
+    def test_rejects_required_snippets_inside_comments_only(self) -> None:
+        root = self._write_source('''
+            package handler
+            import "go.uber.org/zap"
+            /*
+            import (
+                "crypto/sha256"
+                "encoding/hex"
+            )
+            func tokenFingerprint(token string) string {
+                if token == "" { return "empty" }
+                sum := sha256.Sum256([]byte(token))
+                return hex.EncodeToString(sum[:])[:12]
+            }
+            func commented() {
+                h.Error("manager token verify fail", zap.String("stage", "manager_token"), zap.String("tokenHash", tokenFingerprint(connectPacket.Token)))
+                h.Error("token verify fail", zap.String("stage", "device_token"), zap.String("expectedTokenHash", tokenFingerprint(device.Token)), zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token)))
+            }
+            */
+            func f() {
+                h.Info("no redaction implementation here")
+            }
+        ''')
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"missing required redaction snippet", result.stderr)
+
+    def test_rejects_mytoken_fingerprint_substring_callee_in_zap_call(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Error("token leak", zap.String("tokenHash", mytokenFingerprint(connectPacket.Token)))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"zap.String", result.stderr)
+        self.assertIn(b"mytokenFingerprint", result.stderr)
+
+    def test_accepts_safe_token_fingerprint_body_with_compact_operator_spacing(self) -> None:
+        root = self._write_source(self._source_with_token_fingerprint_body('''
+                if token==""{return "empty"}
+                sum:=sha256.Sum256([]byte(token))
+                return hex.EncodeToString(sum[:])[:12]
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+
+    def test_accepts_safe_token_fingerprint_body_with_split_return_slice_bound(self) -> None:
+        root = self._write_source(self._source_with_token_fingerprint_body('''
+                if token == "" {
+                    return "empty"
+                }
+                sum := sha256.Sum256([]byte(token))
+                return hex.EncodeToString(sum[:])[:
+                    12]
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+
     def test_accepts_hash_only_redacted_logging(self) -> None:
         root = self._write_source(self._hash_only_source('''
                 if device.Token != connectPacket.Token {
