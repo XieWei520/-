@@ -17,8 +17,8 @@ EXACT_TOKEN_FINGERPRINT_BODY = (
 RAW_FIELD_RE = re.compile(r'zap\.String\(\s*"(?P<field>expectToken|actToken)"\s*,\s*(?P<value>device\s*\.\s*Token|connectPacket\s*\.\s*Token)\s*\)')
 MANAGER_RAW_RE = re.compile(r'zap\.String\(\s*"token"\s*,\s*connectPacket\s*\.\s*Token\s*\)')
 ZAP_CALL_START_RE = re.compile(r'\bzap\.(?P<constructor>[A-Za-z][A-Za-z0-9_]*)\s*\(')
-LOGGING_CALL_START_RE = re.compile(r'\.(?P<constructor>Infow|Errorw|Warnw|Debugw|Infof|Errorf|Warnf|Debugf|Info|Error|Warn|Debug|WithLazy|With)\s*\(')
-DIRECT_SINK_CALL_START_RE = re.compile(r'\b(?P<constructor>(?:log|fmt)\.(?:Println|Printf|Print))\s*\(')
+LOGGING_CALL_START_RE = re.compile(r'\.(?P<constructor>Infow|Errorw|Warnw|Debugw|Fatalw|Panicw|DPanicw|Infof|Errorf|Warnf|Debugf|Fatalf|Panicf|DPanicf|Info|Error|Warn|Debug|Fatal|Panic|DPanic|WithLazy|With)\s*\(')
+DIRECT_SINK_CALL_START_RE = re.compile(r'\b(?P<constructor>fmt\.(?:Println|Printf|Print)|log\.(?:Println|Printf|Print|Fatalln|Fatalf|Fatal|Panicln|Panicf|Panic))\s*\(')
 TOKEN_SELECTOR_PATTERN = r'(?:device\s*\.\s*Token|connectPacket\s*\.\s*Token)'
 TOKEN_VALUE_RE = re.compile(r'(?<![A-Za-z0-9_])' + TOKEN_SELECTOR_PATTERN + r'(?![A-Za-z0-9_])')
 ALLOWED_TOKEN_FINGERPRINT_CALL_RE = re.compile(
@@ -27,7 +27,7 @@ ALLOWED_TOKEN_FINGERPRINT_CALL_RE = re.compile(
 )
 IDENTIFIER_PATTERN = r'[A-Za-z_][A-Za-z0-9_]*'
 TOKEN_ALIAS_ASSIGNMENT_RE = re.compile(
-    r'(?:^|[;\n{])\s*(?:'
+    r'(?:^|[;\n{]|\b(?:if|for|switch)\s+)\s*(?:'
     r'var\s+(?P<var_name>' + IDENTIFIER_PATTERN + r')(?:\s+[^=\n;]+)?\s*=\s*'
     r'|(?P<assign_name>' + IDENTIFIER_PATTERN + r')\s*(?::=|=)\s*)'
     + TOKEN_SELECTOR_PATTERN + r'(?=$|[\s;,\)}])',

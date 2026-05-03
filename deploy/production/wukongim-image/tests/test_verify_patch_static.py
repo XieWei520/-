@@ -465,6 +465,39 @@ class VerifyPatchStaticTests(unittest.TestCase):
         self.assertIn(b"fmt.Printf", result.stderr)
         self.assertIn(b"device.Token", result.stderr)
 
+    def test_rejects_sugared_terminal_methods_with_raw_tokens(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Sugar().Fatalw("token leak", "token", connectPacket.Token)
+                h.Sugar().Panic("token leak", device.Token)
+                h.Sugar().DPanicf("token leak %s", connectPacket.Token)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"Fatalw", result.stderr)
+        self.assertIn(b"Panic", result.stderr)
+        self.assertIn(b"DPanicf", result.stderr)
+
+    def test_rejects_log_terminal_methods_with_raw_tokens(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                log.Fatal(connectPacket.Token)
+                log.Panicf("%s", device.Token)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"log.Fatal", result.stderr)
+        self.assertIn(b"log.Panicf", result.stderr)
+
+    def test_rejects_init_statement_token_alias(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                if raw := connectPacket.Token; raw != "" {
+                    h.Sugar().Info("token leak", raw)
+                }
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"raw", result.stderr)
+        self.assertIn(b"Info", result.stderr)
+
     def test_accepts_hash_only_redacted_logging(self) -> None:
         root = self._write_source(self._hash_only_source('''
                 if device.Token != connectPacket.Token {
