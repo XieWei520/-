@@ -34,7 +34,7 @@ realm=$2
 tmp="${TMPDIR:-/tmp}/coturn_tls_probe.$$"
 trap '\''rm -f "${tmp}"'\'' EXIT
 openssl_status=0
-openssl s_client -connect "${host}:5349" -servername "${realm}" -brief </dev/null >"${tmp}" 2>/dev/null || openssl_status=$?
+openssl s_client -connect "${host}:5349" -servername "${realm}" -brief </dev/null >"${tmp}" 2>&1 || openssl_status=$?
 head -20 "${tmp}"
 exit "${openssl_status}"
 ' sh "${TURN_HOST}" "${TURN_REALM}"

@@ -20,6 +20,11 @@ Describe 'coturn_tls_probe.sh source hardening' {
     $script:Content | Should Match 'exit\s+"\$\{openssl_status\}"'
   }
 
+  It 'captures openssl brief output from stderr for protocol and cipher evidence' {
+    $script:Content | Should Not Match 'openssl s_client[\s\S]*2>/dev/null'
+    $script:Content | Should Match 'openssl s_client[\s\S]*2>&1'
+  }
+
   It 'redacts secret-like log fields with optional whitespace around separators' {
     $script:Content | Should Match '\(static-auth-secret\|realm\|user\|password\|secret\|key\)'
     $script:Content | Should Match '\[\[:space:\]\]\*\[:=\]\[\[:space:\]\]\*'
