@@ -2,6 +2,7 @@
 
 ## Task Tracking
 - Implementation checkpoints: `docs/production/implementation-log.md`
+- WuKongIM token redaction deployment verification: `docs/production/2026-05-03-wukongim-token-redaction-verification.md`
 
 ## Operator Entry Points
 - Stress testing: `ops/stress/README.md`
