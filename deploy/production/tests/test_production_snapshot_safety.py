@@ -45,8 +45,13 @@ DENIED_PATH_MARKERS = (
     "/logs/",
     "/data/",
     "/backup/",
+    "/backups/",
+    "/certs/",
+    "/keys/",
     "/__pycache__/",
+    "/.git/",
     "/admin-src/.git/",
+    "/build/",
     "/manager/dist",
     "/nginx/html",
     "/admin/dist",
@@ -108,6 +113,16 @@ def _path_matches_marker(path: Path, marker: str) -> bool:
     return rel == marker or rel.startswith(marker.rstrip("/") + "/")
 
 
+def _should_skip_secret_scan(path: Path) -> bool:
+    rel = "/" + _rel(path)
+    if "/tests/" in rel:
+        return True
+    if path.suffix.lower() == ".py" and path.name.startswith("test_") and "/scripts/" in rel:
+        return True
+
+    return False
+
+
 def _secret_value_is_placeholder(value: str, source: Path | None = None) -> bool:
     cleaned = value.strip().rstrip(",")
     if not cleaned:
@@ -155,6 +170,37 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
         missing = [rel for rel in REQUIRED_FILES if not (ROOT / rel).is_file()]
         self.assertEqual([], missing, f"Missing required snapshot files: {missing}")
 
+    def test_secret_scan_skip_helper_skips_test_files(self) -> None:
+        should_skip = (
+            ROOT / "scripts" / "test_smoke_test.py",
+            ROOT / "tests" / "test_production_snapshot_safety.py",
+            ROOT / "nested" / "tests" / "fixture.py",
+        )
+        not_skipped = (
+            ROOT / "scripts" / "smoke_test.py",
+            ROOT / "config" / "wk.yaml.tpl",
+        )
+
+        self.assertEqual([], [_rel(path) for path in should_skip if not _should_skip_secret_scan(path)])
+        self.assertEqual([], [_rel(path) for path in not_skipped if _should_skip_secret_scan(path)])
+
+    def test_denied_path_markers_cover_runtime_vcs_and_build_artifacts(self) -> None:
+        denied_samples = (
+            ROOT / "backups" / "mysql.sql",
+            ROOT / "certs" / "server.crt",
+            ROOT / "keys" / "service.pub",
+            ROOT / ".git" / "config",
+            ROOT / "build" / "bundle.js",
+        )
+
+        uncovered = [
+            _rel(path)
+            for path in denied_samples
+            if not any(_path_matches_marker(path, marker) for marker in DENIED_PATH_MARKERS)
+        ]
+
+        self.assertEqual([], uncovered)
+
     def test_runtime_secret_and_build_artifact_paths_are_absent(self) -> None:
         violations: list[str] = []
         for path in _all_paths():
@@ -170,10 +216,9 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
 
     def test_secret_like_assignments_use_placeholders(self) -> None:
         violations: list[str] = []
-        this_file = Path(__file__).resolve()
 
         for path in _all_paths():
-            if not path.is_file() or path.resolve() == this_file:
+            if not path.is_file() or _should_skip_secret_scan(path):
                 continue
             if path.suffix.lower() not in TEXT_SUFFIXES and not path.name.endswith((".template", ".tpl", ".example")):
                 continue
