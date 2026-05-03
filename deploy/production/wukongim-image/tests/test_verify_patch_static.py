@@ -44,6 +44,24 @@ class VerifyPatchStaticTests(unittest.TestCase):
             }
         '''
 
+    def _source_with_token_fingerprint_body(self, body: str, extra_imports: str = "") -> str:
+        return '''
+            package handler
+            import (
+        ''' + extra_imports + '''
+                "crypto/sha256"
+                "encoding/hex"
+                "go.uber.org/zap"
+            )
+            func tokenFingerprint(token string) string {
+        ''' + body + '''
+            }
+            func f() {
+                h.Error("manager token verify fail", zap.String("stage", "manager_token"), zap.String("tokenHash", tokenFingerprint(connectPacket.Token)))
+                h.Error("token verify fail", zap.String("stage", "device_token"), zap.String("expectedTokenHash", tokenFingerprint(device.Token)), zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token)))
+            }
+        '''
+
     def test_rejects_raw_act_and_expect_token_fields(self) -> None:
         root = self._write_source('''
             package handler
@@ -89,6 +107,32 @@ class VerifyPatchStaticTests(unittest.TestCase):
         result = self._run(root)
         self.assertEqual(result.returncode, 1)
         self.assertIn(b"return token", result.stderr)
+
+    def test_rejects_token_fingerprint_returning_token_via_string_conversion(self) -> None:
+        root = self._write_source(self._source_with_token_fingerprint_body('''
+                if token == "" { return "empty" }
+                sum := sha256.Sum256([]byte(token))
+                _ = hex.EncodeToString(sum[:])[:12]
+                return string([]byte(token))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"unsafe tokenFingerprint return", result.stderr)
+        self.assertIn(b"string([]byte(token))", result.stderr)
+
+    def test_rejects_token_fingerprint_returning_token_via_fmt_sprintf(self) -> None:
+        root = self._write_source(self._source_with_token_fingerprint_body('''
+                if token == "" { return "empty" }
+                sum := sha256.Sum256([]byte(token))
+                _ = hex.EncodeToString(sum[:])[:12]
+                return fmt.Sprintf("%s", token)
+        ''', extra_imports='''
+                "fmt"
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"unsafe tokenFingerprint return", result.stderr)
+        self.assertIn(b"fmt.Sprintf", result.stderr)
 
     def test_rejects_zap_any_raw_connect_token(self) -> None:
         root = self._write_source(self._hash_only_source('''

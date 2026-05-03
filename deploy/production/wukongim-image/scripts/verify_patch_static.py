@@ -13,7 +13,7 @@ MANAGER_RAW_RE = re.compile(r'zap\.String\(\s*"token"\s*,\s*connectPacket\.Token
 DIRECT_TOKEN_LOG_RE = re.compile(
     r'zap\.(?P<constructor>[A-Za-z][A-Za-z0-9_]*)\(\s*"(?P<field>[^"]*)"\s*,\s*(?P<value>device\.Token|connectPacket\.Token)\s*\)'
 )
-RAW_TOKEN_RETURN_RE = re.compile(r'\breturn\s+token\b')
+FINGERPRINT_RETURN_RE = re.compile(r'\breturn\s+(?P<expr>[^}\n]+)')
 REQUIRED_SNIPPETS = (
     '"crypto/sha256"',
     '"encoding/hex"',
@@ -28,6 +28,10 @@ REQUIRED_FINGERPRINT_BODY_SNIPPETS = (
     "sha256.Sum256([]byte(token))",
     "hex.EncodeToString(sum[:])[:12]",
 )
+ALLOWED_FINGERPRINT_RETURNS = {
+    '"empty"',
+    "hex.EncodeToString(sum[:])[:12]",
+}
 
 
 def extract_function_body(text: str, signature: str) -> str | None:
@@ -70,8 +74,12 @@ def verify_source(root: Path) -> list[str]:
     if fingerprint_body is None:
         failures.append(f"missing {TOKEN_FINGERPRINT_SIGNATURE} body")
     else:
-        if RAW_TOKEN_RETURN_RE.search(fingerprint_body):
-            failures.append("tokenFingerprint must not return raw token with return token")
+        returns = [match.group("expr").strip().rstrip(";").strip() for match in FINGERPRINT_RETURN_RE.finditer(fingerprint_body)]
+        if not returns:
+            failures.append("tokenFingerprint has no return statements")
+        for return_expr in returns:
+            if return_expr not in ALLOWED_FINGERPRINT_RETURNS:
+                failures.append(f"unsafe tokenFingerprint return: return {return_expr}")
         for required in REQUIRED_FINGERPRINT_BODY_SNIPPETS:
             if required not in fingerprint_body:
                 failures.append(f"missing required tokenFingerprint hash snippet: {required}")
