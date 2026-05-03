@@ -427,6 +427,44 @@ class VerifyPatchStaticTests(unittest.TestCase):
         self.assertIn(b"WithLazy", result.stderr)
         self.assertIn(b"connectPacket.Token", result.stderr)
 
+    def test_rejects_zap_string_token_alias_from_connect_token(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                raw := connectPacket.Token
+                h.Error("token leak", zap.String("token", raw))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"raw", result.stderr)
+        self.assertIn(b"zap.String", result.stderr)
+
+    def test_rejects_sugared_info_token_alias_from_spaced_device_token(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                raw := device . Token
+                h.Sugar().Info("token leak", raw)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"raw", result.stderr)
+        self.assertIn(b"Info", result.stderr)
+
+    def test_rejects_log_printf_raw_connect_token(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                log.Printf("%s", connectPacket.Token)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"log.Printf", result.stderr)
+        self.assertIn(b"connectPacket.Token", result.stderr)
+
+    def test_rejects_fmt_printf_raw_device_token(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                fmt.Printf("%s", device.Token)
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"fmt.Printf", result.stderr)
+        self.assertIn(b"device.Token", result.stderr)
+
     def test_accepts_hash_only_redacted_logging(self) -> None:
         root = self._write_source(self._hash_only_source('''
                 if device.Token != connectPacket.Token {

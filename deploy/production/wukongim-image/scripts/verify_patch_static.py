@@ -18,11 +18,20 @@ RAW_FIELD_RE = re.compile(r'zap\.String\(\s*"(?P<field>expectToken|actToken)"\s*
 MANAGER_RAW_RE = re.compile(r'zap\.String\(\s*"token"\s*,\s*connectPacket\s*\.\s*Token\s*\)')
 ZAP_CALL_START_RE = re.compile(r'\bzap\.(?P<constructor>[A-Za-z][A-Za-z0-9_]*)\s*\(')
 LOGGING_CALL_START_RE = re.compile(r'\.(?P<constructor>Infow|Errorw|Warnw|Debugw|Infof|Errorf|Warnf|Debugf|Info|Error|Warn|Debug|WithLazy|With)\s*\(')
+DIRECT_SINK_CALL_START_RE = re.compile(r'\b(?P<constructor>(?:log|fmt)\.(?:Println|Printf|Print))\s*\(')
 TOKEN_SELECTOR_PATTERN = r'(?:device\s*\.\s*Token|connectPacket\s*\.\s*Token)'
 TOKEN_VALUE_RE = re.compile(r'(?<![A-Za-z0-9_])' + TOKEN_SELECTOR_PATTERN + r'(?![A-Za-z0-9_])')
 ALLOWED_TOKEN_FINGERPRINT_CALL_RE = re.compile(
     r'(?<![A-Za-z0-9_.])tokenFingerprint(?![A-Za-z0-9_])\s*\(\s*'
     + TOKEN_SELECTOR_PATTERN + r'\s*\)'
+)
+IDENTIFIER_PATTERN = r'[A-Za-z_][A-Za-z0-9_]*'
+TOKEN_ALIAS_ASSIGNMENT_RE = re.compile(
+    r'(?:^|[;\n{])\s*(?:'
+    r'var\s+(?P<var_name>' + IDENTIFIER_PATTERN + r')(?:\s+[^=\n;]+)?\s*=\s*'
+    r'|(?P<assign_name>' + IDENTIFIER_PATTERN + r')\s*(?::=|=)\s*)'
+    + TOKEN_SELECTOR_PATTERN + r'(?=$|[\s;,\)}])',
+    re.MULTILINE,
 )
 UNSAFE_TOKEN_RETURN_RE = re.compile(r'\breturn\s+(?P<expr>[^\n;}]*(?:\btoken\b|' + TOKEN_SELECTOR_PATTERN + r')[^\n;}]*)')
 REQUIRED_IMPORTS = (
@@ -202,10 +211,34 @@ def iter_zap_calls(text: str) -> Iterator[tuple[str, str]]:
 def iter_logging_calls(text: str) -> Iterator[tuple[str, str]]:
     yield from iter_balanced_calls(text, LOGGING_CALL_START_RE)
 
-def zap_call_contains_raw_token(call_text: str) -> bool:
+
+def iter_direct_sink_calls(text: str) -> Iterator[tuple[str, str]]:
+    yield from iter_balanced_calls(text, DIRECT_SINK_CALL_START_RE)
+
+
+def find_token_aliases(code_view: str) -> set[str]:
+    aliases: set[str] = set()
+    for match in TOKEN_ALIAS_ASSIGNMENT_RE.finditer(code_view):
+        alias = match.group("var_name") or match.group("assign_name")
+        if alias is not None:
+            aliases.add(alias)
+    return aliases
+
+
+def token_alias_reference_re(token_aliases: set[str]) -> re.Pattern[str] | None:
+    if not token_aliases:
+        return None
+    aliases = "|".join(re.escape(alias) for alias in sorted(token_aliases, key=len, reverse=True))
+    return re.compile(r'(?<![A-Za-z0-9_])(?:' + aliases + r')(?![A-Za-z0-9_])')
+
+
+def call_contains_raw_token(call_text: str, token_aliases: set[str]) -> bool:
     allowed_removed = ALLOWED_TOKEN_FINGERPRINT_CALL_RE.sub("tokenFingerprint(<allowed>)", call_text)
     code_only = mask_go_strings_and_comments(allowed_removed)
-    return TOKEN_VALUE_RE.search(code_only) is not None
+    if TOKEN_VALUE_RE.search(code_only):
+        return True
+    alias_re = token_alias_reference_re(token_aliases)
+    return alias_re.search(code_only) is not None if alias_re is not None else False
 
 
 
@@ -308,6 +341,7 @@ def verify_source(root: Path) -> list[str]:
     raw_text = source_path.read_text(encoding="utf-8", errors="replace")
     text = strip_go_comments(raw_text)
     code_view = mask_go_strings_and_comments(text)
+    token_aliases = find_token_aliases(code_view)
     failures: list[str] = []
     zap_calls = list(iter_zap_calls(text))
     for _constructor, call_text in zap_calls:
@@ -316,10 +350,13 @@ def verify_source(root: Path) -> list[str]:
         if MANAGER_RAW_RE.search(call_text):
             failures.append('manager raw token log still uses zap.String("token", connectPacket.Token)')
     for constructor, call_text in zap_calls:
-        if zap_call_contains_raw_token(call_text):
+        if call_contains_raw_token(call_text, token_aliases):
             failures.append(f"raw token value is still logged via zap.{constructor}: {call_text}")
     for constructor, call_text in iter_logging_calls(text):
-        if zap_call_contains_raw_token(call_text):
+        if call_contains_raw_token(call_text, token_aliases):
+            failures.append(f"raw token value is still logged via {constructor}: {call_text}")
+    for constructor, call_text in iter_direct_sink_calls(text):
+        if call_contains_raw_token(call_text, token_aliases):
             failures.append(f"raw token value is still logged via {constructor}: {call_text}")
     failures.extend(verify_required_imports(text, code_view))
     failures.extend(verify_required_zap_fields(zap_calls))
