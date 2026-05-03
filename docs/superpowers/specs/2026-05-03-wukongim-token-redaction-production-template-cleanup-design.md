@@ -1,9 +1,9 @@
 ﻿# WuKongIM Token Redaction, Production Template, and Dirty Branch Cleanup Design
 
-> Date: 2026-05-03 (Asia/Shanghai)  
-> Branch: `codex/wukongim-token-redaction-prod-template-cleanup`  
-> Source workspace: `C:\Users\COLORFUL\Desktop\WuKong`  
-> Remote host: `ubuntu@42.194.218.158`  
+> Date: 2026-05-03 (Asia/Shanghai)
+> Branch: `codex/wukongim-token-redaction-prod-template-cleanup`
+> Source workspace: `C:\Users\COLORFUL\Desktop\WuKong`
+> Remote host: `ubuntu@42.194.218.158`
 > Remote production root: `/opt/wukongim-prod/src/deploy/production`
 
 ## 1. Objective

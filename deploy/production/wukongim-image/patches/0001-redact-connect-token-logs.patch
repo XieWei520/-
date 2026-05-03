@@ -2,20 +2,11 @@ diff --git a/internal/user/handler/event_connect.go b/internal/user/handler/even
 index 065ea34..a82a20c 100644
 --- a/internal/user/handler/event_connect.go
 +++ b/internal/user/handler/event_connect.go
-@@ -1,7 +1,9 @@
- package handler
- 
- import (
+@@ -3,0 +4 @@ import (
 +	"crypto/sha256"
- 	"encoding/base64"
+@@ -4,0 +6 @@ import (
 +	"encoding/hex"
- 	"errors"
- 	"time"
- 
-@@ -70,7 +72,12 @@ func (h *Handler) handleConnect(event *eventbus.Event) (wkproto.ReasonCode, *wkp
- 	// -------------------- token verify --------------------
- 	if connectPacket.UID == options.G.ManagerUID {
- 		if options.G.ManagerTokenOn && connectPacket.Token != options.G.ManagerToken {
+@@ -73 +75,6 @@ func (h *Handler) handleConnect(event *eventbus.Event) (wkproto.ReasonCode, *wkp
 -			h.Error("manager token verify fail", zap.String("uid", uid), zap.String("token", connectPacket.Token))
 +			h.Error("manager token verify fail",
 +				zap.String("uid", uid),
@@ -23,13 +14,7 @@ index 065ea34..a82a20c 100644
 +				zap.String("stage", "manager_token"),
 +				zap.String("tokenHash", tokenFingerprint(connectPacket.Token)),
 +			)
- 			return wkproto.ReasonAuthFail, nil, nil
- 		}
- 		devceLevel = wkproto.DeviceLevelSlave // 默认都是slave设备
-@@ -85,7 +92,14 @@ func (h *Handler) handleConnect(event *eventbus.Event) (wkproto.ReasonCode, *wkp
- 			return wkproto.ReasonAuthFail, nil, err
- 		}
- 		if device.Token != connectPacket.Token {
+@@ -88 +95,8 @@ func (h *Handler) handleConnect(event *eventbus.Event) (wkproto.ReasonCode, *wkp
 -			h.Error("token verify fail", zap.String("uid", uid), zap.Uint64("sourceNodeId", event.SourceNodeId), zap.String("expectToken", device.Token), zap.String("actToken", connectPacket.Token))
 +			h.Error("token verify fail",
 +				zap.String("uid", uid),
@@ -39,13 +24,7 @@ index 065ea34..a82a20c 100644
 +				zap.String("expectedTokenHash", tokenFingerprint(device.Token)),
 +				zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token)),
 +			)
- 			return wkproto.ReasonAuthFail, nil, errors.New("token verify fail")
- 		}
- 		devceLevel = wkproto.DeviceLevel(device.DeviceLevel)
-@@ -224,6 +238,14 @@ func (h *Handler) handleConnect(event *eventbus.Event) (wkproto.ReasonCode, *wkp
- 	return wkproto.ReasonSuccess, connack, nil
- }
- 
+@@ -226,0 +241,8 @@ func (h *Handler) handleConnect(event *eventbus.Event) (wkproto.ReasonCode, *wkp
 +func tokenFingerprint(token string) string {
 +	if token == "" {
 +		return "empty"
@@ -54,6 +33,3 @@ index 065ea34..a82a20c 100644
 +	return hex.EncodeToString(sum[:])[:12]
 +}
 +
- // 获取客户端的aesKey和aesIV
- // dhServerPrivKey  服务端私钥
- func (u *Handler) getClientAesKeyAndIV(clientKey string, dhServerPrivKey [32]byte) ([]byte, []byte, error) {

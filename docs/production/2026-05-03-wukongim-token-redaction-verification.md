@@ -1,8 +1,8 @@
 # WuKongIM Token Redaction Deployment Verification
 
-> Date: 2026-05-03 (Asia/Shanghai)  
-> Host: `ubuntu@42.194.218.158`  
-> Scope: patched WuKongIM image build, compose switch, recent secret-log scan, HTTPS smoke/perf checks.  
+> Date: 2026-05-03 (Asia/Shanghai)
+> Host: `ubuntu@42.194.218.158`
+> Scope: patched WuKongIM image build, compose switch, recent secret-log scan, HTTPS smoke/perf checks.
 > Reader: an operator who needs to confirm which image is running and how to roll back safely.
 
 ## Summary
