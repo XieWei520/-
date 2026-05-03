@@ -174,8 +174,41 @@ class VerifyPatchStaticTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn(b"sha256.Sum256", result.stderr)
 
+    def test_rejects_token_fingerprint_with_unused_hash_and_raw_sum(self) -> None:
+        root = self._write_source(self._source_with_token_fingerprint_body('''
+                if token == "" { return "empty" }
+                _ = sha256.Sum256([]byte(token))
+                sum := []byte(token)
+                return hex.EncodeToString(sum[:])[:12]
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"tokenFingerprint body", result.stderr)
+
+    def test_rejects_zap_any_token_inside_collection(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Error("token leak", zap.Any("token", []string{connectPacket.Token}))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"zap.Any", result.stderr)
+        self.assertIn(b"connectPacket.Token", result.stderr)
+
+    def test_rejects_zap_string_token_inside_format_expression(self) -> None:
+        root = self._write_source(self._hash_only_source('''
+                h.Error("token leak", zap.String("token", fmt.Sprintf("%s", connectPacket.Token)))
+        '''))
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"zap.String", result.stderr)
+        self.assertIn(b"fmt.Sprintf", result.stderr)
+
     def test_accepts_hash_only_redacted_logging(self) -> None:
-        root = self._write_source(self._hash_only_source())
+        root = self._write_source(self._hash_only_source('''
+                if device.Token != connectPacket.Token {
+                    h.Debug("token mismatch without logging raw values")
+                }
+        '''))
         result = self._run(root)
         self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
         self.assertEqual(result.stdout, b"WuKongIM token log patch static verification passed\n")
