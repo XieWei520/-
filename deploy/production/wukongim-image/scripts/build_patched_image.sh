@@ -24,9 +24,12 @@ fi
 if [[ -d "${BUILD_ROOT}/.git" ]]; then
   log "Fetching upstream source in ${BUILD_ROOT}"
   git -C "${BUILD_ROOT}" fetch --tags --prune origin
+elif [[ -e "${BUILD_ROOT}" || -L "${BUILD_ROOT}" ]]; then
+  log "error: build root exists but is not a git checkout: ${BUILD_ROOT}" >&2
+  log "Move it aside or set WUKONGIM_BUILD_ROOT to an empty path." >&2
+  exit 2
 else
   log "Cloning upstream source into ${BUILD_ROOT}"
-  rm -rf "${BUILD_ROOT}"
   git clone "${WUKONGIM_UPSTREAM_REPO}" "${BUILD_ROOT}"
 fi
 

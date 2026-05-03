@@ -9,8 +9,22 @@ source "${IMAGE_DIR}/upstream.env"
 COMPOSE_FILE="${PROD_ROOT}/docker-compose.yaml"
 STAMP="$(date +%Y%m%d%H%M%S)"
 BACKUP_DIR="/home/ubuntu/wukong-deploy-backups/wukongim-token-redaction-${STAMP}"
+COMPOSE_MUTATED=0
 
 log() { printf '[wukongim-apply] %s\n' "$*"; }
+
+restore_compose_on_error() {
+  local exit_code=$?
+  if [[ "${COMPOSE_MUTATED}" == "1" ]]; then
+    log "error: validation or restart failed; restoring ${COMPOSE_FILE} from ${BACKUP_DIR}/docker-compose.yaml" >&2
+    if ! cp "${BACKUP_DIR}/docker-compose.yaml" "${COMPOSE_FILE}"; then
+      log "error: failed to restore ${COMPOSE_FILE}; backup remains at ${BACKUP_DIR}" >&2
+    fi
+  fi
+  exit "${exit_code}"
+}
+
+trap restore_compose_on_error ERR
 
 if [[ ! -f "${COMPOSE_FILE}" ]]; then
   log "error: missing compose file: ${COMPOSE_FILE}" >&2
@@ -30,7 +44,7 @@ fi
 
 shopt -s nullglob
 config_templates=("${PROD_ROOT}"/config/*.tpl)
-script_files=("${PROD_ROOT}"/scripts/*.py)
+script_files=("${PROD_ROOT}"/scripts/*.py "${PROD_ROOT}"/scripts/*.sh)
 if ((${#config_templates[@]})); then
   cp "${config_templates[@]}" "${BACKUP_DIR}/config/"
 fi
@@ -42,6 +56,7 @@ shopt -u nullglob
 cp -R "${IMAGE_DIR}/." "${BACKUP_DIR}/wukongim-image/"
 
 log "Updating wukongim image in ${COMPOSE_FILE}"
+COMPOSE_MUTATED=1
 python3 - "${COMPOSE_FILE}" "${WUKONGIM_PATCHED_IMAGE}" <<'PY'
 from pathlib import Path
 import re
@@ -53,10 +68,15 @@ text = compose_path.read_text(encoding="utf-8")
 lines = text.splitlines(keepends=True)
 new_lines = []
 
+services_re = re.compile(r"^\s*services\s*:\s*(?:#.*)?$")
+key_re = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*:")
+
 in_services = False
 services_indent = None
+service_indent = None
 in_wukongim = False
 wukongim_indent = None
+wukongim_child_indent = None
 replacement_count = 0
 
 for line in lines:
@@ -66,28 +86,52 @@ for line in lines:
     indent = len(line_body) - len(line_body.lstrip(" "))
 
     if stripped and not stripped.startswith("#"):
-        if in_services and services_indent is not None and indent <= services_indent and not re.match(r"^\s*services\s*:\s*(?:#.*)?$", line_body):
+        leaving_services = (
+            in_services
+            and services_indent is not None
+            and indent <= services_indent
+            and not services_re.match(line_body)
+        )
+        if leaving_services:
             in_services = False
+            services_indent = None
+            service_indent = None
             in_wukongim = False
             wukongim_indent = None
+            wukongim_child_indent = None
 
-        if re.match(r"^\s*services\s*:\s*(?:#.*)?$", line_body):
+        if services_re.match(line_body):
             in_services = True
             services_indent = indent
+            service_indent = None
             in_wukongim = False
             wukongim_indent = None
+            wukongim_child_indent = None
         elif in_services:
-            if in_wukongim and wukongim_indent is not None and indent <= wukongim_indent:
-                in_wukongim = False
-                wukongim_indent = None
+            key_match = key_re.match(line_body)
+            if key_match:
+                key = key_match.group(1)
 
-            if re.match(r"^\s*wukongim\s*:\s*(?:#.*)?$", line_body):
-                in_wukongim = True
-                wukongim_indent = indent
-            elif in_wukongim and re.match(r"^\s*image\s*:", line_body):
-                leading = line_body[:indent]
-                line = f"{leading}image: {patched_image}{newline}"
-                replacement_count += 1
+                if service_indent is None and indent > services_indent:
+                    service_indent = indent
+
+                if service_indent is not None and indent == service_indent:
+                    in_wukongim = key == "wukongim"
+                    wukongim_indent = indent if in_wukongim else None
+                    wukongim_child_indent = None
+                elif in_wukongim:
+                    if wukongim_indent is not None and indent <= wukongim_indent:
+                        in_wukongim = False
+                        wukongim_indent = None
+                        wukongim_child_indent = None
+                    else:
+                        if wukongim_child_indent is None:
+                            wukongim_child_indent = indent
+
+                        if indent == wukongim_child_indent and key == "image":
+                            leading = line_body[:indent]
+                            line = f"{leading}image: {patched_image}{newline}"
+                            replacement_count += 1
 
     new_lines.append(line)
 
@@ -101,9 +145,11 @@ PY
 log "Validating compose configuration"
 (
   cd "${PROD_ROOT}"
-  docker compose --env-file .env config >/tmp/wukongim-token-redaction-compose.yaml
+  docker compose --env-file .env config >/dev/null
   docker compose --env-file .env up -d --no-deps wukongim
 )
+COMPOSE_MUTATED=0
+trap - ERR
 
 echo "BACKUP_DIR=${BACKUP_DIR}"
 echo "PATCHED_IMAGE=${WUKONGIM_PATCHED_IMAGE}"
