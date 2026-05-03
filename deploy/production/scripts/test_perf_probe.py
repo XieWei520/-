@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import unittest
@@ -13,6 +14,7 @@ from perf_probe import (
     explain_http_base_url,
     extract_required_field,
     request_json,
+    redact_text,
     summarize_probe_result,
     validate_base_url,
 )
@@ -31,6 +33,32 @@ def assert_absent_without_echo(
 
 
 class PerfProbeTests(unittest.TestCase):
+    def test_redact_text_covers_dsn_credential_and_pass_style_names(self) -> None:
+        sensitive_values = {
+            "mysqlDsn": "mysql://" + "redaction-db/app",
+            "apiCredential": "api-" + "credential-regression",
+            "redisPass": "redis-" + "pass-regression",
+            "adminpwd": "admin-" + "pwd-regression",
+            "DSN": "dsn-" + "regression",
+            "credential": "credential-" + "regression",
+        }
+
+        json_rendered = redact_text(json.dumps({"nested": sensitive_values}))
+        text_rendered = redact_text(
+            "\n".join(
+                f"{key}: {value}" if key in {"apiCredential", "adminpwd", "credential"} else f"{key}={value}"
+                for key, value in sensitive_values.items()
+            )
+        )
+
+        for label, value in sensitive_values.items():
+            with self.subTest(label=label, source="json"):
+                assert_absent_without_echo(self, value, json_rendered, label)
+            with self.subTest(label=label, source="text"):
+                assert_absent_without_echo(self, value, text_rendered, label)
+        self.assertIn("<redacted>", json_rendered)
+        self.assertIn("<redacted>", text_rendered)
+
     def test_summarize_probe_result_includes_counts_max_and_failure_rate(self) -> None:
         result = summarize_probe_result(
             setting_samples=[10.0, 20.0, 30.0],

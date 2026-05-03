@@ -19,7 +19,13 @@ from urllib.parse import urlparse, urlunparse
 DEFAULT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 DEFAULT_APP_ID = "wukongchat"
 DEFAULT_APP_KEY = "<app-signing-secret>"
-SENSITIVE_KEY_RE = re.compile(r"(token|password|passwd|pwd|secret|key|authorization|sign)", re.IGNORECASE)
+SENSITIVE_NAME_PATTERN = r"password|passwd|pass|pwd|secret|token|key|credential|authorization|sign|dsn"
+SENSITIVE_KEY_RE = re.compile(SENSITIVE_NAME_PATTERN, re.IGNORECASE)
+SENSITIVE_FIELD_RE = re.compile(
+    r"([\"']?[A-Za-z0-9_.-]*(?:%s)[A-Za-z0-9_.-]*[\"']?)(\s*[=:]\s*[\"']?)([^\"'\s,;&}]+)"
+    % SENSITIVE_NAME_PATTERN,
+    re.IGNORECASE,
+)
 HIGH_ENTROPY_VALUE_RE = re.compile(r"(?=[A-Za-z0-9_./+=:-]{32,})(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_./+=:-]+")
 REDACTION = "<redacted>"
 ENDPOINT_PATHS = {
@@ -151,11 +157,7 @@ def redact_text(text: str) -> str:
                     text[:json_start]
                     + json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
                 )
-        redacted = re.sub(
-            r"(?i)([\"']?(?:token|password|passwd|pwd|secret|key|authorization|sign)[\"']?)(\s*[=:]\s*[\"']?)([^\"'\s,;&}]+)",
-            rf"\1\2{REDACTION}",
-            text,
-        )
+        redacted = SENSITIVE_FIELD_RE.sub(rf"\1\2{REDACTION}", text)
         return HIGH_ENTROPY_VALUE_RE.sub(REDACTION, redacted)
     return json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
 

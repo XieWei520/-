@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
-from smoke_test import extract_required_field, request_json, explain_http_base_url, validate_base_url
+from smoke_test import (
+    extract_required_field,
+    request_json,
+    explain_http_base_url,
+    redact_text,
+    validate_base_url,
+)
 
 SCRIPT = Path(__file__).with_name("smoke_test.py")
 
@@ -83,6 +90,32 @@ class SmokeBaseUrlTests(unittest.TestCase):
 
 
 class SmokeRedactionTests(unittest.TestCase):
+    def test_redact_text_covers_dsn_credential_and_pass_style_names(self) -> None:
+        sensitive_values = {
+            "mysqlDsn": "mysql://" + "redaction-db/app",
+            "apiCredential": "api-" + "credential-regression",
+            "redisPass": "redis-" + "pass-regression",
+            "adminpwd": "admin-" + "pwd-regression",
+            "DSN": "dsn-" + "regression",
+            "credential": "credential-" + "regression",
+        }
+
+        json_rendered = redact_text(json.dumps({"nested": sensitive_values}))
+        text_rendered = redact_text(
+            "\n".join(
+                f"{key}: {value}" if key in {"apiCredential", "adminpwd", "credential"} else f"{key}={value}"
+                for key, value in sensitive_values.items()
+            )
+        )
+
+        for label, value in sensitive_values.items():
+            with self.subTest(label=label, source="json"):
+                assert_absent_without_echo(self, value, json_rendered, label)
+            with self.subTest(label=label, source="text"):
+                assert_absent_without_echo(self, value, text_rendered, label)
+        self.assertIn("<redacted>", json_rendered)
+        self.assertIn("<redacted>", text_rendered)
+
     def test_missing_required_field_error_reports_shape_without_secret_values(self) -> None:
         payload = {
             "code": 0,

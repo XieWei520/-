@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import unittest
 
 from production_doctor import (
@@ -10,6 +11,7 @@ from production_doctor import (
     evaluate_services,
     evaluate_logs,
     parse_compose_ps_json,
+    redact_text,
     render_result,
     run_edge_check,
     scan_log_issues,
@@ -27,6 +29,32 @@ def assert_absent_without_echo(
 
 
 class ProductionDoctorTests(unittest.TestCase):
+    def test_redact_text_covers_dsn_credential_and_pass_style_names(self) -> None:
+        sensitive_values = {
+            "mysqlDsn": "mysql://" + "redaction-db/app",
+            "apiCredential": "api-" + "credential-regression",
+            "redisPass": "redis-" + "pass-regression",
+            "adminpwd": "admin-" + "pwd-regression",
+            "DSN": "dsn-" + "regression",
+            "credential": "credential-" + "regression",
+        }
+
+        json_rendered = redact_text(json.dumps({"nested": sensitive_values}))
+        text_rendered = redact_text(
+            "\n".join(
+                f"{key}: {value}" if key in {"apiCredential", "adminpwd", "credential"} else f"{key}={value}"
+                for key, value in sensitive_values.items()
+            )
+        )
+
+        for label, value in sensitive_values.items():
+            with self.subTest(label=label, source="json"):
+                assert_absent_without_echo(self, value, json_rendered, label)
+            with self.subTest(label=label, source="text"):
+                assert_absent_without_echo(self, value, text_rendered, label)
+        self.assertIn("<redacted>", json_rendered)
+        self.assertIn("<redacted>", text_rendered)
+
     def test_parse_compose_ps_json_accepts_array_output(self) -> None:
         payload = """
         [
@@ -89,6 +117,36 @@ class ProductionDoctorTests(unittest.TestCase):
         self.assertFalse(result.ok)
         assert_absent_without_echo(self, sensitive_token, rendered, "token value")
         assert_absent_without_echo(self, sensitive_password, rendered, "password value")
+        self.assertIn("<redacted>", rendered)
+
+    def test_log_issue_preview_redacts_dsn_credential_and_pass_style_names(self) -> None:
+        sensitive_values = {
+            "mysqlDsn": "mysql://" + "redaction-db/app",
+            "apiCredential": "api-" + "credential-regression",
+            "redisPass": "redis-" + "pass-regression",
+            "adminpwd": "admin-" + "pwd-regression",
+            "DSN": "dsn-" + "regression",
+            "credential": "credential-" + "regression",
+        }
+        logs = "\n".join(
+            [
+                "tsdd-api "
+                + json.dumps({"level": "error", "msg": "failed", **sensitive_values}),
+                "fatal bootstrap "
+                + " ".join(
+                    f"{key}: {value}" if key in {"apiCredential", "adminpwd", "credential"} else f"{key}={value}"
+                    for key, value in sensitive_values.items()
+                ),
+            ]
+        )
+
+        result = evaluate_logs(logs)
+        rendered = render_result(result)
+
+        self.assertFalse(result.ok)
+        for label, value in sensitive_values.items():
+            with self.subTest(label=label):
+                assert_absent_without_echo(self, value, rendered, label)
         self.assertIn("<redacted>", rendered)
 
     def test_scan_log_issues_ignores_business_info_failed_lines(self) -> None:
