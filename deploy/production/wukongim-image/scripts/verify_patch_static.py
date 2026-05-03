@@ -17,6 +17,7 @@ EXACT_TOKEN_FINGERPRINT_BODY = (
 RAW_FIELD_RE = re.compile(r'zap\.String\(\s*"(?P<field>expectToken|actToken)"\s*,\s*(?P<value>device\.Token|connectPacket\.Token)\s*\)')
 MANAGER_RAW_RE = re.compile(r'zap\.String\(\s*"token"\s*,\s*connectPacket\.Token\s*\)')
 ZAP_CALL_START_RE = re.compile(r'\bzap\.(?P<constructor>[A-Za-z][A-Za-z0-9_]*)\s*\(')
+LOGGING_CALL_START_RE = re.compile(r'\.(?P<constructor>Infow|Errorw|Warnw|Debugw|Infof|Errorf|Warnf|Debugf)\s*\(')
 TOKEN_VALUE_RE = re.compile(r'(?<![A-Za-z0-9_])(?:device\.Token|connectPacket\.Token)(?![A-Za-z0-9_])')
 ALLOWED_TOKEN_FINGERPRINT_CALL_RE = re.compile(
     r'(?<![A-Za-z0-9_.])tokenFingerprint(?![A-Za-z0-9_])\s*\(\s*'
@@ -27,13 +28,38 @@ REQUIRED_SNIPPETS = (
     '"crypto/sha256"',
     '"encoding/hex"',
     TOKEN_FINGERPRINT_SIGNATURE,
-    'zap.String("stage", "manager_token")',
-    'zap.String("tokenHash", tokenFingerprint(connectPacket.Token))',
-    'zap.String("stage", "device_token")',
-    'zap.String("expectedTokenHash", tokenFingerprint(device.Token))',
-    'zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token))',
 )
-
+REQUIRED_ZAP_FIELDS = (
+    (
+        'zap.String("stage", "manager_token")',
+        re.compile(r'\Azap\.String\(\s*"stage"\s*,\s*"manager_token"\s*\)\Z', re.DOTALL),
+    ),
+    (
+        'zap.String("tokenHash", tokenFingerprint(connectPacket.Token))',
+        re.compile(
+            r'\Azap\.String\(\s*"tokenHash"\s*,\s*tokenFingerprint\(\s*connectPacket\.Token\s*\)\s*\)\Z',
+            re.DOTALL,
+        ),
+    ),
+    (
+        'zap.String("stage", "device_token")',
+        re.compile(r'\Azap\.String\(\s*"stage"\s*,\s*"device_token"\s*\)\Z', re.DOTALL),
+    ),
+    (
+        'zap.String("expectedTokenHash", tokenFingerprint(device.Token))',
+        re.compile(
+            r'\Azap\.String\(\s*"expectedTokenHash"\s*,\s*tokenFingerprint\(\s*device\.Token\s*\)\s*\)\Z',
+            re.DOTALL,
+        ),
+    ),
+    (
+        'zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token))',
+        re.compile(
+            r'\Azap\.String\(\s*"actualTokenHash"\s*,\s*tokenFingerprint\(\s*connectPacket\.Token\s*\)\s*\)\Z',
+            re.DOTALL,
+        ),
+    ),
+)
 
 def strip_go_comments(text: str) -> str:
     chars = list(text)
@@ -156,9 +182,10 @@ def find_matching_paren(text: str, open_index: int) -> int | None:
     return None
 
 
-def iter_zap_calls(text: str) -> Iterator[tuple[str, str]]:
+def iter_balanced_calls(text: str, start_re: re.Pattern[str]) -> Iterator[tuple[str, str]]:
+    search_text = mask_go_strings_and_comments(text)
     search_start = 0
-    while match := ZAP_CALL_START_RE.search(text, search_start):
+    while match := start_re.search(search_text, search_start):
         open_index = match.end() - 1
         close_index = find_matching_paren(text, open_index)
         if close_index is None:
@@ -168,10 +195,27 @@ def iter_zap_calls(text: str) -> Iterator[tuple[str, str]]:
         search_start = close_index + 1
 
 
+def iter_zap_calls(text: str) -> Iterator[tuple[str, str]]:
+    yield from iter_balanced_calls(text, ZAP_CALL_START_RE)
+
+
+def iter_logging_calls(text: str) -> Iterator[tuple[str, str]]:
+    yield from iter_balanced_calls(text, LOGGING_CALL_START_RE)
+
 def zap_call_contains_raw_token(call_text: str) -> bool:
     allowed_removed = ALLOWED_TOKEN_FINGERPRINT_CALL_RE.sub("tokenFingerprint(<allowed>)", call_text)
     code_only = mask_go_strings_and_comments(allowed_removed)
     return TOKEN_VALUE_RE.search(code_only) is not None
+
+
+
+def verify_required_zap_fields(zap_calls: list[tuple[str, str]]) -> list[str]:
+    failures: list[str] = []
+    call_texts = [call_text.strip() for _constructor, call_text in zap_calls]
+    for required, pattern in REQUIRED_ZAP_FIELDS:
+        if not any(pattern.fullmatch(call_text) for call_text in call_texts):
+            failures.append(f"missing required zap field: {required}")
+    return failures
 
 
 def extract_function_body(text: str, signature: str) -> str | None:
@@ -245,16 +289,22 @@ def verify_source(root: Path) -> list[str]:
     raw_text = source_path.read_text(encoding="utf-8", errors="replace")
     text = strip_go_comments(raw_text)
     failures: list[str] = []
-    for match in RAW_FIELD_RE.finditer(text):
-        failures.append(f"raw token log field {match.group('field')} still logs {match.group('value')}")
-    if MANAGER_RAW_RE.search(text):
-        failures.append('manager raw token log still uses zap.String("token", connectPacket.Token)')
-    for constructor, call_text in iter_zap_calls(text):
+    zap_calls = list(iter_zap_calls(text))
+    for _constructor, call_text in zap_calls:
+        for match in RAW_FIELD_RE.finditer(call_text):
+            failures.append(f"raw token log field {match.group('field')} still logs {match.group('value')}")
+        if MANAGER_RAW_RE.search(call_text):
+            failures.append('manager raw token log still uses zap.String("token", connectPacket.Token)')
+    for constructor, call_text in zap_calls:
         if zap_call_contains_raw_token(call_text):
             failures.append(f"raw token value is still logged via zap.{constructor}: {call_text}")
+    for constructor, call_text in iter_logging_calls(text):
+        if zap_call_contains_raw_token(call_text):
+            failures.append(f"raw token value is still logged via {constructor}: {call_text}")
     for required in REQUIRED_SNIPPETS:
         if required not in text:
             failures.append(f"missing required redaction snippet: {required}")
+    failures.extend(verify_required_zap_fields(zap_calls))
 
     fingerprint_body = extract_function_body(text, TOKEN_FINGERPRINT_SIGNATURE)
     if fingerprint_body is None:
