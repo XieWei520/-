@@ -7,6 +7,7 @@ Run directly from the repository root:
 from __future__ import annotations
 
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_FILES = (
     "README.md",
     "docker-compose.yaml",
+    "Dockerfile.tsdd",
     ".env.example",
     "config/wk.yaml.tpl",
     "config/tsdd.yaml.tpl",
@@ -58,12 +60,28 @@ DENIED_PATH_MARKERS = (
     "/admin-custom/dist",
 )
 
-DENIED_SUFFIXES = (".pem", ".key", ".pyc")
+DENIED_SUFFIXES = (
+    ".pem",
+    ".key",
+    ".pyc",
+    ".sql",
+    ".db",
+    ".sqlite",
+    ".sqlite3",
+    ".log",
+    ".gz",
+    ".zip",
+    ".tar",
+    ".tgz",
+    ".p12",
+    ".pfx",
+    ".jks",
+)
 
 SECRET_ASSIGNMENT_RE = re.compile(
     r"""
     ^\s*(?:-\s*)?(?:export\s+)?
-    (?P<name>[A-Za-z_][A-Za-z0-9_-]*(?:PASSWORD|SECRET|TOKEN|KEY|CREDENTIAL)[A-Za-z0-9_-]*)
+    (?P<name>[A-Za-z_][A-Za-z0-9_-]*(?:PASSWORD|PASS|PWD|SECRET|TOKEN|KEY|CREDENTIAL|DSN)[A-Za-z0-9_-]*)
     \s*(?::|=)\s*
     (?P<value>[^#\n]*?)
     \s*(?:\#.*)?$
@@ -115,9 +133,7 @@ def _path_matches_marker(path: Path, marker: str) -> bool:
 
 def _should_skip_secret_scan(path: Path) -> bool:
     rel = "/" + _rel(path)
-    if "/tests/" in rel:
-        return True
-    if path.suffix.lower() == ".py" and path.name.startswith("test_") and "/scripts/" in rel:
+    if path.suffix.lower() == ".py" and path.name.startswith("test_"):
         return True
 
     return False
@@ -170,19 +186,94 @@ class ProductionSnapshotSafetyTest(unittest.TestCase):
         missing = [rel for rel in REQUIRED_FILES if not (ROOT / rel).is_file()]
         self.assertEqual([], missing, f"Missing required snapshot files: {missing}")
 
-    def test_secret_scan_skip_helper_skips_test_files(self) -> None:
+    def test_compose_build_dockerfile_paths_exist_under_repo_root(self) -> None:
+        compose = (ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
+        dockerfile_paths = re.findall(r"^\s*dockerfile:\s*([^#\n]+?)\s*$", compose, re.MULTILINE)
+
+        repo_root = ROOT.parents[1].resolve()
+        missing: list[str] = []
+        for raw_path in dockerfile_paths:
+            dockerfile = raw_path.strip().strip("\"'")
+            resolved = (repo_root / dockerfile).resolve()
+            try:
+                resolved.relative_to(repo_root)
+            except ValueError:
+                missing.append(dockerfile)
+                continue
+            if not resolved.is_file():
+                missing.append(dockerfile)
+
+        self.assertEqual([], missing, f"Compose build.dockerfile paths must exist: {missing}")
+
+    def test_secret_scan_skip_helper_only_skips_python_tests(self) -> None:
         should_skip = (
             ROOT / "scripts" / "test_smoke_test.py",
             ROOT / "tests" / "test_production_snapshot_safety.py",
-            ROOT / "nested" / "tests" / "fixture.py",
+            ROOT / "nested" / "tests" / "test_fixture.py",
+            ROOT / "nested" / "test_fixture.py",
         )
         not_skipped = (
             ROOT / "scripts" / "smoke_test.py",
+            ROOT / "scripts" / "test_fixture.txt",
+            ROOT / "tests" / "fixture.py",
+            ROOT / "tests" / "live.env",
+            ROOT / "nested" / "tests" / "test_fixture.txt",
             ROOT / "config" / "wk.yaml.tpl",
         )
 
         self.assertEqual([], [_rel(path) for path in should_skip if not _should_skip_secret_scan(path)])
         self.assertEqual([], [_rel(path) for path in not_skipped if _should_skip_secret_scan(path)])
+
+    def test_secret_scanner_flags_common_password_dsn_and_camelcase_names(self) -> None:
+        samples = (
+            "TSDD_ADMIN_PWD",
+            "MYSQL_DSN",
+            "redisPass",
+            "adminpwd",
+        )
+
+        misses: list[str] = []
+        for name in samples:
+            line = f"{name}=runtimevalue123"
+            match = SECRET_ASSIGNMENT_RE.match(line)
+            if match is None or _secret_value_is_placeholder(match.group("value")):
+                misses.append(name)
+
+        self.assertEqual([], misses, "Secret scanner must recognize common secret-like variable names")
+
+    def test_secret_scanner_scans_non_python_test_fixtures(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as temp_dir:
+            fixture = Path(temp_dir) / "tests" / "live.env"
+            fixture.parent.mkdir(parents=True, exist_ok=True)
+            fixture.write_text("MYSQL_DSN=runtimevalue123\n", encoding="utf-8")
+
+            self.assertFalse(_should_skip_secret_scan(fixture))
+            line = fixture.read_text(encoding="utf-8").strip()
+            match = SECRET_ASSIGNMENT_RE.match(line)
+            self.assertIsNotNone(match)
+            assert match is not None
+            self.assertFalse(_secret_value_is_placeholder(match.group("value")))
+
+    def test_denied_suffixes_cover_runtime_dump_archive_and_keystore_artifacts(self) -> None:
+        expected = {
+            ".pem",
+            ".key",
+            ".pyc",
+            ".sql",
+            ".db",
+            ".sqlite",
+            ".sqlite3",
+            ".log",
+            ".gz",
+            ".zip",
+            ".tar",
+            ".tgz",
+            ".p12",
+            ".pfx",
+            ".jks",
+        }
+
+        self.assertEqual(set(), expected.difference(DENIED_SUFFIXES))
 
     def test_denied_path_markers_cover_runtime_vcs_and_build_artifacts(self) -> None:
         denied_samples = (

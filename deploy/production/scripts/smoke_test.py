@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import random
+import re
 import string
 import sys
 import time
@@ -15,6 +16,9 @@ from urllib.parse import urlparse, urlunparse
 DEFAULT_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 DEFAULT_APP_ID = "wukongchat"
 DEFAULT_APP_KEY = "<app-signing-secret>"
+SENSITIVE_KEY_RE = re.compile(r"(token|password|passwd|pwd|secret|key|authorization|sign)", re.IGNORECASE)
+HIGH_ENTROPY_VALUE_RE = re.compile(r"(?=[A-Za-z0-9_./+=:-]{32,})(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_./+=:-]+")
+REDACTION = "<redacted>"
 
 
 def load_env(env_file: Path) -> dict[str, str]:
@@ -97,6 +101,62 @@ def encode_for_sign(payload: object | None) -> str:
     return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
 
+def redact_sensitive(value: object, *, parent_key: str = "") -> object:
+    if SENSITIVE_KEY_RE.search(parent_key):
+        return REDACTION
+    if isinstance(value, dict):
+        return {
+            str(key): redact_sensitive(item, parent_key=str(key))
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_sensitive(item, parent_key=parent_key) for item in value]
+    if isinstance(value, tuple):
+        return [redact_sensitive(item, parent_key=parent_key) for item in value]
+    if isinstance(value, str):
+        return HIGH_ENTROPY_VALUE_RE.sub(REDACTION, value)
+    return value
+
+
+def redact_text(text: str) -> str:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        json_start = text.find("{")
+        if json_start != -1:
+            try:
+                parsed = json.loads(text[json_start:])
+            except json.JSONDecodeError:
+                pass
+            else:
+                return (
+                    text[:json_start]
+                    + json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
+                )
+        redacted = re.sub(
+            r"(?i)([\"']?(?:token|password|passwd|pwd|secret|key|authorization|sign)[\"']?)(\s*[=:]\s*[\"']?)([^\"'\s,;&}]+)",
+            rf"\1\2{REDACTION}",
+            text,
+        )
+        return HIGH_ENTROPY_VALUE_RE.sub(REDACTION, redacted)
+    return json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
+
+
+def describe_response_shape(payload: object) -> str:
+    if isinstance(payload, dict):
+        keys = sorted(str(key) for key in payload.keys())
+        parts = [f"object keys={keys}"]
+        data = payload.get("data")
+        if isinstance(data, dict):
+            parts.append(f"data keys={sorted(str(key) for key in data.keys())}")
+        elif data is not None:
+            parts.append(f"data type={type(data).__name__}")
+        return "; ".join(parts)
+    if isinstance(payload, list):
+        return f"list length={len(payload)}"
+    return f"type={type(payload).__name__}"
+
+
 def build_headers(
     app_id: str,
     app_key: str,
@@ -138,7 +198,9 @@ def extract_required_field(payload: object, field: str) -> str:
         if isinstance(data, dict):
             return extract_required_field(data, field)
 
-    raise RuntimeError(f"Response did not contain required field '{field}': {payload!r}")
+    raise RuntimeError(
+        f"Response did not contain required field '{field}'; response shape: {describe_response_shape(payload)}"
+    )
 
 
 def request_json(
@@ -176,17 +238,21 @@ def request_json(
         if exc.code == 308:
             location = exc.headers.get("Location", "")
             raise RuntimeError(
-                f"{method.upper()} {path} received HTTP 308 redirect to {location}. "
+                f"{method.upper()} {path} received HTTP 308 redirect to {redact_text(location)}. "
                 f"Use an HTTPS --base-url such as https://infoequity.qingyunshe.top."
             ) from exc
-        raise RuntimeError(f"{method.upper()} {path} failed with HTTP {exc.code}: {raw}") from exc
+        raise RuntimeError(
+            f"{method.upper()} {path} failed with HTTP {exc.code}: {redact_text(raw)}"
+        ) from exc
     except error.URLError as exc:
-        raise RuntimeError(f"{method.upper()} {path} failed: {exc}") from exc
+        raise RuntimeError(f"{method.upper()} {path} failed: {redact_text(str(exc))}") from exc
 
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"{method.upper()} {path} returned non-JSON body: {raw}") from exc
+        raise RuntimeError(
+            f"{method.upper()} {path} returned non-JSON body: {redact_text(raw)}"
+        ) from exc
 
 
 def parse_args() -> argparse.Namespace:

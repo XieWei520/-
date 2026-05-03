@@ -6,9 +6,19 @@ import sys
 import unittest
 from pathlib import Path
 
-from smoke_test import explain_http_base_url, validate_base_url
+from smoke_test import extract_required_field, request_json, explain_http_base_url, validate_base_url
 
 SCRIPT = Path(__file__).with_name("smoke_test.py")
+
+
+def assert_absent_without_echo(
+    test_case: unittest.TestCase,
+    needle: str,
+    haystack: str,
+    label: str,
+) -> None:
+    if needle in haystack:
+        test_case.fail(f"{label} was present in diagnostic output")
 
 
 class SmokeBaseUrlTests(unittest.TestCase):
@@ -70,6 +80,95 @@ class SmokeBaseUrlTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2, completed)
         self.assertIn("Use HTTPS", completed.stderr)
         self.assertNotIn("Traceback", completed.stderr)
+
+
+class SmokeRedactionTests(unittest.TestCase):
+    def test_missing_required_field_error_reports_shape_without_secret_values(self) -> None:
+        payload = {
+            "code": 0,
+            "data": {
+                "password": "passwordValue123",
+                "token": "tokenValue123",
+                "safe": "present",
+            },
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "shape|keys"):
+            extract_required_field(payload, "uid")
+
+        try:
+            extract_required_field(payload, "uid")
+        except RuntimeError as exc:
+            message = str(exc)
+        else:  # pragma: no cover - defensive guard
+            self.fail("extract_required_field unexpectedly found uid")
+
+        assert_absent_without_echo(self, "passwordValue123", message, "password value")
+        assert_absent_without_echo(self, "tokenValue123", message, "token value")
+
+    def test_http_error_redacts_sensitive_response_body_values(self) -> None:
+        import urllib.error
+        from unittest import mock
+
+        sensitive_token = "tokenValue1234567890abcdefghijklmnopqrstuvwxyz"
+        sensitive_password = "passwordValue123"
+        body = (
+            b'{"token":"tokenValue1234567890abcdefghijklmnopqrstuvwxyz",'
+            b'"password":"passwordValue123","message":"failed"}'
+        )
+        http_error = urllib.error.HTTPError(
+            url="https://example.invalid/v1",
+            code=500,
+            msg="server error",
+            hdrs={},
+            fp=None,
+        )
+        http_error.read = lambda: body  # type: ignore[method-assign]
+
+        with mock.patch("smoke_test.request.urlopen", side_effect=http_error):
+            with self.assertRaises(RuntimeError) as caught:
+                request_json(
+                    base_url="https://example.invalid",
+                    method="POST",
+                    path="/v1",
+                    app_id="app",
+                    app_key="<app-signing-secret>",
+                    device_id="device",
+                    device_session_id="session",
+                    payload={"password": sensitive_password},
+                    timeout=1.0,
+                )
+
+        message = str(caught.exception)
+        assert_absent_without_echo(self, sensitive_token, message, "token value")
+        assert_absent_without_echo(self, sensitive_password, message, "password value")
+        self.assertIn("<redacted>", message)
+
+    def test_url_error_redacts_sensitive_reason_values(self) -> None:
+        import urllib.error
+        from unittest import mock
+
+        sensitive_token = "tokenValue1234567890abcdefghijklmnopqrstuvwxyz"
+
+        with mock.patch(
+            "smoke_test.request.urlopen",
+            side_effect=urllib.error.URLError(f"connection failed token={sensitive_token}"),
+        ):
+            with self.assertRaises(RuntimeError) as caught:
+                request_json(
+                    base_url="https://example.invalid",
+                    method="GET",
+                    path="/v1",
+                    app_id="app",
+                    app_key="<app-signing-secret>",
+                    device_id="device",
+                    device_session_id="session",
+                    timeout=1.0,
+                )
+
+        message = str(caught.exception)
+        assert_absent_without_echo(self, sensitive_token, message, "token value")
+        self.assertIn("<redacted>", message)
 
 
 if __name__ == "__main__":

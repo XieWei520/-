@@ -28,6 +28,9 @@ SEVERE_LOG_PATTERN = re.compile(
     re.IGNORECASE,
 )
 SEVERE_JSON_LEVELS = {"error", "fatal", "panic"}
+SENSITIVE_KEY_RE = re.compile(r"(token|password|passwd|pwd|secret|key|authorization|sign)", re.IGNORECASE)
+HIGH_ENTROPY_VALUE_RE = re.compile(r"(?=[A-Za-z0-9_./+=:-]{32,})(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_./+=:-]+")
+REDACTION = "<redacted>"
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,55 @@ def parse_compose_ps_json(text: str) -> dict[str, ServiceStatus]:
     return statuses
 
 
+def redact_sensitive(value: object, *, parent_key: str = "") -> object:
+    if SENSITIVE_KEY_RE.search(parent_key):
+        return REDACTION
+    if isinstance(value, dict):
+        return {
+            str(key): redact_sensitive(item, parent_key=str(key))
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_sensitive(item, parent_key=parent_key) for item in value]
+    if isinstance(value, tuple):
+        return [redact_sensitive(item, parent_key=parent_key) for item in value]
+    if isinstance(value, str):
+        return HIGH_ENTROPY_VALUE_RE.sub(REDACTION, value)
+    return value
+
+
+def redact_text(text: str) -> str:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        json_start = text.find("{")
+        if json_start != -1:
+            try:
+                parsed = json.loads(text[json_start:])
+            except json.JSONDecodeError:
+                pass
+            else:
+                return (
+                    text[:json_start]
+                    + json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
+                )
+        redacted = re.sub(
+            r"(?i)([\"']?(?:token|password|passwd|pwd|secret|key|authorization|sign)[\"']?)(\s*[=:]\s*[\"']?)([^\"'\s,;&}]+)",
+            rf"\1\2{REDACTION}",
+            text,
+        )
+        return HIGH_ENTROPY_VALUE_RE.sub(REDACTION, redacted)
+    return json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
+
+
+def describe_payload_shape(payload: object) -> str:
+    if isinstance(payload, dict):
+        return f"object keys={sorted(str(key) for key in payload.keys())}"
+    if isinstance(payload, list):
+        return f"list length={len(payload)}"
+    return f"type={type(payload).__name__}"
+
+
 def evaluate_services(
     statuses: dict[str, ServiceStatus],
     required_services: tuple[str, ...] = DEFAULT_REQUIRED_SERVICES,
@@ -108,7 +160,7 @@ def scan_log_issues(log_text: str, limit: int = 20) -> list[str]:
         else:
             is_severe = SEVERE_LOG_PATTERN.search(line) is not None
         if is_severe:
-            issues.append(line)
+            issues.append(redact_text(line))
             if len(issues) >= limit:
                 break
     return issues
@@ -167,9 +219,17 @@ def evaluate_perf_payload(
     favorites_p95 = _read_float(payload, "favorites_p95_ms")
     failure_rate = _read_float(payload, "failure_rate")
     if setting_p95 is None or favorites_p95 is None:
-        return CheckResult("perf probe", False, f"missing p95 fields: {payload!r}")
+        return CheckResult(
+            "perf probe",
+            False,
+            f"missing p95 fields; response shape: {describe_payload_shape(payload)}",
+        )
     if failure_rate is None:
-        return CheckResult("perf probe", False, f"missing failure_rate field: {payload!r}")
+        return CheckResult(
+            "perf probe",
+            False,
+            f"missing failure_rate field; response shape: {describe_payload_shape(payload)}",
+        )
 
     issues: list[str] = []
     if setting_p95 > setting_p95_limit_ms:
@@ -207,7 +267,11 @@ def run_compose_ps(env_file: Path, cwd: Path, timeout: float) -> CheckResult:
         timeout=timeout,
     )
     if proc.returncode != 0:
-        return CheckResult("compose services", False, proc.stdout.strip() or "docker compose ps failed")
+        return CheckResult(
+            "compose services",
+            False,
+            redact_text(proc.stdout.strip()) or "docker compose ps failed",
+        )
     try:
         statuses = parse_compose_ps_json(proc.stdout)
     except (json.JSONDecodeError, TypeError) as exc:
@@ -233,7 +297,11 @@ def run_recent_log_scan(
         timeout=timeout,
     )
     if proc.returncode != 0:
-        return CheckResult("recent severe logs", False, proc.stdout.strip() or "docker compose logs failed")
+        return CheckResult(
+            "recent severe logs",
+            False,
+            redact_text(proc.stdout.strip()) or "docker compose logs failed",
+        )
     return evaluate_logs(proc.stdout)
 
 
@@ -250,7 +318,7 @@ def run_edge_check(args: argparse.Namespace) -> CheckResult:
     results = edge_health_check.run_checks(edge_args)
     failures = [result for result in results if not result.ok]
     if failures:
-        preview = "; ".join(f"{item.name}: {item.detail}" for item in failures[:3])
+        preview = "; ".join(f"{item.name}: {redact_text(item.detail)}" for item in failures[:3])
         return CheckResult("edge health", False, f"{len(failures)}/{len(results)} failed: {preview}")
     return CheckResult("edge health", True, f"{len(results)}/{len(results)} edge checks healthy")
 
@@ -287,7 +355,7 @@ def run_perf_probe(args: argparse.Namespace, cwd: Path) -> CheckResult:
                 favorites_p95_limit_ms=args.favorites_p95_limit_ms,
                 max_failure_rate=args.max_failure_rate,
             )
-        return CheckResult("perf probe", False, text or "perf probe failed")
+        return CheckResult("perf probe", False, redact_text(text) or "perf probe failed")
     return evaluate_perf_payload(
         proc.stdout.strip(),
         setting_p95_limit_ms=args.setting_p95_limit_ms,
@@ -313,7 +381,7 @@ def run_mysql_health_check(args: argparse.Namespace, cwd: Path) -> CheckResult:
     )
     text = proc.stdout.strip()
     if proc.returncode != 0:
-        return CheckResult("mysql health", False, text or "mysql health check failed")
+        return CheckResult("mysql health", False, redact_text(text) or "mysql health check failed")
     return CheckResult("mysql health", True, text.splitlines()[-1] if text else "mysql health check passed")
 
 

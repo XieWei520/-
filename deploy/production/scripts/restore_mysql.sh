@@ -102,6 +102,8 @@ MYSQL_DATABASE="$(read_env_value MYSQL_DATABASE)"
 MYSQL_ROOT_PASSWORD="$(read_env_value MYSQL_ROOT_PASSWORD)"
 [[ -n "${MYSQL_DATABASE}" ]] || die "MYSQL_DATABASE is missing from .env."
 [[ -n "${MYSQL_ROOT_PASSWORD}" ]] || die "MYSQL_ROOT_PASSWORD is missing from .env."
+[[ "${MYSQL_DATABASE}" =~ ^[A-Za-z0-9_]+$ ]] || die "MYSQL_DATABASE must contain only letters, numbers, and underscores."
+MYSQL_DATABASE_SQL_IDENTIFIER="\`${MYSQL_DATABASE}\`"
 
 if [[ "${ASSUME_YES}" -ne 1 ]]; then
     printf '[restore_mysql] About to import %s into database "%s"%s. Continue? [y/N]: ' \
@@ -121,11 +123,11 @@ docker compose --env-file .env ps mysql >/dev/null 2>&1 || die "mysql service is
 if [[ "${DROP_EXISTING}" -eq 1 ]]; then
     log "Dropping and recreating database: ${MYSQL_DATABASE}"
     docker compose --env-file .env exec -T mysql sh -c \
-        "exec mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -e \"DROP DATABASE IF EXISTS ${MYSQL_DATABASE}; CREATE DATABASE ${MYSQL_DATABASE} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\""
+        "exec mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -e \"DROP DATABASE IF EXISTS ${MYSQL_DATABASE_SQL_IDENTIFIER}; CREATE DATABASE ${MYSQL_DATABASE_SQL_IDENTIFIER} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\""
 else
     log "Ensuring database exists: ${MYSQL_DATABASE}"
     docker compose --env-file .env exec -T mysql sh -c \
-        "exec mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -e \"CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\""
+        "exec mysql -uroot -p\"\$MYSQL_ROOT_PASSWORD\" -e \"CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE_SQL_IDENTIFIER} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\""
 fi
 
 if [[ "${BACKUP_FILE}" == *.gz ]]; then

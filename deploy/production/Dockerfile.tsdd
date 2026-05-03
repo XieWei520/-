@@ -1,0 +1,38 @@
+FROM golang:1.20 AS build
+
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GO111MODULE=on
+ARG BUILD_VERSION=prod-local
+ARG BUILD_COMMIT=workspace
+ARG BUILD_COMMIT_DATE=2026-04-05
+ARG BUILD_TREE_STATE=dirty
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+COPY serverlib ./serverlib
+RUN go mod download
+
+COPY . .
+
+RUN mkdir -p /out && CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -X main.Version=${BUILD_VERSION} -X main.Commit=${BUILD_COMMIT} -X main.CommitDate=${BUILD_COMMIT_DATE} -X main.TreeState=${BUILD_TREE_STATE}" \
+    -o /out/app ./main.go
+
+FROM debian:bookworm-slim
+
+ENV TZ=Asia/Shanghai
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates tzdata wget && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ >/etc/timezone && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /home
+
+COPY --from=build /out/app /home/app
+COPY --from=build /src/assets /home/assets
+COPY --from=build /src/configs /home/configs
+
+ENTRYPOINT ["/home/app"]

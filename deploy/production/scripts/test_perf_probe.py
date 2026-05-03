@@ -11,11 +11,23 @@ from perf_probe import (
     collect_samples,
     evaluate_thresholds,
     explain_http_base_url,
+    extract_required_field,
+    request_json,
     summarize_probe_result,
     validate_base_url,
 )
 
 SCRIPT = Path(__file__).with_name("perf_probe.py")
+
+
+def assert_absent_without_echo(
+    test_case: unittest.TestCase,
+    needle: str,
+    haystack: str,
+    label: str,
+) -> None:
+    if needle in haystack:
+        test_case.fail(f"{label} was present in diagnostic output")
 
 
 class PerfProbeTests(unittest.TestCase):
@@ -126,6 +138,104 @@ class PerfProbeTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2, completed)
         self.assertIn("Use HTTPS", completed.stderr)
         self.assertNotIn("Traceback", completed.stderr)
+
+    def test_missing_required_field_error_reports_shape_without_secret_values(self) -> None:
+        payload = {
+            "data": {
+                "token": "tokenValue123",
+                "password": "passwordValue123",
+                "safe": "present",
+            }
+        }
+
+        with self.assertRaises(RuntimeError) as caught:
+            extract_required_field(payload, "uid")
+
+        message = str(caught.exception)
+        self.assertRegex(message, "shape|keys")
+        assert_absent_without_echo(self, "tokenValue123", message, "token value")
+        assert_absent_without_echo(self, "passwordValue123", message, "password value")
+
+    def test_request_json_redacts_sensitive_http_error_body_values(self) -> None:
+        import urllib.error
+        from unittest import mock
+
+        sensitive_token = "tokenValue1234567890abcdefghijklmnopqrstuvwxyz"
+        sensitive_password = "passwordValue123"
+        body = (
+            b'{"token":"tokenValue1234567890abcdefghijklmnopqrstuvwxyz",'
+            b'"password":"passwordValue123","message":"failed"}'
+        )
+        http_error = urllib.error.HTTPError(
+            url="https://example.invalid/v1",
+            code=500,
+            msg="server error",
+            hdrs={},
+            fp=None,
+        )
+        http_error.read = lambda: body  # type: ignore[method-assign]
+
+        with mock.patch("perf_probe.request.urlopen", side_effect=http_error):
+            with self.assertRaises(RuntimeError) as caught:
+                request_json(
+                    base_url="https://example.invalid",
+                    method="POST",
+                    path="/v1",
+                    app_id="app",
+                    app_key="<app-signing-secret>",
+                    device_id="device",
+                    device_session_id="session",
+                    payload={"password": sensitive_password},
+                    timeout=1.0,
+                )
+
+        message = str(caught.exception)
+        assert_absent_without_echo(self, sensitive_token, message, "token value")
+        assert_absent_without_echo(self, sensitive_password, message, "password value")
+        self.assertIn("<redacted>", message)
+
+    def test_request_json_redacts_sensitive_url_error_values(self) -> None:
+        import urllib.error
+        from unittest import mock
+
+        sensitive_token = "tokenValue1234567890abcdefghijklmnopqrstuvwxyz"
+
+        with mock.patch(
+            "perf_probe.request.urlopen",
+            side_effect=urllib.error.URLError(f"connection failed token={sensitive_token}"),
+        ):
+            with self.assertRaises(RuntimeError) as caught:
+                request_json(
+                    base_url="https://example.invalid",
+                    method="GET",
+                    path="/v1",
+                    app_id="app",
+                    app_key="<app-signing-secret>",
+                    device_id="device",
+                    device_session_id="session",
+                    timeout=1.0,
+                )
+
+        message = str(caught.exception)
+        assert_absent_without_echo(self, sensitive_token, message, "token value")
+        self.assertIn("<redacted>", message)
+
+    def test_collect_samples_redacts_sensitive_exception_text(self) -> None:
+        sensitive_token = "tokenValue1234567890abcdefghijklmnopqrstuvwxyz"
+
+        def fake_request(_endpoint: str) -> float:
+            raise ProbeFailure(f"request failed token={sensitive_token}")
+
+        collected = collect_samples(
+            endpoints=("setting",),
+            sample_count=1,
+            concurrency=1,
+            request_once=fake_request,
+        )
+
+        joined = "\n".join(collected.failures)
+        assert_absent_without_echo(self, sensitive_token, joined, "token value")
+        self.assertIn("<redacted>", joined)
 
 
 if __name__ == "__main__":

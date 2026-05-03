@@ -25,6 +25,15 @@ class MysqlBackupRestoreScriptTests(unittest.TestCase):
         self.assertIn("read_env_value", source)
         self.assertIn('docker compose --env-file .env exec -T mysql sh -c', source)
 
+    def test_restore_script_validates_and_quotes_mysql_database_identifier(self) -> None:
+        source = RESTORE.read_text(encoding="utf-8")
+
+        self.assertRegex(source, r"\[\[\s+\"\$\{MYSQL_DATABASE\}\"\s+=~\s+\^\[A-Za-z0-9_\]\+\$")
+        self.assertIn("MYSQL_DATABASE_SQL_IDENTIFIER", source)
+        self.assertIn(r"\`${MYSQL_DATABASE}\`", source)
+        self.assertNotIn("DROP DATABASE IF EXISTS ${MYSQL_DATABASE};", source)
+        self.assertNotIn("CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE}", source)
+
 
 if __name__ == "__main__":
     unittest.main()

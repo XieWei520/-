@@ -9,6 +9,7 @@ It is intended to keep the deployment templates, operational scripts, and local 
 ## Included file classes
 
 - `docker-compose.yaml` and `.env.example` for the production template shape.
+- `Dockerfile.tsdd` for the local `tsdd-api`/`callgateway` production image build.
 - `config/*.tpl` renderer inputs for WukongIM, TSDD, TURN, and LiveKit.
 - `mysql/conf.d/production.cnf` production MySQL configuration.
 - `nginx/*.conf*` Nginx template/config files.
@@ -25,6 +26,7 @@ Do not commit production runtime state or secrets here. Excluded classes include
 - Runtime logs under `logs/`.
 - Databases, object stores, or service state under `data/`.
 - Backups under `backup/`.
+- Database dumps, local databases, logs, compressed archives, and keystores (`*.sql`, `*.db`, `*.sqlite*`, `*.log`, `*.gz`, `*.zip`, `*.tar`, `*.tgz`, `*.p12`, `*.pfx`, `*.jks`).
 - TLS certificates and private keys (`*.pem`, `*.key`) and real cert/key material.
 - Built frontend/admin artifacts such as `manager/dist`, `nginx/html`, `admin/dist`, and `admin-custom/dist`.
 - VCS metadata such as `admin-src/.git/`.
@@ -57,13 +59,13 @@ Run these only from an operational context with authorized placeholder values su
 
 ```bash
 python scripts/smoke_test.py \
-  --base-url https://infoequity.qingyunshe.top \
+  --base-url https://<public-base-url> \
   --app-id <app-id> \
   --app-key <app-signing-secret> \
   --password <temporary-account-password>
 
 python scripts/perf_probe.py \
-  --base-url https://infoequity.qingyunshe.top \
+  --base-url https://<public-base-url> \
   --app-id <app-id> \
   --app-key <app-signing-secret> \
   --password <temporary-account-password> \
