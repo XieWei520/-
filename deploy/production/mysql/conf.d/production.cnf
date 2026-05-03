@@ -1,0 +1,12 @@
+[mysqld]
+character-set-server=utf8mb4
+collation-server=utf8mb4_unicode_ci
+max_connections=300
+innodb_buffer_pool_size=2G
+innodb_log_file_size=512M
+tmp_table_size=128M
+max_heap_table_size=128M
+slow_query_log=ON
+long_query_time=0.2
+log_queries_not_using_indexes=OFF
+sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION

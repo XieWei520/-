@@ -1,0 +1,16 @@
+listening-port=3478
+tls-listening-port=5349
+fingerprint
+use-auth-secret
+static-auth-secret={{TURN_STATIC_AUTH_SECRET}}
+realm={{TURN_REALM}}
+server-name={{PUBLIC_DOMAIN}}
+listening-ip=0.0.0.0
+external-ip={{EXTERNAL_IP}}
+min-port=49160
+max-port=49220
+cert={{TURN_TLS_CERT_PATH}}
+pkey={{TURN_TLS_PRIVATE_KEY_PATH}}
+no-cli
+no-multicast-peers
+stale-nonce
