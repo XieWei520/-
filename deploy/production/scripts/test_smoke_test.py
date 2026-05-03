@@ -116,6 +116,26 @@ class SmokeRedactionTests(unittest.TestCase):
         self.assertIn("<redacted>", json_rendered)
         self.assertIn("<redacted>", text_rendered)
 
+    def test_redact_text_redacts_full_multi_token_sensitive_field_values(self) -> None:
+        authorization_tail = "shorttail"
+        credential_tail = "short spaced tail"
+        rendered = redact_text(
+            "\n".join(
+                [
+                    f"authorization: Bearer {authorization_tail}",
+                    f"apiCredential: Basic {credential_tail}",
+                    "message: still visible",
+                ]
+            )
+        )
+
+        assert_absent_without_echo(self, "Bearer", rendered, "authorization scheme")
+        assert_absent_without_echo(self, authorization_tail, rendered, "authorization tail")
+        assert_absent_without_echo(self, "Basic", rendered, "credential scheme")
+        assert_absent_without_echo(self, credential_tail, rendered, "credential tail")
+        self.assertEqual(rendered.count("<redacted>"), 2)
+        self.assertIn("message: still visible", rendered)
+
     def test_missing_required_field_error_reports_shape_without_secret_values(self) -> None:
         payload = {
             "code": 0,

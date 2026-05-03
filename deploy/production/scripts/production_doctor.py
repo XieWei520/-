@@ -31,9 +31,12 @@ SEVERE_JSON_LEVELS = {"error", "fatal", "panic"}
 SENSITIVE_NAME_PATTERN = r"password|passwd|pass|pwd|secret|token|key|credential|authorization|sign|dsn"
 SENSITIVE_KEY_RE = re.compile(SENSITIVE_NAME_PATTERN, re.IGNORECASE)
 SENSITIVE_FIELD_RE = re.compile(
-    r"([\"']?[A-Za-z0-9_.-]*(?:%s)[A-Za-z0-9_.-]*[\"']?)(\s*[=:]\s*[\"']?)([^\"'\s,;&}]+)"
+    r"(?P<field>[\"']?[A-Za-z0-9_.-]*(?:%s)[A-Za-z0-9_.-]*[\"']?)"
+    r"(?P<assignment>\s*[=:]\s*)"
+    r"(?:(?P<quote>[\"'])(?P<quoted_value>[^\r\n]*?)(?P=quote)|(?P<unquoted_value>[^\r\n,;&}]*?))"
+    r"(?=(?:[,;&}]|\s+[A-Za-z0-9_.-]+\s*[=:]|$))"
     % SENSITIVE_NAME_PATTERN,
-    re.IGNORECASE,
+    re.IGNORECASE | re.MULTILINE,
 )
 HIGH_ENTROPY_VALUE_RE = re.compile(r"(?=[A-Za-z0-9_./+=:-]{32,})(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9_./+=:-]+")
 REDACTION = "<redacted>"
@@ -97,6 +100,11 @@ def redact_sensitive(value: object, *, parent_key: str = "") -> object:
     return value
 
 
+def _redact_sensitive_field(match: re.Match[str]) -> str:
+    quote = match.group("quote") or ""
+    return f"{match.group('field')}{match.group('assignment')}{quote}{REDACTION}{quote}"
+
+
 def redact_text(text: str) -> str:
     try:
         parsed = json.loads(text)
@@ -112,7 +120,7 @@ def redact_text(text: str) -> str:
                     text[:json_start]
                     + json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
                 )
-        redacted = SENSITIVE_FIELD_RE.sub(rf"\1\2{REDACTION}", text)
+        redacted = SENSITIVE_FIELD_RE.sub(_redact_sensitive_field, text)
         return HIGH_ENTROPY_VALUE_RE.sub(REDACTION, redacted)
     return json.dumps(redact_sensitive(parsed), separators=(",", ":"), ensure_ascii=False)
 

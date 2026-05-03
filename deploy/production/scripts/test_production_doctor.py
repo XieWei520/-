@@ -55,6 +55,26 @@ class ProductionDoctorTests(unittest.TestCase):
         self.assertIn("<redacted>", json_rendered)
         self.assertIn("<redacted>", text_rendered)
 
+    def test_redact_text_redacts_full_multi_token_sensitive_field_values(self) -> None:
+        authorization_tail = "shorttail"
+        credential_tail = "short spaced tail"
+        rendered = redact_text(
+            "\n".join(
+                [
+                    f"authorization: Bearer {authorization_tail}",
+                    f"apiCredential: Basic {credential_tail}",
+                    "message: still visible",
+                ]
+            )
+        )
+
+        assert_absent_without_echo(self, "Bearer", rendered, "authorization scheme")
+        assert_absent_without_echo(self, authorization_tail, rendered, "authorization tail")
+        assert_absent_without_echo(self, "Basic", rendered, "credential scheme")
+        assert_absent_without_echo(self, credential_tail, rendered, "credential tail")
+        self.assertEqual(rendered.count("<redacted>"), 2)
+        self.assertIn("message: still visible", rendered)
+
     def test_parse_compose_ps_json_accepts_array_output(self) -> None:
         payload = """
         [
@@ -148,6 +168,28 @@ class ProductionDoctorTests(unittest.TestCase):
             with self.subTest(label=label):
                 assert_absent_without_echo(self, value, rendered, label)
         self.assertIn("<redacted>", rendered)
+
+    def test_log_issue_preview_redacts_full_multi_token_sensitive_text_fields(self) -> None:
+        authorization_tail = "shorttail"
+        credential_tail = "short spaced tail"
+        logs = "\n".join(
+            [
+                f"tsdd-api ERROR authorization: Bearer {authorization_tail}",
+                f"callgateway fatal apiCredential: Basic {credential_tail}",
+                "wukongim ERROR message: still visible",
+            ]
+        )
+
+        result = evaluate_logs(logs)
+        rendered = render_result(result)
+
+        self.assertFalse(result.ok)
+        assert_absent_without_echo(self, "Bearer", rendered, "authorization scheme")
+        assert_absent_without_echo(self, authorization_tail, rendered, "authorization tail")
+        assert_absent_without_echo(self, "Basic", rendered, "credential scheme")
+        assert_absent_without_echo(self, credential_tail, rendered, "credential tail")
+        self.assertEqual(rendered.count("<redacted>"), 2)
+        self.assertIn("wukongim ERROR message: still visible", rendered)
 
     def test_scan_log_issues_ignores_business_info_failed_lines(self) -> None:
         logs = """
