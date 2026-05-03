@@ -24,10 +24,9 @@ ALLOWED_TOKEN_FINGERPRINT_CALL_RE = re.compile(
     r'(?:device\.Token|connectPacket\.Token)\s*\)'
 )
 UNSAFE_TOKEN_RETURN_RE = re.compile(r'\breturn\s+(?P<expr>[^\n;}]*(?:\btoken\b|device\.Token|connectPacket\.Token)[^\n;}]*)')
-REQUIRED_SNIPPETS = (
-    '"crypto/sha256"',
-    '"encoding/hex"',
-    TOKEN_FINGERPRINT_SIGNATURE,
+REQUIRED_IMPORTS = (
+    "crypto/sha256",
+    "encoding/hex",
 )
 REQUIRED_ZAP_FIELDS = (
     (
@@ -218,33 +217,52 @@ def verify_required_zap_fields(zap_calls: list[tuple[str, str]]) -> list[str]:
     return failures
 
 
-def extract_function_body(text: str, signature: str) -> str | None:
-    signature_start = text.find(signature)
+def extract_import_paths(text: str, code_view: str) -> set[str]:
+    paths: set[str] = set()
+    for match in re.finditer(r"\bimport\b", code_view):
+        index = match.end()
+        while index < len(code_view) and code_view[index].isspace():
+            index += 1
+        if index >= len(code_view):
+            continue
+        if code_view[index] == "(":
+            close_index = find_matching_paren(code_view, index)
+            if close_index is None:
+                continue
+            import_block = text[index + 1:close_index]
+            paths.update(re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', import_block))
+            paths.update(re.findall(r'`([^`]*)`', import_block))
+            continue
+        line_end = text.find("\n", index)
+        if line_end == -1:
+            line_end = len(text)
+        import_line = text[index:line_end]
+        paths.update(re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', import_line))
+        paths.update(re.findall(r'`([^`]*)`', import_line))
+    return paths
+
+
+def verify_required_imports(text: str, code_view: str) -> list[str]:
+    failures: list[str] = []
+    imported_paths = extract_import_paths(text, code_view)
+    for required in REQUIRED_IMPORTS:
+        if required not in imported_paths:
+            failures.append(f'missing required redaction snippet: "{required}" (missing required import: {required})')
+    return failures
+
+
+def extract_function_body(text: str, signature: str, code_view: str) -> str | None:
+    signature_start = code_view.find(signature)
     if signature_start == -1:
         return None
-    body_start = text.find("{", signature_start + len(signature))
+    body_start = code_view.find("{", signature_start + len(signature))
     if body_start == -1:
         return None
 
     depth = 0
     index = body_start
-    quote: str | None = None
-    escaped = False
-    while index < len(text):
-        char = text[index]
-        if quote is not None:
-            if quote != "`" and escaped:
-                escaped = False
-            elif quote != "`" and char == "\\":
-                escaped = True
-            elif char == quote:
-                quote = None
-            index += 1
-            continue
-        if char in {'"', "'", "`"}:
-            quote = char
-            index += 1
-            continue
+    while index < len(code_view):
+        char = code_view[index]
         if char == "{":
             depth += 1
         elif char == "}":
@@ -288,6 +306,7 @@ def verify_source(root: Path) -> list[str]:
         return [f"missing source file: {source_path}"]
     raw_text = source_path.read_text(encoding="utf-8", errors="replace")
     text = strip_go_comments(raw_text)
+    code_view = mask_go_strings_and_comments(text)
     failures: list[str] = []
     zap_calls = list(iter_zap_calls(text))
     for _constructor, call_text in zap_calls:
@@ -301,12 +320,10 @@ def verify_source(root: Path) -> list[str]:
     for constructor, call_text in iter_logging_calls(text):
         if zap_call_contains_raw_token(call_text):
             failures.append(f"raw token value is still logged via {constructor}: {call_text}")
-    for required in REQUIRED_SNIPPETS:
-        if required not in text:
-            failures.append(f"missing required redaction snippet: {required}")
+    failures.extend(verify_required_imports(text, code_view))
     failures.extend(verify_required_zap_fields(zap_calls))
 
-    fingerprint_body = extract_function_body(text, TOKEN_FINGERPRINT_SIGNATURE)
+    fingerprint_body = extract_function_body(text, TOKEN_FINGERPRINT_SIGNATURE, code_view)
     if fingerprint_body is None:
         failures.append(f"missing {TOKEN_FINGERPRINT_SIGNATURE} body")
     else:

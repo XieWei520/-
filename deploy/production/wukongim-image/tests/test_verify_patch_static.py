@@ -297,6 +297,31 @@ class VerifyPatchStaticTests(unittest.TestCase):
         self.assertIn(b"Infow", result.stderr)
         self.assertIn(b"connectPacket.Token", result.stderr)
 
+    def test_rejects_imports_and_token_fingerprint_inside_raw_string_only(self) -> None:
+        root = self._write_source('''
+            package handler
+            import "go.uber.org/zap"
+            func f() {
+                _ = `
+                    import (
+                        "crypto/sha256"
+                        "encoding/hex"
+                    )
+                    func tokenFingerprint(token string) string {
+                        if token == "" { return "empty" }
+                        sum := sha256.Sum256([]byte(token))
+                        return hex.EncodeToString(sum[:])[:12]
+                    }
+                `
+                h.Error("manager token verify fail", zap.String("stage", "manager_token"), zap.String("tokenHash", tokenFingerprint(connectPacket.Token)))
+                h.Error("token verify fail", zap.String("stage", "device_token"), zap.String("expectedTokenHash", tokenFingerprint(device.Token)), zap.String("actualTokenHash", tokenFingerprint(connectPacket.Token)))
+            }
+        ''')
+        result = self._run(root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"missing required import", result.stderr)
+        self.assertIn(b"missing func tokenFingerprint", result.stderr)
+
     def test_accepts_hash_only_redacted_logging(self) -> None:
         root = self._write_source(self._hash_only_source('''
                 if device.Token != connectPacket.Token {
