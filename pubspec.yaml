@@ -1,0 +1,127 @@
+name: wukong_im_app
+description: "悟空IM - 多端即时通讯应用"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # IM SDK - use local WuKongIMFlutterSDK source
+  wukongimfluttersdk:
+    path: ../TangSengDaoDao/WuKongIMFlutterSDK-master
+
+  # Networking
+  dio: ^5.4.0
+  web_socket_channel: ^2.4.0
+
+  # Data storage
+  sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.4.0+2
+  shared_preferences: ^2.2.2
+
+  # State management
+  flutter_riverpod: ^2.4.9
+  go_router: ^14.8.1
+
+  # Map and location
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
+  geolocator: ^14.0.2
+
+  # Audio/video calls
+  flutter_webrtc: ^1.1.0
+  livekit_client: ^2.5.0
+
+  # UI components
+  flutter_svg: ^2.0.9
+  cached_network_image: ^3.3.1
+  flutter_cache_manager: ^3.4.1
+  image_picker: ^1.0.7
+  video_player: ^2.8.2
+  audioplayers: ^6.6.0
+  record: ^6.1.2
+  uuid: ^4.2.1
+
+  # Feature components
+  permission_handler: ^11.1.0
+  flutter_contacts: ^2.0.1
+  url_launcher: ^6.2.4
+  file_picker: ^8.3.7
+  crop_your_image: ^2.0.0
+  path_provider: ^2.1.2
+  path: ^1.8.3
+  package_info_plus: ^9.0.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.0.4
+  flutter_local_notifications: ^17.0.0
+  local_notifier: ^0.1.6
+  firebase_core: ^3.4.1
+  firebase_messaging: ^15.0.0
+  sentry_flutter: ^8.5.0
+  webview_flutter: ^4.10.0
+
+  # Utilities
+  intl: ^0.20.2
+  crypto: ^3.0.3
+  meta: ^1.17.0
+  xml: ^6.5.0
+  desktop_drop: ^0.7.1
+  web: ^1.1.1
+  pointycastle: ^3.9.1
+
+hooks:
+  user_defines:
+    sqlite3:
+      source: system
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  fake_async: ^1.3.1
+  mockito: ^5.4.6
+
+dependency_overrides:
+  firebase_core:
+    path: local_packages/firebase_core_windowsless
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/emoji/
+    - assets/emoji/android/
+    - assets/emoji/android/default/
+    - assets/stickers/sample_pack/manifest.json
+    - assets/stickers/sample_pack/previews/
+    - assets/icons/
+    - assets/audio/
+    - assets/reference_ui/icons/
+    - assets/reference_ui/icons/icon_login_bg.png
+    - assets/reference_ui/icons/icon_login_arrow_bottom.png
+    - assets/reference_ui/icons/ic_password_visible.png
+    - assets/reference_ui/icons/ic_password_invisible.png
+
+  fonts:
+    - family: WKMWBold
+      fonts:
+        - asset: assets/reference_ui/fonts/mw_bold.ttf
+    - family: WKRMedium
+      fonts:
+        - asset: assets/reference_ui/fonts/rmedium.ttf
+    - family: Roboto
+      fonts:
+        - asset: assets/reference_ui/fonts/rmedium.ttf
+    - family: WKNotoSansSC
+      fonts:
+        - asset: assets/reference_ui/fonts/noto_sans_sc_vf.ttf
+    - family: WKChineseWebSubset
+      fonts:
+        - asset: assets/reference_ui/fonts/noto_sans_sc_web_subset.ttf

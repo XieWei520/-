@@ -1,0 +1,10 @@
+export 'setting_page.dart';
+export 'privacy_settings_page.dart';
+export 'language_settings_page.dart';
+export 'font_size_settings_page.dart';
+export 'theme_settings_page.dart';
+export 'about_page.dart';
+export 'chat_background_settings_page.dart';
+export 'app_modules_page.dart';
+export 'third_party_sharing_page.dart';
+export 'error_logs_page.dart';

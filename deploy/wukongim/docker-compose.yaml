@@ -1,0 +1,15 @@
+version: '3.7'
+services:
+  wukongim:
+    image: registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2
+    environment:
+      - "WK_MODE=release"
+      - "WK_EXTERNAL_IP=103.207.68.33"
+    restart: always
+    volumes:
+      - ./wukongimdata:/root/wukongim
+    ports:
+      - 5001:5001  # HTTP API
+      - 5100:5100    # TCP
+      - 5200:5200    # WebSocket
+      - 5172:5172    # Demo

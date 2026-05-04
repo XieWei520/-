@@ -1,0 +1,29 @@
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../service/api/im_sync_api.dart';
+import 'realtime_rollout_telemetry.dart';
+
+final realtimeRolloutTelemetryProvider = Provider<RealtimeRolloutTelemetry>((
+  ref,
+) {
+  final telemetry = RealtimeRolloutTelemetry(
+    transport: IMSyncApi.instance.uploadRealtimeRolloutTelemetry,
+  );
+  ref.onDispose(() {
+    unawaited(telemetry.flush());
+    telemetry.dispose();
+  });
+  return telemetry;
+});
+
+final conversationPatchTelemetryProvider = Provider<ConversationPatchTelemetry>((
+  ref,
+) {
+  return ref.watch(realtimeRolloutTelemetryProvider);
+});
+
+final messageQueryTelemetryProvider = Provider<MessageQueryTelemetry>((ref) {
+  return ref.watch(realtimeRolloutTelemetryProvider);
+});

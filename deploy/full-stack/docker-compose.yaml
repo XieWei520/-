@@ -1,0 +1,60 @@
+version: '3.1'
+services:
+  wukongim:
+    image: registry.cn-shanghai.aliyuncs.com/wukongim/wukongim:v2
+    restart: always
+    environment:
+      - "WK_MODE=release"
+      - "WK_EXTERNAL_IP=103.207.68.33"
+    ports:
+      - "5100:5100"
+      - "5200:5200"
+      - "5001:5001"
+      - "5172:5172"
+    volumes:
+      - ./wukongimdata:/root/wukongim
+  tangsengdaodaoserver:
+    image: registry.cn-shanghai.aliyuncs.com/wukongim/tangsengdaodaoserver:latest
+    restart: always
+    command: "api"
+    healthcheck:
+      test: "wget -q -Y off -O /dev/null http://localhost:8090/v1/ping > /dev/null 2>&1"
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./configs/tsdd.yaml:/home/configs/tsdd.yaml
+      - ./tsdddata:/home/data
+      - ./tsddlogs:/home/logs
+    depends_on:
+      - redis
+      - mysql
+      - wukongim
+    environment:
+      - TZ=Asia/Shanghai
+  mysql:
+    image: mysql:8
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - MYSQL_ROOT_PASSWORD=wukongim123
+      - MYSQL_DATABASE=wukongim
+    volumes:
+      - ./mysqldata:/var/lib/mysql
+  redis:
+    image: redis
+    restart: always
+  minio:
+    image: minio/minio:latest
+    restart: always
+    command: "server /data --console-address ':9001'"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=wukongim
+      - MINIO_ROOT_PASSWORD=wukongim123
+    volumes:
+      - ./miniodata:/data
