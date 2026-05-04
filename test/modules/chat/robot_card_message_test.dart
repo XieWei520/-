@@ -4,7 +4,6 @@ import 'package:wukong_im_app/data/models/wk_robot_card_content.dart';
 import 'package:wukong_im_app/modules/chat/robot_card_message.dart';
 import 'package:wukong_im_app/widgets/robot_message_card.dart';
 import 'package:wukong_im_app/wukong_base/msg/msg_content_type.dart';
-import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 

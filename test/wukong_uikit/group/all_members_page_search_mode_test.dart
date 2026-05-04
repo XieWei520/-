@@ -9,7 +9,7 @@ import 'package:wukong_im_app/wukong_uikit/group/all_members_page.dart';
 import 'package:wukong_im_app/wukong_uikit/user/user_detail_page.dart';
 
 void main() {
-  Widget _wrapWithApp(Widget child) {
+  Widget wrapWithApp(Widget child) {
     return ProviderScope(
       overrides: [
         searchRepositoryProvider.overrideWithValue(_FakeSearchRepository()),
@@ -18,7 +18,7 @@ void main() {
     );
   }
 
-  GroupMember _member({
+  GroupMember member({
     required String uid,
     required String name,
   }) {
@@ -27,14 +27,14 @@ void main() {
 
   testWidgets('searchMessage mode uses Android title behavior', (tester) async {
     await tester.pumpWidget(
-      _wrapWithApp(
+      wrapWithApp(
         AllMembersPage(
           channelId: 'group_demo',
           channelType: 2,
           channelName: 'Project Group',
           searchMessage: true,
           autoLoad: false,
-          initialMembers: [_member(uid: 'u_alice', name: 'Alice')],
+          initialMembers: [member(uid: 'u_alice', name: 'Alice')],
         ),
       ),
     );
@@ -46,14 +46,14 @@ void main() {
     'searchMessage mode opens existing member-search results instead of user detail',
     (tester) async {
       await tester.pumpWidget(
-        _wrapWithApp(
+        wrapWithApp(
           AllMembersPage(
             channelId: 'group_demo',
             channelType: 2,
             channelName: 'Project Group',
             searchMessage: true,
             autoLoad: false,
-            initialMembers: [_member(uid: 'u_alice', name: 'Alice')],
+            initialMembers: [member(uid: 'u_alice', name: 'Alice')],
           ),
         ),
       );
@@ -75,12 +75,12 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _wrapWithApp(
+      wrapWithApp(
         AllMembersPage(
           channelId: 'group_demo',
           channelType: 2,
           autoLoad: false,
-          initialMembers: [_member(uid: 'u_alice', name: 'Alice')],
+          initialMembers: [member(uid: 'u_alice', name: 'Alice')],
         ),
       ),
     );

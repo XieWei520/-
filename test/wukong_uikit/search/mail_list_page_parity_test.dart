@@ -216,7 +216,7 @@ void main() {
               vercode: 'vc_alice',
             ),
           ],
-          onApplyContact: (_, __) async {
+          onApplyContact: (_, _) async {
             applyCallCount += 1;
           },
         ),

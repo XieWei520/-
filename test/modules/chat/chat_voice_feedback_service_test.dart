@@ -457,7 +457,6 @@ class _ThrowingStartAudioRecordManager implements AudioRecordManager {
     }
   }
 
-  @override
   double getAmplitude() => 0.0;
 
   @override

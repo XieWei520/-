@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
@@ -492,7 +491,7 @@ class ChatVoiceMessageBubble extends ConsumerWidget {
     final textPainter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: Directionality.of(context),
-      textScaleFactor: MediaQuery.textScaleFactorOf(context),
+      textScaler: MediaQuery.textScalerOf(context),
     )..layout(minWidth: 0, maxWidth: double.infinity);
     return textPainter.width;
   }

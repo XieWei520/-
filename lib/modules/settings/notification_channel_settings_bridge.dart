@@ -30,7 +30,10 @@ class DefaultNotificationChannelSettingsBridge
           return true;
         }
       } on MissingPluginException {
-      } on PlatformException {}
+        return openAppSettings();
+      } on PlatformException {
+        return openAppSettings();
+      }
     }
     return openAppSettings();
   }

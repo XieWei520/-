@@ -19,7 +19,7 @@ void main() {
             containMemberName: 'Alex',
           ),
         ],
-        searchFollowedUsers: (_, __, ___) async => <WKChannel>[
+        searchFollowedUsers: (_, _, _) async => <WKChannel>[
           _personalChannel(
             channelId: 'u1',
             channelName: 'Alex',
@@ -40,7 +40,7 @@ void main() {
             messageCount: 3,
           ),
         ],
-        searchMessagesWithChannel: (_, channelId, __) async {
+        searchMessagesWithChannel: (_, channelId, _) async {
           if (channelId != 'group-1') {
             return const <WKMsg>[];
           }
@@ -91,7 +91,7 @@ void main() {
   test('searchGlobal page > 1 returns message-only local slices', () async {
     final service = LocalSearchService(
       searchChannels: (_) async => const <WKChannelSearchResult>[],
-      searchFollowedUsers: (_, __, ___) async => const <WKChannel>[],
+      searchFollowedUsers: (_, _, _) async => const <WKChannel>[],
       searchGlobalMessages: (_) async => <WKMessageSearchResult>[
         _messageAggregate(
           channelId: 'group-1',
@@ -112,7 +112,7 @@ void main() {
           messageCount: 2,
         ),
       ],
-      searchMessagesWithChannel: (_, __, ___) async => const <WKMsg>[],
+      searchMessagesWithChannel: (_, _, _) async => const <WKMsg>[],
     );
 
     final snapshot = await service.searchGlobal(
@@ -131,9 +131,9 @@ void main() {
   test('searchMessages paginates local channel hits', () async {
     final service = LocalSearchService(
       searchChannels: (_) async => const <WKChannelSearchResult>[],
-      searchFollowedUsers: (_, __, ___) async => const <WKChannel>[],
+      searchFollowedUsers: (_, _, _) async => const <WKChannel>[],
       searchGlobalMessages: (_) async => const <WKMessageSearchResult>[],
-      searchMessagesWithChannel: (_, __, ___) async => <WKMsg>[
+      searchMessagesWithChannel: (_, _, _) async => <WKMsg>[
         _message(
           channelId: 'group-1',
           channelName: 'Design Group',
@@ -192,9 +192,9 @@ void main() {
     () async {
       final service = LocalSearchService(
         searchChannels: (_) async => const <WKChannelSearchResult>[],
-        searchFollowedUsers: (_, __, ___) async => const <WKChannel>[],
+        searchFollowedUsers: (_, _, _) async => const <WKChannel>[],
         searchGlobalMessages: (_) async => const <WKMessageSearchResult>[],
-        searchMessagesWithChannel: (_, __, ___) async => <WKMsg>[
+        searchMessagesWithChannel: (_, _, _) async => <WKMsg>[
           WKMsg()
             ..channelID = 'group-1'
             ..channelType = WKChannelType.group

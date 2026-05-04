@@ -4,7 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wukong_im_app/data/models/wk_robot_card_content.dart';
 import 'package:wukong_im_app/wukong_base/msg/msg_content_type.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
-import 'package:wukongimfluttersdk/type/const.dart';
 
 class RobotCardViewData {
   const RobotCardViewData({
