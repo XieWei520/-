@@ -2,6 +2,7 @@ import 'package:wukongimfluttersdk/entity/msg.dart';
 
 abstract interface class WebChatCacheStore {
   Future<List<WKMsg>> readMessages({
+    String uid = '',
     required String channelId,
     required int channelType,
     required int limit,
@@ -10,6 +11,7 @@ abstract interface class WebChatCacheStore {
   });
 
   Future<void> upsertMessages({
+    String uid = '',
     required String channelId,
     required int channelType,
     required List<WKMsg> messages,
