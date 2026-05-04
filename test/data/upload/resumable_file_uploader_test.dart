@@ -86,12 +86,93 @@ void main() {
 
       expect(result, 'https://cdn.example.com/new.bin');
       expect(client.initCallCount, 1);
-      expect(client.uploadedPartNumbers, <int>[1, 2]);
-      expect(client.uploadedBytes, <List<int>>[
+      expect(client.uploadedPartNumbers.toSet(), <int>{1, 2});
+      expect(client.uploadedBytes.toSet(), <List<int>>{
         <int>[9, 8],
         <int>[7, 6],
-      ]);
+      });
       expect(client.completedUploadId, 'upload-new');
+    },
+  );
+
+  test(
+    'resumable uploader uploads missing parts with at most three concurrent workers',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'resumable_file_uploader_concurrency_test_',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}parallel.bin',
+      );
+      await file.writeAsBytes(<int>[1, 2, 3, 4, 5]);
+
+      final client = _RecordingMultipartClient(
+        createdUploadId: 'upload-parallel',
+        completedUrl: 'https://cdn.example.com/parallel.bin',
+        uploadDelay: const Duration(milliseconds: 10),
+      );
+      final uploader = ResumableFileUploader(
+        client: client,
+        checkpointStore: MemoryResumableUploadStore(),
+        chunkSizeBytes: 1,
+        fingerprintResolver: (_) async => 'fp-parallel',
+      );
+
+      final result = await uploader.upload(
+        filePath: file.path,
+        fileType: 'chat',
+        objectPath: '/chat/c1/parallel.bin',
+      );
+
+      expect(result, 'https://cdn.example.com/parallel.bin');
+      expect(client.maxConcurrentUploads, 3);
+      expect(client.uploadedPartNumbers.toSet(), <int>{1, 2, 3, 4, 5});
+      expect(client.completedPartNumbers, <int>[1, 2, 3, 4, 5]);
+    },
+  );
+
+  test(
+    'resumable uploader retries failed parts with exponential backoff and keeps checkpoint progress',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'resumable_file_uploader_retry_test_',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}${Platform.pathSeparator}retry.bin');
+      await file.writeAsBytes(<int>[1, 2, 3]);
+
+      final delays = <Duration>[];
+      final store = MemoryResumableUploadStore();
+      final client = _RecordingMultipartClient(
+        createdUploadId: 'upload-retry',
+        completedUrl: 'https://cdn.example.com/retry.bin',
+        failuresBeforeSuccess: <int, int>{2: 2},
+      );
+      final uploader = ResumableFileUploader(
+        client: client,
+        checkpointStore: store,
+        chunkSizeBytes: 1,
+        fingerprintResolver: (_) async => 'fp-retry',
+        retryDelay: (delay) async {
+          delays.add(delay);
+        },
+      );
+
+      final result = await uploader.upload(
+        filePath: file.path,
+        fileType: 'chat',
+        objectPath: '/chat/c1/retry.bin',
+      );
+
+      expect(result, 'https://cdn.example.com/retry.bin');
+      expect(client.attemptsByPart[2], 3);
+      expect(delays, <Duration>[
+        const Duration(seconds: 1),
+        const Duration(seconds: 2),
+      ]);
+      expect(client.completedPartNumbers, <int>[1, 2, 3]);
+      expect(await store.read('fp-retry'), isNull);
     },
   );
 }
@@ -101,15 +182,23 @@ class _RecordingMultipartClient implements MultipartUploadClient {
     this.createdUploadId = 'upload-created',
     this.existingCheckpoint,
     required this.completedUrl,
+    this.uploadDelay = Duration.zero,
+    this.failuresBeforeSuccess = const <int, int>{},
   });
 
   final String createdUploadId;
   final String? existingCheckpoint;
   final String completedUrl;
+  final Duration uploadDelay;
+  final Map<int, int> failuresBeforeSuccess;
   int initCallCount = 0;
+  int _activeUploads = 0;
+  int maxConcurrentUploads = 0;
   final List<int> uploadedPartNumbers = <int>[];
   final List<List<int>> uploadedBytes = <List<int>>[];
+  final Map<int, int> attemptsByPart = <int, int>{};
   String? completedUploadId;
+  List<int> completedPartNumbers = const <int>[];
 
   @override
   Future<MultipartUploadSession> initiate(
@@ -124,6 +213,23 @@ class _RecordingMultipartClient implements MultipartUploadClient {
 
   @override
   Future<void> uploadPart(MultipartUploadPartRequest request) async {
+    _activeUploads += 1;
+    if (_activeUploads > maxConcurrentUploads) {
+      maxConcurrentUploads = _activeUploads;
+    }
+    try {
+      final partNumber = request.part.partNumber;
+      attemptsByPart[partNumber] = (attemptsByPart[partNumber] ?? 0) + 1;
+      if (uploadDelay > Duration.zero) {
+        await Future<void>.delayed(uploadDelay);
+      }
+      final failures = failuresBeforeSuccess[partNumber] ?? 0;
+      if (attemptsByPart[partNumber]! <= failures) {
+        throw StateError('temporary upload failure for part $partNumber');
+      }
+    } finally {
+      _activeUploads -= 1;
+    }
     uploadedPartNumbers.add(request.part.partNumber);
     uploadedBytes.add(request.bytes);
   }
@@ -131,6 +237,7 @@ class _RecordingMultipartClient implements MultipartUploadClient {
   @override
   Future<String> complete(MultipartUploadCompleteRequest request) async {
     completedUploadId = request.uploadId;
+    completedPartNumbers = request.partNumbers;
     return completedUrl;
   }
 }

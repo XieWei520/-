@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/models/call.dart';
 import 'package:wukong_im_app/modules/video_call/call_session_service.dart';
@@ -7,6 +9,7 @@ import 'package:wukong_im_app/modules/video_call/infrastructure/call_realtime_cl
 import 'package:wukong_im_app/modules/video_call/media/call_media_engine.dart';
 import 'package:wukong_im_app/realtime/call/call_state_machine.dart';
 import 'package:wukong_im_app/realtime/call/call_store.dart';
+import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
 
 void main() {
   group('CallSessionService', () {
@@ -40,11 +43,14 @@ void main() {
         realtimeClient.connectedUri?.toString(),
         contains('room_id=room_test_01'),
       );
-      expect(mediaEngine.connectedUrl, 'wss://infoequity.qingyunshe.top/livekit');
+      expect(
+        mediaEngine.connectedUrl,
+        'wss://infoequity.qingyunshe.top/livekit',
+      );
       expect(mediaEngine.connectedToken, 'test-ticket');
       expect(mediaEngine.connectedEnableVideo, isTrue);
       expect(service.state.roomId, 'room_test_01');
-      expect(service.state.status, CallLifecycleStatus.ringing);
+      expect(service.state.status, CallLifecycleStatus.connected);
       expect(service.lastQualitySample?.roomId, 'room_test_01');
       expect(service.lastQualitySample?.failureReason, isNull);
       expect(service.lastQualitySample?.mediaStats['publish_bitrate'], 128000);
@@ -90,7 +96,7 @@ void main() {
         expect(bootstrapApi.lastSessionRoomId, 'room_test_02');
         expect(mediaEngine.connectedEnableVideo, isFalse);
         expect(service.state.roomId, 'room_test_02');
-        expect(service.state.status, CallLifecycleStatus.connecting);
+        expect(service.state.status, CallLifecycleStatus.connected);
         expect(service.lastQualitySample?.roomId, 'room_test_02');
         expect(service.lastQualitySample?.failureReason, isNull);
       },
@@ -129,6 +135,105 @@ void main() {
       expect(service.lastQualitySample?.mediaStats['participant_count'], 0);
       expect(service.state, const CallSessionState.idle());
     });
+
+    test('default call session orchestrator forwards call telemetry', () async {
+      final store = CallStore(machine: const CallStateMachine());
+      final telemetry = _RecordingCallTelemetry();
+      addTearDown(store.dispose);
+
+      final orchestrator = createDefaultCallSessionOrchestrator(
+        store: store,
+        callTelemetry: telemetry,
+        bootstrapApi: _FakeCallBootstrapApi(),
+        realtimeClient: _FakeCallRealtimeClient(),
+        mediaEngine: _FakeCallMediaEngine(),
+      );
+
+      await orchestrator.startOutgoing(
+        calleeUid: 'u_peer',
+        calleeName: 'Peer',
+        callType: CallType.video,
+      );
+
+      expect(telemetry.events, contains('call.dial.started'));
+      expect(telemetry.events, contains('call.livekit.connecting'));
+      expect(telemetry.events, contains('call.livekit.connected'));
+      expect(
+        telemetry.events.where(
+          (event) => event == 'call.livekit.connected',
+        ),
+        hasLength(1),
+      );
+    });
+
+    test(
+      'call telemetry recording failure does not break call start',
+      () async {
+        final bootstrapApi = _FakeCallBootstrapApi();
+        final realtimeClient = _FakeCallRealtimeClient();
+        final mediaEngine = _FakeCallMediaEngine();
+        final telemetry = _ThrowingCallTelemetry();
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        final service = CallSessionService(
+          store: store,
+          bootstrapApi: bootstrapApi,
+          realtimeClient: realtimeClient,
+          mediaEngine: mediaEngine,
+          callTelemetry: telemetry,
+        );
+
+        await service.startOutgoing(
+          calleeUid: 'u_peer',
+          calleeName: 'Peer',
+          callType: CallType.video,
+        );
+
+        expect(service.state.status, CallLifecycleStatus.connected);
+        expect(telemetry.events, contains('call.livekit.connecting'));
+        expect(telemetry.events, contains('call.livekit.connected'));
+      },
+    );
+
+    test(
+      'call telemetry recording failure does not mask media connect error',
+      () async {
+        final bootstrapApi = _FakeCallBootstrapApi();
+        final realtimeClient = _FakeCallRealtimeClient();
+        final mediaEngine = _FakeCallMediaEngine(
+          connectError: StateError('boom'),
+        );
+        final telemetry = _ThrowingCallTelemetry();
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        final service = CallSessionService(
+          store: store,
+          bootstrapApi: bootstrapApi,
+          realtimeClient: realtimeClient,
+          mediaEngine: mediaEngine,
+          callTelemetry: telemetry,
+        );
+
+        await expectLater(
+          service.startOutgoing(
+            calleeUid: 'u_peer',
+            calleeName: 'Peer',
+            callType: CallType.video,
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('boom'),
+            ),
+          ),
+        );
+
+        expect(telemetry.events, contains('call.failed'));
+      },
+    );
 
     test('disconnect clears the last quality sample', () async {
       final bootstrapApi = _FakeCallBootstrapApi();
@@ -201,7 +306,7 @@ void main() {
           <String>['u_alice', 'u_bob'],
         );
         expect(service.state.roomId, 'room_test_01');
-        expect(service.state.status, CallLifecycleStatus.ringing);
+        expect(service.state.status, CallLifecycleStatus.connected);
         expect(service.state.peerUid, 'g_demo');
         expect(service.state.peerName, '研发群');
         expect(mediaEngine.connectedEnableVideo, isTrue);
@@ -233,7 +338,7 @@ void main() {
         );
 
         expect(service.state.roomId, 'room_test_01');
-        expect(service.state.status, CallLifecycleStatus.ringing);
+        expect(service.state.status, CallLifecycleStatus.connected);
         expect(service.lastQualitySample?.failureReason, isNull);
         expect(service.lastQualitySample?.mediaStats['connected'], isTrue);
         expect(service.lastQualitySample?.mediaStats['publish_bitrate'], 0);
@@ -371,8 +476,15 @@ class _FakeCallMediaEngine implements CallMediaEngine {
   String? connectedToken;
   bool? connectedEnableVideo;
 
+  final StreamController<CallMediaConnectionState> stateController =
+      StreamController<CallMediaConnectionState>.broadcast();
+
   @override
   bool get isConnected => connectedUrl != null;
+
+  @override
+  Stream<CallMediaConnectionState> get connectionStates =>
+      stateController.stream;
 
   @override
   Object? get session => null;
@@ -386,9 +498,11 @@ class _FakeCallMediaEngine implements CallMediaEngine {
     if (connectError != null) {
       throw connectError!;
     }
+    stateController.add(CallMediaConnectionState.connecting);
     connectedUrl = url;
     connectedToken = token;
     connectedEnableVideo = enableVideo;
+    stateController.add(CallMediaConnectionState.connected);
   }
 
   @override
@@ -409,6 +523,7 @@ class _FakeCallMediaEngine implements CallMediaEngine {
     connectedUrl = null;
     connectedToken = null;
     connectedEnableVideo = null;
+    stateController.add(CallMediaConnectionState.disconnected);
   }
 
   @override
@@ -416,4 +531,41 @@ class _FakeCallMediaEngine implements CallMediaEngine {
 
   @override
   Future<void> setMicrophoneEnabled(bool enabled) async {}
+}
+
+class _ThrowingCallTelemetry implements CallTelemetry {
+  final List<String> events = <String>[];
+
+  @override
+  void recordCallEvent({
+    required String roomId,
+    required String event,
+    required CallLifecycleStatus state,
+    CallFailureReason? reason,
+    Duration? duration,
+    Map<String, dynamic>? stats,
+    String? callId,
+    String? uid,
+  }) {
+    events.add(event);
+    throw StateError('telemetry write failed');
+  }
+}
+
+class _RecordingCallTelemetry implements CallTelemetry {
+  final List<String> events = <String>[];
+
+  @override
+  void recordCallEvent({
+    required String roomId,
+    required String event,
+    required CallLifecycleStatus state,
+    CallFailureReason? reason,
+    Duration? duration,
+    Map<String, dynamic>? stats,
+    String? callId,
+    String? uid,
+  }) {
+    events.add(event);
+  }
 }

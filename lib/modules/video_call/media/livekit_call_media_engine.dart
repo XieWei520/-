@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:livekit_client/livekit_client.dart';
 
 import 'call_media_engine.dart';
@@ -8,6 +10,8 @@ abstract interface class LiveKitRoomHandle {
   bool get isConnected;
 
   Object? get session;
+
+  Stream<CallMediaConnectionState> get connectionStates;
 
   Future<void> connect(String url, String token, {RoomOptions? roomOptions});
 
@@ -32,11 +36,19 @@ class LiveKitCallMediaEngine implements CallMediaEngine {
 
   final LiveKitRoomFactory _roomFactory;
   final RoomOptions _roomOptions;
+  final StreamController<CallMediaConnectionState> _connectionStateController =
+      StreamController<CallMediaConnectionState>.broadcast();
 
   LiveKitRoomHandle? _room;
+  StreamSubscription<CallMediaConnectionState>? _roomStateSubscription;
+  CallMediaConnectionState? _lastConnectionState;
 
   @override
   bool get isConnected => _room?.isConnected ?? false;
+
+  @override
+  Stream<CallMediaConnectionState> get connectionStates =>
+      _connectionStateController.stream;
 
   @override
   Object? get session => _room?.session;
@@ -50,18 +62,23 @@ class LiveKitCallMediaEngine implements CallMediaEngine {
     await disconnect();
 
     final room = _roomFactory();
+    _emitConnectionState(CallMediaConnectionState.connecting);
+    _roomStateSubscription = room.connectionStates.listen(_emitConnectionState);
     try {
       await room.connect(url, token, roomOptions: _roomOptions);
+      _room = room;
+      _emitConnectionState(CallMediaConnectionState.connected);
       await room.setMicrophoneEnabled(true);
       if (enableVideo) {
         await room.setCameraEnabled(true);
       }
     } catch (_) {
+      _emitConnectionState(CallMediaConnectionState.failed);
+      await _roomStateSubscription?.cancel();
+      _roomStateSubscription = null;
       await room.disconnect();
       rethrow;
     }
-
-    _room = room;
   }
 
   @override
@@ -87,7 +104,20 @@ class LiveKitCallMediaEngine implements CallMediaEngine {
   Future<void> disconnect() async {
     final room = _room;
     _room = null;
+    await _roomStateSubscription?.cancel();
+    _roomStateSubscription = null;
     await room?.disconnect();
+    if (room != null) {
+      _emitConnectionState(CallMediaConnectionState.disconnected);
+    }
+  }
+
+  void _emitConnectionState(CallMediaConnectionState state) {
+    if (_connectionStateController.isClosed || _lastConnectionState == state) {
+      return;
+    }
+    _lastConnectionState = state;
+    _connectionStateController.add(state);
   }
 
   static LiveKitRoomHandle _defaultRoomFactory() {
@@ -96,13 +126,22 @@ class LiveKitCallMediaEngine implements CallMediaEngine {
 }
 
 class _LiveKitRoomAdapter implements LiveKitRoomHandle {
+  final StreamController<CallMediaConnectionState> _connectionStateController =
+      StreamController<CallMediaConnectionState>.broadcast();
+
   Room? _room;
+  CancelListenFunc? _cancelRoomEvents;
+  CallMediaConnectionState? _lastConnectionState;
 
   @override
   bool get isConnected => _room?.connectionState == ConnectionState.connected;
 
   @override
   Object? get session => _room;
+
+  @override
+  Stream<CallMediaConnectionState> get connectionStates =>
+      _connectionStateController.stream;
 
   @override
   Future<void> connect(
@@ -112,9 +151,11 @@ class _LiveKitRoomAdapter implements LiveKitRoomHandle {
   }) async {
     final room = Room(roomOptions: roomOptions ?? const RoomOptions());
     _room = room;
+    _bindRoomEvents(room);
     try {
       await room.connect(url, token);
     } catch (_) {
+      _emitConnectionState(CallMediaConnectionState.failed);
       await disconnect();
       rethrow;
     }
@@ -124,7 +165,13 @@ class _LiveKitRoomAdapter implements LiveKitRoomHandle {
   Future<void> disconnect() async {
     final room = _room;
     _room = null;
+    final cancelRoomEvents = _cancelRoomEvents;
+    _cancelRoomEvents = null;
+    await cancelRoomEvents?.call();
     await room?.disconnect();
+    if (room != null) {
+      _emitConnectionState(CallMediaConnectionState.disconnected);
+    }
   }
 
   @override
@@ -161,6 +208,30 @@ class _LiveKitRoomAdapter implements LiveKitRoomHandle {
           room.remoteParticipants.length +
           (room.localParticipant == null ? 0 : 1),
     };
+  }
+
+  void _bindRoomEvents(Room room) {
+    _cancelRoomEvents = room.events.listen((event) {
+      if (event is RoomConnectedEvent || event is RoomReconnectedEvent) {
+        _emitConnectionState(CallMediaConnectionState.connected);
+        return;
+      }
+      if (event is RoomReconnectingEvent) {
+        _emitConnectionState(CallMediaConnectionState.reconnecting);
+        return;
+      }
+      if (event is RoomDisconnectedEvent) {
+        _emitConnectionState(CallMediaConnectionState.disconnected);
+      }
+    });
+  }
+
+  void _emitConnectionState(CallMediaConnectionState state) {
+    if (_connectionStateController.isClosed || _lastConnectionState == state) {
+      return;
+    }
+    _lastConnectionState = state;
+    _connectionStateController.add(state);
   }
 }
 

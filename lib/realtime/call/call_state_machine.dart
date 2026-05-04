@@ -12,6 +12,34 @@ enum CallLifecycleStatus {
   failed,
 }
 
+enum CallFailureReason {
+  declined,
+  cancelled,
+  timeout,
+  iceFailed,
+  tokenInvalid,
+  permissionDenied,
+  networkLost,
+  livekitConnectFailed,
+  signalingFailed,
+  unknown;
+
+  String get code {
+    return switch (this) {
+      CallFailureReason.declined => 'declined',
+      CallFailureReason.cancelled => 'cancelled',
+      CallFailureReason.timeout => 'timeout',
+      CallFailureReason.iceFailed => 'ice_failed',
+      CallFailureReason.tokenInvalid => 'token_invalid',
+      CallFailureReason.permissionDenied => 'permission_denied',
+      CallFailureReason.networkLost => 'network_lost',
+      CallFailureReason.livekitConnectFailed => 'livekit_connect_failed',
+      CallFailureReason.signalingFailed => 'signaling_failed',
+      CallFailureReason.unknown => 'unknown',
+    };
+  }
+}
+
 class CallSessionState {
   const CallSessionState({
     required this.status,
@@ -20,15 +48,17 @@ class CallSessionState {
     required this.peerName,
     required this.callType,
     required this.direction,
+    this.failureReason,
   });
 
   const CallSessionState.idle()
-      : status = CallLifecycleStatus.idle,
-        roomId = '',
-        peerUid = '',
-        peerName = '',
-        callType = CallType.audio,
-        direction = CallDirection.outgoing;
+    : status = CallLifecycleStatus.idle,
+      roomId = '',
+      peerUid = '',
+      peerName = '',
+      callType = CallType.audio,
+      direction = CallDirection.outgoing,
+      failureReason = null;
 
   final CallLifecycleStatus status;
   final String roomId;
@@ -36,6 +66,14 @@ class CallSessionState {
   final String peerName;
   final CallType callType;
   final CallDirection direction;
+  final CallFailureReason? failureReason;
+
+  CallLifecycleStatus get publicStatus {
+    if (status == CallLifecycleStatus.invited) {
+      return CallLifecycleStatus.ringing;
+    }
+    return status;
+  }
 
   bool get isTerminal =>
       status == CallLifecycleStatus.idle ||
@@ -51,6 +89,7 @@ class CallSessionState {
     String? peerName,
     CallType? callType,
     CallDirection? direction,
+    CallFailureReason? failureReason,
   }) {
     return CallSessionState(
       status: status ?? this.status,
@@ -59,6 +98,7 @@ class CallSessionState {
       peerName: peerName ?? this.peerName,
       callType: callType ?? this.callType,
       direction: direction ?? this.direction,
+      failureReason: failureReason ?? this.failureReason,
     );
   }
 
@@ -70,18 +110,20 @@ class CallSessionState {
         other.peerUid == peerUid &&
         other.peerName == peerName &&
         other.callType == callType &&
-        other.direction == direction;
+        other.direction == direction &&
+        other.failureReason == failureReason;
   }
 
   @override
   int get hashCode => Object.hash(
-        status,
-        roomId,
-        peerUid,
-        peerName,
-        callType,
-        direction,
-      );
+    status,
+    roomId,
+    peerUid,
+    peerName,
+    callType,
+    direction,
+    failureReason,
+  );
 }
 
 sealed class CallEvent {
@@ -103,9 +145,22 @@ sealed class CallEvent {
     required CallType callType,
   }) = LocalDialCallEvent;
 
-  const factory CallEvent.localAccept({
+  const factory CallEvent.localAccept({required String roomId}) =
+      LocalAcceptCallEvent;
+
+  const factory CallEvent.localConnecting({required String roomId}) =
+      LocalConnectingCallEvent;
+
+  const factory CallEvent.localConnected({required String roomId}) =
+      LocalConnectedCallEvent;
+
+  const factory CallEvent.localReconnecting({required String roomId}) =
+      LocalReconnectingCallEvent;
+
+  const factory CallEvent.localFailed({
     required String roomId,
-  }) = LocalAcceptCallEvent;
+    required CallFailureReason reason,
+  }) = LocalFailedCallEvent;
 
   const factory CallEvent.remoteState({
     required String roomId,
@@ -119,9 +174,8 @@ sealed class CallEvent {
     required Map<String, dynamic> payload,
   }) = RemoteSignalCallEvent;
 
-  const factory CallEvent.localHangup({
-    required String roomId,
-  }) = LocalHangupCallEvent;
+  const factory CallEvent.localHangup({required String roomId}) =
+      LocalHangupCallEvent;
 }
 
 class InviteCallEvent extends CallEvent {
@@ -154,11 +208,28 @@ class LocalAcceptCallEvent extends CallEvent {
   const LocalAcceptCallEvent({required String roomId}) : super(roomId);
 }
 
+class LocalConnectingCallEvent extends CallEvent {
+  const LocalConnectingCallEvent({required String roomId}) : super(roomId);
+}
+
+class LocalConnectedCallEvent extends CallEvent {
+  const LocalConnectedCallEvent({required String roomId}) : super(roomId);
+}
+
+class LocalReconnectingCallEvent extends CallEvent {
+  const LocalReconnectingCallEvent({required String roomId}) : super(roomId);
+}
+
+class LocalFailedCallEvent extends CallEvent {
+  const LocalFailedCallEvent({required String roomId, required this.reason})
+    : super(roomId);
+
+  final CallFailureReason reason;
+}
+
 class RemoteStateCallEvent extends CallEvent {
-  const RemoteStateCallEvent({
-    required String roomId,
-    required this.status,
-  }) : super(roomId);
+  const RemoteStateCallEvent({required String roomId, required this.status})
+    : super(roomId);
 
   final CallRoomStatus status;
 }
@@ -184,7 +255,8 @@ class CallStateMachine {
   const CallStateMachine();
 
   bool accepts(CallSessionState current, CallEvent event) {
-    final canStartSession = event is InviteCallEvent || event is LocalDialCallEvent;
+    final canStartSession =
+        event is InviteCallEvent || event is LocalDialCallEvent;
     if (current.isActive) {
       return current.roomId == event.roomId;
     }
@@ -204,29 +276,44 @@ class CallStateMachine {
 
     return switch (event) {
       InviteCallEvent() => CallSessionState(
-          status: CallLifecycleStatus.invited,
-          roomId: event.roomId,
-          peerUid: event.peerUid,
-          peerName: event.peerName,
-          callType: event.callType,
-          direction: CallDirection.incoming,
-        ),
+        status: CallLifecycleStatus.ringing,
+        roomId: event.roomId,
+        peerUid: event.peerUid,
+        peerName: event.peerName,
+        callType: event.callType,
+        direction: CallDirection.incoming,
+        failureReason: null,
+      ),
       LocalDialCallEvent() => CallSessionState(
-          status: CallLifecycleStatus.ringing,
-          roomId: event.roomId,
-          peerUid: event.peerUid,
-          peerName: event.peerName,
-          callType: event.callType,
-          direction: CallDirection.outgoing,
-        ),
+        status: CallLifecycleStatus.ringing,
+        roomId: event.roomId,
+        peerUid: event.peerUid,
+        peerName: event.peerName,
+        callType: event.callType,
+        direction: CallDirection.outgoing,
+        failureReason: null,
+      ),
       LocalAcceptCallEvent() => current.copyWith(
-          status: CallLifecycleStatus.connecting,
-        ),
+        status: CallLifecycleStatus.connecting,
+      ),
+      LocalConnectingCallEvent() => current.copyWith(
+        status: CallLifecycleStatus.connecting,
+      ),
+      LocalConnectedCallEvent() => current.copyWith(
+        status: CallLifecycleStatus.connected,
+      ),
+      LocalReconnectingCallEvent() => current.copyWith(
+        status: CallLifecycleStatus.reconnecting,
+      ),
+      LocalFailedCallEvent() => current.copyWith(
+        status: CallLifecycleStatus.failed,
+        failureReason: event.reason,
+      ),
       RemoteStateCallEvent() => _reduceRemoteState(current, event.status),
       RemoteSignalCallEvent() => _reduceRemoteSignal(current, event.signalType),
       LocalHangupCallEvent() => current.copyWith(
-          status: CallLifecycleStatus.ending,
-        ),
+        status: CallLifecycleStatus.ending,
+      ),
     };
   }
 
@@ -236,19 +323,17 @@ class CallStateMachine {
   ) {
     return switch (status) {
       CallRoomStatus.pending => current.copyWith(
-          status: current.direction == CallDirection.outgoing
-              ? CallLifecycleStatus.ringing
-              : CallLifecycleStatus.invited,
-        ),
+        status: CallLifecycleStatus.ringing,
+      ),
       CallRoomStatus.ringing => current.copyWith(
-          status: CallLifecycleStatus.ringing,
-        ),
+        status: CallLifecycleStatus.ringing,
+      ),
       CallRoomStatus.connected => current.copyWith(
-          status: CallLifecycleStatus.connected,
-        ),
+        status: CallLifecycleStatus.connected,
+      ),
       CallRoomStatus.ended || CallRoomStatus.canceled => current.copyWith(
-          status: CallLifecycleStatus.ended,
-        ),
+        status: CallLifecycleStatus.ended,
+      ),
     };
   }
 
@@ -258,11 +343,11 @@ class CallStateMachine {
   ) {
     return switch (signalType) {
       CallSignalType.offer || CallSignalType.answer => current.copyWith(
-          status: CallLifecycleStatus.connecting,
-        ),
+        status: CallLifecycleStatus.connecting,
+      ),
       CallSignalType.hangup => current.copyWith(
-          status: CallLifecycleStatus.ended,
-        ),
+        status: CallLifecycleStatus.ended,
+      ),
       CallSignalType.iceCandidate || CallSignalType.control => current,
     };
   }

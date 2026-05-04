@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import '../../data/models/call.dart';
 import '../../realtime/call/call_state_machine.dart';
 import '../../realtime/call/call_store.dart';
+import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
+import 'call_telemetry_reporter.dart';
 import 'domain/call_bootstrap_models.dart';
 import 'infrastructure/call_bootstrap_api.dart';
 import 'infrastructure/call_realtime_client.dart';
@@ -13,12 +17,17 @@ typedef CallCapabilitiesResolver =
 
 CallSessionOrchestrator createDefaultCallSessionOrchestrator({
   required CallStore store,
+  CallTelemetry? callTelemetry,
+  CallBootstrapApi? bootstrapApi,
+  CallRealtimeClient? realtimeClient,
+  CallMediaEngine? mediaEngine,
 }) {
   return CallSessionService(
     store: store,
-    bootstrapApi: CallBootstrapApi(),
-    realtimeClient: createPlatformCallRealtimeClient(),
-    mediaEngine: LiveKitCallMediaEngine(),
+    bootstrapApi: bootstrapApi ?? CallBootstrapApi(),
+    realtimeClient: realtimeClient ?? createPlatformCallRealtimeClient(),
+    mediaEngine: mediaEngine ?? LiveKitCallMediaEngine(),
+    callTelemetry: callTelemetry ?? CallTelemetryReporter(),
   );
 }
 
@@ -69,12 +78,14 @@ class CallSessionService implements CallSessionOrchestrator {
     required CallRealtimeClient realtimeClient,
     required CallMediaEngine mediaEngine,
     CallCapabilitiesResolver? capabilitiesResolver,
+    CallTelemetry? callTelemetry,
   }) : _store = store,
        _bootstrapApi = bootstrapApi,
        _realtimeClient = realtimeClient,
        _mediaEngine = mediaEngine,
        _capabilitiesResolver =
-           capabilitiesResolver ?? _defaultCapabilitiesResolver;
+           capabilitiesResolver ?? _defaultCapabilitiesResolver,
+       _callTelemetry = callTelemetry;
 
   factory CallSessionService.test() => CallSessionService(
     store: CallStore(machine: const CallStateMachine()),
@@ -88,6 +99,8 @@ class CallSessionService implements CallSessionOrchestrator {
   final CallRealtimeClient _realtimeClient;
   final CallMediaEngine _mediaEngine;
   final CallCapabilitiesResolver _capabilitiesResolver;
+  final CallTelemetry? _callTelemetry;
+  StreamSubscription<CallMediaConnectionState>? _mediaStateSubscription;
   CallQualitySample? _lastQualitySample;
 
   CallQualitySample? get lastQualitySample => _lastQualitySample;
@@ -118,6 +131,11 @@ class CallSessionService implements CallSessionOrchestrator {
         peerName: calleeName,
         callType: callType,
       ),
+    );
+    _recordCallTelemetry(
+      roomId: bootstrap.room.roomId,
+      event: RealtimeRolloutTelemetry.callDialStartedEvent,
+      state: _store.state.publicStatus,
     );
 
     await _connectBootstrap(
@@ -160,6 +178,11 @@ class CallSessionService implements CallSessionOrchestrator {
         callType: callType,
       ),
     );
+    _recordCallTelemetry(
+      roomId: bootstrap.room.roomId,
+      event: RealtimeRolloutTelemetry.callDialStartedEvent,
+      state: _store.state.publicStatus,
+    );
 
     await _connectBootstrap(
       bootstrap: bootstrap,
@@ -170,6 +193,11 @@ class CallSessionService implements CallSessionOrchestrator {
   @override
   Future<void> acceptIncoming({required CallRoom room}) async {
     final accepted = _store.apply(CallEvent.localAccept(roomId: room.roomId));
+    _recordCallTelemetry(
+      roomId: room.roomId,
+      event: RealtimeRolloutTelemetry.callAcceptedEvent,
+      state: _store.state.publicStatus,
+    );
     if (!accepted) {
       throw StateError('Call session is no longer active.');
     }
@@ -197,6 +225,8 @@ class CallSessionService implements CallSessionOrchestrator {
 
   @override
   Future<void> disconnect() async {
+    await _mediaStateSubscription?.cancel();
+    _mediaStateSubscription = null;
     await _mediaEngine.disconnect();
     await _realtimeClient.disconnect();
     _lastQualitySample = null;
@@ -216,14 +246,28 @@ class CallSessionService implements CallSessionOrchestrator {
           roomId: roomId,
         ),
       );
+      _bindMediaConnectionStates(roomId);
+      final connectStopwatch = Stopwatch()..start();
       await _mediaEngine.connect(
         url: bootstrap.join.livekitUrl,
         token: bootstrap.ticket.token,
         enableVideo: enableVideo,
       );
+      connectStopwatch.stop();
+      if (_store.state.status != CallLifecycleStatus.connected) {
+        _store.apply(CallEvent.localConnected(roomId: roomId));
+      }
+      final mediaStats = await _captureQualityStats();
+      _recordCallTelemetry(
+        roomId: roomId,
+        event: RealtimeRolloutTelemetry.callLiveKitConnectedEvent,
+        state: _store.state.publicStatus,
+        duration: connectStopwatch.elapsed,
+        stats: mediaStats,
+      );
       _lastQualitySample = CallQualitySample(
         roomId: roomId,
-        mediaStats: await _captureQualityStats(),
+        mediaStats: mediaStats,
       );
     } catch (error) {
       _lastQualitySample = CallQualitySample(
@@ -231,10 +275,110 @@ class CallSessionService implements CallSessionOrchestrator {
         mediaStats: _qualityStatsSnapshot(),
         failureReason: error.toString(),
       );
+      final failureReason = _failureReasonFromError(error);
+      _store.apply(
+        CallEvent.localFailed(roomId: roomId, reason: failureReason),
+      );
+      _recordCallTelemetry(
+        roomId: roomId,
+        event: RealtimeRolloutTelemetry.callFailedEvent,
+        state: CallLifecycleStatus.failed,
+        reason: failureReason,
+        stats: _qualityStatsSnapshot(),
+      );
+      await _mediaStateSubscription?.cancel();
+      _mediaStateSubscription = null;
       await _mediaEngine.disconnect();
       await _realtimeClient.disconnect();
       _store.reset();
       rethrow;
+    }
+  }
+
+  void _bindMediaConnectionStates(String roomId) {
+    unawaited(_mediaStateSubscription?.cancel());
+    _mediaStateSubscription = _mediaEngine.connectionStates.listen((state) {
+      switch (state) {
+        case CallMediaConnectionState.connecting:
+          _store.apply(CallEvent.localConnecting(roomId: roomId));
+          _recordCallTelemetry(
+            roomId: roomId,
+            event: RealtimeRolloutTelemetry.callLiveKitConnectingEvent,
+            state: _store.state.publicStatus,
+          );
+        case CallMediaConnectionState.connected:
+          final previousStatus = _store.state.status;
+          _store.apply(CallEvent.localConnected(roomId: roomId));
+          if (previousStatus == CallLifecycleStatus.reconnecting) {
+            _recordCallTelemetry(
+              roomId: roomId,
+              event: RealtimeRolloutTelemetry.callLiveKitReconnectedEvent,
+              state: _store.state.publicStatus,
+            );
+          }
+        case CallMediaConnectionState.reconnecting:
+          _store.apply(CallEvent.localReconnecting(roomId: roomId));
+          _recordCallTelemetry(
+            roomId: roomId,
+            event: RealtimeRolloutTelemetry.callLiveKitReconnectingEvent,
+            state: _store.state.publicStatus,
+          );
+        case CallMediaConnectionState.failed:
+          _store.apply(
+            CallEvent.localFailed(
+              roomId: roomId,
+              reason: CallFailureReason.livekitConnectFailed,
+            ),
+          );
+          _recordCallTelemetry(
+            roomId: roomId,
+            event: RealtimeRolloutTelemetry.callFailedEvent,
+            state: CallLifecycleStatus.failed,
+            reason: CallFailureReason.livekitConnectFailed,
+          );
+        case CallMediaConnectionState.disconnected:
+          break;
+      }
+    });
+  }
+
+  CallFailureReason _failureReasonFromError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('token') ||
+        message.contains('401') ||
+        message.contains('403') ||
+        message.contains('unauthorized') ||
+        message.contains('forbidden')) {
+      return CallFailureReason.tokenInvalid;
+    }
+    if (message.contains('permission')) {
+      return CallFailureReason.permissionDenied;
+    }
+    if (message.contains('network') || message.contains('socket')) {
+      return CallFailureReason.networkLost;
+    }
+    return CallFailureReason.livekitConnectFailed;
+  }
+
+  void _recordCallTelemetry({
+    required String roomId,
+    required String event,
+    required CallLifecycleStatus state,
+    CallFailureReason? reason,
+    Duration? duration,
+    Map<String, dynamic>? stats,
+  }) {
+    try {
+      _callTelemetry?.recordCallEvent(
+        roomId: roomId,
+        event: event,
+        state: state,
+        reason: reason,
+        duration: duration,
+        stats: stats,
+      );
+    } catch (_) {
+      // Telemetry failures must never affect the call control/media flow.
     }
   }
 
@@ -395,6 +539,10 @@ class _TestCallRealtimeClient implements CallRealtimeClient {
 class _TestCallMediaEngine implements CallMediaEngine {
   @override
   bool get isConnected => false;
+
+  @override
+  Stream<CallMediaConnectionState> get connectionStates =>
+      const Stream<CallMediaConnectionState>.empty();
 
   @override
   Object? get session => null;

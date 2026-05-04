@@ -6,6 +6,7 @@ import '../../core/upload/resumable_upload_store.dart';
 typedef UploadFingerprintResolver = Future<String> Function(File file);
 typedef ResumableUploadProgressCallback =
     void Function(ResumableUploadProgress progress);
+typedef ResumableUploadRetryDelay = Future<void> Function(Duration delay);
 
 class ResumableFileUploader {
   ResumableFileUploader({
@@ -13,15 +14,22 @@ class ResumableFileUploader {
     required ResumableUploadStore checkpointStore,
     UploadFingerprintResolver? fingerprintResolver,
     this.chunkSizeBytes = MultipartUploadPlanner.defaultChunkSizeBytes,
+    this.maxConcurrentParts = 3,
+    this.maxPartAttempts = 5,
+    ResumableUploadRetryDelay? retryDelay,
   }) : _client = client,
        _checkpointStore = checkpointStore,
        _fingerprintResolver =
-           fingerprintResolver ?? _defaultFingerprintResolver;
+           fingerprintResolver ?? _defaultFingerprintResolver,
+       _retryDelay = retryDelay ?? Future<void>.delayed;
 
   final MultipartUploadClient _client;
   final ResumableUploadStore _checkpointStore;
   final UploadFingerprintResolver _fingerprintResolver;
+  final ResumableUploadRetryDelay _retryDelay;
   final int chunkSizeBytes;
+  final int maxConcurrentParts;
+  final int maxPartAttempts;
 
   Future<String> upload({
     required String filePath,
@@ -54,34 +62,46 @@ class ResumableFileUploader {
       chunkSizeBytes: safeChunkSize,
     );
 
-    for (final part in parts) {
-      if (uploadedPartNumbers.contains(part.partNumber)) {
-        continue;
-      }
-      final bytes = await _readPart(file, part);
-      await _client.uploadPart(
-        MultipartUploadPartRequest(
-          uploadId: checkpoint.uploadId,
+    final missingParts = parts
+        .where((part) => !uploadedPartNumbers.contains(part.partNumber))
+        .toList(growable: false);
+    var nextPartIndex = 0;
+    final workerCount = _boundedWorkerCount(missingParts.length);
+
+    Future<void> uploadWorker() async {
+      while (true) {
+        final partIndex = nextPartIndex;
+        if (partIndex >= missingParts.length) {
+          return;
+        }
+        nextPartIndex += 1;
+        final part = missingParts[partIndex];
+        await _uploadPartWithRetry(
+          file: file,
+          checkpoint: checkpoint,
           fileType: fileType,
           objectPath: objectPath,
           part: part,
-          bytes: bytes,
-        ),
-      );
-      uploadedPartNumbers.add(part.partNumber);
-      await _checkpointStore.save(
-        checkpoint.copyWith(
-          uploadedPartNumbers: Set<int>.unmodifiable(uploadedPartNumbers),
-        ),
-      );
-      onProgress?.call(
-        ResumableUploadProgress(
-          uploadedBytes: _uploadedBytes(parts, uploadedPartNumbers),
-          totalBytes: fileSizeBytes,
-          uploadedPartNumbers: Set<int>.unmodifiable(uploadedPartNumbers),
-        ),
-      );
+        );
+        uploadedPartNumbers.add(part.partNumber);
+        await _checkpointStore.save(
+          checkpoint.copyWith(
+            uploadedPartNumbers: Set<int>.unmodifiable(uploadedPartNumbers),
+          ),
+        );
+        onProgress?.call(
+          ResumableUploadProgress(
+            uploadedBytes: _uploadedBytes(parts, uploadedPartNumbers),
+            totalBytes: fileSizeBytes,
+            uploadedPartNumbers: Set<int>.unmodifiable(uploadedPartNumbers),
+          ),
+        );
+      }
     }
+
+    await Future.wait<void>(
+      List<Future<void>>.generate(workerCount, (_) => uploadWorker()),
+    );
 
     final result = await _client.complete(
       MultipartUploadCompleteRequest(
@@ -131,6 +151,51 @@ class ResumableFileUploader {
     );
     await _checkpointStore.save(checkpoint);
     return checkpoint;
+  }
+
+  Future<void> _uploadPartWithRetry({
+    required File file,
+    required ResumableUploadCheckpoint checkpoint,
+    required String fileType,
+    required String objectPath,
+    required MultipartUploadPart part,
+  }) async {
+    final attempts = maxPartAttempts <= 0 ? 1 : maxPartAttempts;
+    for (var attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        final bytes = await _readPart(file, part);
+        await _client.uploadPart(
+          MultipartUploadPartRequest(
+            uploadId: checkpoint.uploadId,
+            fileType: fileType,
+            objectPath: objectPath,
+            part: part,
+            bytes: bytes,
+          ),
+        );
+        return;
+      } catch (_) {
+        if (attempt >= attempts) {
+          rethrow;
+        }
+        await _retryDelay(_retryBackoffForAttempt(attempt));
+      }
+    }
+  }
+
+  Duration _retryBackoffForAttempt(int failedAttempt) {
+    final exponent = failedAttempt - 1;
+    final cappedExponent = exponent < 0 ? 0 : (exponent > 5 ? 5 : exponent);
+    final seconds = 1 << cappedExponent;
+    return Duration(seconds: seconds);
+  }
+
+  int _boundedWorkerCount(int missingPartCount) {
+    if (missingPartCount <= 0) {
+      return 0;
+    }
+    final limit = maxConcurrentParts <= 0 ? 1 : maxConcurrentParts;
+    return missingPartCount < limit ? missingPartCount : limit;
   }
 
   Future<List<int>> _readPart(File file, MultipartUploadPart part) async {

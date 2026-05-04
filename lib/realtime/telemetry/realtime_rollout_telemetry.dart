@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../call/call_state_machine.dart';
+
 typedef RealtimeTelemetryTransport =
     Future<void> Function(List<RealtimeTelemetryEvent> events);
 typedef RealtimeTelemetryClock = DateTime Function();
@@ -63,12 +65,26 @@ abstract class MessageQueryTelemetry {
   void recordSqlitePageQuery(Duration duration, {required String mode});
 }
 
+abstract class CallTelemetry {
+  void recordCallEvent({
+    required String roomId,
+    required String event,
+    required CallLifecycleStatus state,
+    CallFailureReason? reason,
+    Duration? duration,
+    Map<String, dynamic>? stats,
+    String? callId,
+    String? uid,
+  });
+}
+
 class RealtimeRolloutTelemetry
     implements
         SessionRuntimeTelemetry,
         SessionEventGatewayTelemetry,
         ConversationPatchTelemetry,
-        MessageQueryTelemetry {
+        MessageQueryTelemetry,
+        CallTelemetry {
   RealtimeRolloutTelemetry({
     RealtimeTelemetryTransport? transport,
     this.flushInterval = const Duration(seconds: 30),
@@ -95,6 +111,16 @@ class RealtimeRolloutTelemetry
   static const String metricSqlitePageQueryP95Ms = 'sqlite_page_query_p95_ms';
   static const String metricConversationListPatchApplyP95Ms =
       'conversation_list_patch_apply_p95_ms';
+  static const String callInviteReceivedEvent = 'call.invite.received';
+  static const String callDialStartedEvent = 'call.dial.started';
+  static const String callAcceptedEvent = 'call.accepted';
+  static const String callLiveKitConnectingEvent = 'call.livekit.connecting';
+  static const String callLiveKitConnectedEvent = 'call.livekit.connected';
+  static const String callLiveKitReconnectingEvent =
+      'call.livekit.reconnecting';
+  static const String callLiveKitReconnectedEvent = 'call.livekit.reconnected';
+  static const String callEndedEvent = 'call.ended';
+  static const String callFailedEvent = 'call.failed';
 
   final Duration flushInterval;
   final int maxBufferedEvents;
@@ -151,6 +177,33 @@ class RealtimeRolloutTelemetry
   @override
   void recordConversationPatchApply(Duration duration) {
     _recordDuration(metricConversationListPatchApplyP95Ms, duration);
+  }
+
+  @override
+  void recordCallEvent({
+    required String roomId,
+    required String event,
+    required CallLifecycleStatus state,
+    CallFailureReason? reason,
+    Duration? duration,
+    Map<String, dynamic>? stats,
+    String? callId,
+    String? uid,
+  }) {
+    final tags = <String, String>{
+      'room_id': roomId,
+      'state': state.name,
+      if (reason != null) 'reason': reason.code,
+      if (callId != null && callId.trim().isNotEmpty) 'call_id': callId.trim(),
+      if (uid != null && uid.trim().isNotEmpty) 'uid': uid.trim(),
+    };
+    stats?.forEach((key, value) {
+      final normalizedKey = key.trim();
+      if (normalizedKey.isNotEmpty && value != null) {
+        tags[normalizedKey] = value.toString();
+      }
+    });
+    _record(event, value: duration?.inMilliseconds ?? 1, tags: tags);
   }
 
   @override

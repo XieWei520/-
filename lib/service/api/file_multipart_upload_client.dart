@@ -57,7 +57,7 @@ class FileMultipartUploadClient implements MultipartUploadClient {
   Future<void> uploadPart(MultipartUploadPartRequest request) async {
     final bytes = Uint8List.fromList(request.bytes);
     await _client.dio.put<void>(
-      ApiConfig.fileMultipartPart,
+      '${ApiConfig.fileMultipartParts}/${request.part.partNumber}',
       queryParameters: <String, dynamic>{
         'upload_id': request.uploadId,
         'type': request.fileType,

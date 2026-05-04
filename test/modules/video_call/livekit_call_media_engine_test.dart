@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:wukong_im_app/modules/video_call/media/call_media_engine.dart';
 import 'package:wukong_im_app/modules/video_call/media/livekit_call_media_engine.dart';
 
 void main() {
@@ -118,6 +121,30 @@ void main() {
       expect(stats['participant_count'], 2);
     });
 
+    test('emits normalized reconnecting and connected media states', () async {
+      final room = _FakeLiveKitRoomHandle();
+      final engine = LiveKitCallMediaEngine(roomFactory: () => room);
+      final states = <CallMediaConnectionState>[];
+      final sub = engine.connectionStates.listen(states.add);
+      addTearDown(sub.cancel);
+
+      await engine.connect(
+        url: 'wss://infoequity.qingyunshe.top/livekit',
+        token: 'lk-token',
+        enableVideo: true,
+      );
+      room.emitState(CallMediaConnectionState.reconnecting);
+      room.emitState(CallMediaConnectionState.connected);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(states, <CallMediaConnectionState>[
+        CallMediaConnectionState.connecting,
+        CallMediaConnectionState.connected,
+        CallMediaConnectionState.reconnecting,
+        CallMediaConnectionState.connected,
+      ]);
+    });
+
     test('collectStats returns a zeroed snapshot when disconnected', () async {
       final room = _FakeLiveKitRoomHandle();
       final engine = LiveKitCallMediaEngine(roomFactory: () => room);
@@ -147,15 +174,26 @@ class _FakeLiveKitRoomHandle implements LiveKitRoomHandle {
   RoomOptions? connectedRoomOptions;
   final List<bool> microphoneStates = <bool>[];
   final List<bool> cameraStates = <bool>[];
+  final StreamController<CallMediaConnectionState> stateController =
+      StreamController<CallMediaConnectionState>.broadcast();
 
   @override
   Object? get session => null;
+
+  @override
+  Stream<CallMediaConnectionState> get connectionStates =>
+      stateController.stream;
 
   @override
   bool get isConnected => _connected;
 
   void setConnected(bool value) {
     _connected = value;
+  }
+
+  void emitState(CallMediaConnectionState state) {
+    _connected = state == CallMediaConnectionState.connected;
+    stateController.add(state);
   }
 
   @override

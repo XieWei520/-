@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/realtime/call/call_state_machine.dart';
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
 
 void main() {
@@ -143,6 +144,67 @@ void main() {
         'page-3',
         'page-4',
       ]);
+    },
+  );
+
+  test(
+    'call telemetry events are buffered with stable state and reason tags',
+    () async {
+      final batches = <List<RealtimeTelemetryEvent>>[];
+      var failTransport = true;
+      final telemetry = RealtimeRolloutTelemetry(
+        transport: (events) async {
+          if (failTransport) {
+            throw StateError('call telemetry endpoint unavailable');
+          }
+          batches.add(List<RealtimeTelemetryEvent>.from(events));
+        },
+        flushInterval: const Duration(hours: 1),
+      );
+      addTearDown(telemetry.dispose);
+
+      telemetry.recordCallEvent(
+        roomId: 'room_call_01',
+        event: RealtimeRolloutTelemetry.callLiveKitConnectedEvent,
+        state: CallLifecycleStatus.connected,
+        duration: const Duration(milliseconds: 1234),
+        stats: const <String, dynamic>{
+          'publish_bitrate': 128000,
+          'subscribe_bitrate': 256000,
+          'participant_count': 2,
+        },
+      );
+      telemetry.recordCallEvent(
+        roomId: 'room_call_01',
+        event: RealtimeRolloutTelemetry.callFailedEvent,
+        state: CallLifecycleStatus.failed,
+        reason: CallFailureReason.tokenInvalid,
+      );
+
+      await telemetry.flush();
+      expect(batches, isEmpty);
+
+      failTransport = false;
+      await telemetry.flush();
+
+      expect(batches, hasLength(1));
+      expect(batches.single.map((event) => event.name), <String>[
+        'call.livekit.connected',
+        'call.failed',
+      ]);
+      expect(batches.single.first.rawValue, 1234);
+      expect(
+        batches.single.first.tags,
+        containsPair('room_id', 'room_call_01'),
+      );
+      expect(batches.single.first.tags, containsPair('state', 'connected'));
+      expect(
+        batches.single.first.tags,
+        containsPair('publish_bitrate', '128000'),
+      );
+      expect(batches.single.last.rawValue, 1);
+      expect(batches.single.last.tags, containsPair('state', 'failed'));
+      expect(batches.single.last.tags, containsPair('reason', 'token_invalid'));
     },
   );
 }
