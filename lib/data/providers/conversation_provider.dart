@@ -1278,7 +1278,7 @@ class MessageListNotifier extends StateNotifier<List<WKMsg>> {
 
     await _replaceStateWith(
       () => _trackSqlitePageQuery(
-        mode: 'around_anchor',
+        mode: 'around_page',
         query: () => messageRepository.loadAround(
           MessagePageQuery(
             channelId: channelId,
