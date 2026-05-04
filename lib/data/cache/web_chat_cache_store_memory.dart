@@ -6,10 +6,11 @@ class MemoryWebChatCacheStore implements WebChatCacheStore {
   MemoryWebChatCacheStore({this.maxMessagesPerChannel = 500});
 
   final int maxMessagesPerChannel;
-  final Map<String, List<WKMsg>> _messagesByChannel = <String, List<WKMsg>>{};
+  final Map<String, List<WKMsg>> _messagesByPartition = <String, List<WKMsg>>{};
 
   @override
   Future<List<WKMsg>> readMessages({
+    String uid = '',
     required String channelId,
     required int channelType,
     required int limit,
@@ -18,7 +19,7 @@ class MemoryWebChatCacheStore implements WebChatCacheStore {
   }) async {
     final pageLimit = _safeLimit(limit);
     var messages = List<WKMsg>.from(
-      _messagesByChannel[_channelKey(channelId, channelType)] ??
+      _messagesByPartition[_partitionKey(uid, channelId, channelType)] ??
           const <WKMsg>[],
     );
     if (beforeOrderSeq > 0) {
@@ -37,6 +38,7 @@ class MemoryWebChatCacheStore implements WebChatCacheStore {
 
   @override
   Future<void> upsertMessages({
+    String uid = '',
     required String channelId,
     required int channelType,
     required List<WKMsg> messages,
@@ -44,9 +46,10 @@ class MemoryWebChatCacheStore implements WebChatCacheStore {
     if (messages.isEmpty) {
       return;
     }
-    final channelKey = _channelKey(channelId, channelType);
+    final partitionKey = _partitionKey(uid, channelId, channelType);
     final byMessageKey = <String, WKMsg>{
-      for (final message in _messagesByChannel[channelKey] ?? const <WKMsg>[])
+      for (final message
+          in _messagesByPartition[partitionKey] ?? const <WKMsg>[])
         _messageKey(message): message,
     };
     for (final message in messages) {
@@ -61,21 +64,31 @@ class MemoryWebChatCacheStore implements WebChatCacheStore {
     final next = byMessageKey.values.toList(growable: false)
       ..sort(_compareMessages);
     if (next.length > maxMessagesPerChannel) {
-      _messagesByChannel[channelKey] = next.sublist(
+      _messagesByPartition[partitionKey] = next.sublist(
         next.length - maxMessagesPerChannel,
       );
       return;
     }
-    _messagesByChannel[channelKey] = next;
+    _messagesByPartition[partitionKey] = next;
   }
 
   @override
   Future<void> clearUser({required String uid}) async {
-    _messagesByChannel.clear();
+    final normalizedUid = uid.trim();
+    final prefix = _partitionPrefix(normalizedUid);
+    _messagesByPartition.removeWhere((key, _) => key.startsWith(prefix));
   }
 
-  static String _channelKey(String channelId, int channelType) {
-    return '$channelType:$channelId';
+  static String _partitionKey(String uid, String channelId, int channelType) {
+    return '${_encodeKeyPart(uid)}|$channelType|${_encodeKeyPart(channelId)}';
+  }
+
+  static String _partitionPrefix(String uid) {
+    return '${_encodeKeyPart(uid)}|';
+  }
+
+  static String _encodeKeyPart(String value) {
+    return Uri.encodeComponent(value.trim());
   }
 
   static int _safeLimit(int limit) {
@@ -91,6 +104,9 @@ class MemoryWebChatCacheStore implements WebChatCacheStore {
     if (clientMsgNo.isNotEmpty) {
       return 'client:$clientMsgNo';
     }
+    if (message.messageSeq > 0) {
+      return 'seq:${message.messageSeq}';
+    }
     return 'order:${message.orderSeq}';
   }
 
@@ -99,7 +115,13 @@ class MemoryWebChatCacheStore implements WebChatCacheStore {
     if (orderCompare != 0) {
       return orderCompare;
     }
-    return left.messageSeq.compareTo(right.messageSeq);
+    final sequenceCompare = left.messageSeq.compareTo(right.messageSeq);
+    if (sequenceCompare != 0) {
+      return sequenceCompare;
+    }
+    final leftIdentity = _messageKey(left);
+    final rightIdentity = _messageKey(right);
+    return leftIdentity.compareTo(rightIdentity);
   }
 
   static List<WKMsg> _windowAround(

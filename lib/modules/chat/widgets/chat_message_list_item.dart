@@ -31,18 +31,20 @@ class _ChatMessageListItemState extends State<ChatMessageListItem>
   bool get wantKeepAlive => widget.keepAlive;
 
   @override
+  void didUpdateWidget(covariant ChatMessageListItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.keepAlive != widget.keepAlive) {
+      updateKeepAlive();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     super.build(context);
     final measuredChild = widget.measurementKey == null
         ? widget.child
-        : KeyedSubtree(
-            key: widget.measurementKey,
-            child: widget.child,
-          );
-    return KeyedSubtree(
-      key: widget.itemKey,
-      child: measuredChild,
-    );
+        : KeyedSubtree(key: widget.measurementKey, child: widget.child);
+    return KeyedSubtree(key: widget.itemKey, child: measuredChild);
   }
 }
 

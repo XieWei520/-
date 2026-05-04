@@ -1,5 +1,5 @@
 /// UIKit exports - centralized export for all UI components.
-library uikit_exports;
+library;
 
 // Views
 export 'views/line_wave_voice_view.dart';

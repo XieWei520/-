@@ -907,7 +907,7 @@ class MessageBubble extends StatelessWidget {
             height: mediaSize.height,
           );
         }
-        final decodeRequest = resolveMediaDecodeRequest(
+        final decodeRequest = resolveChatListMediaDecodeRequest(
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
           logicalWidth: mediaSize.width,
           logicalHeight: mediaSize.height,
@@ -994,7 +994,7 @@ class MessageBubble extends StatelessWidget {
             height: mediaSize.height,
           );
         }
-        final decodeRequest = resolveMediaDecodeRequest(
+        final decodeRequest = resolveChatListMediaDecodeRequest(
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
           logicalWidth: mediaSize.width,
           logicalHeight: mediaSize.height,
@@ -1083,7 +1083,7 @@ class MessageBubble extends StatelessWidget {
           preferredWidth: 160,
           preferredHeight: 160,
         );
-        final decodeRequest = resolveMediaDecodeRequest(
+        final decodeRequest = resolveChatListMediaDecodeRequest(
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
           logicalWidth: mediaSize.width,
           logicalHeight: mediaSize.height,
@@ -1127,7 +1127,7 @@ class MessageBubble extends StatelessWidget {
           preferredWidth: 200,
           preferredHeight: 150,
         );
-        final decodeRequest = resolveMediaDecodeRequest(
+        final decodeRequest = resolveChatListMediaDecodeRequest(
           devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
           logicalWidth: mediaSize.width,
           logicalHeight: mediaSize.height,
@@ -1658,6 +1658,28 @@ class MediaDecodeRequest {
 
   final int? cacheWidth;
   final int? cacheHeight;
+}
+
+const double _chatListMediaDecodeLogicalLimit = 200;
+
+MediaDecodeRequest resolveChatListMediaDecodeRequest({
+  required double devicePixelRatio,
+  required double logicalWidth,
+  required double logicalHeight,
+  int intrinsicWidth = 0,
+  int intrinsicHeight = 0,
+}) {
+  return resolveMediaDecodeRequest(
+    devicePixelRatio: devicePixelRatio,
+    logicalWidth: logicalWidth > 0
+        ? math.min(logicalWidth, _chatListMediaDecodeLogicalLimit)
+        : 0.0,
+    logicalHeight: logicalHeight > 0
+        ? math.min(logicalHeight, _chatListMediaDecodeLogicalLimit)
+        : 0.0,
+    intrinsicWidth: intrinsicWidth,
+    intrinsicHeight: intrinsicHeight,
+  );
 }
 
 MediaDecodeRequest resolveMediaDecodeRequest({

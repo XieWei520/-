@@ -22,7 +22,7 @@ void main() {
   test('unlockChat decrements the remaining attempts after a wrong password', () async {
     final runtime = ChatPasswordRuntime(
       loadChannel: _loadProtectedChannel,
-      clearChannelMessages: (_, __) async {},
+      clearChannelMessages: (_, _) async {},
     );
 
     final result = await runtime.unlockChat(
@@ -41,7 +41,7 @@ void main() {
   test('unlockChat resets the remaining attempts after a correct password', () async {
     final runtime = ChatPasswordRuntime(
       loadChannel: _loadProtectedChannel,
-      clearChannelMessages: (_, __) async {},
+      clearChannelMessages: (_, _) async {},
     );
     await StorageUtils.setInt(AppConstants.keyChatPwdCount, 1);
 

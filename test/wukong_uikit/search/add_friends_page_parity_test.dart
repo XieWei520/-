@@ -131,8 +131,8 @@ void main() {
           onSearchUsers: (_) async => [
             User(uid: 'u_alice', name: 'Alice', vercode: 'vc_alice'),
           ],
-          onLoadLocalChannel: (_, __) async => null,
-          onApplyUser: (_, __) async {
+          onLoadLocalChannel: (_, _) async => null,
+          onApplyUser: (_, _) async {
             applyCallCount += 1;
           },
         ),
@@ -164,7 +164,7 @@ void main() {
         wrapWithAuth(
           SearchUserPage(
             onSearchUsers: (_) async => const <User>[],
-            onLoadLocalChannel: (_, __) async => null,
+            onLoadLocalChannel: (_, _) async => null,
           ),
         ),
       );
@@ -197,7 +197,7 @@ void main() {
           onSearchUsers: (_) async => [
             User(uid: 'u_alice', name: 'Alice', vercode: 'vc_alice'),
           ],
-          onLoadLocalChannel: (_, __) async => null,
+          onLoadLocalChannel: (_, _) async => null,
           onApplyUser: (user, _) async {
             appliedUid = user.uid;
           },
@@ -232,7 +232,7 @@ void main() {
         wrapWithAuth(
           SearchUserPage(
             onSearchUsers: (_) async => const <User>[],
-            onLoadLocalChannel: (_, __) async => null,
+            onLoadLocalChannel: (_, _) async => null,
           ),
         ),
       );
@@ -258,7 +258,7 @@ void main() {
             queries.add(query);
             return <User>[User(uid: 'u_alice', name: 'Alice')];
           },
-          onLoadLocalChannel: (_, __) async => null,
+          onLoadLocalChannel: (_, _) async => null,
         ),
       ),
     );

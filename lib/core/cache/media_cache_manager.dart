@@ -172,7 +172,12 @@ class CachedMediaImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (MediaCacheManager._shouldUseBrowserNetworkImage(isWeb: kIsWeb)) {
+    return buildForTesting(isWeb: kIsWeb);
+  }
+
+  @visibleForTesting
+  Widget buildForTesting({required bool isWeb}) {
+    if (MediaCacheManager._shouldUseBrowserNetworkImage(isWeb: isWeb)) {
       return _buildBrowserNetworkImage();
     }
 

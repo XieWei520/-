@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wukong_im_app/core/config/api_config.dart';
 import 'package:wukong_im_app/data/models/wk_custom_content.dart';
 import 'package:wukong_im_app/modules/chat/chat_file_opening.dart';
 
