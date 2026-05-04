@@ -63,12 +63,20 @@ abstract class MessageQueryTelemetry {
   void recordSqlitePageQuery(Duration duration, {required String mode});
 }
 
+abstract class MessageQueryJankTelemetry {
+  void recordChatScrollJankFrame({
+    Duration? buildDuration,
+    Duration? rasterDuration,
+  });
+}
+
 class RealtimeRolloutTelemetry
     implements
         SessionRuntimeTelemetry,
         SessionEventGatewayTelemetry,
         ConversationPatchTelemetry,
-        MessageQueryTelemetry {
+        MessageQueryTelemetry,
+        MessageQueryJankTelemetry {
   RealtimeRolloutTelemetry({
     RealtimeTelemetryTransport? transport,
     this.flushInterval = const Duration(seconds: 30),
@@ -93,6 +101,10 @@ class RealtimeRolloutTelemetry
   static const String metricInboundControlFrameCount =
       'inbound_control_frame_count';
   static const String metricSqlitePageQueryP95Ms = 'sqlite_page_query_p95_ms';
+  static const String metricChatScrollBuildJankFrameMs =
+      'chat_scroll_build_jank_frame_ms';
+  static const String metricChatScrollRasterJankFrameMs =
+      'chat_scroll_raster_jank_frame_ms';
   static const String metricConversationListPatchApplyP95Ms =
       'conversation_list_patch_apply_p95_ms';
 
@@ -160,6 +172,19 @@ class RealtimeRolloutTelemetry
         ? const <String, String>{}
         : <String, String>{'mode': normalizedMode};
     _recordDuration(metricSqlitePageQueryP95Ms, duration, tags: tags);
+  }
+
+  @override
+  void recordChatScrollJankFrame({
+    Duration? buildDuration,
+    Duration? rasterDuration,
+  }) {
+    if (buildDuration != null) {
+      _recordDuration(metricChatScrollBuildJankFrameMs, buildDuration);
+    }
+    if (rasterDuration != null) {
+      _recordDuration(metricChatScrollRasterJankFrameMs, rasterDuration);
+    }
   }
 
   Future<void> flush() {

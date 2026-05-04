@@ -1060,6 +1060,7 @@ final chatViewportProvider = StateNotifierProvider.autoDispose
       ref,
       session,
     ) {
+      ref.watch(messageQueryJankMonitorProvider);
       final controller = ChatTimelineController(
         mapper: ChatMessageMapper(),
         currentUid: _resolveActiveUid(),
