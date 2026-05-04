@@ -1,13 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/data/cache/web_chat_cache_store_memory.dart';
 import 'package:wukong_im_app/data/providers/chat_history_gateway.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    TestWidgetsFlutterBinding.ensureInitialized();
+    await StorageUtils.init();
+  });
+
   test(
-    'web direct history sync writes successful remote latest page to cache',
+    'web direct history sync writes successful remote latest page to cache for the current uid',
     () async {
+      await StorageUtils.setUid('uid-a');
       final cache = MemoryWebChatCacheStore();
       final gateway = WkImChatHistoryGateway(
         useDirectRemoteSync: true,
@@ -32,20 +41,30 @@ void main() {
         limit: 20,
       );
 
-      final cached = await cache.readMessages(
+      final cachedForCurrentUid = await cache.readMessages(
+        uid: 'uid-a',
         channelId: 'c1',
         channelType: WKChannelType.personal,
         limit: 20,
       );
-      expect(cached.single.messageID, 'm1');
+      final cachedForOtherUid = await cache.readMessages(
+        uid: 'uid-b',
+        channelId: 'c1',
+        channelType: WKChannelType.personal,
+        limit: 20,
+      );
+      expect(cachedForCurrentUid.single.messageID, 'm1');
+      expect(cachedForOtherUid, isEmpty);
     },
   );
 
   test(
-    'web direct history sync falls back to cache when remote sync fails',
+    'web direct history sync falls back to cache when remote sync fails for the current uid',
     () async {
+      await StorageUtils.setUid('uid-a');
       final cache = MemoryWebChatCacheStore();
       await cache.upsertMessages(
+        uid: 'uid-a',
         channelId: 'c1',
         channelType: WKChannelType.personal,
         messages: [

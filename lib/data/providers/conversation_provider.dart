@@ -12,6 +12,7 @@ import 'package:wukongimfluttersdk/wkim.dart';
 import '../models/chat_session.dart';
 import '../../core/repositories/message_repository.dart';
 import '../../core/utils/storage_utils.dart';
+import '../repositories/repository_providers.dart';
 import '../repositories/wk_message_repository.dart';
 import 'chat_history_gateway.dart';
 import '../../modules/chat/chat_composer_controller.dart';
@@ -1048,17 +1049,11 @@ final messageListProvider =
       (ref, session) => MessageListNotifier(
         session.channelId,
         session.channelType,
-        messageRepository: WkMessageRepository(
-          gateway: ref.watch(chatHistoryGatewayProvider),
-        ),
+        messageRepository: ref.watch(messageRepositoryProvider),
         telemetry: ref.watch(messageQueryTelemetryProvider),
         autoLoad: false,
       ),
     );
-
-final chatHistoryGatewayProvider = Provider<ChatHistoryGateway>(
-  (ref) => WkImChatHistoryGateway(),
-);
 
 final chatViewportProvider = StateNotifierProvider.autoDispose
     .family<ChatTimelineController, ChatViewportState, ChatSession>((

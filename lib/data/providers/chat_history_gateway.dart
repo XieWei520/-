@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
@@ -8,6 +9,7 @@ import 'package:wukongimfluttersdk/wkim.dart';
 import '../../core/utils/storage_utils.dart';
 import '../../service/api/im_sync_api.dart';
 import '../cache/web_chat_cache_store.dart';
+import '../cache/web_chat_cache_store_factory.dart';
 
 typedef RequestHistoryMessages =
     void Function({
@@ -35,6 +37,7 @@ typedef SyncChannelMessages =
 
 typedef DeviceUuidProvider = String Function();
 typedef AuthTokenProvider = String? Function();
+typedef UidProvider = String Function();
 
 abstract class ChatHistoryGateway {
   Future<List<WKMsg>> loadLatest({
@@ -58,12 +61,19 @@ abstract class ChatHistoryGateway {
   });
 }
 
+final chatHistoryGatewayProvider = Provider<ChatHistoryGateway>(
+  (ref) => WkImChatHistoryGateway(
+    webCacheStore: kIsWeb ? createWebChatCacheStore() : null,
+  ),
+);
+
 class WkImChatHistoryGateway implements ChatHistoryGateway {
   WkImChatHistoryGateway({
     RequestHistoryMessages? requestHistoryMessages,
     SyncChannelMessages? syncChannelMessages,
     DeviceUuidProvider? deviceUuidProvider,
     AuthTokenProvider? authTokenProvider,
+    UidProvider? uidProvider,
     WebChatCacheStore? webCacheStore,
     bool? useDirectRemoteSync,
   }) : _requestHistoryMessages =
@@ -72,13 +82,17 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
            syncChannelMessages ?? _defaultSyncChannelMessages,
        _deviceUuidProvider = deviceUuidProvider ?? _defaultDeviceUuidProvider,
        _authTokenProvider = authTokenProvider ?? _defaultAuthTokenProvider,
-       _webCacheStore = webCacheStore,
+       _uidProvider = uidProvider ?? _defaultUidProvider,
+       _webCacheStore =
+           webCacheStore ??
+           ((useDirectRemoteSync ?? kIsWeb) ? createWebChatCacheStore() : null),
        _useDirectRemoteSync = useDirectRemoteSync ?? kIsWeb;
 
   final RequestHistoryMessages _requestHistoryMessages;
   final SyncChannelMessages _syncChannelMessages;
   final DeviceUuidProvider _deviceUuidProvider;
   final AuthTokenProvider _authTokenProvider;
+  final UidProvider _uidProvider;
   final WebChatCacheStore? _webCacheStore;
   final bool _useDirectRemoteSync;
 
@@ -194,7 +208,9 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
           .where(shouldIncludeRemoteHistoryMessage)
           .toList(growable: false);
       final sortedMessages = _sortRemoteHistoryMessages(messages);
+      final uid = _uidProvider().trim();
       await _webCacheStore?.upsertMessages(
+        uid: uid,
         channelId: channelId,
         channelType: channelType,
         messages: sortedMessages,
@@ -222,7 +238,9 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
     if (webCacheStore == null) {
       return const <WKMsg>[];
     }
+    final uid = _uidProvider().trim();
     return webCacheStore.readMessages(
+      uid: uid,
       channelId: channelId,
       channelType: channelType,
       beforeOrderSeq: pullMode == 1 ? oldestOrderSeq : 0,
@@ -355,6 +373,12 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
 
   static String? _defaultAuthTokenProvider() {
     return StorageUtils.getToken();
+  }
+
+  static String _defaultUidProvider() {
+    return StorageUtils.getUid()?.trim() ??
+        WKIM.shared.options.uid?.trim() ??
+        '';
   }
 }
 

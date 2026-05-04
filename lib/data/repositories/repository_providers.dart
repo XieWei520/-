@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/platform/platform_capabilities.dart';
 import '../../core/repositories/file_repository.dart';
 import '../../core/repositories/message_repository.dart';
+import '../providers/chat_history_gateway.dart';
 import 'file_api_repository.dart';
 import 'wk_message_repository.dart';
 
 final messageRepositoryProvider = Provider<MessageRepository>(
-  (ref) => WkMessageRepository(),
+  (ref) => WkMessageRepository(gateway: ref.watch(chatHistoryGatewayProvider)),
 );
 
 final fileRepositoryProvider = Provider<FileRepository>(
