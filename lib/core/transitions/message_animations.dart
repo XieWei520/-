@@ -69,6 +69,15 @@ class _SendStatusIndicatorState extends State<SendStatusIndicator>
       vsync: this,
       duration: ChatMotionDurations.statusChange.value,
     );
+    switch (widget.state) {
+      case ChatSendVisualState.sent:
+      case ChatSendVisualState.delivered:
+      case ChatSendVisualState.read:
+        _controller.value = 1.0;
+      case ChatSendVisualState.sending:
+      case ChatSendVisualState.failed:
+        break;
+    }
     _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: ChatMotionCurves.spring),
     );

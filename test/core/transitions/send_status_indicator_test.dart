@@ -55,6 +55,32 @@ void main() {
     },
   );
 
+  testWidgets('SendStatusIndicator mounts terminal states at full scale', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              SendStatusIndicator(status: WKSendMsgResult.sendSuccess),
+              SendStatusIndicator.visual(state: ChatSendVisualState.read),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final transitions = tester
+        .widgetList<ScaleTransition>(find.byType(ScaleTransition))
+        .where((transition) => transition.child is Icon);
+
+    expect(transitions, hasLength(2));
+    for (final transition in transitions) {
+      expect(transition.scale.value, 1.0);
+    }
+  });
+
   testWidgets('SendStatusIndicator keeps loading and failed affordances', (
     tester,
   ) async {
