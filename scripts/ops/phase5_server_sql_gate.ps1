@@ -133,12 +133,16 @@ PY
 
 $remoteScript = "export PHASE5_SQL_ROOT=$remoteRoot`n" + $remoteScript
 
+$previousErrorActionPreference = $ErrorActionPreference
 try {
+  $ErrorActionPreference = 'Continue'
   Invoke-RemoteBash -Script $remoteScript 2>&1 | Tee-Object -FilePath $EvidencePath -Append
   $exitCode = $LASTEXITCODE
 } catch {
   Add-Evidence "SQL_GATE_ERROR $($_.Exception.Message)"
   $exitCode = 1
+} finally {
+  $ErrorActionPreference = $previousErrorActionPreference
 }
 
 Add-Evidence "## exit: $exitCode"
