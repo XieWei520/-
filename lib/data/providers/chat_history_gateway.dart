@@ -82,6 +82,8 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
   final WebChatCacheStore? _webCacheStore;
   final bool _useDirectRemoteSync;
 
+  String get _currentCacheUid => StorageUtils.getUid()?.trim() ?? '';
+
   @override
   Future<List<WKMsg>> loadLatest({
     required String channelId,
@@ -195,6 +197,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
           .toList(growable: false);
       final sortedMessages = _sortRemoteHistoryMessages(messages);
       await _webCacheStore?.upsertMessages(
+        uid: _currentCacheUid,
         channelId: channelId,
         channelType: channelType,
         messages: sortedMessages,
@@ -223,6 +226,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
       return const <WKMsg>[];
     }
     return webCacheStore.readMessages(
+      uid: _currentCacheUid,
       channelId: channelId,
       channelType: channelType,
       beforeOrderSeq: pullMode == 1 ? oldestOrderSeq : 0,

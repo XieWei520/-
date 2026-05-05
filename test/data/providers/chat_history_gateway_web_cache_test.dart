@@ -1,13 +1,24 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/data/cache/web_chat_cache_store_memory.dart';
 import 'package:wukong_im_app/data/providers/chat_history_gateway.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await StorageUtils.init();
+    await StorageUtils.clear();
+  });
+
   test(
-    'web direct history sync writes successful remote latest page to cache',
+    'web direct history sync writes successful remote latest page to current uid cache',
     () async {
+      await StorageUtils.setUid('u_web_a');
       final cache = MemoryWebChatCacheStore();
       final gateway = WkImChatHistoryGateway(
         useDirectRemoteSync: true,
@@ -33,19 +44,30 @@ void main() {
       );
 
       final cached = await cache.readMessages(
+        uid: 'u_web_a',
         channelId: 'c1',
         channelType: WKChannelType.personal,
         limit: 20,
       );
+      final otherUserCached = await cache.readMessages(
+        uid: 'u_web_b',
+        channelId: 'c1',
+        channelType: WKChannelType.personal,
+        limit: 20,
+      );
+
       expect(cached.single.messageID, 'm1');
+      expect(otherUserCached, isEmpty);
     },
   );
 
   test(
     'web direct history sync falls back to cache when remote sync fails',
     () async {
+      await StorageUtils.setUid('u_web_cache');
       final cache = MemoryWebChatCacheStore();
       await cache.upsertMessages(
+        uid: 'u_web_cache',
         channelId: 'c1',
         channelType: WKChannelType.personal,
         messages: [
