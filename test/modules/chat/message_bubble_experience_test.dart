@@ -262,6 +262,10 @@ void main() {
         ..fromUID = 'u_self'
         ..status = 999
         ..channelType = WKChannelType.personal;
+      final incomingMessage = WKMsg()
+        ..fromUID = 'u_other'
+        ..status = WKSendMsgResult.sendSuccess
+        ..channelType = WKChannelType.personal;
 
       expect(
         resolveMessageStatusInfo(sendingMessage, isSelf: true)?.visualState,
@@ -287,7 +291,7 @@ void main() {
         resolveMessageStatusInfo(unknownMessage, isSelf: true)?.visualState,
         ChatSendVisualState.sent,
       );
-      expect(resolveMessageStatusInfo(sentMessage, isSelf: false), isNull);
+      expect(resolveMessageStatusInfo(incomingMessage, isSelf: false), isNull);
     });
 
     test('resolveMessageStatusInfo treats server-acknowledged loading as sent', () {
