@@ -66,8 +66,14 @@ Invoke-Gate -Name 'flutter_analyze' -Command { flutter analyze }
 Invoke-Gate -Name 'flutter_phase5_tests' -Command {
   flutter test `
     test/scripts/ops/phase5_governance_preflight_test.dart `
-    test/scripts/ops/collect_im_performance_baseline_test.dart `
-    test/modules/chat/chat_page_scene_flow_test.dart --plain-name "send button uses compact motion states for composer feedback"
+    test/scripts/ops/collect_im_performance_baseline_test.dart
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
+
+  flutter test `
+    test/modules/chat/chat_page_scene_flow_test.dart `
+    --plain-name "send button uses compact motion states for composer feedback"
 }
 
 if (-not $SkipRemote) {
