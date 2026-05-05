@@ -152,7 +152,7 @@ class _ReadReceiptTicksState extends State<ReadReceiptTicks>
     _wasRead = widget.isRead;
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: ChatMotionDurations.statusChange.value,
     );
     _secondTickAnimation = CurvedAnimation(
       parent: _controller,
