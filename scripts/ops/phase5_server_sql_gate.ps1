@@ -136,8 +136,16 @@ $remoteScript = "export PHASE5_SQL_ROOT=$remoteRoot`n" + $remoteScript
 $previousErrorActionPreference = $ErrorActionPreference
 try {
   $ErrorActionPreference = 'Continue'
-  Invoke-RemoteBash -Script $remoteScript 2>&1 | Tee-Object -FilePath $EvidencePath -Append
-  $exitCode = $LASTEXITCODE
+  $remoteExitCode = 1
+  & {
+    Invoke-RemoteBash -Script $remoteScript
+    $script:remoteExitCode = $LASTEXITCODE
+  } 2>&1 | ForEach-Object {
+    $text = $_.ToString()
+    $text
+    Add-Evidence $text
+  }
+  $exitCode = $remoteExitCode
 } catch {
   Add-Evidence "SQL_GATE_ERROR $($_.Exception.Message)"
   $exitCode = 1
