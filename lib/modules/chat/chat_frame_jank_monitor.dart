@@ -111,21 +111,7 @@ class ChatFrameJankMonitor {
     if (!_isStarted) {
       return;
     }
-    if (timings.isEmpty) {
-      _recordSample(
-        _sampleReader(
-          FrameTiming(
-            vsyncStart: 0,
-            buildStart: 0,
-            buildFinish: 0,
-            rasterStart: 0,
-            rasterFinish: 0,
-            rasterFinishWallTime: 0,
-          ),
-        ),
-      );
-      return;
-    }
+
     for (final timing in timings) {
       _recordSample(_sampleReader(timing));
     }

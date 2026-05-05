@@ -87,9 +87,9 @@ void main() {
       );
 
       monitor.start();
-      registrar.fire(const <FrameTiming>[]);
+      registrar.fire(<FrameTiming>[_frameTiming()]);
       monitor.stop();
-      registrar.fire(const <FrameTiming>[]);
+      registrar.fire(<FrameTiming>[_frameTiming()]);
 
       expect(telemetry.records, <_JankRecord>[
         const _JankRecord(
@@ -99,6 +99,17 @@ void main() {
       ]);
     });
   });
+}
+
+FrameTiming _frameTiming() {
+  return FrameTiming(
+    vsyncStart: 0,
+    buildStart: 0,
+    buildFinish: 0,
+    rasterStart: 0,
+    rasterFinish: 0,
+    rasterFinishWallTime: 0,
+  );
 }
 
 class _FakeFrameTimingRegistrar implements FrameTimingRegistrar {
