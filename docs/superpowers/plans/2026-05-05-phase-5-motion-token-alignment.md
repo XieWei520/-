@@ -1,4 +1,4 @@
-﻿# Phase 5 Motion Token Alignment Implementation Plan
+# Phase 5 Motion Token Alignment Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -400,4 +400,3 @@ Verification:
 ```
 
 Do not claim completion unless Steps 1-3 pass in the current session.
-
