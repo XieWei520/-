@@ -54,12 +54,107 @@ from pathlib import Path
 
 root = Path(os.environ.get('PHASE5_SQL_ROOT', ''))
 
-risk_patterns = [
-    ('SQL_RISK_FMT_SPRINTF', re.compile(r'fmt\.Sprintf\([^\n]*(select|insert|update|delete|where|from)\b', re.I)),
-    ('SQL_RISK_STRING_CONCAT_LEFT', re.compile(r'"[^"\n]*(select|insert|update|delete|where|from)\b[^"\n]*"\s*\+', re.I)),
-    ('SQL_RISK_STRING_CONCAT_RIGHT', re.compile(r'\+\s*"[^"\n]*(select|insert|update|delete|where|from)\b[^"\n]*"', re.I)),
-    ('SQL_RISK_DYNAMIC_EXEC', re.compile(r'\b(db|tx|conn)\.(Exec|Query|QueryRow|Raw)\s*\(\s*(sql|query|stmt|where)\b', re.I)),
-]
+SQL_RISK_SQL_LITERAL = 'SQL_RISK_SQL_LITERAL'
+SQL_RISK_STRING_CONCAT = 'SQL_RISK_STRING_CONCAT'
+SQL_RISK_DYNAMIC_EXEC = 'SQL_RISK_DYNAMIC_EXEC'
+
+SQL_CONTEXT_RE = re.compile(
+    r'(?:'
+    r'\.\s*(?:Exec|Query|QueryRow|Raw|Select|InsertBySql|UpdateBySql|DeleteBySql)\s*\('
+    r'|\bfmt\.Sprintf\s*\('
+    r'|\b(?:sql|query|stmt|selectSql|builder)\b'
+    r')',
+    re.I,
+)
+DB_SINK_RE = re.compile(
+    r'\.\s*(?:Exec|Query|QueryRow|Raw|Select|InsertBySql|UpdateBySql|DeleteBySql)\s*\(',
+    re.I,
+)
+SQL_VAR_RE = re.compile(r'\b(?:sql|query|stmt|selectSql|builder|whereClause|orderBy)\b', re.I)
+
+SQL_SHAPE_PATTERNS = (
+    re.compile(r'\bselect\b[\s\S]+\bfrom\b', re.I),
+    re.compile(r'\binsert\b[\s\S]+\binto\b', re.I),
+    re.compile(r'\bupdate\b[\s\S]+\bset\b', re.I),
+    re.compile(r'\bdelete\b[\s\S]+\bfrom\b', re.I),
+    re.compile(r'\bwhere\b[\s\S]*(?:=|\bin\b|\blike\b|\bbetween\b|\bis\b)', re.I),
+    re.compile(r'\bjoin\b[\s\S]+\bon\b', re.I),
+    re.compile(r'\bon\s+duplicate\s+key\b', re.I),
+    re.compile(r'\bgroup\s+by\b|\border\s+by\b|\blimit\s+\?', re.I),
+)
+
+
+def decode_go_escaped(value):
+    try:
+        return bytes(value, 'utf-8').decode('unicode_escape')
+    except UnicodeDecodeError:
+        return value
+
+
+def extract_go_string_literals(line):
+    literals = []
+    index = 0
+    length = len(line)
+    while index < length:
+        char = line[index]
+        if char == '`':
+            end = line.find('`', index + 1)
+            if end == -1:
+                break
+            literals.append(line[index + 1:end])
+            index = end + 1
+            continue
+        if char == '"':
+            index += 1
+            buffer = []
+            while index < length:
+                char = line[index]
+                if char == '\\' and index + 1 < length:
+                    buffer.append(line[index:index + 2])
+                    index += 2
+                    continue
+                if char == '"':
+                    break
+                buffer.append(char)
+                index += 1
+            literals.append(decode_go_escaped(''.join(buffer)))
+        index += 1
+    return literals
+
+
+def looks_like_sql(text):
+    normalized = re.sub(r'\s+', ' ', text).strip()
+    if not normalized:
+        return False
+    lowered = normalized.lower()
+    if lowered.startswith(('http://', 'https://', '/', './', '../')):
+        return False
+    if not re.search(r'\b(select|insert|update|delete|where|join|from|on duplicate key)\b', lowered):
+        return False
+    return any(pattern.search(normalized) for pattern in SQL_SHAPE_PATTERNS)
+
+
+def is_db_context(line):
+    return bool(SQL_CONTEXT_RE.search(line))
+
+
+def is_dynamic_sql_build(line):
+    if re.search(r'\bfmt\.Sprintf\s*\(', line):
+        return True
+    if '+' in line:
+        return True
+    if re.search(r'\b(?:strings\.Join|bytes\.Buffer|strings\.Builder)\b', line):
+        return True
+    return False
+
+
+def sink_uses_sql_variable(line):
+    sink_match = DB_SINK_RE.search(line)
+    if not sink_match:
+        return False
+    argument_tail = line[sink_match.end():]
+    first_arg = argument_tail.split(',', 1)[0].strip()
+    return bool(SQL_VAR_RE.search(first_arg)) and not first_arg.startswith(('"', '`'))
 
 skip_dirs = {'.git', 'vendor', 'tmp', 'node_modules'}
 findings = []
@@ -75,9 +170,16 @@ for path in root.rglob('*.go'):
         stripped = line.strip()
         if not stripped or stripped.startswith('//'):
             continue
-        for code, pattern in risk_patterns:
-            if pattern.search(stripped):
-                findings.append((code, path, index, stripped[:240]))
+        literals = extract_go_string_literals(stripped)
+        sql_literals = [literal for literal in literals if looks_like_sql(literal)]
+        if sql_literals and is_db_context(stripped) and is_dynamic_sql_build(stripped):
+            findings.append((SQL_RISK_SQL_LITERAL, path, index, stripped[:240]))
+            continue
+        if sql_literals and is_db_context(stripped) and '+' in stripped:
+            findings.append((SQL_RISK_STRING_CONCAT, path, index, stripped[:240]))
+            continue
+        if sink_uses_sql_variable(stripped):
+            findings.append((SQL_RISK_DYNAMIC_EXEC, path, index, stripped[:240]))
 
 for code, path, line, text in findings[:200]:
     print(f'{code} {path}:{line}: {text}')

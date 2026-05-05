@@ -15,8 +15,14 @@ void main() {
     expect(content, contains('/opt/wukongim-prod/src'));
     expect(content, contains('server_sql_gate.txt'));
     expect(content, contains('Invoke-RemoteBash'));
+    expect(content, contains(r'$Script | ssh $RemoteHost'));
+    expect(content, contains("'bash -s'"));
+    expect(content, isNot(contains('bash -lc')));
     expect(content, contains('fmt.Sprintf'));
     expect(content, contains('SQL_RISK'));
+    expect(content, contains('looks_like_sql'));
+    expect(content, contains('is_db_context'));
+    expect(content, contains('SQL_RISK_SQL_LITERAL'));
     expect(content, contains('slow-query'));
     expect(content, contains('long_query_time'));
     expect(content, contains('slow_query_log'));
@@ -31,6 +37,8 @@ void main() {
     final content = script.readAsStringSync();
     expect(content, contains('[Convert]::ToBase64String'));
     expect(content, contains('PHASE5_SQL_PROBE_B64'));
+    expect(content, contains('python3 -c'));
+    expect(content, contains('base64.b64decode'));
     expect(content, isNot(contains("python3 - <<'PY'")));
   });
 
