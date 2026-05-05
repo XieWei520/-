@@ -63,6 +63,12 @@ void main() {
     expect(content, contains('Invoke-RemoteBash'));
     expect(content, contains(r'$Script | ssh $RemoteHost'));
     expect(content, contains("'bash -s'"));
+    expect(content, contains(r"$startInfo.ArgumentList.Add('--')"));
+    expect(content, contains(r'$startInfo.ArgumentList.Add($RemoteHost)'));
+    expect(content, contains(r"$startInfo.ArgumentList.Add('bash')"));
+    expect(content, contains(r"$startInfo.ArgumentList.Add('-s')"));
+    expect(content, contains('Validate-RemoteHostToken'));
+    expect(content, contains('RemoteHost must be a single safe ssh host token'));
     expect(content, isNot(contains('bash -lc')));
     expect(content, contains('nginx -t'));
     expect(content, contains('docker compose exec -T nginx nginx -t'));

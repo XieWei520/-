@@ -27,14 +27,30 @@ function Quote-Bash {
   return $single + $Value.Replace($single, $replacement) + $single
 }
 
+function Validate-RemoteHostToken {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  if ($Value -notmatch '^[A-Za-z0-9_.@:%+-]+$' -or $Value.StartsWith('-')) {
+    throw "RemoteHost must be a single safe ssh host token: $Value"
+  }
+}
+
 function Invoke-RemoteBash {
   param([Parameter(Mandatory = $true)][string]$Script)
 
   # Transport marker: $Script | ssh $RemoteHost 'bash -s'
+  Validate-RemoteHostToken -Value $RemoteHost
   $Script = (($Script -replace "`r`n", "`n") -replace "`r", "`n").TrimEnd() + "`n"
   $startInfo = New-Object System.Diagnostics.ProcessStartInfo
   $startInfo.FileName = 'ssh'
-  $startInfo.Arguments = "$RemoteHost bash -s"
+  if ($null -ne $startInfo.ArgumentList) {
+    $startInfo.ArgumentList.Add('--')
+    $startInfo.ArgumentList.Add($RemoteHost)
+    $startInfo.ArgumentList.Add('bash')
+    $startInfo.ArgumentList.Add('-s')
+  } else {
+    $startInfo.Arguments = "-- $RemoteHost bash -s"
+  }
   $startInfo.UseShellExecute = $false
   $startInfo.RedirectStandardInput = $true
   $startInfo.RedirectStandardOutput = $true
