@@ -63,9 +63,7 @@ void main() {
         'DIRECT',
       );
       expect(
-        resolver(
-          Uri.parse('http://gateway.example.com:8080/v1/user/login'),
-        ),
+        resolver(Uri.parse('http://gateway.example.com:8080/v1/user/login')),
         'DIRECT',
       );
     });

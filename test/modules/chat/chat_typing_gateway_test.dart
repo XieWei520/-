@@ -10,21 +10,23 @@ void main() {
       final calls = <String>[];
       final gateway = WkImChatTypingGateway(
         currentUidReader: () => 'u_self',
-        memberLoader: ({
-          required String channelId,
-          required int channelType,
-          required String uid,
-        }) async {
-          return WKChannelMember()
-            ..channelID = channelId
-            ..channelType = channelType
-            ..memberUID = uid
-            ..isDeleted = 0
-            ..status = 1;
-        },
-        sendTyping: ({required String channelId, required int channelType}) async {
-          calls.add('$channelId:$channelType');
-        },
+        memberLoader:
+            ({
+              required String channelId,
+              required int channelType,
+              required String uid,
+            }) async {
+              return WKChannelMember()
+                ..channelID = channelId
+                ..channelType = channelType
+                ..memberUID = uid
+                ..isDeleted = 0
+                ..status = 1;
+            },
+        sendTyping:
+            ({required String channelId, required int channelType}) async {
+              calls.add('$channelId:$channelType');
+            },
       );
 
       await gateway.sendIfAllowed(
@@ -39,21 +41,23 @@ void main() {
       final calls = <String>[];
       final gateway = WkImChatTypingGateway(
         currentUidReader: () => 'u_self',
-        memberLoader: ({
-          required String channelId,
-          required int channelType,
-          required String uid,
-        }) async {
-          return WKChannelMember()
-            ..channelID = channelId
-            ..channelType = channelType
-            ..memberUID = uid
-            ..isDeleted = 1
-            ..status = 0;
-        },
-        sendTyping: ({required String channelId, required int channelType}) async {
-          calls.add('$channelId:$channelType');
-        },
+        memberLoader:
+            ({
+              required String channelId,
+              required int channelType,
+              required String uid,
+            }) async {
+              return WKChannelMember()
+                ..channelID = channelId
+                ..channelType = channelType
+                ..memberUID = uid
+                ..isDeleted = 1
+                ..status = 0;
+            },
+        sendTyping:
+            ({required String channelId, required int channelType}) async {
+              calls.add('$channelId:$channelType');
+            },
       );
 
       await gateway.sendIfAllowed(
@@ -67,19 +71,18 @@ void main() {
     test('personal typing skips beDeleted or beBlacklist channels', () async {
       final calls = <String>[];
       final blockedGateway = WkImChatTypingGateway(
-        channelLoader: ({
-          required String channelId,
-          required int channelType,
-        }) async {
-          return WKChannel(channelId, channelType)
-            ..localExtra = <String, dynamic>{
-              'beDeleted': 1,
-              'beBlacklist': 1,
-            };
-        },
-        sendTyping: ({required String channelId, required int channelType}) async {
-          calls.add('$channelId:$channelType');
-        },
+        channelLoader:
+            ({required String channelId, required int channelType}) async {
+              return WKChannel(channelId, channelType)
+                ..localExtra = <String, dynamic>{
+                  'beDeleted': 1,
+                  'beBlacklist': 1,
+                };
+            },
+        sendTyping:
+            ({required String channelId, required int channelType}) async {
+              calls.add('$channelId:$channelType');
+            },
       );
 
       await blockedGateway.sendIfAllowed(
@@ -93,16 +96,18 @@ void main() {
     test('personal typing sends when peer state allows it', () async {
       final calls = <String>[];
       final gateway = WkImChatTypingGateway(
-        channelLoader: ({
-          required String channelId,
-          required int channelType,
-        }) async {
-          return WKChannel(channelId, channelType)
-            ..localExtra = <String, dynamic>{'beDeleted': 0, 'beBlacklist': 0};
-        },
-        sendTyping: ({required String channelId, required int channelType}) async {
-          calls.add('$channelId:$channelType');
-        },
+        channelLoader:
+            ({required String channelId, required int channelType}) async {
+              return WKChannel(channelId, channelType)
+                ..localExtra = <String, dynamic>{
+                  'beDeleted': 0,
+                  'beBlacklist': 0,
+                };
+            },
+        sendTyping:
+            ({required String channelId, required int channelType}) async {
+              calls.add('$channelId:$channelType');
+            },
       );
 
       await gateway.sendIfAllowed(

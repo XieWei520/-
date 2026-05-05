@@ -21,16 +21,13 @@ void main() {
       ),
     );
 
-    expect(
-      items.map((item) => item.id),
-      <String>[
-        'home.create_group',
-        'home.add_friend',
-        'home.scan',
-        'home.multi_select',
-        'home.clear_all',
-      ],
-    );
+    expect(items.map((item) => item.id), <String>[
+      'home.create_group',
+      'home.add_friend',
+      'home.scan',
+      'home.multi_select',
+      'home.clear_all',
+    ]);
     expect(
       items.where((item) => !item.enabled).map((item) => item.id),
       <String>['home.multi_select', 'home.clear_all'],

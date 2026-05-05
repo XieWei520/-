@@ -178,12 +178,7 @@ void main() {
 
       await reconcileAuthenticatedLoginPreferences(
         store,
-        UserInfo(
-          uid: 'u-1',
-          phone: '19212455074',
-          zone: '0086',
-          token: 't-1',
-        ),
+        UserInfo(uid: 'u-1', phone: '19212455074', zone: '0086', token: 't-1'),
       );
 
       final restored = await store.load();

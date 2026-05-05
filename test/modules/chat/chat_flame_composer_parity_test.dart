@@ -100,10 +100,7 @@ void main() {
         find.byKey(const ValueKey<String>('chat-flame-enabled-switch')),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('20秒'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('20秒'), findsOneWidget);
 
       await tester.tap(
         find.byKey(const ValueKey<String>('chat-flame-enabled-switch')),
@@ -117,61 +114,54 @@ void main() {
         ),
         1,
       );
-      expect(
-        adapter.lastRequestOptions?.data,
-        containsPair('flame', 0),
-      );
+      expect(adapter.lastRequestOptions?.data, containsPair('flame', 0));
     },
   );
 
-  testWidgets(
-    'group flame panel updates ttl through group setting endpoint',
-    (tester) async {
-      final adapter = _ChatFlameRoutingAdapter.group(
-        channelId: 'g_flame_group_phase6',
-        groupPayload: const <String, dynamic>{
-          'group_no': 'g_flame_group_phase6',
-          'name': 'Flame Group',
-          'save': 1,
-          'flame': 1,
-          'flame_second': 60,
-        },
-      );
+  testWidgets('group flame panel updates ttl through group setting endpoint', (
+    tester,
+  ) async {
+    final adapter = _ChatFlameRoutingAdapter.group(
+      channelId: 'g_flame_group_phase6',
+      groupPayload: const <String, dynamic>{
+        'group_no': 'g_flame_group_phase6',
+        'name': 'Flame Group',
+        'save': 1,
+        'flame': 1,
+        'flame_second': 60,
+      },
+    );
 
-      await pumpChatPage(
-        tester,
-        channelId: 'g_flame_group_phase6',
-        channelType: WKChannelType.group,
-        adapter: adapter,
-      );
+    await pumpChatPage(
+      tester,
+      channelId: 'g_flame_group_phase6',
+      channelType: WKChannelType.group,
+      adapter: adapter,
+    );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('chat-flame-toggle-button')),
-      );
-      await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('chat-flame-toggle-button')),
+    );
+    await tester.pumpAndSettle();
 
-      final slider = tester.widget<Slider>(
-        find.byKey(const ValueKey<String>('chat-flame-duration-slider')),
-      );
-      slider.onChanged?.call(6);
-      await tester.pump();
-      slider.onChangeEnd?.call(6);
-      await tester.pumpAndSettle();
+    final slider = tester.widget<Slider>(
+      find.byKey(const ValueKey<String>('chat-flame-duration-slider')),
+    );
+    slider.onChanged?.call(6);
+    await tester.pump();
+    slider.onChangeEnd?.call(6);
+    await tester.pumpAndSettle();
 
-      expect(
-        adapter.requestCount(
-          'PUT',
-          '${ApiConfig.groups}/g_flame_group_phase6${ApiConfig.groupSetting}',
-        ),
-        1,
-      );
-      expect(
-        adapter.lastRequestOptions?.data,
-        containsPair('flame_second', 180),
-      );
-      expect(find.textContaining('3分钟'), findsOneWidget);
-    },
-  );
+    expect(
+      adapter.requestCount(
+        'PUT',
+        '${ApiConfig.groups}/g_flame_group_phase6${ApiConfig.groupSetting}',
+      ),
+      1,
+    );
+    expect(adapter.lastRequestOptions?.data, containsPair('flame_second', 180));
+    expect(find.textContaining('3分钟'), findsOneWidget);
+  });
 }
 
 class _EmptyMessageListNotifier extends MessageListNotifier {

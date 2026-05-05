@@ -19,25 +19,25 @@ void main() {
       }
     });
 
-    test('returns the first sqlite3.dll found in the candidate directories', () {
-      final firstDir = Directory('${tempDir.path}\\first')..createSync();
-      final secondDir = Directory('${tempDir.path}\\second')..createSync();
+    test(
+      'returns the first sqlite3.dll found in the candidate directories',
+      () {
+        final firstDir = Directory('${tempDir.path}\\first')..createSync();
+        final secondDir = Directory('${tempDir.path}\\second')..createSync();
 
-      final expected = File('${secondDir.path}\\sqlite3.dll')
-        ..writeAsStringSync('bundled sqlite placeholder');
-      File('${firstDir.path}\\sqlite3.dll').writeAsStringSync(
-        'another bundled sqlite placeholder',
-      );
+        final expected = File('${secondDir.path}\\sqlite3.dll')
+          ..writeAsStringSync('bundled sqlite placeholder');
+        File(
+          '${firstDir.path}\\sqlite3.dll',
+        ).writeAsStringSync('another bundled sqlite placeholder');
 
-      final resolved = resolveWindowsSqliteLibraryPath(
-        candidateDirectories: <String>[
-          secondDir.path,
-          firstDir.path,
-        ],
-      );
+        final resolved = resolveWindowsSqliteLibraryPath(
+          candidateDirectories: <String>[secondDir.path, firstDir.path],
+        );
 
-      expect(resolved, expected.path);
-    });
+        expect(resolved, expected.path);
+      },
+    );
 
     test('returns null when no candidate directory contains sqlite3.dll', () {
       final resolved = resolveWindowsSqliteLibraryPath(
@@ -95,9 +95,9 @@ void main() {
           ..createSync(recursive: true);
         final runnerDir = Directory('${tempDir.path}\\runner\\Debug')
           ..createSync(recursive: true);
-        File('${currentDir.path}\\sqlite3.dll').writeAsStringSync(
-          'source sqlite placeholder',
-        );
+        File(
+          '${currentDir.path}\\sqlite3.dll',
+        ).writeAsStringSync('source sqlite placeholder');
         final runtimeFile = File('${runnerDir.path}\\sqlite3.dll')
           ..writeAsStringSync('runtime sqlite placeholder');
 

@@ -40,7 +40,10 @@ void main() {
 
       expect(result.success, isFalse);
       expect(result.shouldRefreshFriends, isFalse);
-      expect(result.message, '\u8be5\u597d\u53cb\u7533\u8bf7\u5df2\u5931\u6548\u6216\u5df2\u5904\u7406');
+      expect(
+        result.message,
+        '\u8be5\u597d\u53cb\u7533\u8bf7\u5df2\u5931\u6548\u6216\u5df2\u5904\u7406',
+      );
       expect(adapter.requests, isEmpty);
     });
 
@@ -50,17 +53,16 @@ void main() {
       final notifier = _TestFriendRequestListNotifier(const <FriendRequest>[]);
 
       final result = await notifier.handleRequest(
-        FriendRequest(
-          id: 2,
-          fromUid: 'u_bob',
-          status: 2,
-        ),
+        FriendRequest(id: 2, fromUid: 'u_bob', status: 2),
         false,
       );
 
       expect(result.success, isFalse);
       expect(result.shouldRefreshFriends, isFalse);
-      expect(result.message, '\u8be5\u597d\u53cb\u7533\u8bf7\u5df2\u5931\u6548\u6216\u5df2\u5904\u7406');
+      expect(
+        result.message,
+        '\u8be5\u597d\u53cb\u7533\u8bf7\u5df2\u5931\u6548\u6216\u5df2\u5904\u7406',
+      );
       expect(adapter.requests, isEmpty);
     });
   });

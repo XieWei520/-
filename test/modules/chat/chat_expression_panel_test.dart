@@ -151,7 +151,9 @@ void main() {
 
     final image = tester.widget<Image>(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('chat-expression-sticker-typing')),
+        of: find.byKey(
+          const ValueKey<String>('chat-expression-sticker-typing'),
+        ),
         matching: find.byType(Image),
       ),
     );

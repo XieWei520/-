@@ -111,29 +111,28 @@ void main() {
     },
   );
 
-  testWidgets(
-    'chat overflow more button opens group detail page',
-    (tester) async {
-      await tester.pumpWidget(
-        _wrapWithProviders(
-          const MaterialApp(
-            home: ChatPageShell(
-              channelId: 'g_overflow',
-              channelType: WKChannelType.group,
-              channelName: 'Overflow Group',
-            ),
+  testWidgets('chat overflow more button opens group detail page', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrapWithProviders(
+        const MaterialApp(
+          home: ChatPageShell(
+            channelId: 'g_overflow',
+            channelType: WKChannelType.group,
+            channelName: 'Overflow Group',
           ),
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
 
-      await tester.tap(find.byKey(const ValueKey<String>('chat-open-more')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const ValueKey<String>('chat-open-more')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.byType(GroupDetailPage), findsOneWidget);
-    },
-  );
+    expect(find.byType(GroupDetailPage), findsOneWidget);
+  });
 }
 
 Widget _wrapWithProviders(Widget child) {

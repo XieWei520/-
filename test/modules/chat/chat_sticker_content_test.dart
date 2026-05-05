@@ -39,13 +39,16 @@ void main() {
     expect(decoded.localPath, 'C:/stickers/sticker.webp');
   });
 
-  test('WKStickerContent display/search text uses fallback with [贴纸] default', () {
-    final defaultContent = WKStickerContent(fallbackText: '   ');
-    expect(defaultContent.displayText(), '[贴纸]');
-    expect(defaultContent.searchableWord(), '[贴纸]');
+  test(
+    'WKStickerContent display/search text uses fallback with [贴纸] default',
+    () {
+      final defaultContent = WKStickerContent(fallbackText: '   ');
+      expect(defaultContent.displayText(), '[贴纸]');
+      expect(defaultContent.searchableWord(), '[贴纸]');
 
-    final customContent = WKStickerContent(fallbackText: '  自定义贴纸  ');
-    expect(customContent.displayText(), '自定义贴纸');
-    expect(customContent.searchableWord(), '自定义贴纸');
-  });
+      final customContent = WKStickerContent(fallbackText: '  自定义贴纸  ');
+      expect(customContent.displayText(), '自定义贴纸');
+      expect(customContent.searchableWord(), '自定义贴纸');
+    },
+  );
 }

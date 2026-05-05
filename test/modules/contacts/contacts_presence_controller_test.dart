@@ -41,10 +41,7 @@ void main() {
     controller.syncPresence(const ['u_1']);
     controller.updatePresence(
       'u_1',
-      const ContactPresenceState(
-        online: false,
-        lastOffline: 42,
-      ),
+      const ContactPresenceState(online: false, lastOffline: 42),
     );
 
     completer.complete(const ContactPresenceState(online: true));

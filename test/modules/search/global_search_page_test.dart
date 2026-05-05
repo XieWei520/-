@@ -297,15 +297,13 @@ void main() {
       expect(find.text('Project Group'), findsWidgets);
       expect(
         repository.channelMessageCalls,
-        contains(
-          (
-            keyword: 'launch',
-            channelId: 'group-1',
-            channelType: 2,
-            page: 1,
-            limit: 100,
-          ),
-        ),
+        contains((
+          keyword: 'launch',
+          channelId: 'group-1',
+          channelType: 2,
+          page: 1,
+          limit: 100,
+        )),
       );
       expect(
         find.byKey(const ValueKey<String>('search-keyword-result-41')),
@@ -365,7 +363,10 @@ void main() {
       find.descendant(of: messageRow, matching: find.text('Design Group')),
       findsOneWidget,
     );
-    expect(find.descendant(of: messageRow, matching: find.text('Alice')), findsNothing);
+    expect(
+      find.descendant(of: messageRow, matching: find.text('Alice')),
+      findsNothing,
+    );
   });
 
   testWidgets(
@@ -486,8 +487,7 @@ class _FakeGlobalSearchRepository implements SearchRepository {
   _FakeGlobalSearchRepository({
     this.snapshotsByKeyword = const <String, Map<int, GlobalSearchSnapshot>>{},
     this.failingKeywordPages = const <String, Set<int>>{},
-    this.channelMessagesByKey =
-        const <String, List<SearchMessageHit>>{},
+    this.channelMessagesByKey = const <String, List<SearchMessageHit>>{},
   });
 
   final Map<String, Map<int, GlobalSearchSnapshot>> snapshotsByKeyword;
@@ -496,21 +496,18 @@ class _FakeGlobalSearchRepository implements SearchRepository {
   final List<({String keyword, int page})> calls =
       <({String keyword, int page})>[];
   final List<
-    ({
-      String keyword,
-      String channelId,
-      int channelType,
-      int page,
-      int limit,
-    })
-  > channelMessageCalls =
-      <({
-        String keyword,
-        String channelId,
-        int channelType,
-        int page,
-        int limit,
-      })>[];
+    ({String keyword, String channelId, int channelType, int page, int limit})
+  >
+  channelMessageCalls =
+      <
+        ({
+          String keyword,
+          String channelId,
+          int channelType,
+          int page,
+          int limit,
+        })
+      >[];
 
   @override
   Future<GlobalSearchSnapshot> searchGlobal({
@@ -554,15 +551,13 @@ class _FakeGlobalSearchRepository implements SearchRepository {
     required int page,
     required int limit,
   }) async {
-    channelMessageCalls.add(
-      (
-        keyword: keyword,
-        channelId: channelId,
-        channelType: channelType,
-        page: page,
-        limit: limit,
-      ),
-    );
+    channelMessageCalls.add((
+      keyword: keyword,
+      channelId: channelId,
+      channelType: channelType,
+      page: page,
+      limit: limit,
+    ));
     return channelMessagesByKey['$keyword:$channelId:$channelType:$page:$limit'] ??
         const <SearchMessageHit>[];
   }

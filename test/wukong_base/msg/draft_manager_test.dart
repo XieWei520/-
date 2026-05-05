@@ -97,118 +97,124 @@ void main() {
     expect(draft.remoteVersion, 7);
   });
 
-  test('pushes draft updates and removals to remote store when logged in',
-      () async {
-    final manager = DraftManager();
-    final remoteStore = _FakeRemoteStore();
+  test(
+    'pushes draft updates and removals to remote store when logged in',
+    () async {
+      final manager = DraftManager();
+      final remoteStore = _FakeRemoteStore();
 
-    manager.remoteStore = remoteStore;
-    await StorageUtils.setToken('remote-token');
-    await manager.loadAllDrafts(syncRemote: false);
+      manager.remoteStore = remoteStore;
+      await StorageUtils.setToken('remote-token');
+      await manager.loadAllDrafts(syncRemote: false);
 
-    await manager.saveDraft(
-      channelId: 'u_alice',
-      channelType: 1,
-      content: 'sync me',
-    );
-    await Future<void>.delayed(Duration.zero);
+      await manager.saveDraft(
+        channelId: 'u_alice',
+        channelType: 1,
+        content: 'sync me',
+      );
+      await Future<void>.delayed(Duration.zero);
 
-    expect(remoteStore.updates, hasLength(1));
-    expect(remoteStore.updates.first.channelId, 'u_alice');
-    expect(remoteStore.updates.first.channelType, 1);
-    expect(remoteStore.updates.first.draft, 'sync me');
-    expect(manager.getDraft('u_alice', 1)?.remoteVersion, 100);
+      expect(remoteStore.updates, hasLength(1));
+      expect(remoteStore.updates.first.channelId, 'u_alice');
+      expect(remoteStore.updates.first.channelType, 1);
+      expect(remoteStore.updates.first.draft, 'sync me');
+      expect(manager.getDraft('u_alice', 1)?.remoteVersion, 100);
 
-    await manager.removeDraft('u_alice', 1);
-    await Future<void>.delayed(Duration.zero);
+      await manager.removeDraft('u_alice', 1);
+      await Future<void>.delayed(Duration.zero);
 
-    expect(remoteStore.updates, hasLength(2));
-    expect(remoteStore.updates.last.draft, '');
-  });
+      expect(remoteStore.updates, hasLength(2));
+      expect(remoteStore.updates.last.draft, '');
+    },
+  );
 
-  test('serializes overlapping storage writes so concurrent saves keep both drafts',
-      () async {
-    final manager = DraftManager();
-    final storage = _ControlledDraftStorage();
-    manager.storage = storage;
-    await manager.loadAllDrafts(syncRemote: false);
+  test(
+    'serializes overlapping storage writes so concurrent saves keep both drafts',
+    () async {
+      final manager = DraftManager();
+      final storage = _ControlledDraftStorage();
+      manager.storage = storage;
+      await manager.loadAllDrafts(syncRemote: false);
 
-    final firstSave = manager.saveDraft(
-      channelId: 'u_alice',
-      channelType: 1,
-      content: 'first draft',
-    );
-    await storage.waitForWriteCount(1);
+      final firstSave = manager.saveDraft(
+        channelId: 'u_alice',
+        channelType: 1,
+        content: 'first draft',
+      );
+      await storage.waitForWriteCount(1);
 
-    final secondSave = manager.saveDraft(
-      channelId: 'u_bob',
-      channelType: 1,
-      content: 'second draft',
-    );
-    await Future<void>.delayed(Duration.zero);
+      final secondSave = manager.saveDraft(
+        channelId: 'u_bob',
+        channelType: 1,
+        content: 'second draft',
+      );
+      await Future<void>.delayed(Duration.zero);
 
-    expect(storage.startedWritePayloads, hasLength(1));
+      expect(storage.startedWritePayloads, hasLength(1));
 
-    storage.completeNextWrite();
-    await storage.waitForWriteCount(2);
+      storage.completeNextWrite();
+      await storage.waitForWriteCount(2);
 
-    storage.completeNextWrite();
-    await Future.wait([firstSave, secondSave]);
+      storage.completeNextWrite();
+      await Future.wait([firstSave, secondSave]);
 
-    await manager.loadAllDrafts(syncRemote: false);
+      await manager.loadAllDrafts(syncRemote: false);
 
-    expect(manager.getDraft('u_alice', 1)?.content, 'first draft');
-    expect(manager.getDraft('u_bob', 1)?.content, 'second draft');
+      expect(manager.getDraft('u_alice', 1)?.content, 'first draft');
+      expect(manager.getDraft('u_bob', 1)?.content, 'second draft');
 
-    final storedPayload = storage.readRawList(storage.lastKey!);
-    final decodedDrafts = storedPayload
-        .map(
-          (entry) => MessageDraft.fromJson(
-            Map<String, dynamic>.from(jsonDecode(entry) as Map),
-          ),
-        )
-        .toList();
-    expect(
-      decodedDrafts.map((draft) => draft.channelId),
-      containsAll(['u_alice', 'u_bob']),
-    );
-  });
+      final storedPayload = storage.readRawList(storage.lastKey!);
+      final decodedDrafts = storedPayload
+          .map(
+            (entry) => MessageDraft.fromJson(
+              Map<String, dynamic>.from(jsonDecode(entry) as Map),
+            ),
+          )
+          .toList();
+      expect(
+        decodedDrafts.map((draft) => draft.channelId),
+        containsAll(['u_alice', 'u_bob']),
+      );
+    },
+  );
 
-  test('ignores delayed remote draft acknowledgements after scope switches',
-      () async {
-    final manager = DraftManager();
-    final remoteStore = _ControlledRemoteStore();
+  test(
+    'ignores delayed remote draft acknowledgements after scope switches',
+    () async {
+      final manager = DraftManager();
+      final remoteStore = _ControlledRemoteStore();
 
-    manager.remoteStore = remoteStore;
-    await StorageUtils.setUid('draft_test_user');
-    await StorageUtils.setToken('remote-token');
-    await manager.loadAllDrafts(syncRemote: false);
+      manager.remoteStore = remoteStore;
+      await StorageUtils.setUid('draft_test_user');
+      await StorageUtils.setToken('remote-token');
+      await manager.loadAllDrafts(syncRemote: false);
 
-    await manager.saveDraft(
-      channelId: 'u_shared',
-      channelType: 1,
-      content: 'user-a draft',
-    );
-    await remoteStore.waitForUpdateCount(1);
+      await manager.saveDraft(
+        channelId: 'u_shared',
+        channelType: 1,
+        content: 'user-a draft',
+      );
+      await remoteStore.waitForUpdateCount(1);
 
-    await StorageUtils.setUid('draft_test_user_b');
-    await StorageUtils.clearToken();
-    await manager.loadAllDrafts(syncRemote: false);
-    await manager.saveDraft(
-      channelId: 'u_shared',
-      channelType: 1,
-      content: 'user-b draft',
-    );
+      await StorageUtils.setUid('draft_test_user_b');
+      await StorageUtils.clearToken();
+      await manager.loadAllDrafts(syncRemote: false);
+      await manager.saveDraft(
+        channelId: 'u_shared',
+        channelType: 1,
+        content: 'user-b draft',
+      );
 
-    expect(manager.getDraft('u_shared', 1)?.content, 'user-b draft');
-    expect(manager.getDraft('u_shared', 1)?.remoteVersion, 0);
+      expect(manager.getDraft('u_shared', 1)?.content, 'user-b draft');
+      expect(manager.getDraft('u_shared', 1)?.remoteVersion, 0);
 
-    remoteStore.completeNextUpdate(version: 101);
-    await Future<void>.delayed(Duration.zero);
+      remoteStore.completeNextUpdate(version: 101);
+      await Future<void>.delayed(Duration.zero);
 
-    expect(manager.getDraft('u_shared', 1)?.content, 'user-b draft');
-    expect(manager.getDraft('u_shared', 1)?.remoteVersion, 0);
-  });
+      expect(manager.getDraft('u_shared', 1)?.content, 'user-b draft');
+      expect(manager.getDraft('u_shared', 1)?.remoteVersion, 0);
+    },
+  );
 }
 
 class _FakeRemoteStore implements ConversationDraftRemoteStore {
@@ -217,12 +223,16 @@ class _FakeRemoteStore implements ConversationDraftRemoteStore {
   int nextVersion = 100;
 
   @override
-  Future<List<RemoteConversationDraft>> syncExtras({required int version}) async {
+  Future<List<RemoteConversationDraft>> syncExtras({
+    required int version,
+  }) async {
     return syncDrafts(version: version);
   }
 
   @override
-  Future<List<RemoteConversationDraft>> syncDrafts({required int version}) async {
+  Future<List<RemoteConversationDraft>> syncDrafts({
+    required int version,
+  }) async {
     return syncedDrafts.where((item) => item.version > version).toList();
   }
 
@@ -266,12 +276,16 @@ class _ControlledRemoteStore implements ConversationDraftRemoteStore {
       StreamController<void>.broadcast();
 
   @override
-  Future<List<RemoteConversationDraft>> syncExtras({required int version}) async {
+  Future<List<RemoteConversationDraft>> syncExtras({
+    required int version,
+  }) async {
     return syncDrafts(version: version);
   }
 
   @override
-  Future<List<RemoteConversationDraft>> syncDrafts({required int version}) async {
+  Future<List<RemoteConversationDraft>> syncDrafts({
+    required int version,
+  }) async {
     return const <RemoteConversationDraft>[];
   }
 

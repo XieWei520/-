@@ -99,8 +99,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('\u65b0\u6d88\u606f\u901a\u77e5'), findsOneWidget);
-    expect(find.text('\u65b0\u6d88\u606f\u901a\u77e5\u603b\u5f00\u5173'), findsOneWidget);
-    expect(find.text('\u6253\u5f00\u65b0\u6d88\u606f\u901a\u77e5\u8bbe\u7f6e'), findsOneWidget);
+    expect(
+      find.text('\u65b0\u6d88\u606f\u901a\u77e5\u603b\u5f00\u5173'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('\u6253\u5f00\u65b0\u6d88\u606f\u901a\u77e5\u8bbe\u7f6e'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('notification settings render keep-alive extension widgets', (

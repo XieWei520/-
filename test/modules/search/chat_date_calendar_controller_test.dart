@@ -4,55 +4,58 @@ import 'package:wukong_im_app/modules/search/domain/search_models.dart';
 import 'package:wukong_im_app/modules/search/domain/search_repository.dart';
 
 void main() {
-  test('selectCell moves the selected state from today to the tapped active day', () async {
-    final controller = ChatDateCalendarController(
-      channelId: 'group-1',
-      channelType: 2,
-      repository: _FakeSearchRepository(
-        sections: const <SearchDateMonthSection>[
-          SearchDateMonthSection(
-            year: 2026,
-            month: 4,
-            cells: <SearchDateCell>[
-              SearchDateCell(
-                year: 2026,
-                month: 4,
-                day: 3,
-                messageCount: 8,
-                anchorOrderSeq: 8000,
-                isToday: false,
-                isSelected: false,
-              ),
-              SearchDateCell(
-                year: 2026,
-                month: 4,
-                day: 5,
-                messageCount: 3,
-                anchorOrderSeq: 8005,
-                isToday: true,
-                isSelected: true,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+  test(
+    'selectCell moves the selected state from today to the tapped active day',
+    () async {
+      final controller = ChatDateCalendarController(
+        channelId: 'group-1',
+        channelType: 2,
+        repository: _FakeSearchRepository(
+          sections: const <SearchDateMonthSection>[
+            SearchDateMonthSection(
+              year: 2026,
+              month: 4,
+              cells: <SearchDateCell>[
+                SearchDateCell(
+                  year: 2026,
+                  month: 4,
+                  day: 3,
+                  messageCount: 8,
+                  anchorOrderSeq: 8000,
+                  isToday: false,
+                  isSelected: false,
+                ),
+                SearchDateCell(
+                  year: 2026,
+                  month: 4,
+                  day: 5,
+                  messageCount: 3,
+                  anchorOrderSeq: 8005,
+                  isToday: true,
+                  isSelected: true,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
 
-    await controller.load();
-    controller.selectCell(
-      controller.state.sections.single.cells.firstWhere(
-        (cell) => !cell.isPlaceholder && cell.day == 3,
-      ),
-    );
+      await controller.load();
+      controller.selectCell(
+        controller.state.sections.single.cells.firstWhere(
+          (cell) => !cell.isPlaceholder && cell.day == 3,
+        ),
+      );
 
-    final selectedCells = controller.state.sections
-        .expand((section) => section.cells)
-        .where((cell) => !cell.isPlaceholder && cell.isSelected)
-        .toList(growable: false);
+      final selectedCells = controller.state.sections
+          .expand((section) => section.cells)
+          .where((cell) => !cell.isPlaceholder && cell.isSelected)
+          .toList(growable: false);
 
-    expect(selectedCells, hasLength(1));
-    expect(selectedCells.single.dayKey, '2026-04-03');
-  });
+      expect(selectedCells, hasLength(1));
+      expect(selectedCells.single.dayKey, '2026-04-03');
+    },
+  );
 }
 
 class _FakeSearchRepository implements SearchRepository {

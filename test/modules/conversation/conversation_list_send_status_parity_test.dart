@@ -26,23 +26,26 @@ void main() {
       },
     );
 
-    test('uses double tick only when receipt is enabled and the message is read', () {
-      final msg = _buildSelfMessage(
-        status: WKSendMsgResult.sendSuccess,
-        receipt: 1,
-        readedCount: 2,
-      );
+    test(
+      'uses double tick only when receipt is enabled and the message is read',
+      () {
+        final msg = _buildSelfMessage(
+          status: WKSendMsgResult.sendSuccess,
+          receipt: 1,
+          readedCount: 2,
+        );
 
-      final sendStatus = resolveConversationSendStatus(
-        msg,
-        currentUid: 'u_self',
-      );
+        final sendStatus = resolveConversationSendStatus(
+          msg,
+          currentUid: 'u_self',
+        );
 
-      expect(sendStatus.showSingleTick, isFalse);
-      expect(sendStatus.showDoubleTick, isTrue);
+        expect(sendStatus.showSingleTick, isFalse);
+        expect(sendStatus.showDoubleTick, isTrue);
         expect(sendStatus.showSending, isFalse);
-      expect(sendStatus.showSendFailed, isFalse);
-    });
+        expect(sendStatus.showSendFailed, isFalse);
+      },
+    );
 
     test('hides send status for received or deleted messages', () {
       final received = _buildSelfMessage(

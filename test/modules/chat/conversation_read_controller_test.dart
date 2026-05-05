@@ -147,7 +147,11 @@ void main() {
     ]);
 
     controller.onVisibleMessageIdsChanged(const <String>['msg_1', 'msg_2']);
-    controller.onVisibleMessageIdsChanged(const <String>['msg_1', 'msg_2', 'msg_3']);
+    controller.onVisibleMessageIdsChanged(const <String>[
+      'msg_1',
+      'msg_2',
+      'msg_3',
+    ]);
     await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(started.length, 1);
 

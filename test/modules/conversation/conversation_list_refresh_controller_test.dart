@@ -8,7 +8,9 @@ import 'package:wukongimfluttersdk/wkim.dart';
 void main() {
   group('conversation list refresh controller', () {
     test('marks only the matching conversation dirty for keyed updates', () {
-      final controller = ConversationListRefreshController(attachSources: false);
+      final controller = ConversationListRefreshController(
+        attachSources: false,
+      );
       addTearDown(controller.dispose);
 
       final selfBefore = controller.state.versionFor(
@@ -33,7 +35,9 @@ void main() {
     });
 
     test('markAllChanged invalidates every conversation snapshot', () {
-      final controller = ConversationListRefreshController(attachSources: false);
+      final controller = ConversationListRefreshController(
+        attachSources: false,
+      );
       addTearDown(controller.dispose);
 
       final selfBefore = controller.state.versionFor(
@@ -58,7 +62,9 @@ void main() {
     });
 
     test('markConversationDirty invalidates the matching conversation key', () {
-      final controller = ConversationListRefreshController(attachSources: false);
+      final controller = ConversationListRefreshController(
+        attachSources: false,
+      );
       addTearDown(controller.dispose);
 
       final before = controller.state.versionFor(

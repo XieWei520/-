@@ -28,13 +28,14 @@ void main() {
       config: const ErrorReportingConfig(dsn: null),
       startup: () async => events.add('startup'),
       runAppCallback: () => events.add('runApp'),
-      sentryInitializer: ({
-        required String dsn,
-        required Future<void> Function() appRunner,
-      }) async {
-        sentryInitialized = true;
-        await appRunner();
-      },
+      sentryInitializer:
+          ({
+            required String dsn,
+            required Future<void> Function() appRunner,
+          }) async {
+            sentryInitialized = true;
+            await appRunner();
+          },
       installIsolateErrorHook: () {
         isolateHookInstalled = true;
       },
@@ -54,13 +55,14 @@ void main() {
       config: const ErrorReportingConfig(dsn: 'https://example@sentry.io/123'),
       startup: () async => events.add('startup'),
       runAppCallback: () => events.add('runApp'),
-      sentryInitializer: ({
-        required String dsn,
-        required Future<void> Function() appRunner,
-      }) async {
-        initializedDsn = dsn;
-        await appRunner();
-      },
+      sentryInitializer:
+          ({
+            required String dsn,
+            required Future<void> Function() appRunner,
+          }) async {
+            initializedDsn = dsn;
+            await appRunner();
+          },
       installIsolateErrorHook: () {
         isolateHookInstalled = true;
       },

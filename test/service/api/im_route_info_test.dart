@@ -17,20 +17,23 @@ void main() {
     );
   });
 
-  test('resolvePreferredAddr falls back from invalid preferred_addr to wss', () {
-    final route = ImRouteInfo(
-      tcpAddr: 'infoequity.qingyunshe.top:5100',
-      wsAddr: 'ws://infoequity.qingyunshe.top:5200',
-      wssAddr: 'wss://infoequity.qingyunshe.top/ws',
-      preferredTransport: 'wss',
-      preferredAddr: 'https://infoequity.qingyunshe.top/ws',
-    );
+  test(
+    'resolvePreferredAddr falls back from invalid preferred_addr to wss',
+    () {
+      final route = ImRouteInfo(
+        tcpAddr: 'infoequity.qingyunshe.top:5100',
+        wsAddr: 'ws://infoequity.qingyunshe.top:5200',
+        wssAddr: 'wss://infoequity.qingyunshe.top/ws',
+        preferredTransport: 'wss',
+        preferredAddr: 'https://infoequity.qingyunshe.top/ws',
+      );
 
-    expect(
-      route.resolvePreferredAddr(fallbackAddr: 'fallback.example:5100'),
-      'wss://infoequity.qingyunshe.top/ws',
-    );
-  });
+      expect(
+        route.resolvePreferredAddr(fallbackAddr: 'fallback.example:5100'),
+        'wss://infoequity.qingyunshe.top/ws',
+      );
+    },
+  );
 
   test('resolvePreferredAddr falls back to tcp then local fallback', () {
     final tcpOnly = ImRouteInfo(

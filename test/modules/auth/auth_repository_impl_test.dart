@@ -201,7 +201,8 @@ void main() {
             DioException(
               requestOptions: RequestOptions(path: '/v1/user/login'),
               type: DioExceptionType.unknown,
-              message: 'HandshakeException: Connection terminated during handshake',
+              message:
+                  'HandshakeException: Connection terminated during handshake',
             ),
             LoginResp(
               code: 0,
@@ -290,7 +291,8 @@ void main() {
           ..loginError = DioException(
             requestOptions: RequestOptions(path: '/v1/user/login'),
             type: DioExceptionType.unknown,
-            message: 'HandshakeException: Connection terminated during handshake',
+            message:
+                'HandshakeException: Connection terminated during handshake',
           );
         final baseUrlStore = _MemoryAuthApiBaseUrlPreferencesStore();
         var syncedBaseUrl = false;
@@ -330,7 +332,8 @@ void main() {
             DioException(
               requestOptions: RequestOptions(path: '/v1/user/login'),
               type: DioExceptionType.unknown,
-              message: 'HandshakeException: Connection terminated during handshake',
+              message:
+                  'HandshakeException: Connection terminated during handshake',
             ),
             DioException(
               requestOptions: RequestOptions(path: '/v1/user/login'),
@@ -369,7 +372,8 @@ void main() {
   });
 }
 
-class _MemoryAuthApiBaseUrlPreferencesStore extends AuthApiBaseUrlPreferencesStore {
+class _MemoryAuthApiBaseUrlPreferencesStore
+    extends AuthApiBaseUrlPreferencesStore {
   String value = '';
 
   @override

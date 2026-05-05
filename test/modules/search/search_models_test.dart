@@ -8,39 +8,45 @@ void main() {
     expect(SearchCollectionScope.link.contentTypes, <int>[14, 1]);
   });
 
-  test('SearchDateCell placeholder is non-navigable while active cell is navigable', () {
-    const placeholder = SearchDateCell.placeholder(weekdayOffset: 3);
-    const active = SearchDateCell(
-      year: 2026,
-      month: 4,
-      day: 3,
-      messageCount: 2,
-      anchorOrderSeq: 99,
-      isToday: false,
-      isSelected: false,
-    );
+  test(
+    'SearchDateCell placeholder is non-navigable while active cell is navigable',
+    () {
+      const placeholder = SearchDateCell.placeholder(weekdayOffset: 3);
+      const active = SearchDateCell(
+        year: 2026,
+        month: 4,
+        day: 3,
+        messageCount: 2,
+        anchorOrderSeq: 99,
+        isToday: false,
+        isSelected: false,
+      );
 
-    expect(placeholder.isPlaceholder, isTrue);
-    expect(placeholder.canOpen, isFalse);
-    expect(active.isPlaceholder, isFalse);
-    expect(active.canOpen, isTrue);
-  });
+      expect(placeholder.isPlaceholder, isTrue);
+      expect(placeholder.canOpen, isFalse);
+      expect(active.isPlaceholder, isFalse);
+      expect(active.canOpen, isTrue);
+    },
+  );
 
-  test('SearchMessageHit conversationKey combines channel type and channel id', () {
-    const hit = SearchMessageHit(
-      channelId: 'team-42',
-      channelType: 3,
-      messageSeq: 12,
-      orderSeq: 34,
-      timestamp: 1712123456,
-      contentType: 2,
-      fromUid: 'u100',
-      fromName: 'Alex',
-      previewText: 'preview',
-    );
+  test(
+    'SearchMessageHit conversationKey combines channel type and channel id',
+    () {
+      const hit = SearchMessageHit(
+        channelId: 'team-42',
+        channelType: 3,
+        messageSeq: 12,
+        orderSeq: 34,
+        timestamp: 1712123456,
+        contentType: 2,
+        fromUid: 'u100',
+        fromName: 'Alex',
+        previewText: 'preview',
+      );
 
-    expect(hit.conversationKey, '3:team-42');
-  });
+      expect(hit.conversationKey, '3:team-42');
+    },
+  );
 
   test('ChatLocateIntent factories normalize search hits and date cells', () {
     const hit = SearchMessageHit(

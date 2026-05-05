@@ -40,7 +40,10 @@ void main() {
         realtimeClient.connectedUri?.toString(),
         contains('room_id=room_test_01'),
       );
-      expect(mediaEngine.connectedUrl, 'wss://infoequity.qingyunshe.top/livekit');
+      expect(
+        mediaEngine.connectedUrl,
+        'wss://infoequity.qingyunshe.top/livekit',
+      );
       expect(mediaEngine.connectedToken, 'test-ticket');
       expect(mediaEngine.connectedEnableVideo, isTrue);
       expect(service.state.roomId, 'room_test_01');

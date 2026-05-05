@@ -16,10 +16,7 @@ void main() {
           ..channelType = WKChannelType.personal
           ..fromUID = 'u_other'
           ..contentType = WkMessageContentType.text
-          ..localExtraMap = <String, dynamic>{
-            'flame': 1,
-            'flame_second': 10,
-          };
+          ..localExtraMap = <String, dynamic>{'flame': 1, 'flame_second': 10};
         store.seed(message);
         final runtime = ChatFlameMessageRuntime(
           store: store,
@@ -43,129 +40,120 @@ void main() {
       });
     });
 
-    test('markVisibleMessages only marks non-media flame messages as viewed', () {
-      fakeAsync((async) {
-        final store = _FakeChatFlameMessageStore();
-        final textMessage = WKMsg()
-          ..clientMsgNO = 'client-visible-flame-text'
-          ..messageID = 'm-visible-flame-text'
-          ..channelID = 'u_flame'
-          ..channelType = WKChannelType.personal
-          ..fromUID = 'u_other'
-          ..contentType = WkMessageContentType.text
-          ..localExtraMap = <String, dynamic>{
-            'flame': 1,
-            'flame_second': 20,
-          };
-        final imageMessage = WKMsg()
-          ..clientMsgNO = 'client-visible-flame-image'
-          ..messageID = 'm-visible-flame-image'
-          ..channelID = 'u_flame'
-          ..channelType = WKChannelType.personal
-          ..fromUID = 'u_other'
-          ..contentType = WkMessageContentType.image
-          ..localExtraMap = <String, dynamic>{
-            'flame': 1,
-            'flame_second': 20,
-          };
-        store
-          ..seed(textMessage)
-          ..seed(imageMessage);
-        final runtime = ChatFlameMessageRuntime(
-          store: store,
-          now: () => DateTime.fromMillisecondsSinceEpoch(2_000),
-        );
+    test(
+      'markVisibleMessages only marks non-media flame messages as viewed',
+      () {
+        fakeAsync((async) {
+          final store = _FakeChatFlameMessageStore();
+          final textMessage = WKMsg()
+            ..clientMsgNO = 'client-visible-flame-text'
+            ..messageID = 'm-visible-flame-text'
+            ..channelID = 'u_flame'
+            ..channelType = WKChannelType.personal
+            ..fromUID = 'u_other'
+            ..contentType = WkMessageContentType.text
+            ..localExtraMap = <String, dynamic>{'flame': 1, 'flame_second': 20};
+          final imageMessage = WKMsg()
+            ..clientMsgNO = 'client-visible-flame-image'
+            ..messageID = 'm-visible-flame-image'
+            ..channelID = 'u_flame'
+            ..channelType = WKChannelType.personal
+            ..fromUID = 'u_other'
+            ..contentType = WkMessageContentType.image
+            ..localExtraMap = <String, dynamic>{'flame': 1, 'flame_second': 20};
+          store
+            ..seed(textMessage)
+            ..seed(imageMessage);
+          final runtime = ChatFlameMessageRuntime(
+            store: store,
+            now: () => DateTime.fromMillisecondsSinceEpoch(2_000),
+          );
 
-        runtime.markVisibleMessages(<WKMsg>[textMessage, imageMessage]);
-        async.flushMicrotasks();
+          runtime.markVisibleMessages(<WKMsg>[textMessage, imageMessage]);
+          async.flushMicrotasks();
 
-        expect(textMessage.viewed, 1);
-        expect(textMessage.viewedAt, 2_000);
-        expect(imageMessage.viewed, 0);
-        expect(imageMessage.viewedAt, 0);
-      });
-    });
+          expect(textMessage.viewed, 1);
+          expect(textMessage.viewedAt, 2_000);
+          expect(imageMessage.viewed, 0);
+          expect(imageMessage.viewedAt, 0);
+        });
+      },
+    );
 
-    test('sweepViewedMessages deletes zero-second and expired flame messages', () {
-      fakeAsync((async) {
-        final store = _FakeChatFlameMessageStore();
-        final zeroSecondMessage = WKMsg()
-          ..clientMsgNO = 'client-flame-zero'
-          ..messageID = 'm-flame-zero'
-          ..channelID = 'u_flame'
-          ..channelType = WKChannelType.personal
-          ..fromUID = 'u_other'
-          ..contentType = WkMessageContentType.text
-          ..viewed = 1
-          ..viewedAt = 9_000
-          ..localExtraMap = <String, dynamic>{
-            'flame': 1,
-            'flame_second': 0,
-          };
-        final expiredMessage = WKMsg()
-          ..clientMsgNO = 'client-flame-expired'
-          ..messageID = 'm-flame-expired'
-          ..channelID = 'u_flame'
-          ..channelType = WKChannelType.personal
-          ..fromUID = 'u_other'
-          ..contentType = WkMessageContentType.text
-          ..viewed = 1
-          ..viewedAt = 1_000
-          ..localExtraMap = <String, dynamic>{
-            'flame': 1,
-            'flame_second': 10,
-          };
-        final activeMessage = WKMsg()
-          ..clientMsgNO = 'client-flame-active'
-          ..messageID = 'm-flame-active'
-          ..channelID = 'u_flame'
-          ..channelType = WKChannelType.personal
-          ..fromUID = 'u_other'
-          ..contentType = WkMessageContentType.text
-          ..viewed = 1
-          ..viewedAt = 6_000
-          ..localExtraMap = <String, dynamic>{
-            'flame': 1,
-            'flame_second': 10,
-          };
-        final unviewedMessage = WKMsg()
-          ..clientMsgNO = 'client-flame-unviewed'
-          ..messageID = 'm-flame-unviewed'
-          ..channelID = 'u_flame'
-          ..channelType = WKChannelType.personal
-          ..fromUID = 'u_other'
-          ..contentType = WkMessageContentType.text
-          ..viewed = 0
-          ..viewedAt = 0
-          ..localExtraMap = <String, dynamic>{
-            'flame': 1,
-            'flame_second': 10,
-          };
-        store
-          ..seed(zeroSecondMessage)
-          ..seed(expiredMessage)
-          ..seed(activeMessage)
-          ..seed(unviewedMessage);
-        final runtime = ChatFlameMessageRuntime(
-          store: store,
-          now: () => DateTime.fromMillisecondsSinceEpoch(12_000),
-        );
+    test(
+      'sweepViewedMessages deletes zero-second and expired flame messages',
+      () {
+        fakeAsync((async) {
+          final store = _FakeChatFlameMessageStore();
+          final zeroSecondMessage = WKMsg()
+            ..clientMsgNO = 'client-flame-zero'
+            ..messageID = 'm-flame-zero'
+            ..channelID = 'u_flame'
+            ..channelType = WKChannelType.personal
+            ..fromUID = 'u_other'
+            ..contentType = WkMessageContentType.text
+            ..viewed = 1
+            ..viewedAt = 9_000
+            ..localExtraMap = <String, dynamic>{'flame': 1, 'flame_second': 0};
+          final expiredMessage = WKMsg()
+            ..clientMsgNO = 'client-flame-expired'
+            ..messageID = 'm-flame-expired'
+            ..channelID = 'u_flame'
+            ..channelType = WKChannelType.personal
+            ..fromUID = 'u_other'
+            ..contentType = WkMessageContentType.text
+            ..viewed = 1
+            ..viewedAt = 1_000
+            ..localExtraMap = <String, dynamic>{'flame': 1, 'flame_second': 10};
+          final activeMessage = WKMsg()
+            ..clientMsgNO = 'client-flame-active'
+            ..messageID = 'm-flame-active'
+            ..channelID = 'u_flame'
+            ..channelType = WKChannelType.personal
+            ..fromUID = 'u_other'
+            ..contentType = WkMessageContentType.text
+            ..viewed = 1
+            ..viewedAt = 6_000
+            ..localExtraMap = <String, dynamic>{'flame': 1, 'flame_second': 10};
+          final unviewedMessage = WKMsg()
+            ..clientMsgNO = 'client-flame-unviewed'
+            ..messageID = 'm-flame-unviewed'
+            ..channelID = 'u_flame'
+            ..channelType = WKChannelType.personal
+            ..fromUID = 'u_other'
+            ..contentType = WkMessageContentType.text
+            ..viewed = 0
+            ..viewedAt = 0
+            ..localExtraMap = <String, dynamic>{'flame': 1, 'flame_second': 10};
+          store
+            ..seed(zeroSecondMessage)
+            ..seed(expiredMessage)
+            ..seed(activeMessage)
+            ..seed(unviewedMessage);
+          final runtime = ChatFlameMessageRuntime(
+            store: store,
+            now: () => DateTime.fromMillisecondsSinceEpoch(12_000),
+          );
 
-        runtime.sweepViewedMessages();
-        async.flushMicrotasks();
+          runtime.sweepViewedMessages();
+          async.flushMicrotasks();
 
-        expect(store.findByClientMsgNo(zeroSecondMessage.clientMsgNO), isNull);
-        expect(store.findByClientMsgNo(expiredMessage.clientMsgNO), isNull);
-        expect(
-          store.findByClientMsgNo(activeMessage.clientMsgNO),
-          same(activeMessage),
-        );
-        expect(
-          store.findByClientMsgNo(unviewedMessage.clientMsgNO),
-          same(unviewedMessage),
-        );
-      });
-    });
+          expect(
+            store.findByClientMsgNo(zeroSecondMessage.clientMsgNO),
+            isNull,
+          );
+          expect(store.findByClientMsgNo(expiredMessage.clientMsgNO), isNull);
+          expect(
+            store.findByClientMsgNo(activeMessage.clientMsgNO),
+            same(activeMessage),
+          );
+          expect(
+            store.findByClientMsgNo(unviewedMessage.clientMsgNO),
+            same(unviewedMessage),
+          );
+        });
+      },
+    );
 
     test('markViewed honors ttl override for flame voice playback', () {
       fakeAsync((async) {
@@ -177,10 +165,7 @@ void main() {
           ..channelType = WKChannelType.personal
           ..fromUID = 'u_other'
           ..contentType = WkMessageContentType.voice
-          ..localExtraMap = <String, dynamic>{
-            'flame': 1,
-            'flame_second': 5,
-          };
+          ..localExtraMap = <String, dynamic>{'flame': 1, 'flame_second': 5};
         store.seed(message);
         final runtime = ChatFlameMessageRuntime(
           store: store,

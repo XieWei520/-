@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('file picker plugin is isolated behind the platform adapter', () {
-    final allowedPath = _normalizePath('lib/core/platform/local_file_picker.dart');
+    final allowedPath = _normalizePath(
+      'lib/core/platform/local_file_picker.dart',
+    );
     final offenders = Directory('lib')
         .listSync(recursive: true)
         .whereType<File>()

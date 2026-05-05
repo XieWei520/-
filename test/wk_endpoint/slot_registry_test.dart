@@ -38,10 +38,11 @@ void main() {
     );
 
     expect(registry.resolve(demoSlot, 1), <String>['first:1', 'late:1']);
-    expect(
-      registry.resolve(demoSlot, 2),
-      <String>['first:2', 'even:2', 'late:2'],
-    );
+    expect(registry.resolve(demoSlot, 2), <String>[
+      'first:2',
+      'even:2',
+      'late:2',
+    ]);
   });
 
   test('registry keeps same-name slots isolated by generic types', () {
@@ -60,34 +61,33 @@ void main() {
     expect(registry.resolve(sameNameIntSlot, 3), <int>[6]);
   });
 
-  test('registry keeps same-name slots isolated when descriptors are widened',
-      () {
-    final registry = SlotRegistry();
+  test(
+    'registry keeps same-name slots isolated when descriptors are widened',
+    () {
+      final registry = SlotRegistry();
 
-    const typedStringSlot = SlotDescriptor<int, String>('same.widened.slot');
-    const typedIntSlot = SlotDescriptor<int, int>('same.widened.slot');
+      const typedStringSlot = SlotDescriptor<int, String>('same.widened.slot');
+      const typedIntSlot = SlotDescriptor<int, int>('same.widened.slot');
 
-    final SlotDescriptor<Object, Object> widenedStringSlot = typedStringSlot;
-    final SlotDescriptor<Object, Object> widenedIntSlot = typedIntSlot;
+      final SlotDescriptor<Object, Object> widenedStringSlot = typedStringSlot;
+      final SlotDescriptor<Object, Object> widenedIntSlot = typedIntSlot;
 
-    registry.register(
-      widenedStringSlot,
-      SlotEntry<Object, Object>(
-        id: 'string',
-        build: (context) => 'first:$context',
-      ),
-    );
-    registry.register(
-      widenedIntSlot,
-      const SlotEntry<Object, Object>(
-        id: 'int',
-        build: _constantInt,
-      ),
-    );
+      registry.register(
+        widenedStringSlot,
+        SlotEntry<Object, Object>(
+          id: 'string',
+          build: (context) => 'first:$context',
+        ),
+      );
+      registry.register(
+        widenedIntSlot,
+        const SlotEntry<Object, Object>(id: 'int', build: _constantInt),
+      );
 
-    expect(registry.resolve(widenedStringSlot, 3), <Object>['first:3']);
-    expect(registry.resolve(widenedIntSlot, 3), <Object>[2]);
-  });
+      expect(registry.resolve(widenedStringSlot, 3), <Object>['first:3']);
+      expect(registry.resolve(widenedIntSlot, 3), <Object>[2]);
+    },
+  );
 
   test('equal priority keeps registration order', () {
     final registry = SlotRegistry();

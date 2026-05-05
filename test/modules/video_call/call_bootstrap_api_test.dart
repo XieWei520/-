@@ -60,7 +60,10 @@ void main() {
       });
 
       expect(bootstrap.ticket.token, 'jwt-token');
-      expect(bootstrap.join.controlUrl, 'wss://infoequity.qingyunshe.top/v1/callgateway/ws');
+      expect(
+        bootstrap.join.controlUrl,
+        'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
+      );
       expect(bootstrap.capabilities.platform, 'web');
       expect(bootstrap.room.callType, CallType.video);
       expect(bootstrap.room.roomName, '研发群多人通话');
@@ -95,7 +98,8 @@ void main() {
                 'participant': 'u_self',
               },
               'join': <String, dynamic>{
-                'control_url': 'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
+                'control_url':
+                    'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
                 'livekit_url': 'wss://infoequity.qingyunshe.top/livekit',
                 'room_name': 'room_01',
               },
@@ -182,7 +186,8 @@ void main() {
                 'participant': 'u_self',
               },
               'join': <String, dynamic>{
-                'control_url': 'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
+                'control_url':
+                    'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
                 'livekit_url': 'wss://infoequity.qingyunshe.top/livekit',
                 'room_name': 'room_group_01',
               },

@@ -33,30 +33,33 @@ void main() {
       expect(state.typingLabel, '对方正在输入');
     });
 
-    test('wk_typing uses Android group typing label with fallback name lookup', () async {
-      final cmd = WKCMD()
-        ..cmd = 'wk_typing'
-        ..param = <String, dynamic>{
-          'channel_id': 'g_001',
-          'channel_type': WKChannelType.group,
-          'from_uid': 'u_other',
-          'from_name': '',
-        };
+    test(
+      'wk_typing uses Android group typing label with fallback name lookup',
+      () async {
+        final cmd = WKCMD()
+          ..cmd = 'wk_typing'
+          ..param = <String, dynamic>{
+            'channel_id': 'g_001',
+            'channel_type': WKChannelType.group,
+            'from_uid': 'u_other',
+            'from_name': '',
+          };
 
-      await registry.handleCommand(
-        cmd,
-        currentUid: 'u_self',
-        channelLookup: (channelId, channelType) async {
-          return WKChannel(channelId, channelType)
-            ..channelName = 'Alice'
-            ..channelRemark = '备注Alice';
-        },
-      );
+        await registry.handleCommand(
+          cmd,
+          currentUid: 'u_self',
+          channelLookup: (channelId, channelType) async {
+            return WKChannel(channelId, channelType)
+              ..channelName = 'Alice'
+              ..channelRemark = '备注Alice';
+          },
+        );
 
-      final state = registry.getState('g_001', WKChannelType.group);
-      expect(state.isTyping, isTrue);
-      expect(state.typingLabel, '备注Alice正在输入');
-    });
+        final state = registry.getState('g_001', WKChannelType.group);
+        expect(state.isTyping, isTrue);
+        expect(state.typingLabel, '备注Alice正在输入');
+      },
+    );
 
     test('typing state expires after Android 8 second timeout', () async {
       final cmd = WKCMD()
@@ -104,34 +107,37 @@ void main() {
       expect(state.isCalling, isTrue);
     });
 
-    test('sync_channel_state keeps Android call_info participants for chat ui', () async {
-      final cmd = WKCMD()
-        ..cmd = 'sync_channel_state'
-        ..param = <String, dynamic>{
-          'channel_id': 'u_self',
-          'channel_type': WKChannelType.personal,
-          'from_uid': 'u_other',
-          'call_info': <String, dynamic>{
-            'room_name': 'room-42',
-            'calling_participants': <Map<String, String>>[
-              <String, String>{'uid': 'u_other', 'name': 'Alice'},
-              <String, String>{'uid': 'u_third', 'name': 'Bob'},
-            ],
-          },
-        };
+    test(
+      'sync_channel_state keeps Android call_info participants for chat ui',
+      () async {
+        final cmd = WKCMD()
+          ..cmd = 'sync_channel_state'
+          ..param = <String, dynamic>{
+            'channel_id': 'u_self',
+            'channel_type': WKChannelType.personal,
+            'from_uid': 'u_other',
+            'call_info': <String, dynamic>{
+              'room_name': 'room-42',
+              'calling_participants': <Map<String, String>>[
+                <String, String>{'uid': 'u_other', 'name': 'Alice'},
+                <String, String>{'uid': 'u_third', 'name': 'Bob'},
+              ],
+            },
+          };
 
-      await registry.handleCommand(cmd, currentUid: 'u_self');
+        await registry.handleCommand(cmd, currentUid: 'u_self');
 
-      final state = registry.getState('u_other', WKChannelType.personal);
-      expect(state.isCalling, isTrue);
-      expect(state.callRoomName, 'room-42');
-      expect(
-        state.callingParticipants
-            .map((participant) => participant.name)
-            .toList(growable: false),
-        <String>['Alice', 'Bob'],
-      );
-    });
+        final state = registry.getState('u_other', WKChannelType.personal);
+        expect(state.isCalling, isTrue);
+        expect(state.callRoomName, 'room-42');
+        expect(
+          state.callingParticipants
+              .map((participant) => participant.name)
+              .toList(growable: false),
+          <String>['Alice', 'Bob'],
+        );
+      },
+    );
 
     test('local calling state can be set and cleared for a conversation', () {
       registry.setCallingState('u_other', WKChannelType.personal, true);
@@ -161,15 +167,12 @@ void main() {
 
       registry.setCallingState('u_other', WKChannelType.personal, true);
 
-      expect(
-        keys,
-        [
-          ConversationActivityRegistry.conversationKey(
-            'u_other',
-            WKChannelType.personal,
-          ),
-        ],
-      );
+      expect(keys, [
+        ConversationActivityRegistry.conversationKey(
+          'u_other',
+          WKChannelType.personal,
+        ),
+      ]);
     });
   });
 }

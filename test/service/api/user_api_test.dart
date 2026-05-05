@@ -21,32 +21,35 @@ void main() {
       ApiClient.instance.dio.httpClientAdapter = originalAdapter;
     });
 
-    test('getUserInfo preserves flame and chat password settings from server response', () async {
-      final adapter = _RecordingJsonAdapter(
-        payload: const <String, dynamic>{
-          'uid': 'u_flame_personal_phase6',
-          'name': 'Alice',
-          'flame': 1,
-          'flame_second': 20,
-          'chat_pwd': 'stored_chat_pwd_hash',
-          'chat_pwd_on': 1,
-        },
-      );
-      ApiClient.instance.dio.httpClientAdapter = adapter;
+    test(
+      'getUserInfo preserves flame and chat password settings from server response',
+      () async {
+        final adapter = _RecordingJsonAdapter(
+          payload: const <String, dynamic>{
+            'uid': 'u_flame_personal_phase6',
+            'name': 'Alice',
+            'flame': 1,
+            'flame_second': 20,
+            'chat_pwd': 'stored_chat_pwd_hash',
+            'chat_pwd_on': 1,
+          },
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
 
-      final user = await UserApi.instance.getUserInfo(
-        'u_flame_personal_phase6',
-      );
+        final user = await UserApi.instance.getUserInfo(
+          'u_flame_personal_phase6',
+        );
 
-      expect(
-        adapter.lastRequestOptions?.path,
-        '${ApiConfig.userInfo}/u_flame_personal_phase6',
-      );
-      expect(user.flame, 1);
-      expect(user.flameSecond, 20);
-      expect(user.chatPwd, 'stored_chat_pwd_hash');
-      expect(user.chatPwdOn, 1);
-    });
+        expect(
+          adapter.lastRequestOptions?.path,
+          '${ApiConfig.userInfo}/u_flame_personal_phase6',
+        );
+        expect(user.flame, 1);
+        expect(user.flameSecond, 20);
+        expect(user.chatPwd, 'stored_chat_pwd_hash');
+        expect(user.chatPwdOn, 1);
+      },
+    );
 
     test('updateUserSetting uses PUT /v1/users/:uid/setting', () async {
       final adapter = _RecordingJsonAdapter(
@@ -71,32 +74,35 @@ void main() {
       );
     });
 
-    test('setChatPassword uses POST /v1/user/chatpwd with hashed chat password and plain login password', () async {
-      final adapter = _RecordingJsonAdapter(
-        payload: const <String, dynamic>{'code': 0},
-      );
-      ApiClient.instance.dio.httpClientAdapter = adapter;
+    test(
+      'setChatPassword uses POST /v1/user/chatpwd with hashed chat password and plain login password',
+      () async {
+        final adapter = _RecordingJsonAdapter(
+          payload: const <String, dynamic>{'code': 0},
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
 
-      await UserApi.instance.setChatPassword(
-        uid: 'u_chat_pwd',
-        chatPassword: '654321',
-        loginPassword: 'Login@123',
-      );
+        await UserApi.instance.setChatPassword(
+          uid: 'u_chat_pwd',
+          chatPassword: '654321',
+          loginPassword: 'Login@123',
+        );
 
-      expect(adapter.lastRequestOptions?.path, ApiConfig.userChatPwd);
-      expect(adapter.lastRequestOptions?.method, 'POST');
-      expect(
-        adapter.lastRequestOptions?.data,
-        containsPair(
-          'chat_pwd',
-          crypto.md5.convert(utf8.encode('654321u_chat_pwd')).toString(),
-        ),
-      );
-      expect(
-        adapter.lastRequestOptions?.data,
-        containsPair('login_pwd', 'Login@123'),
-      );
-    });
+        expect(adapter.lastRequestOptions?.path, ApiConfig.userChatPwd);
+        expect(adapter.lastRequestOptions?.method, 'POST');
+        expect(
+          adapter.lastRequestOptions?.data,
+          containsPair(
+            'chat_pwd',
+            crypto.md5.convert(utf8.encode('654321u_chat_pwd')).toString(),
+          ),
+        );
+        expect(
+          adapter.lastRequestOptions?.data,
+          containsPair('login_pwd', 'Login@123'),
+        );
+      },
+    );
 
     test('getPcOnlineState reads pc online and mute_of_app payload', () async {
       final adapter = _RecordingJsonAdapter(
@@ -213,10 +219,7 @@ void main() {
 
       await UserApi.instance.destroyAccount('123456');
 
-      expect(
-        adapter.lastRequestOptions?.path,
-        ApiConfig.userDestroy('123456'),
-      );
+      expect(adapter.lastRequestOptions?.path, ApiConfig.userDestroy('123456'));
       expect(adapter.lastRequestOptions?.method, 'DELETE');
     });
   });

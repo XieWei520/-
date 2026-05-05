@@ -53,34 +53,37 @@ void main() {
       expect(banners.single.jumpType, 1);
     });
 
-    test('fetchBanners also accepts raw list responses from the open-source server', () async {
-      final adapter = _RoutingJsonAdapter((options) {
-        if (options.method.toUpperCase() == 'GET' &&
-            options.uri.path == '/v1/workplace/banner') {
-          return _MockJsonResponse(<Map<String, dynamic>>[
-            <String, dynamic>{
-              'banner_no': 'banner-raw',
-              'cover': 'https://cdn.example/raw.png',
-              'title': 'Raw',
-              'description': 'Unwrapped payload',
-              'jump_type': 0,
-              'route': 'https://example.com/raw',
-              'sort_num': 2,
-              'created_at': '2026-04-16T13:00:00Z',
-            },
-          ]);
-        }
+    test(
+      'fetchBanners also accepts raw list responses from the open-source server',
+      () async {
+        final adapter = _RoutingJsonAdapter((options) {
+          if (options.method.toUpperCase() == 'GET' &&
+              options.uri.path == '/v1/workplace/banner') {
+            return _MockJsonResponse(<Map<String, dynamic>>[
+              <String, dynamic>{
+                'banner_no': 'banner-raw',
+                'cover': 'https://cdn.example/raw.png',
+                'title': 'Raw',
+                'description': 'Unwrapped payload',
+                'jump_type': 0,
+                'route': 'https://example.com/raw',
+                'sort_num': 2,
+                'created_at': '2026-04-16T13:00:00Z',
+              },
+            ]);
+          }
 
-        return _unhandled(options);
-      });
-      ApiClient.instance.dio.httpClientAdapter = adapter;
+          return _unhandled(options);
+        });
+        ApiClient.instance.dio.httpClientAdapter = adapter;
 
-      final banners = await WorkplaceApi.instance.fetchBanners();
+        final banners = await WorkplaceApi.instance.fetchBanners();
 
-      expect(banners, hasLength(1));
-      expect(banners.single.bannerNo, 'banner-raw');
-      expect(banners.single.route, 'https://example.com/raw');
-    });
+        expect(banners, hasLength(1));
+        expect(banners.single.bannerNo, 'banner-raw');
+        expect(banners.single.route, 'https://example.com/raw');
+      },
+    );
 
     test('fetchCategories parses the server category contract', () async {
       final adapter = _RoutingJsonAdapter((options) {

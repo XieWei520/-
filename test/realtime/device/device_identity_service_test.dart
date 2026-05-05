@@ -152,18 +152,19 @@ void main() {
       final secondAuthority = DeviceIdentityAuthority(store: store);
 
       await firstAuthority.ensureLocalIdentity();
-      final results = await Future.wait<DeviceIdentity>(<Future<DeviceIdentity>>[
-        firstAuthority.recordBoundSession(
-          userId: 'u_new',
-          deviceSessionId: 'session_new',
-          bindVersion: 7,
-        ),
-        secondAuthority.recordBoundSession(
-          userId: 'u_old',
-          deviceSessionId: 'session_old',
-          bindVersion: 6,
-        ),
-      ]);
+      final results =
+          await Future.wait<DeviceIdentity>(<Future<DeviceIdentity>>[
+            firstAuthority.recordBoundSession(
+              userId: 'u_new',
+              deviceSessionId: 'session_new',
+              bindVersion: 7,
+            ),
+            secondAuthority.recordBoundSession(
+              userId: 'u_old',
+              deviceSessionId: 'session_old',
+              bindVersion: 6,
+            ),
+          ]);
 
       final persisted = await store.read();
       expect(results[0].bindVersion, 7);

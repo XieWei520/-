@@ -30,10 +30,7 @@ void main() {
         adapter.lastRequestOptions?.data,
         containsPair('uid', 'u_friend_01'),
       );
-      expect(
-        adapter.lastRequestOptions?.data,
-        containsPair('remark', '新备注'),
-      );
+      expect(adapter.lastRequestOptions?.data, containsPair('remark', '新备注'));
     });
   });
 }

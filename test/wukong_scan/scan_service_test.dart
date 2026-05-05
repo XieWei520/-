@@ -117,10 +117,7 @@ void main() {
 
     test('throws when http 200 envelope has non-zero code', () async {
       final adapter = _RecordingJsonAdapter(
-        payload: const <String, dynamic>{
-          'code': 1,
-          'msg': 'scan parse failed',
-        },
+        payload: const <String, dynamic>{'code': 1, 'msg': 'scan parse failed'},
       );
       ApiClient.instance.dio.httpClientAdapter = adapter;
 

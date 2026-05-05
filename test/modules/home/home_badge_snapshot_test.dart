@@ -16,9 +16,7 @@ void main() {
   });
 
   test('badge snapshot is immutable from external mutations', () {
-    final source = <HomeSurfaceId, int>{
-      HomeSurfaceId.conversations: 5,
-    };
+    final source = <HomeSurfaceId, int>{HomeSurfaceId.conversations: 5};
     final snapshot = HomeBadgeSnapshot(bySurface: source);
 
     source[HomeSurfaceId.conversations] = 99;

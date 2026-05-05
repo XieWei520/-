@@ -8,14 +8,15 @@ void main() {
     () async {
       var resolveCalls = 0;
       final coordinator = ChatLocateCoordinator(
-        resolveOrderSeq: ({
-          required int messageSeq,
-          required String channelId,
-          required int channelType,
-        }) async {
-          resolveCalls += 1;
-          return 0;
-        },
+        resolveOrderSeq:
+            ({
+              required int messageSeq,
+              required String channelId,
+              required int channelType,
+            }) async {
+              resolveCalls += 1;
+              return 0;
+            },
       );
 
       const intent = ChatLocateIntent(
@@ -39,16 +40,17 @@ void main() {
     'ChatLocateCoordinator resolves orderSeq from messageSeq when the intent has no anchor',
     () async {
       final coordinator = ChatLocateCoordinator(
-        resolveOrderSeq: ({
-          required int messageSeq,
-          required String channelId,
-          required int channelType,
-        }) async {
-          expect(messageSeq, 77);
-          expect(channelId, 'group-1');
-          expect(channelType, 2);
-          return 9901;
-        },
+        resolveOrderSeq:
+            ({
+              required int messageSeq,
+              required String channelId,
+              required int channelType,
+            }) async {
+              expect(messageSeq, 77);
+              expect(channelId, 'group-1');
+              expect(channelType, 2);
+              return 9901;
+            },
       );
 
       const intent = ChatLocateIntent(
@@ -72,12 +74,12 @@ void main() {
     'ChatLocateCoordinator falls back to opening the conversation when the intent cannot resolve an anchor',
     () async {
       final coordinator = ChatLocateCoordinator(
-        resolveOrderSeq: ({
-          required int messageSeq,
-          required String channelId,
-          required int channelType,
-        }) async =>
-            0,
+        resolveOrderSeq:
+            ({
+              required int messageSeq,
+              required String channelId,
+              required int channelType,
+            }) async => 0,
       );
 
       const intent = ChatLocateIntent(
@@ -101,16 +103,17 @@ void main() {
     'ChatLocateCoordinator resolves missing orderSeq and preserves locate metadata',
     () async {
       final coordinator = ChatLocateCoordinator(
-        resolveOrderSeq: ({
-          required int messageSeq,
-          required String channelId,
-          required int channelType,
-        }) async {
-          expect(messageSeq, 77);
-          expect(channelId, 'group-1');
-          expect(channelType, 2);
-          return 9901;
-        },
+        resolveOrderSeq:
+            ({
+              required int messageSeq,
+              required String channelId,
+              required int channelType,
+            }) async {
+              expect(messageSeq, 77);
+              expect(channelId, 'group-1');
+              expect(channelType, 2);
+              return 9901;
+            },
       );
 
       const hit = SearchMessageHit(
