@@ -52,7 +52,8 @@ class DeviceApi {
     final status = body['status'];
     final message = (body['msg'] ?? body['message'] ?? fallback).toString();
 
-    final hasErrorCode = (code is num && code.toInt() != 0) ||
+    final hasErrorCode =
+        (code is num && code.toInt() != 0) ||
         (status is num && status.toInt() >= 400);
 
     if (statusCode >= 400 || hasErrorCode) {
@@ -156,10 +157,7 @@ class DeviceApi {
   }) async {
     final response = await _client.get(
       '/v1/user/device/login_logs',
-      queryParameters: {
-        if (deviceId != null) 'device_id': deviceId,
-        'limit': limit,
-      },
+      queryParameters: {'device_id': ?deviceId, 'limit': limit},
     );
     _ensureSuccess(response, fallback: 'Failed to fetch login logs');
 

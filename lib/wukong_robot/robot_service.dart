@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
-
 import 'package:flutter/foundation.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
@@ -331,7 +329,7 @@ class RobotService {
       return const <RobotSyncTarget>[];
     }
 
-    final deduped = LinkedHashMap<String, RobotSyncTarget>();
+    final deduped = <String, RobotSyncTarget>{};
     for (final target in targets) {
       final robotId = target.robotId?.trim();
       final username = target.username?.trim();
@@ -341,10 +339,9 @@ class RobotService {
       if (cacheKey.endsWith(':')) {
         continue;
       }
-      final cachedVersion =
-          robotId != null && robotId.isNotEmpty
-              ? (_robotCache[robotId]?.version ?? 0)
-              : 0;
+      final cachedVersion = robotId != null && robotId.isNotEmpty
+          ? (_robotCache[robotId]?.version ?? 0)
+          : 0;
       deduped[cacheKey] = RobotSyncTarget(
         robotId: robotId,
         username: username,
@@ -383,7 +380,7 @@ class RobotService {
     required String channelId,
     required int channelType,
   }) async {
-    final robotIds = LinkedHashSet<String>();
+    final robotIds = <String>{};
     final channel = await WKIM.shared.channelManager.getChannel(
       channelId,
       channelType,

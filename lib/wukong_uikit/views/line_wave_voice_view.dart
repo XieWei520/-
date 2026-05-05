@@ -56,7 +56,7 @@ class LineWaveVoiceView extends StatelessWidget {
                 width: 3,
                 height: _barHeight(resolvedSamples[index]),
                 decoration: BoxDecoration(
-                  color: paintColor.withOpacity(alpha),
+                  color: paintColor.withValues(alpha: alpha),
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
