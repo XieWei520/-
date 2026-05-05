@@ -39,16 +39,42 @@ function Invoke-Gate {
 
   $exitCode = 0
   $global:LASTEXITCODE = 0
+  $script:gateNativeExitCode = 0
+  $script:gateSucceeded = $true
+  $gateCaught = $false
   try {
-    & $Command 2>&1 | Tee-Object -FilePath $target -Append
-    if ($global:LASTEXITCODE -ne 0) {
-      $exitCode = $global:LASTEXITCODE
-    } elseif (-not $?) {
-      $exitCode = 1
+    & {
+      $previousDefaultParameterValues = $PSDefaultParameterValues.Clone()
+      $PSDefaultParameterValues['*:ErrorAction'] = 'Stop'
+      try {
+        & $Command
+        $script:gateNativeExitCode = $global:LASTEXITCODE
+        $script:gateSucceeded = $?
+      } finally {
+        $PSDefaultParameterValues.Clear()
+        foreach ($key in $previousDefaultParameterValues.Keys) {
+          $PSDefaultParameterValues[$key] = $previousDefaultParameterValues[$key]
+        }
+      }
+    } 2>&1 | ForEach-Object {
+      $text = $_.ToString()
+      $text
+      Add-Content -Path $target -Value $text -Encoding UTF8
     }
   } catch {
-    "## error: $($_.Exception.Message)" | Add-Content -Path $target -Encoding UTF8
+    $gateCaught = $true
+    $errorText = "## error: $($_.Exception.Message)"
+    $errorText
+    Add-Content -Path $target -Value $errorText -Encoding UTF8
     $exitCode = 1
+  }
+
+  if (-not $gateCaught) {
+    if ($script:gateNativeExitCode -ne 0) {
+      $exitCode = $script:gateNativeExitCode
+    } elseif (-not $script:gateSucceeded) {
+      $exitCode = 1
+    }
   }
 
   "## exit: $exitCode" | Add-Content -Path $target -Encoding UTF8
