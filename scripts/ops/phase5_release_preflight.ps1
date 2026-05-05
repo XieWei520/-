@@ -68,7 +68,7 @@ Invoke-Gate -Name 'flutter_phase5_tests' -Command {
     test/scripts/ops/phase5_governance_preflight_test.dart `
     test/scripts/ops/collect_im_performance_baseline_test.dart
   if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+    throw "phase5 governance/baseline tests failed with exit code $LASTEXITCODE"
   }
 
   flutter test `
