@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/core/motion/chat_motion.dart';
 import 'package:wukong_im_app/data/models/chat_session.dart';
 import 'package:wukong_im_app/data/models/wk_custom_content.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
@@ -198,19 +199,27 @@ void main() {
       const ValueKey<String>('chat-send-button-motion'),
     );
     expect(motionFinder, findsOneWidget);
-    expect(tester.widget<AnimatedScale>(motionFinder).scale, lessThan(1));
+    var motion = tester.widget<AnimatedScale>(motionFinder);
+    expect(motion.scale, 0.88);
+    expect(motion.duration, ChatMotionDurations.pressedScale.value);
 
     final input = find.byKey(const ValueKey<String>('chat-input-field'));
     await tester.enterText(input, 'micro interaction');
     await tester.pumpAndSettle();
-    expect(tester.widget<AnimatedScale>(motionFinder).scale, 1);
+    motion = tester.widget<AnimatedScale>(motionFinder);
+    expect(motion.scale, 1.0);
+    expect(motion.duration, ChatMotionDurations.pressedScale.value);
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(const ValueKey<String>('chat-send-button'))),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
     );
     await tester.pump();
-    expect(tester.widget<AnimatedScale>(motionFinder).scale, lessThan(1));
+    expect(tester.widget<AnimatedScale>(motionFinder).scale, 0.92);
     await gesture.up();
+    await tester.pump();
+    expect(tester.widget<AnimatedScale>(motionFinder).scale, 1.0);
   });
 
   testWidgets('overflow route returns without breaking shell actions', (
