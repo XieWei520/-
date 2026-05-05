@@ -23,6 +23,17 @@ void main() {
     expect(content, contains('exit 1'));
   });
 
+  test('server SQL gate ships Python probe via base64 environment variable', () {
+    final script = File('scripts/ops/phase5_server_sql_gate.ps1');
+
+    expect(script.existsSync(), isTrue);
+
+    final content = script.readAsStringSync();
+    expect(content, contains('[Convert]::ToBase64String'));
+    expect(content, contains('PHASE5_SQL_PROBE_B64'));
+    expect(content, isNot(contains("python3 - <<'PY'")));
+  });
+
   test('release preflight captures every Phase 5 required gate', () {
     final script = File('scripts/ops/phase5_release_preflight.ps1');
 

@@ -31,7 +31,7 @@ function Quote-Bash {
 
 function Invoke-RemoteBash {
   param([Parameter(Mandatory = $true)][string]$Script)
-  ssh $RemoteHost "bash -lc $(Quote-Bash -Value $Script)"
+  $Script | ssh $RemoteHost 'bash -s'
 }
 
 "## server_sql_gate" | Set-Content -Path $EvidencePath -Encoding UTF8
@@ -46,15 +46,7 @@ if ($SkipRemote) {
   exit 0
 }
 
-$remoteRoot = Quote-Bash -Value $RemoteSourceRoot
-$remoteScript = @"
-set -euo pipefail
-root=$remoteRoot
-if [ ! -d "`$root" ]; then
-  echo "SQL_GATE_ERROR remote source root missing: `$root"
-  exit 1
-fi
-python3 - <<'PY'
+$pythonProbe = @'
 import os
 import re
 import sys
@@ -128,10 +120,23 @@ if not slow_hits:
     print('SQL_GATE_FAIL missing slow-query evidence: expected slow_query_log, long_query_time, slow-query, or <=200ms threshold evidence')
     sys.exit(1)
 print(f'SQL_GATE_PASS slow_query_evidence={len(slow_hits)}')
-PY
-"@
+'@
 
-$remoteScript = "export PHASE5_SQL_ROOT=$remoteRoot`n" + $remoteScript
+$pythonProbeB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pythonProbe))
+$remoteRoot = Quote-Bash -Value $RemoteSourceRoot
+$remoteProbe = Quote-Bash -Value $pythonProbeB64
+$pythonRunner = 'import base64, os; exec(compile(base64.b64decode(os.environ["PHASE5_SQL_PROBE_B64"]).decode("utf-8"), "<phase5_sql_gate>", "exec"))'
+$remotePythonRunner = Quote-Bash -Value $pythonRunner
+$remoteScript = @"
+set -euo pipefail
+export PHASE5_SQL_ROOT=$remoteRoot
+export PHASE5_SQL_PROBE_B64=$remoteProbe
+if [ ! -d "`$PHASE5_SQL_ROOT" ]; then
+  echo "SQL_GATE_ERROR remote source root missing: `$PHASE5_SQL_ROOT"
+  exit 1
+fi
+python3 -c $remotePythonRunner
+"@
 
 $previousErrorActionPreference = $ErrorActionPreference
 try {
