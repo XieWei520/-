@@ -48,8 +48,10 @@ function Invoke-Gate {
       $PSDefaultParameterValues['*:ErrorAction'] = 'Stop'
       try {
         & $Command
-        $script:gateNativeExitCode = $global:LASTEXITCODE
-        $script:gateSucceeded = $?
+        $commandSucceeded = $?
+        $commandNativeExitCode = $global:LASTEXITCODE
+        $script:gateSucceeded = $commandSucceeded
+        $script:gateNativeExitCode = $commandNativeExitCode
       } finally {
         $PSDefaultParameterValues.Clear()
         foreach ($key in $previousDefaultParameterValues.Keys) {
