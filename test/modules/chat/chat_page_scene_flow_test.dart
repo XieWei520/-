@@ -169,7 +169,7 @@ void main() {
   testWidgets('send button uses compact motion states for composer feedback', (
     tester,
   ) async {
-    final gateway = _FakeChatSceneGateway();
+    final gateway = _FakeChatSceneGateway(sendError: Exception('keep composer'));
     addTearDown(gateway.dispose);
 
     await tester.pumpWidget(
@@ -212,8 +212,6 @@ void main() {
 
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(const ValueKey<String>('chat-send-button'))),
-      kind: PointerDeviceKind.mouse,
-      buttons: kSecondaryMouseButton,
     );
     await tester.pump();
     expect(tester.widget<AnimatedScale>(motionFinder).scale, 0.92);
