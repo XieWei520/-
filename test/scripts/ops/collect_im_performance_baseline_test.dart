@@ -120,9 +120,13 @@ void main() {
       expect(content, contains('docker stats'));
       expect(content, contains('nginx -T'));
       expect(content, contains('/varz'));
+      expect(content, contains('remote_docker_status'));
+      expect(content, contains('remote_nginx_config'));
       expect(content, contains('remote_public_web_smoke'));
       expect(content, contains('wk_pwa_service_worker.js'));
       expect(content, contains('remote_websocket_handshake'));
+      expect(content, contains('remote_recent_nginx_log'));
+      expect(content, contains('remote_recent_api_log'));
       expect(content, contains('Sec-WebSocket-Key'));
       expect(content, contains('101 Switching Protocols'));
     },
