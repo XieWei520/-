@@ -60,16 +60,24 @@ void main() {
       contains('test/modules/chat/chat_page_scene_flow_test.dart'),
     );
     expect(content, contains('docker compose config'));
+    expect(content, contains('Invoke-RemoteBash'));
+    expect(content, contains(r'$Script | ssh $RemoteHost'));
+    expect(content, contains("'bash -s'"));
+    expect(content, isNot(contains('bash -lc')));
     expect(content, contains('nginx -t'));
+    expect(content, contains('docker compose exec -T nginx nginx -t'));
+    expect(content, isNot(contains('wukongim-prod-nginx')));
     expect(
       content,
       contains(
-        'scripts/smoke_test.py --base-url http://127.0.0.1 --timeout 10',
+        r'scripts/smoke_test.py --base-url https://`$public_domain --timeout 10',
       ),
     );
+    expect(content, isNot(contains('--base-url http://127.0.0.1')));
     expect(content, contains('remote_public_web_smoke'));
     expect(content, contains('remote_websocket_handshake'));
     expect(content, contains('phase5_server_sql_gate.ps1'));
+    expect(content, contains('server_sql_gate_child'));
     expect(content, contains('failed-gates'));
     expect(content, contains('exit 1'));
   });

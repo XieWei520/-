@@ -27,6 +27,37 @@ function Quote-Bash {
   return $single + $Value.Replace($single, $replacement) + $single
 }
 
+function Invoke-RemoteBash {
+  param([Parameter(Mandatory = $true)][string]$Script)
+
+  # Transport marker: $Script | ssh $RemoteHost 'bash -s'
+  $Script = (($Script -replace "`r`n", "`n") -replace "`r", "`n").TrimEnd() + "`n"
+  $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+  $startInfo.FileName = 'ssh'
+  $startInfo.Arguments = "$RemoteHost bash -s"
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardInput = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $startInfo
+  [void]$process.Start()
+  $process.StandardInput.Write($Script)
+  $process.StandardInput.Close()
+  $stdout = $process.StandardOutput.ReadToEnd()
+  $stderr = $process.StandardError.ReadToEnd()
+  $process.WaitForExit()
+
+  if (-not [string]::IsNullOrEmpty($stdout)) {
+    $stdout -split "`r?`n" | Where-Object { $_ -ne '' } | ForEach-Object { $_ }
+  }
+  if (-not [string]::IsNullOrEmpty($stderr)) {
+    $stderr -split "`r?`n" | Where-Object { $_ -ne '' } | ForEach-Object { $_ }
+  }
+  $global:LASTEXITCODE = $process.ExitCode
+}
+
 function Invoke-Gate {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
@@ -113,20 +144,32 @@ cd $remoteRootArg
 compose_output=`$(docker compose config)
 test -n "`$compose_output"
 printf '%s\n' "`$compose_output" | sed -n '1,120p'
-line_count=`$(printf '%s\n' "`$compose_output" | wc -l | tr -d ' ')
+line_count=`$(printf '%s\n' "`$compose_output" | awk 'END { print NR }')
 printf '## docker compose config output lines: %s\n' "`$line_count"
 "@
-    ssh $RemoteHost "bash -lc $(Quote-Bash -Value $remoteCommand)"
+    Invoke-RemoteBash -Script $remoteCommand
   }
 
   Invoke-Gate -Name 'remote_nginx_syntax' -Command {
-    ssh $RemoteHost "docker exec wukongim-prod-nginx nginx -t"
+    $remoteRootArg = Quote-Bash -Value $RemoteRoot
+    $remoteCommand = @"
+set -euo pipefail
+cd $remoteRootArg
+docker compose exec -T nginx nginx -t
+"@
+    Invoke-RemoteBash -Script $remoteCommand
   }
 
   Invoke-Gate -Name 'remote_smoke_test' -Command {
     $remoteRootArg = Quote-Bash -Value $RemoteRoot
-    $remoteCommand = "cd $remoteRootArg && python3 scripts/smoke_test.py --base-url http://127.0.0.1 --timeout 10"
-    ssh $RemoteHost "bash -lc $(Quote-Bash -Value $remoteCommand)"
+    $remoteCommand = @"
+set -euo pipefail
+cd $remoteRootArg
+public_domain=`$(grep -E '^PUBLIC_DOMAIN=' .env | head -n1 | cut -d= -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+test -n "`$public_domain"
+python3 scripts/smoke_test.py --base-url https://`$public_domain --timeout 10
+"@
+    Invoke-RemoteBash -Script $remoteCommand
   }
 
   Invoke-Gate -Name 'remote_public_web_smoke' -Command {
@@ -134,14 +177,14 @@ printf '## docker compose config output lines: %s\n' "`$line_count"
     $remoteCommand = @"
 set -euo pipefail
 cd $remoteRootArg
-public_domain=`$(grep -E '^PUBLIC_DOMAIN=' .env | head -n1 | cut -d= -f2- | tr -d '"')
+public_domain=`$(grep -E '^PUBLIC_DOMAIN=' .env | head -n1 | cut -d= -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
 test -n "`$public_domain"
 curl -k -fsSI "https://`$public_domain/index.html" | sed -n '1,16p'
 curl -k -fsSI "https://`$public_domain/flutter_bootstrap.js" | sed -n '1,16p'
 curl -k -fsSI "https://`$public_domain/wk_pwa_service_worker.js" | sed -n '1,16p'
 curl -k -fsSI "https://`$public_domain/manifest.json" | sed -n '1,16p'
 "@
-    ssh $RemoteHost "bash -lc $(Quote-Bash -Value $remoteCommand)"
+    Invoke-RemoteBash -Script $remoteCommand
   }
 
   Invoke-Gate -Name 'remote_websocket_handshake' -Command {
@@ -149,7 +192,7 @@ curl -k -fsSI "https://`$public_domain/manifest.json" | sed -n '1,16p'
     $remoteCommand = @"
 set -euo pipefail
 cd $remoteRootArg
-public_domain=`$(grep -E '^PUBLIC_DOMAIN=' .env | head -n1 | cut -d= -f2- | tr -d '"')
+public_domain=`$(grep -E '^PUBLIC_DOMAIN=' .env | head -n1 | cut -d= -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
 test -n "`$public_domain"
 curl_status=0
 response=`$(curl -k --http1.1 --max-time 8 -i \
@@ -164,14 +207,15 @@ if [ "`$curl_status" -ne 0 ] && [ "`$curl_status" -ne 52 ]; then
   exit "`$curl_status"
 fi
 "@
-    ssh $RemoteHost "bash -lc $(Quote-Bash -Value $remoteCommand)"
+    Invoke-RemoteBash -Script $remoteCommand
   }
 
   Invoke-Gate -Name 'server_sql_gate' -Command {
+    $sqlGateChildOutput = Join-Path $OutputDirectory 'server_sql_gate_child'
     powershell -NoProfile -ExecutionPolicy Bypass `
       -File (Join-Path $ProjectRoot 'scripts/ops/phase5_server_sql_gate.ps1') `
       -ProjectRoot $ProjectRoot `
-      -OutputDirectory $OutputDirectory `
+      -OutputDirectory $sqlGateChildOutput `
       -RemoteHost $RemoteHost `
       -RemoteSourceRoot $RemoteSourceRoot
   }
