@@ -1812,22 +1812,12 @@ class _CompactMessageStatusBadge extends StatelessWidget {
               ? WKColors.white.withValues(alpha: 0.72)
               : const Color(0xFF8B94A5))
         : WKColors.color999;
-    final statusColor = status == null
-        ? null
-        : insideBubble && useWarmTextColors
-        ? (status!.icon == Icons.error_outline_rounded
-              ? status!.foregroundColor
-              : _warmWebBubbleMetaColor)
-        : insideBubble && isSelf
-        ? (status!.icon == Icons.error_outline_rounded
-              ? status!.foregroundColor
-              : WKColors.white.withValues(alpha: 0.82))
-        : status!.foregroundColor;
+    final statusColor = status?.foregroundColor;
 
     final canRetry =
         isSelf &&
         onRetrySend != null &&
-        status?.icon == Icons.error_outline_rounded;
+        status?.visualState == ChatSendVisualState.failed;
     final badge = Row(
       key: const ValueKey<String>('message-status-badge'),
       mainAxisSize: MainAxisSize.min,
@@ -1867,7 +1857,7 @@ class _CompactMessageStatusBadge extends StatelessWidget {
     );
     final shouldShake =
         isSelf &&
-        status?.icon == Icons.error_outline_rounded &&
+        status?.visualState == ChatSendVisualState.failed &&
         !(MediaQuery.maybeOf(context)?.disableAnimations ?? false);
     final shouldPulse =
         isSelf &&
@@ -1906,17 +1896,17 @@ class _CompactMessageStatusBadge extends StatelessWidget {
     if (status.assetIcon != null && status.assetIcon!.isNotEmpty) {
       return status.assetIcon;
     }
-    final icon = status.icon;
-    if (icon == Icons.error_outline_rounded) {
-      return WKReferenceAssets.sendFail;
+    switch (status.visualState) {
+      case ChatSendVisualState.failed:
+        return WKReferenceAssets.sendFail;
+      case ChatSendVisualState.read:
+      case ChatSendVisualState.delivered:
+        return WKReferenceAssets.sendDouble;
+      case ChatSendVisualState.sent:
+        return WKReferenceAssets.sendSingle;
+      case ChatSendVisualState.sending:
+        return null;
     }
-    if (icon == Icons.done_all_rounded || icon == Icons.groups_rounded) {
-      return WKReferenceAssets.sendDouble;
-    }
-    if (icon == Icons.done_rounded || icon == Icons.check_rounded) {
-      return WKReferenceAssets.sendSingle;
-    }
-    return null;
   }
 }
 
