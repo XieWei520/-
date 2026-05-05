@@ -107,7 +107,15 @@ Invoke-Gate -Name 'flutter_phase5_tests' -Command {
 if (-not $SkipRemote) {
   Invoke-Gate -Name 'remote_docker_compose_config' -Command {
     $remoteRootArg = Quote-Bash -Value $RemoteRoot
-    $remoteCommand = "cd $remoteRootArg && docker compose config >/tmp/wukongim-phase5-compose.yml && test -s /tmp/wukongim-phase5-compose.yml"
+    $remoteCommand = @"
+set -euo pipefail
+cd $remoteRootArg
+compose_output=`$(docker compose config)
+test -n "`$compose_output"
+printf '%s\n' "`$compose_output" | sed -n '1,120p'
+line_count=`$(printf '%s\n' "`$compose_output" | wc -l | tr -d ' ')
+printf '## docker compose config output lines: %s\n' "`$line_count"
+"@
     ssh $RemoteHost "bash -lc $(Quote-Bash -Value $remoteCommand)"
   }
 
@@ -143,17 +151,15 @@ set -euo pipefail
 cd $remoteRootArg
 public_domain=`$(grep -E '^PUBLIC_DOMAIN=' .env | head -n1 | cut -d= -f2- | tr -d '"')
 test -n "`$public_domain"
-response_file=`$(mktemp)
 curl_status=0
-curl -k --http1.1 --max-time 8 -i \
+response=`$(curl -k --http1.1 --max-time 8 -i \
   -H 'Connection: Upgrade' \
   -H 'Upgrade: websocket' \
   -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
   -H 'Sec-WebSocket-Version: 13' \
-  "https://`$public_domain/ws" > "`$response_file" 2>&1 || curl_status=`$?
-sed -n '1,24p' "`$response_file"
-grep -q '101 Switching Protocols' "`$response_file"
-rm -f "`$response_file"
+  "https://`$public_domain/ws" 2>&1) || curl_status=`$?
+printf '%s\n' "`$response" | sed -n '1,24p'
+printf '%s\n' "`$response" | grep -q '101 Switching Protocols'
 if [ "`$curl_status" -ne 0 ] && [ "`$curl_status" -ne 52 ]; then
   exit "`$curl_status"
 fi
