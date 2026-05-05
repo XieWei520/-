@@ -235,6 +235,77 @@ void main() {
       },
     );
 
+    test('resolveMessageStatusInfo maps outgoing send status to visual states', () {
+      final sendingMessage = WKMsg()
+        ..fromUID = 'u_self'
+        ..status = WKSendMsgResult.sendLoading
+        ..channelType = WKChannelType.personal;
+      final sentMessage = WKMsg()
+        ..fromUID = 'u_self'
+        ..status = WKSendMsgResult.sendSuccess
+        ..channelType = WKChannelType.personal;
+      final deliveredMessage = WKMsg()
+        ..fromUID = 'u_self'
+        ..status = WKSendMsgResult.sendSuccess
+        ..channelType = WKChannelType.personal
+        ..wkMsgExtra = WKMsgExtra();
+      final readMessage = WKMsg()
+        ..fromUID = 'u_self'
+        ..status = WKSendMsgResult.sendSuccess
+        ..channelType = WKChannelType.personal
+        ..wkMsgExtra = (WKMsgExtra()..readed = 1);
+      final failedMessage = WKMsg()
+        ..fromUID = 'u_self'
+        ..status = WKSendMsgResult.sendFail
+        ..channelType = WKChannelType.personal;
+      final unknownMessage = WKMsg()
+        ..fromUID = 'u_self'
+        ..status = 999
+        ..channelType = WKChannelType.personal;
+
+      expect(
+        resolveMessageStatusInfo(sendingMessage, isSelf: true)?.visualState,
+        ChatSendVisualState.sending,
+      );
+      expect(
+        resolveMessageStatusInfo(sentMessage, isSelf: true)?.visualState,
+        ChatSendVisualState.sent,
+      );
+      expect(
+        resolveMessageStatusInfo(deliveredMessage, isSelf: true)?.visualState,
+        ChatSendVisualState.delivered,
+      );
+      expect(
+        resolveMessageStatusInfo(readMessage, isSelf: true)?.visualState,
+        ChatSendVisualState.read,
+      );
+      expect(
+        resolveMessageStatusInfo(failedMessage, isSelf: true)?.visualState,
+        ChatSendVisualState.failed,
+      );
+      expect(
+        resolveMessageStatusInfo(unknownMessage, isSelf: true)?.visualState,
+        ChatSendVisualState.sent,
+      );
+      expect(resolveMessageStatusInfo(sentMessage, isSelf: false), isNull);
+    });
+
+    test('resolveMessageStatusInfo treats server-acknowledged loading as sent', () {
+      final syncedLoadingMessage = WKMsg()
+        ..fromUID = 'u_self'
+        ..status = WKSendMsgResult.sendLoading
+        ..channelType = WKChannelType.personal
+        ..messageID = 'server-msg-1';
+
+      final status = resolveMessageStatusInfo(
+        syncedLoadingMessage,
+        isSelf: true,
+      );
+
+      expect(status?.visualState, ChatSendVisualState.sent);
+      expect(status?.isLoading, isFalse);
+    });
+
     test('resolveMessageStatusInfo returns personal read state', () {
       final readMessage = WKMsg()
         ..status = WKSendMsgResult.sendSuccess
