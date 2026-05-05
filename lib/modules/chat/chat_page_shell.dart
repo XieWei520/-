@@ -63,6 +63,7 @@ import '../../wukong_scan/scan_qr_code_bridge.dart';
 import '../../wukong_uikit/setting/setting_preferences.dart';
 import 'chat_composer_controller.dart';
 import 'chat_flame_message_runtime.dart';
+import 'chat_frame_jank_monitor.dart';
 import 'chat_file_opening.dart';
 import 'chat_conversation_extra_gateway.dart';
 import 'chat_action_definition.dart';
@@ -263,6 +264,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   bool _canClearPinnedMessages = false;
   List<_ResolvedPinnedMessage> _pinnedMessages =
       const <_ResolvedPinnedMessage>[];
+  ChatFrameJankMonitor? _frameJankMonitor;
 
   ChatSession get _chatSession =>
       ChatSession(channelId: widget.channelId, channelType: widget.channelType);
@@ -270,6 +272,8 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   @override
   void initState() {
     super.initState();
+    _frameJankMonitor = ref.read(chatFrameJankMonitorFactoryProvider)()
+      ..start();
     _canPinMessages = _supportsPinnedMessages();
     _bindConversationActivity();
     unawaited(_loadChannel());
@@ -699,6 +703,8 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
 
   @override
   void dispose() {
+    _frameJankMonitor?.stop();
+    _frameJankMonitor = null;
     _unbindConversationActivity();
     _remoteFlameCancelToken?.cancel();
     _remoteFlameCancelToken = null;
