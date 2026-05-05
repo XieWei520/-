@@ -251,7 +251,7 @@ String _readReceiptSection(String source) {
   }
   return source.substring(start, end);
 }
-` 
+``r
 
 Then add this test before the extension at the bottom:
 
