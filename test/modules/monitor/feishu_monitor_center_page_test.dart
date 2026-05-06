@@ -86,6 +86,45 @@ void main() {
     expect(find.text('有效期至：2026-05-06 18:00'), findsOneWidget);
   });
 
+  testWidgets('Feishu center aligns monitor action button sizes', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async => FeishuMonitorSnapshot.empty,
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async => const MonitorPairingCode(
+            code: 'ABCD-1234',
+            expiresAt: '2026-05-06 18:00',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final topNewRouteSize = tester.getSize(
+      find.byKey(const ValueKey('feishu-monitor-new-route')),
+    );
+    final topDownloadSize = tester.getSize(
+      find.byKey(const ValueKey('feishu-monitor-download-agent')),
+    );
+    final createPairingSize = tester.getSize(
+      find.byKey(const ValueKey('feishu-monitor-create-pairing')),
+    );
+    final onboardingDownloadSize = tester.getSize(
+      find.byKey(const ValueKey('feishu-monitor-onboarding-download-agent')),
+    );
+
+    expect(topNewRouteSize, equals(topDownloadSize));
+    expect(topNewRouteSize, equals(createPairingSize));
+    expect(topNewRouteSize, equals(onboardingDownloadSize));
+  });
+
   testWidgets('Feishu center creates route from dialog input', (tester) async {
     CreateFeishuMonitorRouteRequest? created;
 

@@ -15,6 +15,22 @@ typedef FeishuRouteCreator =
 typedef MonitorRouteAction = Future<void> Function(String routeId);
 typedef MonitorRouteCallback = void Function(String routeId);
 
+const Size _monitorActionButtonSize = Size(220, 48);
+
+final ButtonStyle _monitorFilledActionButtonStyle = FilledButton.styleFrom(
+  fixedSize: _monitorActionButtonSize,
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(WKRadius.lg),
+  ),
+);
+
+final ButtonStyle _monitorOutlinedActionButtonStyle = OutlinedButton.styleFrom(
+  fixedSize: _monitorActionButtonSize,
+  shape: RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(WKRadius.lg),
+  ),
+);
+
 class FeishuMonitorCenterPage extends StatefulWidget {
   FeishuMonitorCenterPage({
     super.key,
@@ -339,12 +355,14 @@ class _ActionRow extends StatelessWidget {
         FilledButton.icon(
           key: const ValueKey('feishu-monitor-new-route'),
           onPressed: onNewRoute,
+          style: _monitorFilledActionButtonStyle,
           icon: const Icon(Icons.add_rounded),
           label: const Text('新建飞书监控规则'),
         ),
         OutlinedButton.icon(
           key: const ValueKey('feishu-monitor-download-agent'),
           onPressed: onDownloadAgent,
+          style: _monitorOutlinedActionButtonStyle,
           icon: const Icon(Icons.download_rounded),
           label: const Text('下载 Windows Agent'),
         ),
@@ -389,10 +407,13 @@ class _AgentOnboardingCard extends StatelessWidget {
               FilledButton(
                 key: const ValueKey('feishu-monitor-create-pairing'),
                 onPressed: isCreating ? null : onCreatePairingCode,
+                style: _monitorFilledActionButtonStyle,
                 child: Text(isCreating ? '生成中...' : '生成配对码'),
               ),
               OutlinedButton(
+                key: const ValueKey('feishu-monitor-onboarding-download-agent'),
                 onPressed: onDownloadAgent,
+                style: _monitorOutlinedActionButtonStyle,
                 child: const Text('下载 Windows Agent'),
               ),
             ],
