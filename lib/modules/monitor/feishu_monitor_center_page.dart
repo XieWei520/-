@@ -150,6 +150,10 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
       if (!mounted) {
         return;
       }
+      setState(() {
+        _isRepairingAgent = false;
+        _pairingCode = null;
+      });
       _showSnackBar(result.message);
       await _refresh();
     } catch (error) {

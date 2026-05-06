@@ -239,7 +239,8 @@ void main() {
     expect(createdCodes, <String>['STALE-1', 'FRESH-2']);
     expect(bindRequest, isNotNull);
     expect(bindRequest!.pairingCode, 'FRESH-2');
-    expect(find.textContaining('FRESH-2'), findsOneWidget);
+    expect(find.textContaining('FRESH-2'), findsNothing);
+    expect(find.textContaining('Agent \u5df2\u7ed1\u5b9a\u5e76\u4e0a\u7ebf'), findsOneWidget);
   });
 
   testWidgets('Feishu center aligns monitor action button sizes', (
@@ -326,6 +327,69 @@ void main() {
     );
     expect(newRouteButton.onPressed, isNull);
     expect(find.textContaining('已进入重新配对模式'), findsOneWidget);
+  });
+
+  testWidgets('Feishu center exits re-pair mode after one-click bind succeeds', (
+    tester,
+  ) async {
+    var loadCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async {
+            loadCount++;
+            if (loadCount == 1) {
+              return _snapshotWithData;
+            }
+            return const FeishuMonitorSnapshot(
+              stats: MonitorStats.empty,
+              agents: <MonitorAgent>[
+                MonitorAgent(
+                  id: 'agent_1',
+                  deviceName: 'COLORFUL-PC',
+                  platform: 'windows',
+                  version: '0.1.0',
+                  status: MonitorAgentStatus.online,
+                  lastHeartbeatAt: '\u521a\u521a',
+                ),
+              ],
+              routes: <MonitorRoute>[],
+              logs: <MonitorLogEntry>[],
+            );
+          },
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async => const MonitorPairingCode(
+            code: 'FRESH-2',
+            expiresAt: '2026-05-06 18:05',
+          ),
+          onBindLocalAgent: (_) async =>
+              const LocalAgentBindResult(message: 'Agent 已绑定并上线'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('feishu-monitor-repair-agent')),
+    );
+    await tester.tap(find.byKey(const ValueKey('feishu-monitor-repair-agent')));
+    await tester.pumpAndSettle();
+    expect(find.text('重新配对 Windows Agent'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('feishu-monitor-one-click-bind')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(loadCount, 2);
+    expect(find.text('重新配对 Windows Agent'), findsNothing);
+    expect(find.text('Windows Agent'), findsOneWidget);
+    expect(find.text('COLORFUL-PC'), findsOneWidget);
   });
 
   testWidgets('Feishu center creates route from dialog input', (tester) async {
