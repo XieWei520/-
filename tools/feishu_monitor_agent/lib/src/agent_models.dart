@@ -156,6 +156,177 @@ class AgentConfig {
   }
 }
 
+enum BrowserLoginStatus {
+  loggedIn('logged_in'),
+  loginRequired('login_required'),
+  browserError('browser_error'),
+  unknown('unknown');
+
+  const BrowserLoginStatus(this.apiValue);
+
+  final String apiValue;
+
+  static BrowserLoginStatus parse(dynamic value) {
+    switch (_string(value).trim()) {
+      case 'logged_in':
+        return BrowserLoginStatus.loggedIn;
+      case 'login_required':
+        return BrowserLoginStatus.loginRequired;
+      case 'browser_error':
+        return BrowserLoginStatus.browserError;
+      default:
+        return BrowserLoginStatus.unknown;
+    }
+  }
+}
+
+class BrowserStatusReportRequest {
+  const BrowserStatusReportRequest({
+    required this.agentId,
+    required this.platform,
+    required this.browser,
+    required this.profileMode,
+    required this.loginStatus,
+    required this.observedAt,
+    required this.errorMessage,
+  });
+
+  final String agentId;
+  final String platform;
+  final String browser;
+  final String profileMode;
+  final BrowserLoginStatus loginStatus;
+  final String observedAt;
+  final String errorMessage;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'agent_id': agentId.trim(),
+    'platform': platform.trim(),
+    'browser': browser.trim(),
+    'profile_mode': profileMode.trim(),
+    'login_status': loginStatus.apiValue,
+    'observed_at': observedAt.trim(),
+    'error_message': errorMessage.trim(),
+  };
+
+  @override
+  String toString() {
+    return 'BrowserStatusReportRequest(agentId: $agentId, platform: $platform, browser: $browser, profileMode: $profileMode, loginStatus: ${loginStatus.apiValue}, observedAt: $observedAt, errorMessage: $errorMessage)';
+  }
+}
+
+class AgentMonitorRoute {
+  const AgentMonitorRoute({
+    required this.routeId,
+    required this.platform,
+    required this.connectorType,
+    required this.routeType,
+    required this.sourceChatName,
+    required this.destinationType,
+    required this.destinationGroupNo,
+    required this.destinationGroupName,
+    required this.includeText,
+    required this.includeLinks,
+    required this.includeImages,
+    required this.includeFiles,
+  });
+
+  final String routeId;
+  final String platform;
+  final String connectorType;
+  final String routeType;
+  final String sourceChatName;
+  final String destinationType;
+  final String destinationGroupNo;
+  final String destinationGroupName;
+  final bool includeText;
+  final bool includeLinks;
+  final bool includeImages;
+  final bool includeFiles;
+
+  factory AgentMonitorRoute.fromJson(Map<String, dynamic> json) {
+    final source = _map(json['source']);
+    final destination = _map(json['destination']);
+    final policy = _map(json['message_policy']);
+    return AgentMonitorRoute(
+      routeId: _string(json['route_id'] ?? json['id']),
+      platform: _string(json['platform'], fallback: 'feishu'),
+      connectorType: _string(json['connector_type']),
+      routeType: _string(json['route_type']),
+      sourceChatName: _string(source['chat_name'] ?? json['source_name']),
+      destinationType: _string(
+        destination['type'],
+        fallback: 'wukong_im_group',
+      ),
+      destinationGroupNo: _string(destination['group_no']),
+      destinationGroupName: _string(destination['group_name']),
+      includeText: _bool(policy['include_text'], fallback: true),
+      includeLinks: _bool(policy['include_links'], fallback: true),
+      includeImages: _bool(policy['include_images']),
+      includeFiles: _bool(policy['include_files']),
+    );
+  }
+}
+
+class ObservedMessageRequest {
+  const ObservedMessageRequest({
+    required this.agentId,
+    required this.routeId,
+    required this.sourcePlatform,
+    required this.sourceChatName,
+    required this.sourceMessageId,
+    required this.messageType,
+    required this.content,
+    required this.sourceCreatedAt,
+    required this.observedAt,
+  });
+
+  final String agentId;
+  final String routeId;
+  final String sourcePlatform;
+  final String sourceChatName;
+  final String sourceMessageId;
+  final String messageType;
+  final String content;
+  final String sourceCreatedAt;
+  final String observedAt;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'agent_id': agentId.trim(),
+    'route_id': routeId.trim(),
+    'source_platform': sourcePlatform.trim(),
+    'source_chat_name': sourceChatName.trim(),
+    'source_message_id': sourceMessageId.trim(),
+    'message_type': messageType.trim(),
+    'content': content.trim(),
+    'source_created_at': sourceCreatedAt.trim(),
+    'observed_at': observedAt.trim(),
+  };
+}
+
+class ObservedMessageResponse {
+  const ObservedMessageResponse({
+    required this.accepted,
+    required this.duplicate,
+    required this.forwardStatus,
+    required this.messageId,
+  });
+
+  final bool accepted;
+  final bool duplicate;
+  final String forwardStatus;
+  final String messageId;
+
+  factory ObservedMessageResponse.fromJson(Map<String, dynamic> json) {
+    return ObservedMessageResponse(
+      accepted: _bool(json['accepted']),
+      duplicate: _bool(json['duplicate']),
+      forwardStatus: _string(json['forward_status']),
+      messageId: _string(json['message_id']),
+    );
+  }
+}
+
 String _string(dynamic value, {String fallback = ''}) {
   if (value == null) {
     return fallback;
@@ -172,6 +343,33 @@ int _int(dynamic value, {int fallback = 0}) {
   }
   if (value is String) {
     return int.tryParse(value) ?? fallback;
+  }
+  return fallback;
+}
+
+Map<String, dynamic> _map(dynamic value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return Map<String, dynamic>.from(value);
+  }
+  return <String, dynamic>{};
+}
+
+bool _bool(dynamic value, {bool fallback = false}) {
+  if (value is bool) {
+    return value;
+  }
+  if (value is num) {
+    return value != 0;
+  }
+  final text = value?.toString().trim().toLowerCase() ?? '';
+  if (text == 'true' || text == '1') {
+    return true;
+  }
+  if (text == 'false' || text == '0') {
+    return false;
   }
   return fallback;
 }
