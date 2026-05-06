@@ -8,6 +8,20 @@ abstract class AgentApiLike {
     required HeartbeatRequest request,
   });
 
+  Future<List<AgentMonitorRoute>> fetchAssignedRoutes({
+    required String agentToken,
+  });
+
+  Future<void> reportBrowserStatus({
+    required String agentToken,
+    required BrowserStatusReportRequest request,
+  });
+
+  Future<ObservedMessageResponse> reportObservedMessage({
+    required String agentToken,
+    required ObservedMessageRequest request,
+  });
+
   void close();
 }
 

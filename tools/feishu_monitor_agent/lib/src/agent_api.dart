@@ -44,6 +44,76 @@ class AgentApi implements AgentApiLike {
     return HeartbeatResponse.fromJson(_dataObject(json));
   }
 
+  Future<List<AgentMonitorRoute>> fetchAssignedRoutes({
+    required String agentToken,
+  }) async {
+    final json = await _getJson(
+      '/v1/monitor/agents/me/routes',
+      bearerToken: agentToken,
+    );
+    final data = json['data'];
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map(
+            (item) =>
+                AgentMonitorRoute.fromJson(Map<String, dynamic>.from(item)),
+          )
+          .toList(growable: false);
+    }
+    return const <AgentMonitorRoute>[];
+  }
+
+  Future<void> reportBrowserStatus({
+    required String agentToken,
+    required BrowserStatusReportRequest request,
+  }) async {
+    await _postJson(
+      '/v1/monitor/agents/browser-status',
+      body: request.toJson(),
+      bearerToken: agentToken,
+    );
+  }
+
+  Future<ObservedMessageResponse> reportObservedMessage({
+    required String agentToken,
+    required ObservedMessageRequest request,
+  }) async {
+    final json = await _postJson(
+      '/v1/monitor/messages/observed',
+      body: request.toJson(),
+      bearerToken: agentToken,
+    );
+    return ObservedMessageResponse.fromJson(_dataObject(json));
+  }
+
+  Future<Map<String, dynamic>> _getJson(
+    String path, {
+    String? bearerToken,
+  }) async {
+    final uri = _serverUri.resolve(path);
+    final request = await _client.getUrl(uri);
+    request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+    if (bearerToken != null && bearerToken.trim().isNotEmpty) {
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer ${bearerToken.trim()}',
+      );
+    }
+    final response = await request.close();
+    final responseBody = await utf8.decoder.bind(response).join();
+    final decoded = responseBody.trim().isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(responseBody);
+    final json = decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : <String, dynamic>{};
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _exceptionFromJson(response.statusCode, json);
+    }
+    return json;
+  }
+
   Future<Map<String, dynamic>> _postJson(
     String path, {
     required Map<String, dynamic> body,

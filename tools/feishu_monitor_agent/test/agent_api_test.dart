@@ -68,6 +68,71 @@ void main() {
       api.close();
     });
 
+    test('fetchAssignedRoutes sends bearer token and parses routes', () async {
+      final api = AgentApi(serverUrl: serverUri.toString());
+
+      final routes = await api.fetchAssignedRoutes(agentToken: 'secret-token');
+
+      expect(routes, hasLength(1));
+      expect(routes.single.routeId, 'route_1');
+      expect(routes.single.sourceChatName, '\u98de\u4e66\u65b0\u95fb\u7fa4');
+      expect(requests.single.method, 'GET');
+      expect(requests.single.path, '/v1/monitor/agents/me/routes');
+      expect(requests.single.authorization, 'Bearer secret-token');
+      api.close();
+    });
+
+    test(
+      'reportBrowserStatus posts status payload with bearer token',
+      () async {
+        final api = AgentApi(serverUrl: serverUri.toString());
+
+        await api.reportBrowserStatus(
+          agentToken: 'secret-token',
+          request: const BrowserStatusReportRequest(
+            agentId: 'agent_1',
+            platform: 'feishu',
+            browser: 'chromium',
+            profileMode: 'isolated_persistent',
+            loginStatus: BrowserLoginStatus.loggedIn,
+            observedAt: '2026-05-07T10:00:00Z',
+            errorMessage: '',
+          ),
+        );
+
+        expect(requests.single.method, 'POST');
+        expect(requests.single.path, '/v1/monitor/agents/browser-status');
+        expect(requests.single.authorization, 'Bearer secret-token');
+        expect(requests.single.body, containsPair('login_status', 'logged_in'));
+        api.close();
+      },
+    );
+
+    test('reportObservedMessage parses duplicate and forward status', () async {
+      final api = AgentApi(serverUrl: serverUri.toString());
+
+      final response = await api.reportObservedMessage(
+        agentToken: 'secret-token',
+        request: const ObservedMessageRequest(
+          agentId: 'agent_1',
+          routeId: 'route_1',
+          sourcePlatform: 'feishu',
+          sourceChatName: '\u98de\u4e66\u65b0\u95fb\u7fa4',
+          sourceMessageId: 'hash_1',
+          messageType: 'text',
+          content: '\u65b0\u95fb\u6b63\u6587',
+          sourceCreatedAt: '2026-05-07T10:00:00Z',
+          observedAt: '2026-05-07T10:00:05Z',
+        ),
+      );
+
+      expect(response.accepted, isTrue);
+      expect(response.duplicate, isFalse);
+      expect(response.forwardStatus, 'forwarded');
+      expect(requests.single.path, '/v1/monitor/messages/observed');
+      api.close();
+    });
+
     test('non-2xx response throws sanitized AgentApiException', () async {
       final api = AgentApi(serverUrl: serverUri.toString());
 
@@ -147,6 +212,50 @@ Future<void> _serve(HttpServer server, List<_CapturedRequest> requests) async {
             'status': 'online',
             'next_heartbeat_after_seconds': 20,
             'server_time': '2026-05-06T10:15:20Z',
+          },
+        }),
+      );
+    } else if (request.uri.path == '/v1/monitor/agents/me/routes') {
+      request.response.write(
+        jsonEncode(<String, dynamic>{
+          'data': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'route_id': 'route_1',
+              'platform': 'feishu',
+              'connector_type': 'feishu_web_group',
+              'route_type': 'feishu_web_group_to_wukong_im_group',
+              'source': <String, dynamic>{
+                'chat_name': '\u98de\u4e66\u65b0\u95fb\u7fa4',
+              },
+              'destination': <String, dynamic>{
+                'type': 'wukong_im_group',
+                'group_no': 'group_1',
+                'group_name': '\u609f\u7a7a IM \u65b0\u95fb\u7fa4',
+              },
+              'message_policy': <String, dynamic>{
+                'include_text': true,
+                'include_links': true,
+                'include_images': false,
+                'include_files': false,
+              },
+            },
+          ],
+        }),
+      );
+    } else if (request.uri.path == '/v1/monitor/agents/browser-status') {
+      request.response.write(
+        jsonEncode(<String, dynamic>{
+          'data': <String, dynamic>{'ok': true},
+        }),
+      );
+    } else if (request.uri.path == '/v1/monitor/messages/observed') {
+      request.response.write(
+        jsonEncode(<String, dynamic>{
+          'data': <String, dynamic>{
+            'accepted': true,
+            'duplicate': false,
+            'forward_status': 'forwarded',
+            'message_id': 'message_1',
           },
         }),
       );
