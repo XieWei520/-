@@ -20,7 +20,7 @@ void main() {
         isA<LocalAgentBindException>().having(
           (error) => error.message,
           'message',
-          contains('Windows 桌面端'),
+          contains('请在 Windows 桌面端使用一键绑定'),
         ),
       ),
     );
@@ -44,9 +44,7 @@ void main() {
           return const LocalAgentProcessResult(
             exitCode: 7,
             stdout: '',
-            stderr:
-                'Authorization: '
-                'Bearer secret-token-1234567890 failed',
+            stderr: 'Authorization: Bearer secret-token-1234567890 failed',
           );
         },
       );
@@ -167,4 +165,101 @@ void main() {
       expect(calls[1], containsAll(<String>['run', '--once']));
     },
   );
+
+  test('openBrowserLogin maps to browser-login command', () async {
+    final calls = <List<String>>[];
+    final binder = MonitorLocalAgentBinder(
+      isWindows: () => true,
+      runProcess: (executable, arguments) async {
+        calls.add(arguments);
+        return const LocalAgentProcessResult(
+          exitCode: 0,
+          stdout: '已打开 Chromium 飞书登录窗口，请扫码登录。',
+          stderr: '',
+        );
+      },
+    );
+
+    final result = await binder.openBrowserLogin(storeDir: r'C:\Temp\agent');
+
+    expect(result.message, contains('Chromium 飞书登录窗口'));
+    expect(calls.single, containsAll(<String>[
+      'browser-login',
+      '--store-dir',
+      r'C:\Temp\agent',
+    ]));
+  });
+
+  test('checkBrowserStatus maps to browser-status command', () async {
+    final calls = <List<String>>[];
+    final binder = MonitorLocalAgentBinder(
+      isWindows: () => true,
+      runProcess: (executable, arguments) async {
+        calls.add(arguments);
+        return const LocalAgentProcessResult(
+          exitCode: 0,
+          stdout: '飞书已登录，浏览器状态已同步。',
+          stderr: '',
+        );
+      },
+    );
+
+    final result = await binder.checkBrowserStatus(storeDir: r'C:\Temp\agent');
+
+    expect(result.message, contains('飞书已登录'));
+    expect(calls.single, containsAll(<String>[
+      'browser-status',
+      '--store-dir',
+      r'C:\Temp\agent',
+    ]));
+  });
+
+  test('clearBrowserProfile maps to clear-browser-profile command', () async {
+    final calls = <List<String>>[];
+    final binder = MonitorLocalAgentBinder(
+      isWindows: () => true,
+      runProcess: (executable, arguments) async {
+        calls.add(arguments);
+        return const LocalAgentProcessResult(
+          exitCode: 0,
+          stdout: '已清除飞书登录状态，请重新打开飞书登录并扫码。',
+          stderr: '',
+        );
+      },
+    );
+
+    final result = await binder.clearBrowserProfile(storeDir: r'C:\Temp\agent');
+
+    expect(result.message, contains('已清除飞书登录状态'));
+    expect(calls.single, containsAll(<String>[
+      'clear-browser-profile',
+      '--store-dir',
+      r'C:\Temp\agent',
+    ]));
+  });
+
+  test('listenOnce maps to listen --once command', () async {
+    final calls = <List<String>>[];
+    final binder = MonitorLocalAgentBinder(
+      isWindows: () => true,
+      runProcess: (executable, arguments) async {
+        calls.add(arguments);
+        return const LocalAgentProcessResult(
+          exitCode: 0,
+          stdout: '监听完成：规则 1 条，观察 1 条，上报 1 条。',
+          stderr: '',
+        );
+      },
+    );
+
+    final result = await binder.listenOnce(storeDir: r'C:\Temp\agent');
+
+    expect(result.message, contains('监听完成'));
+    expect(calls.single, containsAll(<String>[
+      'listen',
+      '--once',
+      '--store-dir',
+      r'C:\Temp\agent',
+    ]));
+  });
 }

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 class LocalAgentBindRequest {
@@ -19,7 +18,17 @@ class LocalAgentBindResult {
   final String message;
 }
 
-enum LocalAgentBindPhase { platform, pair, heartbeat }
+typedef LocalAgentActionResult = LocalAgentBindResult;
+
+enum LocalAgentBindPhase {
+  platform,
+  pair,
+  heartbeat,
+  browserLogin,
+  browserStatus,
+  clearBrowserProfile,
+  listen,
+}
 
 class LocalAgentBindException implements Exception {
   const LocalAgentBindException(this.message, {required this.phase});
@@ -64,6 +73,93 @@ class MonitorLocalAgentBinder {
   Future<LocalAgentBindResult> bindAndHeartbeat(
     LocalAgentBindRequest request,
   ) async {
+    final storeDir = _normalizeStoreDir(request.storeDir);
+    await _runAgentAction(
+      phase: LocalAgentBindPhase.pair,
+      command: 'pair',
+      arguments: <String>[
+        '--server',
+        request.serverUrl,
+        '--code',
+        request.pairingCode,
+      ],
+      storeDir: storeDir,
+    );
+    await _runAgentAction(
+      phase: LocalAgentBindPhase.heartbeat,
+      command: 'run',
+      arguments: const <String>['--once'],
+      storeDir: storeDir,
+    );
+    return const LocalAgentBindResult(message: 'Agent 已绑定并上线');
+  }
+
+  Future<LocalAgentActionResult> openBrowserLogin({String? storeDir}) {
+    return _runCommandAction(
+      phase: LocalAgentBindPhase.browserLogin,
+      command: 'browser-login',
+      arguments: const <String>[],
+      storeDir: storeDir,
+      fallbackMessage: '已打开 Chromium 飞书登录窗口，请扫码登录。',
+    );
+  }
+
+  Future<LocalAgentActionResult> checkBrowserStatus({String? storeDir}) {
+    return _runCommandAction(
+      phase: LocalAgentBindPhase.browserStatus,
+      command: 'browser-status',
+      arguments: const <String>[],
+      storeDir: storeDir,
+      fallbackMessage: '飞书浏览器状态已同步。',
+    );
+  }
+
+  Future<LocalAgentActionResult> clearBrowserProfile({String? storeDir}) {
+    return _runCommandAction(
+      phase: LocalAgentBindPhase.clearBrowserProfile,
+      command: 'clear-browser-profile',
+      arguments: const <String>[],
+      storeDir: storeDir,
+      fallbackMessage: '已清除飞书登录状态，请重新打开飞书登录并扫码。',
+    );
+  }
+
+  Future<LocalAgentActionResult> listenOnce({String? storeDir}) {
+    return _runCommandAction(
+      phase: LocalAgentBindPhase.listen,
+      command: 'listen',
+      arguments: const <String>['--once'],
+      storeDir: storeDir,
+      fallbackMessage: '监听完成。',
+    );
+  }
+
+  Future<LocalAgentActionResult> _runCommandAction({
+    required LocalAgentBindPhase phase,
+    required String command,
+    required List<String> arguments,
+    required String? storeDir,
+    required String fallbackMessage,
+  }) async {
+    final result = await _runAgentAction(
+      phase: phase,
+      command: command,
+      arguments: arguments,
+      storeDir: storeDir,
+    );
+    return LocalAgentBindResult(
+      message: _firstNonEmpty(
+        <String>[result.stdout, result.stderr, fallbackMessage],
+      ),
+    );
+  }
+
+  Future<LocalAgentProcessResult> _runAgentAction({
+    required LocalAgentBindPhase phase,
+    required String command,
+    required List<String> arguments,
+    required String? storeDir,
+  }) async {
     if (!_isWindows()) {
       throw const LocalAgentBindException(
         '请在 Windows 桌面端使用一键绑定。',
@@ -71,41 +167,28 @@ class MonitorLocalAgentBinder {
       );
     }
 
-    final storeDir = request.storeDir ?? _defaultStoreDir();
-    final pair = await _runProcess('dart', <String>[
+    final effectiveStoreDir = _normalizeStoreDir(storeDir);
+    final result = await _runProcess('dart', <String>[
       'run',
       'bin/feishu_monitor_agent.dart',
-      'pair',
-      '--server',
-      request.serverUrl,
-      '--code',
-      request.pairingCode,
+      command,
+      ...arguments,
       '--store-dir',
-      storeDir,
+      effectiveStoreDir,
     ]);
-    if (pair.exitCode != 0) {
+    final stdout = _sanitizeOutput(result.stdout);
+    final stderr = _sanitizeOutput(result.stderr);
+    if (result.exitCode != 0) {
       throw LocalAgentBindException(
-        'Agent 绑定失败：${_friendlyPairError(pair.stderr.isNotEmpty ? pair.stderr : pair.stdout)}',
-        phase: LocalAgentBindPhase.pair,
+        _actionFailureMessage(phase, stdout, stderr),
+        phase: phase,
       );
     }
-
-    final heartbeat = await _runProcess('dart', <String>[
-      'run',
-      'bin/feishu_monitor_agent.dart',
-      'run',
-      '--once',
-      '--store-dir',
-      storeDir,
-    ]);
-    if (heartbeat.exitCode != 0) {
-      throw LocalAgentBindException(
-        'Agent 心跳失败：${_sanitizeOutput(heartbeat.stderr.isNotEmpty ? heartbeat.stderr : heartbeat.stdout)}',
-        phase: LocalAgentBindPhase.heartbeat,
-      );
-    }
-
-    return const LocalAgentBindResult(message: 'Agent 已绑定并上线');
+    return LocalAgentProcessResult(
+      exitCode: result.exitCode,
+      stdout: stdout,
+      stderr: stderr,
+    );
   }
 
   static Future<LocalAgentProcessResult> _defaultRunProcess(
@@ -125,9 +208,18 @@ class MonitorLocalAgentBinder {
     );
   }
 
+  static String _normalizeStoreDir(String? storeDir) {
+    final trimmed = storeDir?.trim() ?? '';
+    if (trimmed.isNotEmpty) {
+      return trimmed;
+    }
+    return _defaultStoreDir();
+  }
+
   static String _agentWorkingDirectory() {
     final executableDir = File(Platform.resolvedExecutable).parent;
     final candidates = <Directory>[];
+
     void addAncestors(Directory start) {
       var current = start;
       for (var depth = 0; depth < 8; depth++) {
@@ -171,18 +263,42 @@ class MonitorLocalAgentBinder {
     return '.feishu_monitor_agent';
   }
 
+  static String _actionFailureMessage(
+    LocalAgentBindPhase phase,
+    String stdout,
+    String stderr,
+  ) {
+    final output = _firstNonEmpty(<String>[stderr, stdout]);
+    switch (phase) {
+      case LocalAgentBindPhase.pair:
+        return 'Agent 绑定失败：${_friendlyPairError(output)}';
+      case LocalAgentBindPhase.heartbeat:
+        return 'Agent 心跳失败：$output';
+      case LocalAgentBindPhase.browserLogin:
+        return 'Chromium 登录启动失败：$output';
+      case LocalAgentBindPhase.browserStatus:
+        return '浏览器状态检查失败：$output';
+      case LocalAgentBindPhase.clearBrowserProfile:
+        return '清除飞书登录状态失败：$output';
+      case LocalAgentBindPhase.listen:
+        return '监听失败：$output';
+      case LocalAgentBindPhase.platform:
+        return '请在 Windows 桌面端使用一键绑定。';
+    }
+  }
+
   static String _friendlyPairError(String value) {
     final sanitized = _sanitizeOutput(value);
     final lower = sanitized.toLowerCase();
     if (lower.contains('pairing_code_used')) {
-      return '\u914d\u5bf9\u7801\u5df2\u88ab\u4f7f\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u914d\u5bf9\u7801\u540e\u518d\u7ed1\u5b9a\u3002';
+      return '配对码已被使用，请重新生成配对码后再绑定。';
     }
     if (lower.contains('pairing_code_expired')) {
-      return '\u914d\u5bf9\u7801\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u914d\u5bf9\u7801\u540e\u518d\u7ed1\u5b9a\u3002';
+      return '配对码已过期，请重新生成配对码后再绑定。';
     }
     if (lower.contains('pairing_code_not_found') ||
         lower.contains('invalid_pairing_code')) {
-      return '\u914d\u5bf9\u7801\u65e0\u6548\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u914d\u5bf9\u7801\u540e\u518d\u7ed1\u5b9a\u3002';
+      return '配对码无效，请重新生成配对码后再绑定。';
     }
     return sanitized;
   }
@@ -208,8 +324,18 @@ class MonitorLocalAgentBinder {
         )
         .trim();
     if (sanitized.isEmpty) {
-      return '\u8bf7\u68c0\u67e5 Agent \u662f\u5426\u5b58\u5728\u3001\u914d\u5bf9\u7801\u662f\u5426\u8fc7\u671f\u4ee5\u53ca\u7f51\u7edc\u662f\u5426\u6b63\u5e38\u3002';
+      return '请检查 Agent 是否存在、配对码是否过期以及网络是否正常。';
     }
     return sanitized;
+  }
+
+  static String _firstNonEmpty(List<String> values) {
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isNotEmpty) {
+        return trimmed;
+      }
+    }
+    return '';
   }
 }
