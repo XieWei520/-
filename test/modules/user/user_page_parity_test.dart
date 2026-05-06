@@ -487,6 +487,11 @@ void main() {
       sid: 'vip_management',
       pageFinder: find.byType(VipManagementPage),
       navigatorKey: navigatorKey,
+      afterOpen: () {
+        expect(find.text('飞书信息监控中心'), findsOneWidget);
+        expect(find.text('钉钉信息监控中心'), findsOneWidget);
+        expect(find.text('小鹅通信息监控中心'), findsOneWidget);
+      },
     );
   });
 
@@ -740,6 +745,7 @@ Future<void> _tapMenuAndExpectPage(
   required String sid,
   required Finder pageFinder,
   required GlobalKey<NavigatorState> navigatorKey,
+  VoidCallback? afterOpen,
 }) async {
   final rowFinder = find.byKey(ValueKey<String>('user_menu_$sid'));
   final tapTargetFinder = find.descendant(
@@ -755,6 +761,7 @@ Future<void> _tapMenuAndExpectPage(
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 350));
   expect(pageFinder, findsOneWidget);
+  afterOpen?.call();
 
   navigatorKey.currentState!.pop();
   await tester.pump();

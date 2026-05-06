@@ -43,10 +43,35 @@ object DeviceBadgeUtils {
 
     private fun isOppo(): Boolean = check(ROM_OPPO)
 
+    private fun mightUseSupportedBadgeProvider(): Boolean {
+        val manufacturer = Build.MANUFACTURER.uppercase()
+        val brand = Build.BRAND.uppercase()
+        val display = Build.DISPLAY.uppercase()
+        return manufacturer.contains("HUAWEI") ||
+            manufacturer.contains("HONOR") ||
+            manufacturer.contains(ROM_VIVO) ||
+            manufacturer.contains(ROM_OPPO) ||
+            manufacturer.contains("REALME") ||
+            manufacturer.contains("ONEPLUS") ||
+            brand.contains("HUAWEI") ||
+            brand.contains("HONOR") ||
+            brand.contains(ROM_VIVO) ||
+            brand.contains(ROM_OPPO) ||
+            brand.contains("REALME") ||
+            brand.contains("ONEPLUS") ||
+            display.contains(ROM_FLYME)
+    }
+
     private fun check(rom: String): Boolean {
         val cachedName = romName
         if (cachedName != null) {
             return cachedName == rom
+        }
+
+        if (!mightUseSupportedBadgeProvider()) {
+            romVersion = Build.UNKNOWN
+            romName = Build.MANUFACTURER.uppercase()
+            return rom == ROM_QIKU && romName == "360"
         }
 
         romVersion = getProp(KEY_VERSION_MIUI)

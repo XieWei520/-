@@ -15,6 +15,10 @@ import 'notification/notification_helper.dart';
 import 'notification_permission_prompt_bridge.dart';
 
 const int _maxPendingOpenedEvents = 16;
+const bool _enableFcmPush = bool.fromEnvironment(
+  'WK_ENABLE_FCM_PUSH',
+  defaultValue: false,
+);
 
 /// Push service types
 enum PushType {
@@ -31,6 +35,7 @@ enum PushType {
 typedef PushHandlerSelector = Future<PushHandler?> Function();
 typedef NotificationInitializer =
     Future<void> Function({void Function(String payload)? onNotificationTap});
+typedef LocalNotificationPermissionRequester = Future<bool> Function();
 typedef NotificationPermissionDeniedCallback = Future<void> Function();
 typedef PushSupportChecker = bool Function();
 typedef ForegroundNotificationPresenter =
@@ -44,6 +49,7 @@ class PushService {
     ApiClient? client,
     PushHandlerSelector? handlerSelector,
     NotificationInitializer? initializeNotifications,
+    LocalNotificationPermissionRequester? requestLocalNotificationPermission,
     NotificationPermissionDeniedCallback? onPermissionDenied,
     PushSupportChecker? isPushSupported,
     ForegroundNotificationPresenter? showForegroundNotification,
@@ -51,6 +57,9 @@ class PushService {
        _handlerSelector = handlerSelector ?? _defaultSelectHandler,
        _initializeNotifications =
            initializeNotifications ?? NotificationHelper.instance.initialize,
+       _requestLocalNotificationPermission =
+           requestLocalNotificationPermission ??
+           _defaultRequestLocalNotificationPermission,
        _onPermissionDenied = onPermissionDenied ?? _defaultOnPermissionDenied,
        _isPushSupported = isPushSupported ?? _defaultIsPushSupported,
        _foregroundNotificationPresenter =
@@ -61,6 +70,8 @@ class PushService {
   final ApiClient _client;
   final PushHandlerSelector _handlerSelector;
   final NotificationInitializer _initializeNotifications;
+  final LocalNotificationPermissionRequester
+  _requestLocalNotificationPermission;
   final NotificationPermissionDeniedCallback _onPermissionDenied;
   final PushSupportChecker _isPushSupported;
   final ForegroundNotificationPresenter _foregroundNotificationPresenter;
@@ -109,8 +120,9 @@ class PushService {
 
     final handler = await _handlerSelector();
     if (handler == null) {
+      await _ensureAndroidLocalNotificationPermission();
       debugPrint(
-        'PushService: no compatible push handler detected; app is currently configured for FCM only, vendor handlers pending: HMS, MI, OPPO, VIVO.',
+        'PushService: remote push is disabled; Android message alerts use local IM notifications.',
       );
       return;
     }
@@ -146,11 +158,18 @@ class PushService {
   }
 
   static Future<PushHandler?> _defaultSelectHandler() async {
+    if (!_enableFcmPush) {
+      return null;
+    }
     final handler = FcmHandler();
     if (await handler.isAvailable()) {
       return handler;
     }
     return null;
+  }
+
+  static Future<bool> _defaultRequestLocalNotificationPermission() {
+    return NotificationHelper.instance.requestPermissions();
   }
 
   static Future<void> _defaultOnPermissionDenied() async {
@@ -163,6 +182,20 @@ class PushService {
     }
     return defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  Future<void> _ensureAndroidLocalNotificationPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    final permissionGranted = await _requestLocalNotificationPermission();
+    if (permissionGranted) {
+      return;
+    }
+    debugPrint(
+      'PushService: Android notification permission denied for local message alerts.',
+    );
+    await _onPermissionDenied();
   }
 
   static Future<void> _defaultShowForegroundNotification(

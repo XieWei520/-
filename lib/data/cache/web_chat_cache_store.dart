@@ -5,6 +5,7 @@ abstract interface class WebChatCacheStore {
     required String channelId,
     required int channelType,
     required int limit,
+    String uid = '',
     int beforeOrderSeq = 0,
     int aroundOrderSeq = 0,
   });
@@ -13,6 +14,7 @@ abstract interface class WebChatCacheStore {
     required String channelId,
     required int channelType,
     required List<WKMsg> messages,
+    String uid = '',
   });
 
   Future<void> clearUser({required String uid});

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../core/config/app_config.dart';
 import 'app_display_preferences.dart';
@@ -36,6 +37,8 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
   late final BrowserNotificationClickBridge _browserNotificationClickBridge;
   late final NotificationPermissionPromptBridge
   _notificationPermissionPromptBridge;
+  GoRouter? _boundRouter;
+  bool _callCoordinatorRunning = false;
   bool _flushPendingScheduled = false;
 
   @override
@@ -69,6 +72,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       if (!next.isLoggedIn) {
         _deviceBadgeSyncBridge.reset();
       }
+      _syncCallCoordinator(next.isLoggedIn);
       _scheduleFlushPending();
     });
     _badgeSubscription = ref.listenManual<HomeBadgeSnapshot>(
@@ -81,12 +85,49 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
     _scheduleFlushPending();
   }
 
+  void _bindRouterSideEffects(GoRouter router) {
+    if (identical(_boundRouter, router)) {
+      return;
+    }
+    _boundRouter = router;
+    final navigatorKey = router.routerDelegate.navigatorKey;
+    ScanQrCodeBridge.instance
+      ..ensureRegistered()
+      ..bindNavigator(navigatorKey);
+    _notificationPermissionPromptBridge.bindNavigator(navigatorKey);
+    if (_callCoordinatorRunning) {
+      CallCoordinator.instance.start(navigatorKey);
+    }
+  }
+
+  void _syncCallCoordinator(bool isLoggedIn) {
+    final router = _boundRouter;
+    if (isLoggedIn) {
+      if (router == null) {
+        return;
+      }
+      if (!_callCoordinatorRunning) {
+        CallCoordinator.instance.start(router.routerDelegate.navigatorKey);
+        _callCoordinatorRunning = true;
+      }
+      return;
+    }
+    if (_callCoordinatorRunning) {
+      CallCoordinator.instance.stop();
+      _callCoordinatorRunning = false;
+    }
+  }
+
   @override
   void dispose() {
     _badgeSubscription.close();
     _authSubscription.close();
     unawaited(_browserNotificationClickBridge.dispose());
     unawaited(_pushRouteBridge.dispose());
+    if (_callCoordinatorRunning) {
+      CallCoordinator.instance.stop();
+      _callCoordinatorRunning = false;
+    }
     super.dispose();
   }
 
@@ -108,18 +149,8 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final authState = ref.watch(authProvider);
-    ScanQrCodeBridge.instance
-      ..ensureRegistered()
-      ..bindNavigator(router.routerDelegate.navigatorKey);
-    _notificationPermissionPromptBridge.bindNavigator(
-      router.routerDelegate.navigatorKey,
-    );
-
-    if (authState.isLoggedIn) {
-      CallCoordinator.instance.start(router.routerDelegate.navigatorKey);
-    } else {
-      CallCoordinator.instance.stop();
-    }
+    _bindRouterSideEffects(router);
+    _syncCallCoordinator(authState.isLoggedIn);
 
     return ValueListenableBuilder<int>(
       valueListenable: WKSettingPreferences.appearanceChanges,

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:wukongimfluttersdk/type/const.dart';
 
+import '../../widgets/message_bubble.dart';
 import '../motion/chat_motion.dart';
 
 /// Animated wrapper for new messages sliding into view from the bottom.
@@ -32,14 +34,20 @@ class MessageSlideInAnimation extends StatelessWidget {
 /// Animated send status indicator with scale-in for success check mark
 /// and shake for failure.
 class SendStatusIndicator extends StatefulWidget {
-  const SendStatusIndicator({
+  const SendStatusIndicator({super.key, required int status, this.size = 16.0})
+    : state = status == WKSendMsgResult.sendFail
+          ? ChatSendVisualState.failed
+          : status == WKSendMsgResult.sendLoading
+          ? ChatSendVisualState.sending
+          : ChatSendVisualState.sent;
+
+  const SendStatusIndicator.visual({
     super.key,
-    required this.status,
+    required this.state,
     this.size = 16.0,
   });
 
-  /// 0=sending, 1=success, 2=failed
-  final int status;
+  final ChatSendVisualState state;
   final double size;
 
   @override
@@ -51,16 +59,25 @@ class _SendStatusIndicatorState extends State<SendStatusIndicator>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _shakeAnimation;
-  int _previousStatus = 0;
+  ChatSendVisualState _previousState = ChatSendVisualState.sending;
 
   @override
   void initState() {
     super.initState();
-    _previousStatus = widget.status;
+    _previousState = widget.state;
     _controller = AnimationController(
       vsync: this,
       duration: ChatMotionDurations.statusChange.value,
     );
+    switch (widget.state) {
+      case ChatSendVisualState.sent:
+      case ChatSendVisualState.delivered:
+      case ChatSendVisualState.read:
+        _controller.value = 1.0;
+      case ChatSendVisualState.sending:
+      case ChatSendVisualState.failed:
+        break;
+    }
     _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: ChatMotionCurves.spring),
     );
@@ -72,8 +89,8 @@ class _SendStatusIndicatorState extends State<SendStatusIndicator>
   @override
   void didUpdateWidget(SendStatusIndicator oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.status != widget.status && widget.status != _previousStatus) {
-      _previousStatus = widget.status;
+    if (oldWidget.state != widget.state && widget.state != _previousState) {
+      _previousState = widget.state;
       _controller.forward(from: 0.0);
     }
   }
@@ -86,8 +103,8 @@ class _SendStatusIndicatorState extends State<SendStatusIndicator>
 
   @override
   Widget build(BuildContext context) {
-    switch (widget.status) {
-      case 0: // Sending
+    switch (widget.state) {
+      case ChatSendVisualState.sending:
         return SizedBox(
           width: widget.size,
           height: widget.size,
@@ -98,16 +115,36 @@ class _SendStatusIndicatorState extends State<SendStatusIndicator>
             ),
           ),
         );
-      case 1: // Success
+      case ChatSendVisualState.sent:
         return ScaleTransition(
           scale: _scaleAnimation,
           child: Icon(
-            Icons.check_circle_outline,
+            Icons.check_rounded,
             size: widget.size,
-            color: Colors.green.shade400,
+            color: const Color(0xFF677487),
           ),
         );
-      case 2: // Failed
+      case ChatSendVisualState.delivered:
+        return ScaleTransition(
+          scale: _scaleAnimation,
+          child: Icon(
+            Icons.done_all_rounded,
+            key: const ValueKey<String>('send-status-delivered'),
+            size: widget.size,
+            color: const Color(0xFF677487),
+          ),
+        );
+      case ChatSendVisualState.read:
+        return ScaleTransition(
+          scale: _scaleAnimation,
+          child: Icon(
+            Icons.done_all_rounded,
+            key: const ValueKey<String>('send-status-read'),
+            size: widget.size,
+            color: const Color(0xFF2196F3),
+          ),
+        );
+      case ChatSendVisualState.failed:
         return AnimatedBuilder(
           animation: _shakeAnimation,
           builder: (context, child) {
@@ -119,12 +156,11 @@ class _SendStatusIndicatorState extends State<SendStatusIndicator>
           },
           child: Icon(
             Icons.error_outline,
+            key: const ValueKey<String>('send-status-failed'),
             size: widget.size,
             color: Colors.red.shade400,
           ),
         );
-      default:
-        return SizedBox(width: widget.size, height: widget.size);
     }
   }
 }

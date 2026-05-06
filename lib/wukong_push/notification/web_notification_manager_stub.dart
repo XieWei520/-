@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
+
+import 'message_alert_plan.dart';
+
 class WebNotificationManager {
   WebNotificationManager._internal();
 
@@ -35,8 +39,8 @@ class WebNotificationManager {
   void stopTitleBlink() {}
 
   Future<void> showNewMessageAlert({
-    required String title,
-    required String body,
+    required MessageAlertPlan plan,
+    required AppLifecycleState lifecycleState,
   }) async {}
 
   Future<void> dispose() async {}

@@ -152,7 +152,7 @@ void main() {
         platform: TargetPlatform.android,
         isWeb: false,
       ),
-      900,
+      600,
     );
     expect(
       chatListCacheExtent(
@@ -160,7 +160,7 @@ void main() {
         platform: TargetPlatform.android,
         isWeb: false,
       ),
-      1200,
+      900,
     );
     expect(
       chatListCacheExtent(

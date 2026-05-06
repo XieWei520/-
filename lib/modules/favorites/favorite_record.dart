@@ -186,7 +186,7 @@ class FavoriteRecord {
           'time',
           'timeTrad',
         ]);
-        return seconds > 0 ? '语音 ${seconds}"' : '语音';
+        return seconds > 0 ? '语音 $seconds"' : '语音';
       case 4:
         return _firstNonEmpty(payload, const ['title', 'name']).ifEmpty('视频');
       case 5:

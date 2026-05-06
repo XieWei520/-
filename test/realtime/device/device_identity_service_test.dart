@@ -1,11 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wukong_im_app/core/config/im_config.dart';
 import 'package:wukong_im_app/core/constants/app_constants.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/realtime/device/device_identity.dart';
 import 'package:wukong_im_app/realtime/device/device_identity_service.dart';
 import 'package:wukong_im_app/realtime/device/device_store.dart';
+import 'package:wukong_im_app/service/api/api_client.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -173,6 +176,54 @@ void main() {
       expect(persisted.deviceSessionId, 'session_new');
     },
   );
+
+  test('api device bind payload carries the current IM device flag', () async {
+    await StorageUtils.setToken('token_bind');
+    final adapter = _RecordingDeviceBindAdapter();
+    ApiClient.instance.dio.httpClientAdapter = adapter;
+
+    final session = await ApiDeviceBindClient().bindDeviceSession(
+      identity: const DeviceIdentity(
+        deviceId: 'device_bind_01',
+        deviceInstallId: 'install_bind_01',
+        deviceSessionId: '',
+        bindVersion: 6,
+        userId: 'u_bind',
+        deviceName: 'InfoEquity Windows',
+        deviceModel: 'Windows',
+      ),
+      bindVersion: 7,
+    );
+
+    expect(session.deviceSessionId, 'session_bind_01');
+    expect(adapter.lastData?['device_flag'], IMConfig.currentDeviceFlag);
+  });
+}
+
+class _RecordingDeviceBindAdapter implements HttpClientAdapter {
+  Map<String, dynamic>? lastData;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final data = options.data;
+    if (data is Map) {
+      lastData = Map<String, dynamic>.from(data);
+    }
+    return ResponseBody.fromString(
+      '{"device_session_id":"session_bind_01","bind_version":7}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: <String>['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 class _DelayedEmptyDeviceStore extends DeviceStore {

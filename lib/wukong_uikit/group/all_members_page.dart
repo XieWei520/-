@@ -266,10 +266,13 @@ class _AllMembersPageState extends State<AllMembersPage> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          return;
+        }
         Navigator.of(context).pop(_hasChanges);
-        return false;
       },
       child: WKSubPageScaffold(
         title: widget.searchMessage
@@ -533,16 +536,31 @@ class _ForbiddenTimePickerState extends State<_ForbiddenTimePicker> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (final option in widget.options)
-            RadioListTile<int>(
-              key: ValueKey<String>(
-                'group-forbidden-time-option-${option.key}',
-              ),
-              value: option.key,
-              groupValue: _selected?.key,
-              title: Text(option.text),
-              onChanged: (_) => setState(() => _selected = option),
+          RadioGroup<int>(
+            groupValue: _selected?.key,
+            onChanged: (value) {
+              final selected = widget.options
+                  .where((option) => option.key == value)
+                  .firstOrNull;
+              if (selected == null) {
+                return;
+              }
+              setState(() => _selected = selected);
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final option in widget.options)
+                  RadioListTile<int>(
+                    key: ValueKey<String>(
+                      'group-forbidden-time-option-${option.key}',
+                    ),
+                    value: option.key,
+                    title: Text(option.text),
+                  ),
+              ],
             ),
+          ),
           TextButton(
             key: const ValueKey<String>('group-forbidden-time-confirm'),
             onPressed: _selected == null

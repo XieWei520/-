@@ -171,6 +171,100 @@ void main() {
       expect(messages.single.wkMsgExtra?.revoke, 1);
       expect(messages.single.wkMsgExtra?.extraVersion, 200);
     });
+
+    test(
+      'message with newer read receipt extra is preferred during merge',
+      () {
+        final cached =
+            _buildMessage(
+                clientSeq: 402,
+                clientMsgNo: 'client-read-402',
+                messageId: 'msg-read-402',
+                messageSeq: 42,
+                orderSeq: 42000,
+                status: WKSendMsgResult.sendSuccess,
+                text: 'read receipt merge',
+              )
+              ..wkMsgExtra = (WKMsgExtra()
+                ..messageID = 'msg-read-402'
+                ..readed = 0
+                ..readedCount = 0
+                ..unreadCount = 1
+                ..extraVersion = 10);
+        final refreshed =
+            _buildMessage(
+                clientSeq: 402,
+                clientMsgNo: 'client-read-402',
+                messageId: 'msg-read-402',
+                messageSeq: 42,
+                orderSeq: 42000,
+                status: WKSendMsgResult.sendSuccess,
+                text: 'read receipt merge',
+              )
+              ..wkMsgExtra = (WKMsgExtra()
+                ..messageID = 'msg-read-402'
+                ..readed = 1
+                ..readedCount = 1
+                ..unreadCount = 0
+                ..extraVersion = 10);
+
+        final messages = mergeConversationMessages([cached, refreshed]);
+
+        expect(messages, hasLength(1));
+        expect(messages.single.wkMsgExtra?.readed, 1);
+        expect(messages.single.wkMsgExtra?.readedCount, 1);
+        expect(messages.single.wkMsgExtra?.unreadCount, 0);
+      },
+    );
+
+    test(
+      'web message extra refresh updates visible read receipt without reopen',
+      () {
+        final notifier = MessageListNotifier(
+          'u_target',
+          WKChannelType.personal,
+          autoLoad: false,
+        );
+        final cached =
+            _buildMessage(
+                clientSeq: 403,
+                clientMsgNo: 'client-read-403',
+                messageId: 'msg-read-403',
+                messageSeq: 43,
+                orderSeq: 43000,
+                status: WKSendMsgResult.sendSuccess,
+                text: 'read receipt visible',
+              )
+              ..wkMsgExtra = (WKMsgExtra()
+                ..messageID = 'msg-read-403'
+                ..readed = 0
+                ..readedCount = 0
+                ..unreadCount = 1
+                ..extraVersion = 10);
+        final extra = WKMsgExtra()
+          ..messageID = 'msg-read-403'
+          ..readed = 1
+          ..readedCount = 1
+          ..unreadCount = 0
+          ..extraVersion = 11;
+
+        notifier.applyLocalMessageRefresh(cached);
+        notifier.applyLocalMessageRefresh(
+          WKMsg()
+            ..channelID = 'u_target'
+            ..channelType = WKChannelType.personal
+            ..messageID = 'msg-read-403'
+            ..status = WKSendMsgResult.sendSuccess
+            ..wkMsgExtra = extra,
+        );
+
+        expect(notifier.state, hasLength(1));
+        expect(notifier.state.single.wkMsgExtra?.readed, 1);
+        expect(notifier.state.single.wkMsgExtra?.readedCount, 1);
+        expect(notifier.state.single.wkMsgExtra?.unreadCount, 0);
+        expect(notifier.state.single.wkMsgExtra?.extraVersion, 11);
+      },
+    );
   });
 
   group('web realtime conversation projection', () {

@@ -7,11 +7,13 @@ class DesktopMessageNotification {
     required this.identifier,
     required this.title,
     required this.body,
+    this.count = 1,
   });
 
   final String identifier;
   final String title;
   final String body;
+  final int count;
 }
 
 class DesktopMessageAlertDecision {
@@ -80,6 +82,7 @@ class DesktopMessageAlertPolicy {
       identifier: _notificationIdentifier(plan),
       title: plan.title,
       body: count == 1 ? plan.body : '$count new messages',
+      count: count,
     );
   }
 

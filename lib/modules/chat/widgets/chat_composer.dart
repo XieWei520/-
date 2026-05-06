@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/platform_utils.dart';
 import '../../../widgets/wk_colors.dart';
 import '../../../widgets/wk_web_ui_tokens.dart';
 
@@ -9,6 +10,7 @@ class ChatComposer extends StatelessWidget {
     this.header,
     this.robotInlineHeader,
     this.webStyle = false,
+    this.showToolbarRow = true,
     required this.inputRow,
     required this.toolbarRow,
     required this.panel,
@@ -17,12 +19,15 @@ class ChatComposer extends StatelessWidget {
   final Widget? header;
   final Widget? robotInlineHeader;
   final bool webStyle;
+  final bool showToolbarRow;
   final Widget inputRow;
   final Widget toolbarRow;
   final Widget panel;
 
   @override
   Widget build(BuildContext context) {
+    final isMobileWarmStyle = PlatformUtils.isMobile && !webStyle;
+
     return RepaintBoundary(
       child: DecoratedBox(
         key: const ValueKey<String>('chat-composer-shell'),
@@ -31,6 +36,8 @@ class ChatComposer extends StatelessWidget {
           border: Border(
             top: BorderSide(
               color: webStyle
+                  ? WKWebColors.borderWarm
+                  : isMobileWarmStyle
                   ? WKWebColors.borderWarm
                   : WKColors.layoutColorSelected,
               width: 1,
@@ -49,19 +56,26 @@ class ChatComposer extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ?header,
-            ?robotInlineHeader,
+            if (header != null) header!,
+            if (robotInlineHeader != null) robotInlineHeader!,
             Padding(
               key: const ValueKey<String>('chat-composer-input-row'),
-              padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+              padding: EdgeInsets.fromLTRB(
+                isMobileWarmStyle ? 12 : 10,
+                10,
+                isMobileWarmStyle ? 12 : 10,
+                showToolbarRow ? 4 : 10,
+              ),
               child: inputRow,
             ),
-            const SizedBox(height: 2),
-            Padding(
-              key: const ValueKey<String>('chat-composer-toolbar-row'),
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-              child: toolbarRow,
-            ),
+            if (showToolbarRow) ...[
+              const SizedBox(height: 2),
+              Padding(
+                key: const ValueKey<String>('chat-composer-toolbar-row'),
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                child: toolbarRow,
+              ),
+            ],
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: panel,

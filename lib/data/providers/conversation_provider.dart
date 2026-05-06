@@ -1158,6 +1158,7 @@ class MessageListNotifier extends StateNotifier<List<WKMsg>> {
     ChatHistoryGateway? historyGateway,
     MessageQueryTelemetry? telemetry,
     this.autoLoad = true,
+    this.remoteRefreshCoalesceDelay = const Duration(milliseconds: 32),
   }) : messageRepository =
            messageRepository ??
            WkMessageRepository(
@@ -1176,10 +1177,13 @@ class MessageListNotifier extends StateNotifier<List<WKMsg>> {
   final MessageRepository messageRepository;
   final MessageQueryTelemetry? _telemetry;
   final bool autoLoad;
+  final Duration remoteRefreshCoalesceDelay;
   bool _listenersAttached = false;
   int _replaceRequestVersion = 0;
   Future<void>? _loadMoreInFlight;
   int? _exhaustedOlderPageOrderSeq;
+  final Map<String, WKMsg> _pendingRemoteRefreshes = <String, WKMsg>{};
+  Timer? _remoteRefreshTimer;
 
   String get _listenerKey => 'msg_list_${channelType}_$channelId';
 
@@ -1206,7 +1210,7 @@ class MessageListNotifier extends StateNotifier<List<WKMsg>> {
       if (msg.channelID != channelId || msg.channelType != channelType) {
         return;
       }
-      state = refreshConversationMessages(state, msg);
+      enqueueRemoteMessageRefresh(msg);
     });
   }
 
@@ -1309,6 +1313,49 @@ class MessageListNotifier extends StateNotifier<List<WKMsg>> {
     state = refreshConversationMessages(state, message);
   }
 
+  void enqueueRemoteMessageRefresh(WKMsg message) {
+    if (!mounted ||
+        message.channelID != channelId ||
+        message.channelType != channelType) {
+      return;
+    }
+    final key = _messageRefreshKey(message);
+    _pendingRemoteRefreshes[key] = message;
+    if (_remoteRefreshTimer != null) {
+      return;
+    }
+    _remoteRefreshTimer = Timer(remoteRefreshCoalesceDelay, () {
+      _remoteRefreshTimer = null;
+      _flushRemoteMessageRefreshes();
+    });
+  }
+
+  void _flushRemoteMessageRefreshes() {
+    if (!mounted || _pendingRemoteRefreshes.isEmpty) {
+      _pendingRemoteRefreshes.clear();
+      return;
+    }
+
+    final pending = List<WKMsg>.from(
+      _pendingRemoteRefreshes.values,
+      growable: false,
+    );
+    _pendingRemoteRefreshes.clear();
+
+    var next = state;
+    var changed = false;
+    for (final message in pending) {
+      final refreshed = refreshVisibleConversationMessage(next, message);
+      if (!identical(refreshed, next)) {
+        next = refreshed;
+        changed = true;
+      }
+    }
+    if (changed) {
+      state = next;
+    }
+  }
+
   Future<void> _replaceStateWith(Future<List<WKMsg>> Function() loader) async {
     final version = ++_replaceRequestVersion;
     try {
@@ -1346,6 +1393,9 @@ class MessageListNotifier extends StateNotifier<List<WKMsg>> {
 
   @override
   void dispose() {
+    _remoteRefreshTimer?.cancel();
+    _remoteRefreshTimer = null;
+    _pendingRemoteRefreshes.clear();
     if (_listenersAttached) {
       WKIM.shared.messageManager.removeNewMsgListener(_listenerKey);
       WKIM.shared.messageManager.removeOnRefreshMsgListener(_listenerKey);
@@ -1395,6 +1445,38 @@ List<WKMsg> refreshConversationMessages(List<WKMsg> current, WKMsg message) {
   }
 
   next[index] = preferConversationMessage(next[index], message);
+  return mergeConversationMessages(next);
+}
+
+List<WKMsg> refreshVisibleConversationMessage(
+  List<WKMsg> current,
+  WKMsg message,
+) {
+  if (current.isEmpty) {
+    return current;
+  }
+
+  final matchIndex = ChatMessageMatchIndex(current);
+  final index = matchIndex.find(message);
+  if (index == -1) {
+    return current;
+  }
+
+  if (!shouldDisplayConversationMessage(message)) {
+    final next = List<WKMsg>.from(current, growable: true)..removeAt(index);
+    return mergeConversationMessages(next);
+  }
+
+  final preferred = preferConversationMessage(current[index], message);
+  if (identical(preferred, current[index])) {
+    return current;
+  }
+  if (ChatViewportMessageMatcher.snapshotEquals(preferred, current[index])) {
+    return current;
+  }
+
+  final next = List<WKMsg>.from(current, growable: true);
+  next[index] = preferred;
   return mergeConversationMessages(next);
 }
 
@@ -1513,6 +1595,25 @@ String? _conversationScopedSeqKey(String channelId, int channelType, int seq) {
   return '$channelType:$normalizedChannelId:$seq';
 }
 
+String _messageRefreshKey(WKMsg message) {
+  final messageId = message.messageID.trim();
+  if (messageId.isNotEmpty) {
+    return 'mid:$messageId';
+  }
+  final clientMsgNo = message.clientMsgNO.trim();
+  if (clientMsgNo.isNotEmpty) {
+    return 'cid:$clientMsgNo';
+  }
+  final channelId = message.channelID.trim();
+  if (channelId.isNotEmpty && message.messageSeq > 0) {
+    return 'seq:${message.channelType}:$channelId:${message.messageSeq}';
+  }
+  if (channelId.isNotEmpty && message.orderSeq > 0) {
+    return 'order:${message.channelType}:$channelId:${message.orderSeq}';
+  }
+  return 'fallback:${identityHashCode(message)}';
+}
+
 WKMsg preferConversationMessage(WKMsg current, WKMsg candidate) {
   if (!shouldDisplayConversationMessage(current)) {
     return candidate;
@@ -1532,6 +1633,11 @@ WKMsg preferConversationMessage(WKMsg current, WKMsg candidate) {
   final currentExtraVersion = _messageExtraVersionOf(current);
   final candidateExtraVersion = _messageExtraVersionOf(candidate);
   if (candidateExtraVersion > currentExtraVersion) {
+    return candidate;
+  }
+  if (candidateExtraVersion == currentExtraVersion &&
+      _messageExtraRevisionScore(candidate) >
+          _messageExtraRevisionScore(current)) {
     return candidate;
   }
   return current;
@@ -1562,11 +1668,47 @@ int _conversationMessageScore(WKMsg message) {
       _hasNonEmptyLocalExtra(message)) {
     score += 64;
   }
+  if (_messageExtraVersionOf(message) > 0) {
+    score += 128;
+  }
+  if (_messageExtraRevisionScore(message) > 0) {
+    score += 256;
+  }
   return score;
 }
 
 int _messageExtraVersionOf(WKMsg message) {
   return message.wkMsgExtra?.extraVersion ?? 0;
+}
+
+int _messageExtraRevisionScore(WKMsg message) {
+  final extra = message.wkMsgExtra;
+  if (extra == null) {
+    return 0;
+  }
+  var score = 0;
+  if (extra.readed == 1) {
+    score += 1;
+  }
+  if (extra.readedCount > 0) {
+    score += extra.readedCount * 2;
+  }
+  if (extra.unreadCount > 0) {
+    score -= extra.unreadCount;
+  }
+  if (extra.revoke == 1) {
+    score += 1000;
+  }
+  if (extra.isMutualDeleted == 1) {
+    score += 1000;
+  }
+  if (extra.isPinned == 1) {
+    score += 100;
+  }
+  if (extra.editedAt > 0 || extra.contentEdit.toString().trim().isNotEmpty) {
+    score += 100;
+  }
+  return score;
 }
 
 bool _hasNonEmptyLocalExtra(WKMsg message) {

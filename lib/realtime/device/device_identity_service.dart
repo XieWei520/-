@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
+import '../../core/config/im_config.dart';
 import '../../service/api/api_client.dart';
 import 'device_identity.dart';
 import 'device_store.dart';
@@ -43,6 +44,7 @@ class ApiDeviceBindClient implements DeviceBindClient {
         'device_model': identity.deviceModel,
         'device_install_id': identity.deviceInstallId,
         'bind_version': bindVersion,
+        'device_flag': IMConfig.currentDeviceFlag,
       },
     );
     final body = _normalizeResponseData(response.data);

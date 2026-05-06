@@ -118,7 +118,7 @@ void main() {
     expect(find.byType(ChatDesktopDropTarget), findsOneWidget);
   });
 
-  testWidgets('android keyboard inset is animated by the chat body', (
+  testWidgets('android keyboard inset uses paint-only translation', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
@@ -156,10 +156,10 @@ void main() {
       final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
       expect(scaffold.resizeToAvoidBottomInset, isFalse);
 
-      final padding = tester.widget<AnimatedPadding>(
-        find.byKey(const ValueKey<String>('chat-keyboard-inset-padding')),
+      final keyboardTransform = tester.widget<Transform>(
+        find.byKey(const ValueKey<String>('chat-keyboard-inset-transform')),
       );
-      expect(padding.padding, const EdgeInsets.only(bottom: 280));
+      expect(keyboardTransform.transform.getTranslation().y, -280);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

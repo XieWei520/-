@@ -4,14 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
-    'IMService forwards incoming messages to the web notification manager',
+    'IMService forwards incoming messages to the shared web alert contract',
     () {
       final source = File('lib/service/im/im_service.dart').readAsStringSync();
 
-      expect(source, contains('web_message_alert_plan.dart'));
       expect(source, contains('web_notification_manager.dart'));
-      expect(source, contains('buildWebMessageAlertPlan'));
-      expect(source, contains('showNewMessageAlert'));
+      expect(source, contains('buildMessageAlertPlan'));
+      expect(source, contains('WebNotificationManager.instance.showNewMessageAlert'));
+      expect(source, contains('plan: plan'));
+      expect(source, contains('lifecycleState: _appLifecycleState'));
     },
   );
 
@@ -41,15 +42,21 @@ void main() {
   );
 
   test(
-    'background browser notifications use the system notification sound',
+    'web notifications mirror the desktop alert policy',
     () {
       final source = File(
         'lib/wukong_push/notification/web_notification_manager_web.dart',
       ).readAsStringSync();
 
-      expect(source, contains('silent: false'));
-      expect(source, isNot(contains('silent: true')));
-      expect(source, isNot(contains('await _playBackgroundMessageSound();')));
+      expect(source, contains('DesktopMessageAlertPolicy'));
+      expect(source, contains('MessageAlertPlan'));
+      expect(source, contains('messageSoundAssetPath'));
+      expect(source, contains('await _playMessageSound();'));
+      expect(source, contains('silent: true'));
+      expect(source, contains('browserNotification.onclick'));
+      expect(source, contains('web.window.focus()'));
+      expect(source, isNot(contains('startTitleBlink();')));
+      expect(source, isNot(contains('silent: false')));
     },
   );
 

@@ -9,6 +9,38 @@ import 'package:wukong_im_app/wukong_push/notification/foreground_notification_p
 import 'package:wukong_im_app/wukong_push/push_service.dart';
 
 void main() {
+  tearDown(() {
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  test(
+    'push service prompts when Android local notification permission is denied',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      var permissionRequestCount = 0;
+      var promptCount = 0;
+
+      final service = PushService(
+        isPushSupported: () => true,
+        handlerSelector: () async => null,
+        initializeNotifications:
+            ({void Function(String payload)? onNotificationTap}) async {},
+        requestLocalNotificationPermission: () async {
+          permissionRequestCount += 1;
+          return false;
+        },
+        onPermissionDenied: () async {
+          promptCount += 1;
+        },
+      );
+
+      await service.ensureInitialized();
+
+      expect(permissionRequestCount, 1);
+      expect(promptCount, 1);
+    },
+  );
+
   test(
     'push service prompts for notification settings when permission is denied',
     () async {
@@ -56,8 +88,9 @@ void main() {
   );
 
   test(
-    'push service logs the unconfigured vendor handlers when no handler is available',
+    'push service logs local notification mode when no remote handler is available',
     () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
       final logLines = <String>[];
       final originalDebugPrint = debugPrint;
       debugPrint = (String? message, {int? wrapWidth}) {
@@ -74,6 +107,7 @@ void main() {
         handlerSelector: () async => null,
         initializeNotifications:
             ({void Function(String payload)? onNotificationTap}) async {},
+        requestLocalNotificationPermission: () async => true,
         onPermissionDenied: () async {},
       );
 
@@ -83,7 +117,7 @@ void main() {
         logLines,
         contains(
           contains(
-            'no compatible push handler detected; app is currently configured for FCM only, vendor handlers pending: HMS, MI, OPPO, VIVO.',
+            'remote push is disabled; Android message alerts use local IM notifications.',
           ),
         ),
       );

@@ -64,15 +64,21 @@ class WKTabShell extends StatelessWidget {
       MediaQuery.of(context).viewPadding.bottom,
       8.0,
     );
+    final isNarrowMobile = MediaQuery.sizeOf(context).width < 420;
 
     return Scaffold(
       key: key ?? const ValueKey<String>('wk_tab_shell'),
-      backgroundColor: WKColors.homeBg,
+      backgroundColor: isNarrowMobile ? WKWebColors.pageWarm : WKColors.homeBg,
       body: IndexedStack(index: currentIndex, children: pages),
       bottomNavigationBar: Container(
         key: const ValueKey<String>('wk_tab_shell_bottom_bar'),
-        color: WKColors.homeBg,
-        padding: EdgeInsets.only(top: 4, bottom: bottomInset),
+        decoration: BoxDecoration(
+          color: isNarrowMobile ? WKWebColors.surface : WKColors.homeBg,
+          border: isNarrowMobile
+              ? const Border(top: BorderSide(color: WKWebColors.borderWarm))
+              : null,
+        ),
+        padding: EdgeInsets.only(top: 6, bottom: bottomInset),
         child: Row(
           children: [
             for (var index = 0; index < items.length; index++)
@@ -216,9 +222,10 @@ class _WKTabBarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isNarrowMobile = MediaQuery.sizeOf(context).width < 420;
     final labelColor = selected
-        ? const Color(0xFFFF5A33)
-        : const Color(0xFFF3CDC2);
+        ? WKWebColors.action
+        : WKWebColors.textSecondary;
 
     return Material(
       color: Colors.transparent,
@@ -243,6 +250,7 @@ class _WKTabBarItem extends StatelessWidget {
                               selected ? data.selectedIcon : data.normalIcon,
                               width: 35,
                               height: 35,
+                              tint: isNarrowMobile ? labelColor : null,
                             )
                           : Icon(
                               Icons.chat_bubble_outline_rounded,
@@ -286,7 +294,7 @@ class _WKTabBarItem extends StatelessWidget {
                   fontFamily: WKFontFamily.primary,
                   color: labelColor,
                   fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                 ),
               ),
             ],
