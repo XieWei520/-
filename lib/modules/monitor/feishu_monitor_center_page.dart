@@ -603,7 +603,7 @@ class _CreateFeishuRouteDialogState extends State<_CreateFeishuRouteDialog> {
             ),
             const SizedBox(height: WKSpace.md),
             DropdownButtonFormField<MonitorSelectableGroup>(
-              value: _selectedGroup,
+              initialValue: _selectedGroup,
               decoration: const InputDecoration(labelText: '悟空 IM 群'),
               items: [
                 for (final group in widget.groups)
