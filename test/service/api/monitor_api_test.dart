@@ -110,7 +110,10 @@ void main() {
 
     expect(adapter.lastMethod, 'POST');
     expect(adapter.lastPath, '/v1/monitor/agent-pairing-codes');
-    expect(adapter.lastBody, <String, dynamic>{'device_name': 'COLORFUL-PC'});
+    expect(adapter.lastBody, <String, dynamic>{
+      'device_name': 'COLORFUL-PC',
+      'platform': 'windows',
+    });
     expect(code.code, 'ABCD-1234');
     expect(code.expiresAt, '2026-05-06 18:00');
   });

@@ -94,7 +94,10 @@ class MonitorApi {
   Future<MonitorPairingCode> createPairingCode(String deviceName) async {
     final response = await _client.post(
       '/v1/monitor/agent-pairing-codes',
-      data: <String, dynamic>{'device_name': deviceName.trim()},
+      data: <String, dynamic>{
+        'device_name': deviceName.trim(),
+        'platform': 'windows',
+      },
       options: _plainTextOptions,
     );
     return MonitorPairingCode.fromJson(_resolveObjectPayload(response.data));
