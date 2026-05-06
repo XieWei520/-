@@ -3,11 +3,17 @@ import 'dart:io';
 import 'agent_api.dart';
 import 'agent_models.dart';
 import 'agent_store.dart';
+import 'browser_controller.dart';
+import 'browser_profile.dart';
 import 'heartbeat_runner.dart';
+import 'listen_runner.dart';
+import 'message_dedupe_store.dart';
 
 const agentVersion = '0.1.0';
 
 typedef AgentApiFactory = AgentApiLike Function(String serverUrl);
+typedef BrowserControllerFactory =
+    BrowserControllerLike Function(BrowserProfilePaths paths);
 typedef WriteLine = void Function(String line);
 typedef Now = DateTime Function();
 typedef DeviceNameProvider = String Function();
@@ -15,6 +21,7 @@ typedef DeviceNameProvider = String Function();
 Future<int> runAgentCli(
   List<String> args, {
   AgentApiFactory? apiFactory,
+  BrowserControllerFactory? browserFactory,
   WriteLine? writeLine,
   Now? now,
   DeviceNameProvider? deviceNameProvider,
@@ -29,9 +36,9 @@ Future<int> runAgentCli(
 
   final command = args.first;
   final options = _parseOptions(args.skip(1).toList());
-  final store = AgentStore(
-    options['store-dir'] ?? defaultAgentStoreDirectory(),
-  );
+  final storeDir = options['store-dir'] ?? defaultAgentStoreDirectory();
+  final store = AgentStore(storeDir);
+  final paths = BrowserProfilePaths(storeDir);
 
   if (command == 'pair') {
     final server = options['server'];
@@ -73,9 +80,8 @@ Future<int> runAgentCli(
   }
 
   if (command == 'run') {
-    final config = await store.load();
+    final config = await _loadConfigOrPrint(store, out);
     if (config == null) {
-      out('未找到 Agent 配置，请先执行 pair 命令绑定设备。');
       return 66;
     }
     final api =
@@ -91,9 +97,140 @@ Future<int> runAgentCli(
     }
   }
 
+  if (command == 'browser-login') {
+    final config = await _loadConfigOrPrint(store, out);
+    if (config == null) {
+      return 66;
+    }
+    final browser =
+        browserFactory?.call(paths) ?? PuppeteerBrowserController(paths);
+    try {
+      await browser.openLogin(keepOpen: true);
+      out('已打开 Chromium 飞书登录窗口，请扫码登录。');
+      return 0;
+    } finally {
+      await browser.close();
+    }
+  }
+
+  if (command == 'browser-status') {
+    final config = await _loadConfigOrPrint(store, out);
+    if (config == null) {
+      return 66;
+    }
+    final api =
+        apiFactory?.call(config.serverUrl) ??
+        AgentApi(serverUrl: config.serverUrl);
+    final browser =
+        browserFactory?.call(paths) ?? PuppeteerBrowserController(paths);
+    try {
+      final observedAt = clock().toUtc().toIso8601String();
+      final status = await browser.checkStatus();
+      await api.reportBrowserStatus(
+        agentToken: config.agentToken,
+        request: _browserStatusRequest(config, status, observedAt),
+      );
+      out(_browserStatusLine(status));
+      return 0;
+    } finally {
+      await browser.close();
+      api.close();
+    }
+  }
+
+  if (command == 'clear-browser-profile') {
+    final config = await _loadConfigOrPrint(store, out);
+    if (config == null) {
+      return 66;
+    }
+    final api =
+        apiFactory?.call(config.serverUrl) ??
+        AgentApi(serverUrl: config.serverUrl);
+    try {
+      await BrowserProfileCleaner(paths).clearProfile();
+      await api.reportBrowserStatus(
+        agentToken: config.agentToken,
+        request: _browserStatusRequest(
+          config,
+          BrowserLoginStatus.loginRequired,
+          clock().toUtc().toIso8601String(),
+        ),
+      );
+      out('已清除飞书登录状态，请重新打开飞书登录并扫码。');
+      return 0;
+    } finally {
+      api.close();
+    }
+  }
+
+  if (command == 'listen') {
+    final config = await _loadConfigOrPrint(store, out);
+    if (config == null) {
+      return 66;
+    }
+    final api =
+        apiFactory?.call(config.serverUrl) ??
+        AgentApi(serverUrl: config.serverUrl);
+    final browser =
+        browserFactory?.call(paths) ?? PuppeteerBrowserController(paths);
+    final runner = ListenRunner(
+      api: api,
+      browser: browser,
+      dedupeStore: MessageDedupeStore(paths.dedupeCacheFile),
+      now: clock,
+    );
+    try {
+      final result = await runner.runOnce(config);
+      out(
+        '监听完成：规则 ${result.routeCount} 条，观察 ${result.observedCount} 条，上报 ${result.reportedCount} 条。',
+      );
+      return 0;
+    } finally {
+      await browser.close();
+      api.close();
+    }
+  }
+
   out('未知命令：$command');
   _printUsage(out);
   return 64;
+}
+
+Future<AgentConfig?> _loadConfigOrPrint(AgentStore store, WriteLine out) async {
+  final config = await store.load();
+  if (config == null) {
+    out('未找到 Agent 配置，请先执行 pair 命令绑定设备。');
+  }
+  return config;
+}
+
+BrowserStatusReportRequest _browserStatusRequest(
+  AgentConfig config,
+  BrowserLoginStatus status,
+  String observedAt,
+) {
+  return BrowserStatusReportRequest(
+    agentId: config.agentId,
+    platform: 'feishu',
+    browser: 'chromium',
+    profileMode: 'isolated_persistent',
+    loginStatus: status,
+    observedAt: observedAt,
+    errorMessage: '',
+  );
+}
+
+String _browserStatusLine(BrowserLoginStatus status) {
+  switch (status) {
+    case BrowserLoginStatus.loggedIn:
+      return '飞书已登录，浏览器状态已同步。';
+    case BrowserLoginStatus.loginRequired:
+      return '飞书未登录，请点击打开飞书登录并扫码。';
+    case BrowserLoginStatus.browserError:
+      return 'Chromium 浏览器异常，请稍后重试或清除登录状态。';
+    case BrowserLoginStatus.unknown:
+      return '飞书登录状态未知，请打开飞书登录页确认。';
+  }
 }
 
 void _printUsage(WriteLine out) {
@@ -103,6 +240,18 @@ void _printUsage(WriteLine out) {
   );
   out(
     '  feishu_monitor_agent run [--once] [--store-dir C:\\Temp\\feishu-agent]',
+  );
+  out(
+    '  feishu_monitor_agent browser-login [--store-dir C:\\Temp\\feishu-agent]',
+  );
+  out(
+    '  feishu_monitor_agent browser-status [--store-dir C:\\Temp\\feishu-agent]',
+  );
+  out(
+    '  feishu_monitor_agent clear-browser-profile [--store-dir C:\\Temp\\feishu-agent]',
+  );
+  out(
+    '  feishu_monitor_agent listen --once [--store-dir C:\\Temp\\feishu-agent]',
   );
 }
 
