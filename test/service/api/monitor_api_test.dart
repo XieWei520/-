@@ -117,6 +117,30 @@ void main() {
     expect(code.code, 'ABCD-1234');
     expect(code.expiresAt, '2026-05-06 18:00');
   });
+
+  test('fetchBrowserStatus maps Feishu browser status', () async {
+    adapter.payload = const <String, dynamic>{
+      'code': 0,
+      'data': <String, dynamic>{
+        'browser': 'chromium',
+        'profile_mode': 'isolated_persistent',
+        'login_status': 'logged_in',
+        'observed_at': '2026-05-07T10:00:00Z',
+        'error_message': '',
+      },
+    };
+
+    final status = await MonitorApi.instance.fetchBrowserStatus(
+      platform: MonitorPlatform.feishu,
+    );
+
+    expect(
+      adapter.lastPath,
+      '/v1/monitor/platforms/feishu/browser-status',
+    );
+    expect(status.browser, 'chromium');
+    expect(status.loginStatus, MonitorBrowserLoginStatus.loggedIn);
+  });
 }
 
 class _MonitorApiAdapter implements HttpClientAdapter {

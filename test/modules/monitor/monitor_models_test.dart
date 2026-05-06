@@ -104,5 +104,21 @@ void main() {
       expect(log.occurredAt, '16:32');
       expect(log.message, '已转发 飞书新闻群 → 悟空 IM 新闻群');
     });
+
+    test('MonitorBrowserStatus parses browser status payload', () {
+      final status = MonitorBrowserStatus.fromJson(const <String, dynamic>{
+        'browser': 'chromium',
+        'profile_mode': 'isolated_persistent',
+        'login_status': 'logged_in',
+        'observed_at': '2026-05-07T10:00:00Z',
+        'error_message': '',
+      });
+
+      expect(status.browser, 'chromium');
+      expect(status.profileMode, 'isolated_persistent');
+      expect(status.loginStatus, MonitorBrowserLoginStatus.loggedIn);
+      expect(status.loginStatusLabel, '已登录');
+      expect(status.observedAt, '2026-05-07T10:00:00Z');
+    });
   });
 }

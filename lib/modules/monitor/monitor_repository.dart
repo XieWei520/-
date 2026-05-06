@@ -17,6 +17,7 @@ class MonitorRepository {
       _api.fetchAgents(platform: MonitorPlatform.feishu),
       _api.fetchRoutes(platform: MonitorPlatform.feishu),
       _api.fetchLogs(platform: MonitorPlatform.feishu, limit: 20),
+      _api.fetchBrowserStatus(platform: MonitorPlatform.feishu),
     ]);
 
     return FeishuMonitorSnapshot(
@@ -26,6 +27,7 @@ class MonitorRepository {
       logs: List<MonitorLogEntry>.unmodifiable(
         results[3] as List<MonitorLogEntry>,
       ),
+      browserStatus: results[4] as MonitorBrowserStatus,
     );
   }
 

@@ -68,6 +68,16 @@ class MonitorApi {
         .toList(growable: false);
   }
 
+  Future<MonitorBrowserStatus> fetchBrowserStatus({
+    required MonitorPlatform platform,
+  }) async {
+    final response = await _client.get(
+      '/v1/monitor/platforms/${platform.apiValue}/browser-status',
+      options: _plainTextOptions,
+    );
+    return MonitorBrowserStatus.fromJson(_resolveObjectPayload(response.data));
+  }
+
   Future<MonitorRoute> createFeishuRoute(
     CreateFeishuMonitorRouteRequest request,
   ) async {

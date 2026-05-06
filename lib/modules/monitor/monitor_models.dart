@@ -192,6 +192,39 @@ enum MonitorAgentStatus {
   }
 }
 
+enum MonitorBrowserLoginStatus {
+  loggedIn,
+  loginRequired,
+  browserError,
+  unknown;
+
+  String get label {
+    switch (this) {
+      case MonitorBrowserLoginStatus.loggedIn:
+        return '已登录';
+      case MonitorBrowserLoginStatus.loginRequired:
+        return '需要登录';
+      case MonitorBrowserLoginStatus.browserError:
+        return '浏览器异常';
+      case MonitorBrowserLoginStatus.unknown:
+        return '未检测';
+    }
+  }
+
+  static MonitorBrowserLoginStatus parse(dynamic value) {
+    switch (_toString(value)) {
+      case 'logged_in':
+        return MonitorBrowserLoginStatus.loggedIn;
+      case 'login_required':
+        return MonitorBrowserLoginStatus.loginRequired;
+      case 'browser_error':
+        return MonitorBrowserLoginStatus.browserError;
+      default:
+        return MonitorBrowserLoginStatus.unknown;
+    }
+  }
+}
+
 class MonitorStats {
   const MonitorStats({
     required this.runningRoutes,
@@ -362,6 +395,45 @@ class MonitorPairingCode {
   }
 }
 
+class MonitorBrowserStatus {
+  const MonitorBrowserStatus({
+    required this.browser,
+    required this.profileMode,
+    required this.loginStatus,
+    required this.observedAt,
+    required this.errorMessage,
+  });
+
+  final String browser;
+  final String profileMode;
+  final MonitorBrowserLoginStatus loginStatus;
+  final String observedAt;
+  final String errorMessage;
+
+  String get loginStatusLabel => loginStatus.label;
+
+  factory MonitorBrowserStatus.fromJson(Map<String, dynamic> json) {
+    return MonitorBrowserStatus(
+      browser: _toString(json['browser'], fallback: 'chromium'),
+      profileMode: _toString(
+        json['profile_mode'],
+        fallback: 'isolated_persistent',
+      ),
+      loginStatus: MonitorBrowserLoginStatus.parse(json['login_status']),
+      observedAt: _toString(json['observed_at']),
+      errorMessage: _toString(json['error_message']),
+    );
+  }
+
+  static const empty = MonitorBrowserStatus(
+    browser: 'chromium',
+    profileMode: 'isolated_persistent',
+    loginStatus: MonitorBrowserLoginStatus.unknown,
+    observedAt: '',
+    errorMessage: '',
+  );
+}
+
 class MonitorSelectableGroup {
   const MonitorSelectableGroup({required this.groupNo, required this.name});
 
@@ -377,12 +449,14 @@ class FeishuMonitorSnapshot {
     required this.agents,
     required this.routes,
     required this.logs,
+    this.browserStatus = MonitorBrowserStatus.empty,
   });
 
   final MonitorStats stats;
   final List<MonitorAgent> agents;
   final List<MonitorRoute> routes;
   final List<MonitorLogEntry> logs;
+  final MonitorBrowserStatus browserStatus;
 
   bool get hasAgent => agents.isNotEmpty;
 
@@ -391,6 +465,7 @@ class FeishuMonitorSnapshot {
     agents: <MonitorAgent>[],
     routes: <MonitorRoute>[],
     logs: <MonitorLogEntry>[],
+    browserStatus: MonitorBrowserStatus.empty,
   );
 }
 
