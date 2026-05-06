@@ -4,12 +4,15 @@ import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_sub_page_scaffold.dart';
 import 'monitor_models.dart';
+import 'monitor_local_agent_binder.dart';
 import 'monitor_repository.dart';
 
 typedef FeishuSnapshotLoader = Future<FeishuMonitorSnapshot> Function();
 typedef MonitorGroupsLoader = Future<List<MonitorSelectableGroup>> Function();
 typedef PairingCodeCreator =
     Future<MonitorPairingCode> Function(String deviceName);
+typedef LocalAgentBinder =
+    Future<LocalAgentBindResult> Function(LocalAgentBindRequest request);
 typedef FeishuRouteCreator =
     Future<MonitorRoute> Function(CreateFeishuMonitorRouteRequest request);
 typedef MonitorRouteAction = Future<void> Function(String routeId);
@@ -39,6 +42,7 @@ class FeishuMonitorCenterPage extends StatefulWidget {
     this.loadDestinationGroups,
     this.onCreatePairingCode,
     this.onCreateRoute,
+    this.onBindLocalAgent,
     this.onPauseRoute,
     this.onResumeRoute,
     this.onViewRouteLogs,
@@ -50,6 +54,7 @@ class FeishuMonitorCenterPage extends StatefulWidget {
   final MonitorGroupsLoader? loadDestinationGroups;
   final PairingCodeCreator? onCreatePairingCode;
   final FeishuRouteCreator? onCreateRoute;
+  final LocalAgentBinder? onBindLocalAgent;
   final MonitorRouteAction? onPauseRoute;
   final MonitorRouteAction? onResumeRoute;
   final MonitorRouteCallback? onViewRouteLogs;
@@ -64,6 +69,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
   late Future<FeishuMonitorSnapshot> _snapshotFuture;
   MonitorPairingCode? _pairingCode;
   bool _isCreatingPairingCode = false;
+  bool _isBindingLocalAgent = false;
 
   @override
   void initState() {
@@ -108,6 +114,54 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
     } finally {
       if (mounted) {
         setState(() => _isCreatingPairingCode = false);
+      }
+    }
+  }
+
+  Future<MonitorPairingCode?> _ensurePairingCode() async {
+    final current = _pairingCode;
+    if (current != null) {
+      return current;
+    }
+    final creator =
+        widget.onCreatePairingCode ?? widget._repository.createPairingCode;
+    final code = await creator('Windows Agent');
+    if (mounted) {
+      setState(() => _pairingCode = code);
+    }
+    return code;
+  }
+
+  Future<void> _bindLocalAgent() async {
+    if (_isBindingLocalAgent || _isCreatingPairingCode) {
+      return;
+    }
+    setState(() => _isBindingLocalAgent = true);
+    try {
+      final code = await _ensurePairingCode();
+      if (code == null) {
+        return;
+      }
+      final binder =
+          widget.onBindLocalAgent ?? MonitorLocalAgentBinder().bindAndHeartbeat;
+      final result = await binder(
+        LocalAgentBindRequest(
+          serverUrl: 'https://infoequity.qingyunshe.top',
+          pairingCode: code.code,
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      _showSnackBar(result.message);
+      await _refresh();
+    } catch (error) {
+      if (mounted) {
+        _showSnackBar('一键绑定失败：$error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isBindingLocalAgent = false);
       }
     }
   }
@@ -208,7 +262,9 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
                     _AgentOnboardingCard(
                       pairingCode: _pairingCode,
                       isCreating: _isCreatingPairingCode,
+                      isBinding: _isBindingLocalAgent,
                       onCreatePairingCode: _createPairingCode,
+                      onBindLocalAgent: _bindLocalAgent,
                       onDownloadAgent: widget.onDownloadAgent,
                     )
                   else ...[
@@ -375,13 +431,17 @@ class _AgentOnboardingCard extends StatelessWidget {
   const _AgentOnboardingCard({
     required this.pairingCode,
     required this.isCreating,
+    required this.isBinding,
     required this.onCreatePairingCode,
+    required this.onBindLocalAgent,
     required this.onDownloadAgent,
   });
 
   final MonitorPairingCode? pairingCode;
   final bool isCreating;
+  final bool isBinding;
   final VoidCallback onCreatePairingCode;
+  final VoidCallback onBindLocalAgent;
   final VoidCallback? onDownloadAgent;
 
   @override
@@ -409,6 +469,12 @@ class _AgentOnboardingCard extends StatelessWidget {
                 onPressed: isCreating ? null : onCreatePairingCode,
                 style: _monitorFilledActionButtonStyle,
                 child: Text(isCreating ? '生成中...' : '生成配对码'),
+              ),
+              FilledButton(
+                key: const ValueKey('feishu-monitor-one-click-bind'),
+                onPressed: (isCreating || isBinding) ? null : onBindLocalAgent,
+                style: _monitorFilledActionButtonStyle,
+                child: Text(isBinding ? '绑定中...' : '一键绑定并上线'),
               ),
               OutlinedButton(
                 key: const ValueKey('feishu-monitor-onboarding-download-agent'),

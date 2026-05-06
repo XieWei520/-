@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/monitor/feishu_monitor_center_page.dart';
 import 'package:wukong_im_app/modules/monitor/monitor_models.dart';
+import 'package:wukong_im_app/modules/monitor/monitor_local_agent_binder.dart';
 
 void main() {
   testWidgets('Feishu center renders stats, route, agent, and logs', (
@@ -84,6 +85,110 @@ void main() {
 
     expect(find.text('配对码：ABCD-1234'), findsOneWidget);
     expect(find.text('有效期至：2026-05-06 18:00'), findsOneWidget);
+  });
+
+  testWidgets('Feishu center one-click binds local Agent and refreshes', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    LocalAgentBindRequest? bindRequest;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async {
+            loadCount++;
+            if (loadCount == 1) {
+              return FeishuMonitorSnapshot.empty;
+            }
+            return const FeishuMonitorSnapshot(
+              stats: MonitorStats.empty,
+              agents: <MonitorAgent>[
+                MonitorAgent(
+                  id: 'agent_1',
+                  deviceName: 'COLORFUL-PC',
+                  platform: 'windows',
+                  version: '0.1.0',
+                  status: MonitorAgentStatus.online,
+                  lastHeartbeatAt: '??',
+                ),
+              ],
+              routes: <MonitorRoute>[],
+              logs: <MonitorLogEntry>[],
+            );
+          },
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async => const MonitorPairingCode(
+            code: 'ABCD-1234',
+            expiresAt: '2026-05-06 18:00',
+          ),
+          onBindLocalAgent: (request) async {
+            bindRequest = request;
+            return const LocalAgentBindResult(message: 'Agent 已绑定并上线');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('feishu-monitor-one-click-bind')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(bindRequest, isNotNull);
+    expect(bindRequest!.serverUrl, 'https://infoequity.qingyunshe.top');
+    expect(bindRequest!.pairingCode, 'ABCD-1234');
+    expect(loadCount, 2);
+    expect(find.text('COLORFUL-PC'), findsOneWidget);
+    expect(find.text('Agent 已绑定并上线'), findsOneWidget);
+  });
+
+  testWidgets('Feishu center one-click bind failure keeps pairing code', (
+    tester,
+  ) async {
+    var loadCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async {
+            loadCount++;
+            return FeishuMonitorSnapshot.empty;
+          },
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async => const MonitorPairingCode(
+            code: 'ABCD-1234',
+            expiresAt: '2026-05-06 18:00',
+          ),
+          onBindLocalAgent: (_) async {
+            throw const LocalAgentBindException(
+              'Agent 心跳失败：Bearer *** failed',
+              phase: LocalAgentBindPhase.heartbeat,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('feishu-monitor-one-click-bind')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(loadCount, 1);
+    expect(find.textContaining('ABCD-1234'), findsOneWidget);
+    expect(find.textContaining('一键绑定失败'), findsOneWidget);
+    expect(find.textContaining('Bearer ***'), findsOneWidget);
   });
 
   testWidgets('Feishu center aligns monitor action button sizes', (
