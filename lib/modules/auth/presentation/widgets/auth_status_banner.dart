@@ -53,7 +53,7 @@ class AuthStatusBanner extends StatelessWidget {
                       fontFamily: WKFontFamily.primary,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: palette.foreground.withOpacity(0.84),
+                      color: palette.foreground.withValues(alpha: 0.84),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -74,7 +74,7 @@ class AuthStatusBanner extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: WKFontFamily.primary,
                       fontSize: 12,
-                      color: palette.foreground.withOpacity(0.74),
+                      color: palette.foreground.withValues(alpha: 0.74),
                     ),
                   ),
                 ],

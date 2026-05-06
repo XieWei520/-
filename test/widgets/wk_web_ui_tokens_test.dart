@@ -5,10 +5,14 @@ import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 
 void main() {
   test('Web B palette exposes approved warm social colors', () {
-    expect(WKWebColors.pageWarm, const Color(0xFFFFFAF5));
+    expect(WKWebColors.pageWarm, const Color(0xFFFFF4E6));
+    expect(WKWebColors.surfaceSoft, const Color(0xFFFFF0E1));
+    expect(WKWebColors.borderWarm, const Color(0xFFFDBA74));
     expect(WKWebColors.action, const Color(0xFFC2410C));
+    expect(WKWebColors.actionSoft, const Color(0xFFFFD8B0));
     expect(WKWebColors.online, const Color(0xFF0D9488));
     expect(WKWebColors.textPrimary, const Color(0xFF172033));
+    expect(WKWebColors.textSecondary, const Color(0xFF475569));
     expect(WKColors.webPageWarm, WKWebColors.pageWarm);
     expect(WKColors.webSurfaceSoft, WKWebColors.surfaceSoft);
     expect(WKColors.webBorderWarm, WKWebColors.borderWarm);

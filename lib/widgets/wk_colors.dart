@@ -37,14 +37,14 @@ class WKColors {
   static const Color shadow = Color(0x2A000000);
 
   // Web B warm social theme
-  static const Color webPageWarm = Color(0xFFFFFAF5);
-  static const Color webSurfaceSoft = Color(0xFFFFF7ED);
-  static const Color webBorderWarm = Color(0xFFFED7AA);
+  static const Color webPageWarm = Color(0xFFFFF4E6);
+  static const Color webSurfaceSoft = Color(0xFFFFF0E1);
+  static const Color webBorderWarm = Color(0xFFFDBA74);
   static const Color webAction = Color(0xFFC2410C);
-  static const Color webActionSoft = Color(0xFFFFEDD5);
+  static const Color webActionSoft = Color(0xFFFFD8B0);
   static const Color webOnline = Color(0xFF0D9488);
   static const Color webTextPrimary = Color(0xFF172033);
-  static const Color webTextSecondary = Color(0xFF64748B);
+  static const Color webTextSecondary = Color(0xFF475569);
 
   // Chat
   static const Color chatOutgoing = Color(0xFFFDDED6);

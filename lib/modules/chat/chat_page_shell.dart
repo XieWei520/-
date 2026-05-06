@@ -47,6 +47,7 @@ import '../../widgets/wk_avatar.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_reference_assets.dart';
+import '../../widgets/wk_main_top_bar.dart';
 import '../../widgets/wk_web_ui_tokens.dart';
 import '../../wk_endpoint/providers/slot_registry_provider.dart';
 import '../../wk_endpoint/slots/chat_slots.dart';
@@ -63,6 +64,7 @@ import '../../wukong_scan/scan_qr_code_bridge.dart';
 import '../../wukong_uikit/setting/setting_preferences.dart';
 import 'chat_composer_controller.dart';
 import 'chat_flame_message_runtime.dart';
+import 'chat_frame_jank_monitor.dart';
 import 'chat_file_opening.dart';
 import 'chat_conversation_extra_gateway.dart';
 import 'chat_action_definition.dart';
@@ -136,16 +138,19 @@ double chatListCacheExtent({
       platform == TargetPlatform.windows ||
       platform == TargetPlatform.macOS ||
       platform == TargetPlatform.linux;
+  final isMobile = !isWeb && !isDesktop;
   final multiplier = isWeb
       ? 0.9
       : isDesktop
       ? 1.5
-      : 1.0;
+      : 0.66;
   final minExtent = isDesktop && !isWeb ? 900.0 : 600.0;
   final maxExtent = isWeb
       ? 1000.0
       : isDesktop
       ? 1600.0
+      : isMobile
+      ? 900.0
       : 1200.0;
   return (safeHeight * multiplier).clamp(minExtent, maxExtent).toDouble();
 }
@@ -263,6 +268,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   bool _canClearPinnedMessages = false;
   List<_ResolvedPinnedMessage> _pinnedMessages =
       const <_ResolvedPinnedMessage>[];
+  ChatFrameJankMonitor? _frameJankMonitor;
 
   ChatSession get _chatSession =>
       ChatSession(channelId: widget.channelId, channelType: widget.channelType);
@@ -270,6 +276,8 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   @override
   void initState() {
     super.initState();
+    _frameJankMonitor = ref.read(chatFrameJankMonitorFactoryProvider)()
+      ..start();
     _canPinMessages = _supportsPinnedMessages();
     _bindConversationActivity();
     unawaited(_loadChannel());
@@ -699,6 +707,8 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
 
   @override
   void dispose() {
+    _frameJankMonitor?.stop();
+    _frameJankMonitor = null;
     _unbindConversationActivity();
     _remoteFlameCancelToken?.cancel();
     _remoteFlameCancelToken = null;
@@ -758,10 +768,11 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       channelId: widget.channelId,
       channelType: widget.channelType,
     );
-    final keyboardInset = PlatformUtils.isMobile
-        ? MediaQuery.viewInsetsOf(context).bottom
-        : 0.0;
     final useWarmWorkbenchStyle = shouldUseWarmWorkbenchStyle();
+    final isMobileWarmStyle =
+        PlatformUtils.isMobile && MediaQuery.sizeOf(context).width < 420;
+    final showSearchAction =
+        !isMobileWarmStyle || MediaQuery.sizeOf(context).width >= 420;
 
     return PopScope<void>(
       onPopInvokedWithResult: (didPop, result) {
@@ -770,23 +781,35 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         }
       },
       child: Scaffold(
-        backgroundColor: useWarmWorkbenchStyle
+        backgroundColor: isMobileWarmStyle
+            ? WKWebColors.pageWarm
+            : useWarmWorkbenchStyle
             ? WKWebColors.pageWarm
             : WKColors.homeBg,
         resizeToAvoidBottomInset: false,
         appBar: AppBar(
-          backgroundColor: useWarmWorkbenchStyle
+          toolbarHeight: isMobileWarmStyle ? 74 : null,
+          leadingWidth: isMobileWarmStyle ? 48 : null,
+          backgroundColor: isMobileWarmStyle
+              ? WKWebColors.surface
+              : useWarmWorkbenchStyle
               ? WKWebColors.surface
               : WKColors.homeBg,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
+            key: const ValueKey<String>('chat-back-button'),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 48, height: 48),
             onPressed: () => Navigator.of(context).maybePop(),
             icon: WKReferenceAssets.image(
               WKReferenceAssets.back,
-              width: 20,
-              height: 20,
+              width: 22,
+              height: 22,
+              tint: isMobileWarmStyle
+                  ? WKWebColors.textPrimary
+                  : WKColors.colorDark,
             ),
           ),
           titleSpacing: 0,
@@ -819,7 +842,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                           url: _channel?.avatar,
                           name: title,
                           isGroup: widget.channelType == WKChannelType.group,
-                          size: 40,
+                          size: isMobileWarmStyle ? 48 : 40,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -900,26 +923,43 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
           actions: searchMode.isActive
               ? const <Widget>[]
               : [
-                  IconButton(
-                    key: const ValueKey<String>('chat-open-search'),
-                    onPressed: _openSceneSearch,
-                    icon: WKReferenceAssets.image(
-                      WKReferenceAssets.search,
-                      width: 20,
-                      height: 20,
-                      tint: WKColors.popupText,
+                  if (showSearchAction)
+                    IconButton(
+                      key: const ValueKey<String>('chat-open-search'),
+                      onPressed: _openSceneSearch,
+                      icon: WKReferenceAssets.image(
+                        WKReferenceAssets.search,
+                        width: 20,
+                        height: 20,
+                        tint: WKColors.popupText,
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    key: const ValueKey<String>('chat-open-more'),
-                    onPressed: _openChatInfo,
-                    icon: WKReferenceAssets.image(
-                      WKReferenceAssets.topMore,
-                      width: 20,
-                      height: 20,
-                      tint: WKColors.popupText,
+                  if (isMobileWarmStyle)
+                    WKTopBarActionButton(
+                      key: const ValueKey<String>('chat-open-more'),
+                      tooltip: '\u66F4\u591A',
+                      onTap: _openChatInfo,
+                      padding: const EdgeInsets.only(right: 16),
+                      variant: WKTopBarActionButtonVariant.warmSquare,
+                      size: 38,
+                      child: WKReferenceAssets.image(
+                        WKReferenceAssets.topMore,
+                        width: 18,
+                        height: 18,
+                        tint: WKWebColors.action,
+                      ),
+                    )
+                  else
+                    IconButton(
+                      key: const ValueKey<String>('chat-open-more'),
+                      onPressed: _openChatInfo,
+                      icon: WKReferenceAssets.image(
+                        WKReferenceAssets.topMore,
+                        width: 20,
+                        height: 20,
+                        tint: WKColors.popupText,
+                      ),
                     ),
-                  ),
                 ],
         ),
         body: Stack(
@@ -930,16 +970,12 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                 key: const ValueKey<String>('chat-background-surface'),
                 option: selectedChatBackground,
                 fallbackStyle: fallbackBackgroundStyle,
-                fallbackColor: useWarmWorkbenchStyle
+                fallbackColor: isMobileWarmStyle || useWarmWorkbenchStyle
                     ? WKWebColors.pageWarm
                     : null,
               ),
             ),
-            AnimatedPadding(
-              key: const ValueKey<String>('chat-keyboard-inset-padding'),
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              padding: EdgeInsets.only(bottom: keyboardInset),
+            _ChatKeyboardInsetTranslation(
               child: Column(
                 children: [
                   if (scene.mode == ChatSceneMode.selecting)
@@ -1483,6 +1519,24 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     ref
         .read(chatSceneControllerProvider(_chatSession).notifier)
         .restoreNormal();
+  }
+}
+
+class _ChatKeyboardInsetTranslation extends StatelessWidget {
+  const _ChatKeyboardInsetTranslation({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardInset = PlatformUtils.isMobile
+        ? MediaQuery.viewInsetsOf(context).bottom
+        : 0.0;
+    return Transform.translate(
+      key: const ValueKey<String>('chat-keyboard-inset-transform'),
+      offset: Offset(0, -keyboardInset),
+      child: child,
+    );
   }
 }
 
@@ -2826,6 +2880,7 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
             mentionsController,
           ),
           webStyle: widget.webStyle,
+          showToolbarRow: true,
           inputRow: _buildComposerInputRow(
             composerState: composerState,
             composerController: composerController,
@@ -2987,13 +3042,38 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
         composerState.text.trim().isNotEmpty && !_isSubmittingComposer;
     return LayoutBuilder(
       builder: (context, constraints) {
+        final isMobileWarmStyle =
+            PlatformUtils.isMobile && constraints.maxWidth < 420;
         final compact =
             constraints.maxWidth.isFinite && constraints.maxWidth < 360;
         final gap = compact ? 6.0 : 8.0;
-        final actionExtent = compact ? 42.0 : _composerActionButtonExtent;
-        final iconExtent = compact ? 22.0 : _composerActionIconExtent;
+        final actionExtent = isMobileWarmStyle
+            ? _mobileComposerActionButtonExtent
+            : compact
+            ? 42.0
+            : _composerActionButtonExtent;
+        final iconExtent = isMobileWarmStyle
+            ? _mobileComposerActionIconExtent
+            : compact
+            ? 22.0
+            : _composerActionIconExtent;
+        final sendWidth = isMobileWarmStyle
+            ? _mobileComposerSendButtonWidth
+            : actionExtent;
+        final sendHeight = actionExtent;
+        final inputRadius = BorderRadius.circular(isMobileWarmStyle ? 14 : 24);
         late final Widget inlineActionButton;
-        if (flameEnabled) {
+        if (isMobileWarmStyle) {
+          inlineActionButton = _ComposerToolbarButton(
+            key: const ValueKey<String>('chat-compose-plus-button'),
+            asset: WKReferenceAssets.chatAdd,
+            extent: actionExtent,
+            artworkExtent: iconExtent,
+            fit: BoxFit.contain,
+            warmStyle: true,
+            onTap: composerController.toggleFunctionPanel,
+          );
+        } else if (flameEnabled) {
           inlineActionButton = _ComposerToolbarButton(
             key: const ValueKey<String>('chat-flame-toggle-button'),
             asset: WKReferenceAssets.flameSmall,
@@ -3019,7 +3099,7 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
         }
 
         return Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: composerState.showVoiceInput
@@ -3072,34 +3152,71 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
                           mentionsController,
                         ),
                       },
-                      child: TextField(
-                        key: const ValueKey<String>('chat-input-field'),
-                        controller: _textController,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontFamily: WKFontFamily.primary,
-                          fontFamilyFallback: WKTypography.fontFamilyFallback,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: isMobileWarmStyle ? actionExtent : 0,
                         ),
-                        onTap: composerController.hidePanels,
-                        onChanged: (value) => _handleTextChanged(
-                          value,
-                          composerController,
-                          mentionsController,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: '\u8f93\u5165\u6d88\u606f',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
+                        child: TextField(
+                          key: const ValueKey<String>('chat-input-field'),
+                          controller: _textController,
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(
+                                fontFamily: WKFontFamily.primary,
+                                fontFamilyFallback:
+                                    WKTypography.fontFamilyFallback,
+                              ),
+                          onTap: composerController.hidePanels,
+                          onChanged: (value) => _handleTextChanged(
+                            value,
+                            composerController,
+                            mentionsController,
                           ),
-                          filled: true,
-                          fillColor: WKColors.surfaceSoft,
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: compact ? 12 : 16,
-                            vertical: 8,
+                          decoration: InputDecoration(
+                            hintText: '\u8f93\u5165\u6d88\u606f',
+                            isDense: isMobileWarmStyle,
+                            border: OutlineInputBorder(
+                              borderRadius: inputRadius,
+                              borderSide: isMobileWarmStyle
+                                  ? const BorderSide(
+                                      color: WKWebColors.borderWarm,
+                                      width: 1.2,
+                                    )
+                                  : BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: inputRadius,
+                              borderSide: isMobileWarmStyle
+                                  ? const BorderSide(
+                                      color: WKWebColors.borderWarm,
+                                      width: 1.2,
+                                    )
+                                  : BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: inputRadius,
+                              borderSide: isMobileWarmStyle
+                                  ? const BorderSide(
+                                      color: WKWebColors.action,
+                                      width: 1.4,
+                                    )
+                                  : BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: isMobileWarmStyle
+                                ? WKWebColors.surface
+                                : WKColors.surfaceSoft,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: isMobileWarmStyle
+                                  ? 16
+                                  : compact
+                                  ? 12
+                                  : 16,
+                              vertical: isMobileWarmStyle ? 14 : 8,
+                            ),
                           ),
+                          maxLines: isMobileWarmStyle ? 3 : 4,
+                          minLines: 1,
                         ),
-                        maxLines: 4,
-                        minLines: 1,
                       ),
                     ),
             ),
@@ -3109,8 +3226,10 @@ class _ChatComposerPaneState extends ConsumerState<_ChatComposerPane> {
               SizedBox(width: gap),
               _ComposerSendButton(
                 enabled: canSend,
-                extent: actionExtent,
+                width: sendWidth,
+                height: sendHeight,
                 iconExtent: iconExtent,
+                warmStyle: isMobileWarmStyle,
                 onTap: canSend
                     ? () => _handleSendPressed(
                         composerController,
@@ -4740,6 +4859,9 @@ const double _composerActionButtonExtent = 48;
 const double _composerActionIconExtent = 24;
 const double _composerToolbarArtworkExtent = 38;
 const double _composerCallIconExtent = 22;
+const double _mobileComposerActionButtonExtent = 48;
+const double _mobileComposerActionIconExtent = 24;
+const double _mobileComposerSendButtonWidth = 60;
 
 class _ComposerToolbarButton extends StatelessWidget {
   const _ComposerToolbarButton({
@@ -4749,6 +4871,7 @@ class _ComposerToolbarButton extends StatelessWidget {
     this.extent = _composerActionButtonExtent,
     this.artworkExtent = _composerToolbarArtworkExtent,
     this.fit = BoxFit.fill,
+    this.warmStyle = false,
   });
 
   final String asset;
@@ -4756,24 +4879,45 @@ class _ComposerToolbarButton extends StatelessWidget {
   final double extent;
   final double artworkExtent;
   final BoxFit fit;
+  final bool warmStyle;
 
   @override
   Widget build(BuildContext context) {
+    final icon = IconButton(
+      padding: EdgeInsets.zero,
+      constraints: BoxConstraints.tightFor(width: extent, height: extent),
+      onPressed: onTap ?? () {},
+      icon: asset.trim().isEmpty
+          ? SizedBox(width: artworkExtent, height: artworkExtent)
+          : WKReferenceAssets.image(
+              asset,
+              width: artworkExtent,
+              height: artworkExtent,
+              fit: fit,
+            ),
+    );
+
+    if (!warmStyle) {
+      return SizedBox(width: extent, height: extent, child: icon);
+    }
+
     return SizedBox(
       width: extent,
       height: extent,
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        constraints: BoxConstraints.tightFor(width: extent, height: extent),
-        onPressed: onTap ?? () {},
-        icon: asset.trim().isEmpty
-            ? SizedBox(width: artworkExtent, height: artworkExtent)
-            : WKReferenceAssets.image(
-                asset,
-                width: artworkExtent,
-                height: artworkExtent,
-                fit: fit,
-              ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: WKWebColors.surfaceSoft,
+          borderRadius: BorderRadius.circular(WKWebRadius.control),
+          border: Border.all(color: WKWebColors.borderWarm, width: 1.2),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: WKWebColors.shadow,
+              blurRadius: 10,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Center(child: icon),
       ),
     );
   }
@@ -4848,14 +4992,18 @@ class _ComposerSendButton extends StatefulWidget {
   const _ComposerSendButton({
     required this.enabled,
     this.onTap,
-    this.extent = _composerActionButtonExtent,
+    this.width = _composerActionButtonExtent,
+    this.height = _composerActionButtonExtent,
     this.iconExtent = _composerActionIconExtent,
+    this.warmStyle = false,
   });
 
   final bool enabled;
   final VoidCallback? onTap;
-  final double extent;
+  final double width;
+  final double height;
   final double iconExtent;
+  final bool warmStyle;
 
   @override
   State<_ComposerSendButton> createState() => _ComposerSendButtonState();
@@ -4884,7 +5032,13 @@ class _ComposerSendButtonState extends State<_ComposerSendButton> {
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final scale = widget.enabled ? (_pressed ? 0.92 : 1.0) : 0.88;
+    final scale = widget.enabled ? (_pressed ? 0.96 : 1.0) : 0.92;
+    final iconColor = widget.warmStyle
+        ? (widget.enabled ? Colors.white : WKWebColors.action)
+        : widget.enabled
+        ? WKColors.brand500
+        : WKColors.popupText;
+
     return Listener(
       onPointerDown: widget.enabled ? (_) => _setPressed(true) : null,
       onPointerUp: widget.enabled ? (_) => _setPressed(false) : null,
@@ -4897,23 +5051,55 @@ class _ComposerSendButtonState extends State<_ComposerSendButton> {
             : const Duration(milliseconds: 140),
         curve: Curves.easeOutCubic,
         child: SizedBox(
-          width: widget.extent,
-          height: widget.extent,
-          child: IconButton(
-            key: const ValueKey<String>('chat-send-button'),
-            padding: EdgeInsets.zero,
-            constraints: BoxConstraints.tightFor(
-              width: widget.extent,
-              height: widget.extent,
-            ),
-            onPressed: widget.enabled ? widget.onTap : null,
-            icon: WKReferenceAssets.image(
-              WKReferenceAssets.chatSend,
-              width: widget.iconExtent,
-              height: widget.iconExtent,
-              tint: widget.enabled ? WKColors.brand500 : WKColors.popupText,
-            ),
-          ),
+          width: widget.width,
+          height: widget.height,
+          child: widget.warmStyle
+              ? DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: widget.enabled
+                        ? WKWebColors.action
+                        : WKWebColors.actionSoft,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: WKWebColors.action, width: 1.2),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: WKWebColors.shadow,
+                        blurRadius: 10,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: IconButton(
+                    key: const ValueKey<String>('chat-send-button'),
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints.tightFor(
+                      width: widget.width,
+                      height: widget.height,
+                    ),
+                    onPressed: widget.enabled ? widget.onTap : null,
+                    icon: WKReferenceAssets.image(
+                      WKReferenceAssets.chatSend,
+                      width: widget.iconExtent,
+                      height: widget.iconExtent,
+                      tint: iconColor,
+                    ),
+                  ),
+                )
+              : IconButton(
+                  key: const ValueKey<String>('chat-send-button'),
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints.tightFor(
+                    width: widget.width,
+                    height: widget.height,
+                  ),
+                  onPressed: widget.enabled ? widget.onTap : null,
+                  icon: WKReferenceAssets.image(
+                    WKReferenceAssets.chatSend,
+                    width: widget.iconExtent,
+                    height: widget.iconExtent,
+                    tint: iconColor,
+                  ),
+                ),
         ),
       ),
     );

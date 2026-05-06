@@ -1,6 +1,3 @@
-/// UIKit exports - centralized export for all UI components.
-library uikit_exports;
-
 // Views
 export 'views/line_wave_voice_view.dart';
 export 'views/record_audio_view.dart';

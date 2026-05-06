@@ -45,7 +45,7 @@ class ChatVoiceRecordOverlay extends StatelessWidget {
                       right: 12,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.24),
+                          color: Colors.black.withValues(alpha: 0.24),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Padding(

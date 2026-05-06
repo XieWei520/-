@@ -68,7 +68,7 @@ class _ChatVoicePressHoldButtonState extends State<ChatVoicePressHoldButton> {
               color: danger
                   ? const Color(0xFFFF7E9D)
                   : (active
-                        ? scheme.primary.withOpacity(0.8)
+                        ? scheme.primary.withValues(alpha: 0.8)
                         : scheme.outlineVariant),
             ),
             gradient: LinearGradient(
@@ -79,7 +79,7 @@ class _ChatVoicePressHoldButtonState extends State<ChatVoicePressHoldButton> {
                   : (active
                         ? <Color>[
                             scheme.primaryContainer,
-                            scheme.primaryContainer.withOpacity(0.72),
+                            scheme.primaryContainer.withValues(alpha: 0.72),
                           ]
                         : <Color>[
                             scheme.surfaceContainerHighest,

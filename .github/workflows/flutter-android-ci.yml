@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -31,6 +34,9 @@ jobs:
 
       - name: Flutter pub get
         run: flutter pub get
+
+      - name: Flutter analyze
+        run: flutter analyze
 
       - name: Run tests
         run: flutter test

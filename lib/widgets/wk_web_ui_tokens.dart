@@ -17,18 +17,18 @@ class WKWebBreakpoints {
 class WKWebColors {
   WKWebColors._();
 
-  static const Color pageWarm = Color(0xFFFFFAF5);
+  static const Color pageWarm = Color(0xFFFFF4E6);
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceSoft = Color(0xFFFFF7ED);
-  static const Color borderWarm = Color(0xFFFED7AA);
+  static const Color surfaceSoft = Color(0xFFFFF0E1);
+  static const Color borderWarm = Color(0xFFFDBA74);
   static const Color action = Color(0xFFC2410C);
   static const Color actionHover = Color(0xFF9A3412);
-  static const Color actionSoft = Color(0xFFFFEDD5);
+  static const Color actionSoft = Color(0xFFFFD8B0);
   static const Color online = Color(0xFF0D9488);
   static const Color success = Color(0xFF10B981);
   static const Color danger = Color(0xFFEF4444);
   static const Color textPrimary = Color(0xFF172033);
-  static const Color textSecondary = Color(0xFF64748B);
+  static const Color textSecondary = Color(0xFF475569);
   static const Color textTertiary = Color(0xFF94A3B8);
   static const Color overlayScrim = Color(0x33000000);
   static const Color shadow = Color(0x17172433);

@@ -23,6 +23,7 @@ import '../../data/providers/user_provider.dart';
 import '../../service/api/group_api.dart';
 import '../../service/im/im_service.dart';
 import '../../service/api/user_api.dart';
+import '../../core/utils/platform_utils.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_conversation_item.dart';
 import '../../widgets/wk_design_tokens.dart';
@@ -471,6 +472,10 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
     final conversationRowKeys = ref.watch(conversationRowOrderProvider);
     final personalInfos = ref.watch(preferredPersonalConversationInfoProvider);
     final groupInfos = ref.watch(preferredGroupConversationInfoProvider);
+    final isWarmMobileStyle =
+        PlatformUtils.isMobile &&
+        !widget.embedded &&
+        MediaQuery.sizeOf(context).width < 420;
     final availableKeys = {
       for (final rowKey in conversationRowKeys)
         conversationSelectionKeyFromRowKey(rowKey),
@@ -485,6 +490,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
     final content = Column(
       children: [
         _ConversationListHeader(
+          isWarmMobileStyle: isWarmMobileStyle,
           selectionMode: _selectionMode,
           selectedCount: _selectedKeys.length,
           canDeleteSelection: _selectedKeys.isNotEmpty,
@@ -503,6 +509,16 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
             ref.read(conversationProvider),
           ),
         ),
+        if (isWarmMobileStyle) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _ConversationListSearchBar(
+              onTap: () => _openGlobalSearch(context),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         Expanded(
           child: conversationRowKeys.isEmpty
               ? const WKEmptyView(
@@ -520,7 +536,9 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
                     separatorBuilder: (_, _) => Container(
                       height: 1,
                       margin: const EdgeInsets.only(left: 75),
-                      color: WKColors.homeBg,
+                      color: isWarmMobileStyle
+                          ? WKWebColors.borderWarm
+                          : WKColors.homeBg,
                     ),
                     itemBuilder: (context, index) {
                       final conversationKey = conversationRowKeys[index];
@@ -594,7 +612,12 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
       );
     }
 
-    return Scaffold(backgroundColor: WKColors.homeBg, body: content);
+    return Scaffold(
+      backgroundColor: isWarmMobileStyle
+          ? WKWebColors.pageWarm
+          : WKColors.homeBg,
+      body: content,
+    );
   }
 
   Future<void> _showTopMenu(
@@ -857,6 +880,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
 
 class _ConversationListHeader extends ConsumerWidget {
   const _ConversationListHeader({
+    required this.isWarmMobileStyle,
     required this.selectionMode,
     required this.selectedCount,
     required this.canDeleteSelection,
@@ -867,6 +891,7 @@ class _ConversationListHeader extends ConsumerWidget {
     required this.onShowTopMenu,
   });
 
+  final bool isWarmMobileStyle;
   final bool selectionMode;
   final int selectedCount;
   final bool canDeleteSelection;
@@ -918,14 +943,14 @@ class _ConversationListHeader extends ConsumerWidget {
         },
         child: Text(
           selectionMode
-              ? '已选中 $selectedCount 项'
+              ? '宸查€変腑 $selectedCount 椤?'
               : resolveConversationHeaderTitle(connectionStatus),
           key: titleKey,
         ),
       ),
       leading: selectionMode
           ? WKTopBarActionButton(
-              tooltip: '取消选择',
+              tooltip: '鍙栨秷閫夋嫨',
               padding: const EdgeInsets.only(left: 8),
               onTap: onClearSelection,
               child: const Icon(Icons.close, color: WKColors.popupText),
@@ -934,7 +959,7 @@ class _ConversationListHeader extends ConsumerWidget {
       actions: selectionMode
           ? [
               WKTopBarActionButton(
-                tooltip: '删除已选会话',
+                tooltip: '鍒犻櫎宸查€変細璇?',
                 onTap: canDeleteSelection ? onDeleteSelected : null,
                 child: Icon(
                   Icons.delete_outline,
@@ -944,9 +969,42 @@ class _ConversationListHeader extends ConsumerWidget {
                 ),
               ),
             ]
+          : isWarmMobileStyle
+          ? [
+              WKTopBarActionButton(
+                tooltip: '鎼滅储',
+                padding: const EdgeInsets.only(right: 12),
+                variant: WKTopBarActionButtonVariant.warmSquare,
+                size: 38,
+                onTap: onOpenGlobalSearch,
+                child: WKReferenceAssets.image(
+                  WKReferenceAssets.search,
+                  width: 18,
+                  height: 18,
+                  tint: WKWebColors.action,
+                ),
+              ),
+              Builder(
+                builder: (buttonContext) {
+                  return WKTopBarActionButton(
+                    tooltip: '鏇村',
+                    padding: const EdgeInsets.only(right: 16),
+                    variant: WKTopBarActionButtonVariant.warmSquare,
+                    size: 38,
+                    onTap: () => onShowTopMenu(buttonContext),
+                    child: WKReferenceAssets.image(
+                      WKReferenceAssets.add,
+                      width: 18,
+                      height: 18,
+                      tint: WKWebColors.action,
+                    ),
+                  );
+                },
+              ),
+            ]
           : [
               WKTopBarActionButton(
-                tooltip: '设备管理',
+                tooltip: '璁惧绠＄悊',
                 padding: const EdgeInsets.only(right: 24),
                 onTap: onOpenDeviceManager,
                 child: WKReferenceAssets.image(
@@ -957,7 +1015,7 @@ class _ConversationListHeader extends ConsumerWidget {
                 ),
               ),
               WKTopBarActionButton(
-                tooltip: '搜索',
+                tooltip: '鎼滅储',
                 padding: const EdgeInsets.only(right: 29),
                 onTap: onOpenGlobalSearch,
                 child: WKReferenceAssets.image(
@@ -970,7 +1028,7 @@ class _ConversationListHeader extends ConsumerWidget {
               Builder(
                 builder: (buttonContext) {
                   return WKTopBarActionButton(
-                    tooltip: '更多',
+                    tooltip: '鏇村',
                     onTap: () => onShowTopMenu(buttonContext),
                     child: WKReferenceAssets.image(
                       WKReferenceAssets.add,
@@ -982,6 +1040,60 @@ class _ConversationListHeader extends ConsumerWidget {
                 },
               ),
             ],
+    );
+  }
+}
+
+class _ConversationListSearchBar extends StatelessWidget {
+  const _ConversationListSearchBar({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '搜索',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            key: const ValueKey<String>('conversation-list-search-bar'),
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: WKWebColors.surfaceSoft,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: WKWebColors.borderWarm, width: 1.1),
+            ),
+            child: Row(
+              children: [
+                WKReferenceAssets.image(
+                  WKReferenceAssets.search,
+                  width: 16,
+                  height: 16,
+                  tint: WKWebColors.textSecondary,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    '搜索',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: WKFontFamily.primary,
+                      fontSize: 14,
+                      color: WKWebColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

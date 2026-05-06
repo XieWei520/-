@@ -8,6 +8,11 @@ class NotificationHelper {
 
   static const String messageChannelId = 'wk_new_msg_notification';
   static const String messageChannelName = 'New message notifications';
+  static const String messageAlertChannelId = 'wk_new_msg_alert_notification';
+  static const String messageAlertChannelName = 'New message alerts';
+  static const String messageAlertChannelDescription =
+      'Message alerts with sound and heads-up notification cards.';
+  static const String messageSoundResource = 'im_message';
   static const String rtcChannelId = 'wk_new_rtc_notification';
   static const String rtcChannelName = 'Call invitation notifications';
 
@@ -16,6 +21,43 @@ class NotificationHelper {
 
   bool _isInitialized = false;
   void Function(String payload)? _payloadHandler;
+
+  static const RawResourceAndroidNotificationSound _messageSound =
+      RawResourceAndroidNotificationSound(messageSoundResource);
+
+  static AndroidNotificationChannel buildAndroidMessageAlertChannel() {
+    return const AndroidNotificationChannel(
+      messageAlertChannelId,
+      messageAlertChannelName,
+      description: messageAlertChannelDescription,
+      importance: Importance.high,
+      playSound: true,
+      sound: _messageSound,
+      enableVibration: true,
+      audioAttributesUsage: AudioAttributesUsage.notification,
+    );
+  }
+
+  static AndroidNotificationDetails buildAndroidMessageAlertDetails({
+    String? groupKey,
+    bool onlyAlertOnce = false,
+  }) {
+    return AndroidNotificationDetails(
+      messageAlertChannelId,
+      messageAlertChannelName,
+      channelDescription: messageAlertChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+      sound: _messageSound,
+      enableVibration: true,
+      audioAttributesUsage: AudioAttributesUsage.notification,
+      category: AndroidNotificationCategory.message,
+      groupKey: groupKey,
+      onlyAlertOnce: onlyAlertOnce,
+      showWhen: true,
+    );
+  }
 
   /// Initialize notification plugin
   Future<void> initialize({
@@ -47,8 +89,19 @@ class NotificationHelper {
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
+    await _ensureAndroidChannels();
 
     _isInitialized = true;
+  }
+
+  Future<void> _ensureAndroidChannels() async {
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    await androidPlugin?.createNotificationChannel(
+      buildAndroidMessageAlertChannel(),
+    );
   }
 
   /// Register handler for notification taps
@@ -85,7 +138,14 @@ class NotificationHelper {
           sound: sound,
         ) ??
         true;
-    return iosResult && macResult;
+    final androidResult =
+        await _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >()
+            ?.requestNotificationsPermission() ??
+        true;
+    return iosResult && macResult && androidResult;
   }
 
   void _onNotificationTapped(NotificationResponse response) {
@@ -111,13 +171,29 @@ class NotificationHelper {
     String? payload,
     String? channelId,
     String? channelName,
+    String? channelDescription,
     Importance importance = Importance.defaultImportance,
+    Priority priority = Priority.defaultPriority,
+    bool playSound = true,
+    AndroidNotificationSound? sound,
+    bool onlyAlertOnce = false,
+    String? groupKey,
+    AndroidNotificationCategory? category,
+    AudioAttributesUsage audioAttributesUsage =
+        AudioAttributesUsage.notification,
   }) async {
     final androidDetails = AndroidNotificationDetails(
       channelId ?? 'default_channel',
       channelName ?? 'Default Channel',
+      channelDescription: channelDescription,
       importance: importance,
-      priority: Priority.defaultPriority,
+      priority: priority,
+      playSound: playSound,
+      sound: sound,
+      onlyAlertOnce: onlyAlertOnce,
+      groupKey: groupKey,
+      category: category,
+      audioAttributesUsage: audioAttributesUsage,
       showWhen: true,
     );
 

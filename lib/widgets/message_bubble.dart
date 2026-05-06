@@ -46,7 +46,10 @@ class MessageParticipantInfo {
   });
 }
 
+enum ChatSendVisualState { sending, sent, delivered, read, failed }
+
 class MessageStatusInfo {
+  final ChatSendVisualState visualState;
   final String label;
   final IconData? icon;
   final String? assetIcon;
@@ -54,12 +57,100 @@ class MessageStatusInfo {
   final bool isLoading;
 
   const MessageStatusInfo({
+    required this.visualState,
     required this.label,
     this.icon,
     this.assetIcon,
     required this.foregroundColor,
     this.isLoading = false,
   });
+}
+
+const Color _sendStatusPendingColor = Color(0xFF7A8799);
+const Color _sendStatusNeutralColor = Color(0xFF677487);
+const Color _sendStatusReadColor = Color(0xFF2196F3);
+const Color _sendStatusFailedColor = Color(0xFFD64545);
+
+@visibleForTesting
+ChatSendVisualState resolveChatSendVisualState(
+  WKMsg message, {
+  required bool isSelf,
+}) {
+  if (!isSelf) {
+    return ChatSendVisualState.sent;
+  }
+
+  final hasServerIdentity =
+      message.messageID.trim().isNotEmpty || message.messageSeq > 0;
+  final status = message.status;
+
+  if (status == WKSendMsgResult.sendFail) {
+    return ChatSendVisualState.failed;
+  }
+
+  if (status == WKSendMsgResult.sendLoading && !hasServerIdentity) {
+    return ChatSendVisualState.sending;
+  }
+
+  final extra = message.wkMsgExtra;
+  final isRead =
+      (extra?.readed ?? 0) == 1 ||
+      (extra?.readedCount ?? 0) > 0 ||
+      message.viewed == 1 ||
+      message.viewedAt > 0;
+  if (isRead) {
+    return ChatSendVisualState.read;
+  }
+
+  if (extra != null) {
+    return ChatSendVisualState.delivered;
+  }
+
+  return ChatSendVisualState.sent;
+}
+
+MessageStatusInfo _messageStatusInfoForState(
+  ChatSendVisualState state, {
+  String? label,
+}) {
+  switch (state) {
+    case ChatSendVisualState.sending:
+      return MessageStatusInfo(
+        visualState: state,
+        label: label ?? '\u53d1\u9001\u4e2d',
+        icon: Icons.schedule_rounded,
+        foregroundColor: _sendStatusPendingColor,
+        isLoading: true,
+      );
+    case ChatSendVisualState.failed:
+      return MessageStatusInfo(
+        visualState: state,
+        label: label ?? '\u53d1\u9001\u5931\u8d25',
+        icon: Icons.error_outline_rounded,
+        foregroundColor: _sendStatusFailedColor,
+      );
+    case ChatSendVisualState.read:
+      return MessageStatusInfo(
+        visualState: state,
+        label: label ?? '\u5df2\u8bfb',
+        icon: Icons.done_all_rounded,
+        foregroundColor: _sendStatusReadColor,
+      );
+    case ChatSendVisualState.delivered:
+      return MessageStatusInfo(
+        visualState: state,
+        label: label ?? '\u5df2\u9001\u8fbe',
+        icon: Icons.done_all_rounded,
+        foregroundColor: _sendStatusNeutralColor,
+      );
+    case ChatSendVisualState.sent:
+      return MessageStatusInfo(
+        visualState: state,
+        label: label ?? '\u5df2\u53d1\u9001',
+        icon: Icons.check_rounded,
+        foregroundColor: _sendStatusNeutralColor,
+      );
+  }
 }
 
 MessageParticipantInfo resolveMessageParticipantInfo(
@@ -124,74 +215,23 @@ MessageStatusInfo? resolveMessageStatusInfo(
     return null;
   }
 
-  final hasServerIdentity =
-      message.messageID.trim().isNotEmpty || message.messageSeq > 0;
-
-  switch (message.status) {
-    // Synced messages already acknowledged by the server should not keep the
-    // local loading spinner just because a test fixture left status at 0.
-    case WKSendMsgResult.sendLoading:
-      if (hasServerIdentity) {
-        break;
-      }
-      return const MessageStatusInfo(
-        label: '发送中',
-        icon: Icons.schedule_rounded,
-        foregroundColor: Color(0xFF7A8799),
-        isLoading: true,
-      );
-    case WKSendMsgResult.sendSuccess:
-      break;
-    default:
-      return const MessageStatusInfo(
-        label: '发送失败',
-        icon: Icons.error_outline_rounded,
-        foregroundColor: Color(0xFFD64545),
-      );
-  }
-
+  final state = resolveChatSendVisualState(message, isSelf: isSelf);
   final extra = message.wkMsgExtra;
-  if (message.channelType == WKChannelType.group && extra != null) {
+
+  if (message.channelType == WKChannelType.group &&
+      extra != null &&
+      state == ChatSendVisualState.read) {
     final readedCount = extra.readedCount;
     final unreadCount = extra.unreadCount;
     if (readedCount > 0 || unreadCount > 0) {
       final label = unreadCount > 0
-          ? '$readedCount已读 · $unreadCount未读'
-          : '$readedCount已读';
-      return const MessageStatusInfo(
-        label: '',
-        icon: Icons.groups_rounded,
-        foregroundColor: Color(0xFF2F6FED),
-      ).copyWith(label: label);
+          ? '$readedCount\u5df2\u8bfb \u00b7 $unreadCount\u672a\u8bfb'
+          : '$readedCount\u5df2\u8bfb';
+      return _messageStatusInfoForState(state, label: label);
     }
   }
 
-  final isRead =
-      (extra?.readed ?? 0) == 1 ||
-      (extra?.readedCount ?? 0) > 0 ||
-      message.viewed == 1 ||
-      message.viewedAt > 0;
-  if (isRead) {
-    return const MessageStatusInfo(
-      label: '已读',
-      icon: Icons.done_all_rounded,
-      foregroundColor: Color(0xFF0F9D84),
-    );
-  }
-
-  if (extra != null) {
-    return const MessageStatusInfo(
-      label: '未读',
-      icon: Icons.done_rounded,
-      foregroundColor: Color(0xFF677487),
-    );
-  }
-
-  return const MessageStatusInfo(
-    label: '已发送',
-    icon: Icons.check_rounded,
-    foregroundColor: Color(0xFF677487),
-  );
+  return _messageStatusInfoForState(state);
 }
 
 typedef MessageVoiceContentBuilder =
@@ -1772,22 +1812,12 @@ class _CompactMessageStatusBadge extends StatelessWidget {
               ? WKColors.white.withValues(alpha: 0.72)
               : const Color(0xFF8B94A5))
         : WKColors.color999;
-    final statusColor = status == null
-        ? null
-        : insideBubble && useWarmTextColors
-        ? (status!.icon == Icons.error_outline_rounded
-              ? status!.foregroundColor
-              : _warmWebBubbleMetaColor)
-        : insideBubble && isSelf
-        ? (status!.icon == Icons.error_outline_rounded
-              ? status!.foregroundColor
-              : WKColors.white.withValues(alpha: 0.82))
-        : status!.foregroundColor;
+    final statusColor = status?.foregroundColor;
 
     final canRetry =
         isSelf &&
         onRetrySend != null &&
-        status?.icon == Icons.error_outline_rounded;
+        status?.visualState == ChatSendVisualState.failed;
     final badge = Row(
       key: const ValueKey<String>('message-status-badge'),
       mainAxisSize: MainAxisSize.min,
@@ -1827,7 +1857,7 @@ class _CompactMessageStatusBadge extends StatelessWidget {
     );
     final shouldShake =
         isSelf &&
-        status?.icon == Icons.error_outline_rounded &&
+        status?.visualState == ChatSendVisualState.failed &&
         !(MediaQuery.maybeOf(context)?.disableAnimations ?? false);
     final shouldPulse =
         isSelf &&
@@ -1866,17 +1896,17 @@ class _CompactMessageStatusBadge extends StatelessWidget {
     if (status.assetIcon != null && status.assetIcon!.isNotEmpty) {
       return status.assetIcon;
     }
-    final icon = status.icon;
-    if (icon == Icons.error_outline_rounded) {
-      return WKReferenceAssets.sendFail;
+    switch (status.visualState) {
+      case ChatSendVisualState.failed:
+        return WKReferenceAssets.sendFail;
+      case ChatSendVisualState.read:
+      case ChatSendVisualState.delivered:
+        return WKReferenceAssets.sendDouble;
+      case ChatSendVisualState.sent:
+        return WKReferenceAssets.sendSingle;
+      case ChatSendVisualState.sending:
+        return null;
     }
-    if (icon == Icons.done_all_rounded || icon == Icons.groups_rounded) {
-      return WKReferenceAssets.sendDouble;
-    }
-    if (icon == Icons.done_rounded || icon == Icons.check_rounded) {
-      return WKReferenceAssets.sendSingle;
-    }
-    return null;
   }
 }
 
@@ -1984,24 +2014,6 @@ class _PinnedMessageIndicator extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-extension on MessageStatusInfo {
-  MessageStatusInfo copyWith({
-    String? label,
-    IconData? icon,
-    String? assetIcon,
-    Color? foregroundColor,
-    bool? isLoading,
-  }) {
-    return MessageStatusInfo(
-      label: label ?? this.label,
-      icon: icon ?? this.icon,
-      assetIcon: assetIcon ?? this.assetIcon,
-      foregroundColor: foregroundColor ?? this.foregroundColor,
-      isLoading: isLoading ?? this.isLoading,
     );
   }
 }

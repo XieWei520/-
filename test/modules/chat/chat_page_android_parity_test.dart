@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -33,6 +32,7 @@ import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
 import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
+import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 import 'package:wukong_im_app/wk_endpoint/core/slot_entry.dart';
 import 'package:wukong_im_app/wk_endpoint/core/slot_registry.dart';
 import 'package:wukong_im_app/wk_endpoint/providers/slot_registry_provider.dart';
@@ -162,6 +162,91 @@ void main() {
     }
     return false;
   }
+
+  Future<void> runWithAndroidPhoneViewport(
+    WidgetTester tester,
+    Future<void> Function() body,
+  ) async {
+    final previousOverride = debugDefaultTargetPlatformOverride;
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    try {
+      await body();
+    } finally {
+      debugDefaultTargetPlatformOverride = previousOverride;
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    }
+  }
+
+  testWidgets('Android chat header tints the legacy white back icon', (
+    tester,
+  ) async {
+    await runWithAndroidPhoneViewport(tester, () async {
+      await pumpChatPage(
+        tester,
+        channelId: 'fileHelper',
+        channelType: WKChannelType.personal,
+        channelName: 'Android Back',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final backButton = find.byKey(const ValueKey<String>('chat-back-button'));
+      expect(backButton, findsOneWidget);
+
+      final image = tester.widget<Image>(
+        find.descendant(of: backButton, matching: find.byType(Image)).first,
+      );
+      expect(image.color, WKWebColors.textPrimary);
+    });
+  });
+
+  testWidgets('Android composer aligns action buttons with the input field', (
+    tester,
+  ) async {
+    await runWithAndroidPhoneViewport(tester, () async {
+      await pumpChatPage(
+        tester,
+        channelId: 'fileHelper',
+        channelType: WKChannelType.personal,
+        channelName: 'Android Composer',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final inputFinder = find.byKey(
+        const ValueKey<String>('chat-input-field'),
+      );
+      final addFinder = find.byKey(
+        const ValueKey<String>('chat-compose-plus-button'),
+      );
+      final sendFinder = find.byKey(const ValueKey<String>('chat-send-button'));
+
+      expect(inputFinder, findsOneWidget);
+      expect(addFinder, findsOneWidget);
+      expect(sendFinder, findsOneWidget);
+
+      final inputRect = tester.getRect(inputFinder);
+      final addRect = tester.getRect(addFinder);
+      final sendRect = tester.getRect(sendFinder);
+
+      expect(addRect.height, greaterThanOrEqualTo(44));
+      expect(sendRect.height, greaterThanOrEqualTo(44));
+      expect(
+        (addRect.center.dy - inputRect.center.dy).abs(),
+        lessThanOrEqualTo(1),
+      );
+      expect(
+        (sendRect.center.dy - inputRect.center.dy).abs(),
+        lessThanOrEqualTo(1),
+      );
+
+      final disabledSendIcon = tester.widget<Image>(
+        find.descendant(of: sendFinder, matching: find.byType(Image)).first,
+      );
+      expect(disabledSendIcon.color, WKWebColors.action);
+    });
+  });
 
   testWidgets(
     'robot chat shows Android menu button and sends bot commands with robot id',
@@ -421,6 +506,79 @@ void main() {
       expect(viewportBuilds, baselineBuilds);
     },
   );
+
+  testWidgets('keyboard inset changes translate without rebuilding viewport', (
+    tester,
+  ) async {
+    final previousOverride = debugDefaultTargetPlatformOverride;
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final session = ChatSession(
+        channelId: 'u_keyboard_rebuild',
+        channelType: WKChannelType.personal,
+      );
+      final message = WKMsg()
+        ..messageID = 'm_keyboard_rebuild'
+        ..channelID = session.channelId
+        ..channelType = session.channelType
+        ..fromUID = 'u_other'
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('keyboard rebuild guard');
+      final container = ProviderContainer(
+        overrides: [
+          _testRealtimeTelemetryOverride(),
+          conversationPatchTelemetryProvider.overrideWithValue(
+            _NoopConversationPatchTelemetry(),
+          ),
+          messageListProvider.overrideWith(
+            (ref, providedSession) => _StaticMessageListNotifier(
+              providedSession.channelId,
+              providedSession.channelType,
+              providedSession == session ? <WKMsg>[message] : const <WKMsg>[],
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      var viewportBuilds = 0;
+      final chatShell = UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: ChatPageShell(
+            channelId: session.channelId,
+            channelType: session.channelType,
+            channelName: 'Keyboard Rebuild',
+            onViewportBuild: () {
+              viewportBuilds += 1;
+            },
+          ),
+        ),
+      );
+      await tester.pumpWidget(
+        MediaQuery(data: const MediaQueryData(), child: chatShell),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final baselineBuilds = viewportBuilds;
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(viewInsets: EdgeInsets.only(bottom: 280)),
+          child: chatShell,
+        ),
+      );
+      await tester.pump();
+
+      final keyboardTransform = tester.widget<Transform>(
+        find.byKey(const ValueKey<String>('chat-keyboard-inset-transform')),
+      );
+      expect(keyboardTransform.transform.getTranslation().y, -280);
+      expect(viewportBuilds, baselineBuilds);
+    } finally {
+      debugDefaultTargetPlatformOverride = previousOverride;
+    }
+  });
 
   testWidgets(
     'chat page marks visible foreign messages read once and typing does not resubmit',

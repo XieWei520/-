@@ -29,6 +29,15 @@ import 'package:wukongimfluttersdk/model/wk_video_content.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
+Finder _statusAssetFinder(String assetName) {
+  return find.byWidgetPredicate(
+    (widget) =>
+        widget is Image &&
+        widget.image is AssetImage &&
+        (widget.image as AssetImage).assetName == assetName,
+  );
+}
+
 void main() {
   group('message bubble presentation', () {
     setUp(() {
@@ -235,6 +244,90 @@ void main() {
       },
     );
 
+    test(
+      'resolveMessageStatusInfo maps outgoing send status to visual states',
+      () {
+        final sendingMessage = WKMsg()
+          ..fromUID = 'u_self'
+          ..status = WKSendMsgResult.sendLoading
+          ..channelType = WKChannelType.personal;
+        final sentMessage = WKMsg()
+          ..fromUID = 'u_self'
+          ..status = WKSendMsgResult.sendSuccess
+          ..channelType = WKChannelType.personal;
+        final deliveredMessage = WKMsg()
+          ..fromUID = 'u_self'
+          ..status = WKSendMsgResult.sendSuccess
+          ..channelType = WKChannelType.personal
+          ..wkMsgExtra = WKMsgExtra();
+        final readMessage = WKMsg()
+          ..fromUID = 'u_self'
+          ..status = WKSendMsgResult.sendSuccess
+          ..channelType = WKChannelType.personal
+          ..wkMsgExtra = (WKMsgExtra()..readed = 1);
+        final failedMessage = WKMsg()
+          ..fromUID = 'u_self'
+          ..status = WKSendMsgResult.sendFail
+          ..channelType = WKChannelType.personal;
+        final unknownMessage = WKMsg()
+          ..fromUID = 'u_self'
+          ..status = 999
+          ..channelType = WKChannelType.personal;
+        final incomingMessage = WKMsg()
+          ..fromUID = 'u_other'
+          ..status = WKSendMsgResult.sendSuccess
+          ..channelType = WKChannelType.personal;
+
+        expect(
+          resolveMessageStatusInfo(sendingMessage, isSelf: true)?.visualState,
+          ChatSendVisualState.sending,
+        );
+        expect(
+          resolveMessageStatusInfo(sentMessage, isSelf: true)?.visualState,
+          ChatSendVisualState.sent,
+        );
+        expect(
+          resolveMessageStatusInfo(deliveredMessage, isSelf: true)?.visualState,
+          ChatSendVisualState.delivered,
+        );
+        expect(
+          resolveMessageStatusInfo(readMessage, isSelf: true)?.visualState,
+          ChatSendVisualState.read,
+        );
+        expect(
+          resolveMessageStatusInfo(failedMessage, isSelf: true)?.visualState,
+          ChatSendVisualState.failed,
+        );
+        expect(
+          resolveMessageStatusInfo(unknownMessage, isSelf: true)?.visualState,
+          ChatSendVisualState.sent,
+        );
+        expect(
+          resolveMessageStatusInfo(incomingMessage, isSelf: false),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'resolveMessageStatusInfo treats server-acknowledged loading as sent',
+      () {
+        final syncedLoadingMessage = WKMsg()
+          ..fromUID = 'u_self'
+          ..status = WKSendMsgResult.sendLoading
+          ..channelType = WKChannelType.personal
+          ..messageID = 'server-msg-1';
+
+        final status = resolveMessageStatusInfo(
+          syncedLoadingMessage,
+          isSelf: true,
+        );
+
+        expect(status?.visualState, ChatSendVisualState.sent);
+        expect(status?.isLoading, isFalse);
+      },
+    );
+
     test('resolveMessageStatusInfo returns personal read state', () {
       final readMessage = WKMsg()
         ..status = WKSendMsgResult.sendSuccess
@@ -281,6 +374,128 @@ void main() {
       expect(model.identity, startsWith('seq:'));
       expect(model.self, isTrue);
       expect(label, allOf(contains('3'), contains('1')));
+    });
+
+    testWidgets('send status badge renders sent as a single neutral check', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('sent only')
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      expect(_statusAssetFinder(WKReferenceAssets.sendSingle), findsOneWidget);
+      expect(_statusAssetFinder(WKReferenceAssets.sendDouble), findsNothing);
+      final image = tester.widget<Image>(
+        _statusAssetFinder(WKReferenceAssets.sendSingle),
+      );
+      expect(image.color, const Color(0xFF677487));
+    });
+
+    testWidgets(
+      'send status badge renders delivered as double neutral checks',
+      (tester) async {
+        final message = WKMsg()
+          ..fromUID = 'u_me'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.text
+          ..messageContent = WKTextContent('delivered')
+          ..status = WKSendMsgResult.sendSuccess
+          ..wkMsgExtra = WKMsgExtra();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          _statusAssetFinder(WKReferenceAssets.sendDouble),
+          findsOneWidget,
+        );
+        final image = tester.widget<Image>(
+          _statusAssetFinder(WKReferenceAssets.sendDouble),
+        );
+        expect(image.color, const Color(0xFF677487));
+      },
+    );
+
+    testWidgets('send status badge renders read as double blue checks', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('read')
+        ..status = WKSendMsgResult.sendSuccess
+        ..wkMsgExtra = (WKMsgExtra()..readedCount = 1);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      expect(_statusAssetFinder(WKReferenceAssets.sendDouble), findsOneWidget);
+      final image = tester.widget<Image>(
+        _statusAssetFinder(WKReferenceAssets.sendDouble),
+      );
+      expect(image.color, const Color(0xFF2196F3));
+    });
+
+    testWidgets('send status badge keeps failed retry affordance red', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('failed')
+        ..status = WKSendMsgResult.sendFail;
+      var retryCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              onRetrySend: () => retryCount += 1,
+            ),
+          ),
+        ),
+      );
+
+      expect(_statusAssetFinder(WKReferenceAssets.sendFail), findsOneWidget);
+      final image = tester.widget<Image>(
+        _statusAssetFinder(WKReferenceAssets.sendFail),
+      );
+      expect(image.color, const Color(0xFFD64545));
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('message-retry-send-button')),
+      );
+      expect(retryCount, 1);
     });
 
     testWidgets('failed outgoing status exposes a retry tap target', (

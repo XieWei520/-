@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
@@ -12,12 +14,14 @@ class MessageAlertPlan {
     required this.body,
     required this.channelId,
     required this.channelType,
+    this.payload = '',
   });
 
   final String title;
   final String body;
   final String channelId;
   final int channelType;
+  final String payload;
 
   String get conversationKey => '$channelType:$channelId';
 }
@@ -40,16 +44,51 @@ MessageAlertPlan? buildMessageAlertPlan(
     return null;
   }
 
+  final title = _compactText(
+    _resolveAlertTitle(message),
+    fallback: 'InfoEquity',
+    maxLength: _maxAlertTitleLength,
+  );
+
   return MessageAlertPlan(
-    title: _compactText(
-      _resolveAlertTitle(message),
-      fallback: 'InfoEquity',
-      maxLength: _maxAlertTitleLength,
-    ),
+    title: title,
     body: body,
     channelId: message.channelID.trim(),
     channelType: message.channelType,
+    payload: buildMessageAlertPayload(
+      title: title,
+      body: body,
+      channelId: message.channelID.trim(),
+      channelType: message.channelType,
+      senderUid: message.fromUID.trim(),
+      messageId: message.messageID.toString(),
+    ),
   );
+}
+
+String buildMessageAlertPayload({
+  required String title,
+  required String body,
+  required String channelId,
+  required int channelType,
+  String? senderUid,
+  String? messageId,
+}) {
+  final normalizedPayload = <String, dynamic>{
+    'channel_id': channelId,
+    'channel_type': channelType,
+    'title': title,
+    'body': body,
+    if (senderUid != null && senderUid.trim().isNotEmpty)
+      'sender_uid': senderUid.trim(),
+    if (messageId != null && messageId.trim().isNotEmpty)
+      'message_id': messageId.trim(),
+  };
+  return jsonEncode(<String, dynamic>{
+    'payload': normalizedPayload,
+    'title': title,
+    'body': body,
+  });
 }
 
 bool shouldTriggerMessageAlert(WKMsg message, {required String currentUid}) {

@@ -3,8 +3,11 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:web/web.dart' as web;
+
+import 'desktop_message_alert_policy.dart';
+import 'message_alert_plan.dart';
 
 class WebNotificationManager {
   WebNotificationManager._internal();
@@ -17,22 +20,30 @@ class WebNotificationManager {
   final AudioPlayer _foregroundPlayer = AudioPlayer(
     playerId: 'wk_web_notification_foreground',
   );
+  final AudioPlayer _messagePlayer = AudioPlayer(
+    playerId: 'wk_web_notification_message',
+  );
   final AudioPlayer _unlockPlayer = AudioPlayer(
     playerId: 'wk_web_notification_unlock',
   );
+  final DesktopMessageAlertPolicy _policy = DesktopMessageAlertPolicy();
 
   String _foregroundSoundAssetPath = 'audio/im_tick.wav';
+  String _messageSoundAssetPath = 'audio/im_message.wav';
   String _unlockSoundAssetPath = 'audio/silence.wav';
   String? _notificationIcon = 'icons/Icon-192.png';
   String _notificationTag = 'wk-im-new-message';
   double _foregroundVolume = 0.35;
+  double _messageVolume = 0.65;
   double _unlockVolume = 1.0;
   Duration _foregroundSoundMaxDuration = const Duration(milliseconds: 180);
+  final Duration _messageSoundMaxDuration = const Duration(milliseconds: 900);
   Duration _titleBlinkInterval = const Duration(milliseconds: 500);
 
   Future<void>? _initFuture;
   Timer? _titleBlinkTimer;
   Timer? _foregroundStopTimer;
+  Timer? _messageStopTimer;
   String? _titleBeforeBlink;
   bool _showBlinkText = true;
   web.EventListener? _visibilityChangeListener;
@@ -43,17 +54,10 @@ class WebNotificationManager {
 
   String get notificationPermission => _notificationPermission;
 
-  /// 初始化 Web 通知能力。
+  /// Initializes browser notifications from a user gesture.
   ///
-  /// 重要：
-  /// 此方法应在用户产生点击交互时调用，例如登录按钮、进入聊天按钮等。
-  /// 浏览器通常只允许“用户手势触发”的代码请求 Notification 权限，
-  /// 并且音频自动播放限制也需要在用户手势里通过一次极短播放来解锁。
-  /// 后台系统弹窗的提示音不再播放自定义音频，而是通过 Notification
-  /// options 的 silent: false 交给浏览器/操作系统使用默认通知声音。
-  ///
-  /// 不建议在 main()、initState() 或自动登录流程里首次调用，因为那通常
-  /// 不属于浏览器认可的用户手势，可能导致权限弹窗不出现或提示音被静音。
+  /// Call this from login or another explicit click path so the browser can
+  /// request Notification permission and unlock audio playback.
   Future<void> init({
     String foregroundSoundAssetPath = 'audio/im_tick.wav',
     String messageSoundAssetPath = 'audio/im_message.wav',
@@ -67,10 +71,12 @@ class WebNotificationManager {
     Duration titleBlinkInterval = const Duration(milliseconds: 500),
   }) {
     _foregroundSoundAssetPath = foregroundSoundAssetPath;
+    _messageSoundAssetPath = messageSoundAssetPath;
     _unlockSoundAssetPath = unlockSoundAssetPath;
     _notificationIcon = notificationIcon;
     _notificationTag = notificationTag;
     _foregroundVolume = _normalizeVolume(foregroundVolume);
+    _messageVolume = _normalizeVolume(backgroundVolume);
     _unlockVolume = _normalizeVolume(unlockVolume);
     _foregroundSoundMaxDuration = foregroundSoundMaxDuration;
     _titleBlinkInterval = titleBlinkInterval;
@@ -136,23 +142,34 @@ class WebNotificationManager {
   }
 
   Future<void> showNewMessageAlert({
-    required String title,
-    required String body,
+    required MessageAlertPlan plan,
+    required AppLifecycleState lifecycleState,
   }) async {
     _bindVisibilityChangeListener();
 
     try {
-      if (isPageVisible()) {
+      final decision = _policy.resolve(
+        plan: plan,
+        lifecycleState: lifecycleState,
+      );
+
+      if (decision.playForegroundSound) {
         stopTitleBlink();
         await _playForegroundTick();
         return;
       }
 
-      // 后台/最小化时不要再用 audioplayers 播放自定义消息音。
-      // Web 没有“直接调用系统默认提示音”的 API；正确做法是创建不静音的
-      // Notification，让浏览器和操作系统按用户当前通知设置播放默认声音。
-      _showSystemNotification(title: title, body: body);
-      startTitleBlink();
+      if (decision.playMessageSound) {
+        stopTitleBlink();
+        await _playMessageSound();
+      }
+
+      final notification = decision.notification;
+      if (notification == null) {
+        return;
+      }
+
+      await _showBrowserNotification(notification);
     } catch (error, stackTrace) {
       _logError('处理新消息提醒失败', error, stackTrace);
     }
@@ -160,6 +177,7 @@ class WebNotificationManager {
 
   Future<void> dispose() async {
     _foregroundStopTimer?.cancel();
+    _messageStopTimer?.cancel();
     stopTitleBlink();
     final listener = _visibilityChangeListener;
     if (listener != null) {
@@ -173,6 +191,7 @@ class WebNotificationManager {
 
     await Future.wait<void>([
       _foregroundPlayer.dispose(),
+      _messagePlayer.dispose(),
       _unlockPlayer.dispose(),
     ]);
   }
@@ -221,7 +240,11 @@ class WebNotificationManager {
       await Future<void>.delayed(const Duration(milliseconds: 80));
       await _safeStop(_unlockPlayer);
     } catch (error, stackTrace) {
-      _logError('解锁浏览器音频自动播放失败，请确认 init() 由用户点击触发且音频资源存在', error, stackTrace);
+      _logError(
+        '解锁浏览器音频自动播放失败，请确认 init() 由用户点击触发且音频资源存在',
+        error,
+        stackTrace,
+      );
     }
   }
 
@@ -229,6 +252,7 @@ class WebNotificationManager {
     try {
       await Future.wait<void>([
         _foregroundPlayer.setReleaseMode(ReleaseMode.stop),
+        _messagePlayer.setReleaseMode(ReleaseMode.stop),
         _unlockPlayer.setReleaseMode(ReleaseMode.stop),
       ]);
     } catch (error, stackTrace) {
@@ -254,7 +278,27 @@ class WebNotificationManager {
     }
   }
 
-  void _showSystemNotification({required String title, required String body}) {
+  Future<void> _playMessageSound() async {
+    try {
+      _messageStopTimer?.cancel();
+      await _safeStop(_messagePlayer);
+      await _messagePlayer.play(
+        AssetSource(_messageSoundAssetPath),
+        volume: _messageVolume,
+        mode: PlayerMode.lowLatency,
+      );
+
+      _messageStopTimer = Timer(_messageSoundMaxDuration, () {
+        unawaited(_safeStop(_messagePlayer));
+      });
+    } catch (error, stackTrace) {
+      _logError('播放消息提示音失败', error, stackTrace);
+    }
+  }
+
+  Future<void> _showBrowserNotification(
+    DesktopMessageNotification notification,
+  ) async {
     try {
       if (!_supportsNotification()) {
         return;
@@ -266,15 +310,14 @@ class WebNotificationManager {
         return;
       }
 
-      final notification = web.Notification(
-        title,
-        _buildNotificationOptions(body),
+      final browserNotification = web.Notification(
+        notification.title,
+        _buildNotificationOptions(notification),
       );
-      notification.onclick = ((web.Event event) {
+      browserNotification.onclick = ((web.Event event) {
         try {
           web.window.focus();
-          notification.close();
-          stopTitleBlink();
+          browserNotification.close();
         } catch (error, stackTrace) {
           _logError('处理系统通知点击事件失败', error, stackTrace);
         }
@@ -284,29 +327,38 @@ class WebNotificationManager {
     }
   }
 
-  web.NotificationOptions _buildNotificationOptions(String body) {
+  web.NotificationOptions _buildNotificationOptions(
+    DesktopMessageNotification notification,
+  ) {
     final icon = _notificationIcon?.trim() ?? '';
+    final tag = _notificationTagFor(notification);
     if (icon.isEmpty) {
       return web.NotificationOptions(
-        body: body,
-        tag: _notificationTag,
+        body: notification.body,
+        tag: tag,
         renotify: true,
-        // false 表示不静音，是否真正播放默认提示音由浏览器/系统通知设置决定。
-        silent: false,
+        silent: true,
         requireInteraction: false,
       );
     }
 
     return web.NotificationOptions(
-      body: body,
-      tag: _notificationTag,
+      body: notification.body,
+      tag: tag,
       icon: icon,
       badge: 'icons/Icon-maskable-192.png',
       renotify: true,
-      // false 表示不静音，是否真正播放默认提示音由浏览器/系统通知设置决定。
-      silent: false,
+      silent: true,
       requireInteraction: false,
     );
+  }
+
+  String _notificationTagFor(DesktopMessageNotification notification) {
+    final identifier = notification.identifier.trim();
+    if (identifier.isNotEmpty) {
+      return identifier;
+    }
+    return _notificationTag;
   }
 
   void _bindVisibilityChangeListener() {

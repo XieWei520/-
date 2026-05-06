@@ -63,12 +63,24 @@ abstract class MessageQueryTelemetry {
   void recordSqlitePageQuery(Duration duration, {required String mode});
 }
 
+abstract class FrameJankTelemetry {
+  static const String reasonBuild = 'build';
+  static const String reasonRaster = 'raster';
+  static const String reasonTotal = 'total';
+
+  void recordChatFrameJank({
+    required Duration duration,
+    required String reason,
+  });
+}
+
 class RealtimeRolloutTelemetry
     implements
         SessionRuntimeTelemetry,
         SessionEventGatewayTelemetry,
         ConversationPatchTelemetry,
-        MessageQueryTelemetry {
+        MessageQueryTelemetry,
+        FrameJankTelemetry {
   RealtimeRolloutTelemetry({
     RealtimeTelemetryTransport? transport,
     this.flushInterval = const Duration(seconds: 30),
@@ -95,6 +107,9 @@ class RealtimeRolloutTelemetry
   static const String metricSqlitePageQueryP95Ms = 'sqlite_page_query_p95_ms';
   static const String metricConversationListPatchApplyP95Ms =
       'conversation_list_patch_apply_p95_ms';
+  static const String metricChatFrameBuildJankMs = 'chat_frame_build_jank_ms';
+  static const String metricChatFrameRasterJankMs = 'chat_frame_raster_jank_ms';
+  static const String metricChatFrameTotalJankMs = 'chat_frame_total_jank_ms';
 
   final Duration flushInterval;
   final int maxBufferedEvents;
@@ -160,6 +175,27 @@ class RealtimeRolloutTelemetry
         ? const <String, String>{}
         : <String, String>{'mode': normalizedMode};
     _recordDuration(metricSqlitePageQueryP95Ms, duration, tags: tags);
+  }
+
+  @override
+  void recordChatFrameJank({
+    required Duration duration,
+    required String reason,
+  }) {
+    final metricName = switch (reason.trim()) {
+      FrameJankTelemetry.reasonBuild => metricChatFrameBuildJankMs,
+      FrameJankTelemetry.reasonRaster => metricChatFrameRasterJankMs,
+      FrameJankTelemetry.reasonTotal => metricChatFrameTotalJankMs,
+      _ => null,
+    };
+    if (metricName == null) {
+      return;
+    }
+    _recordDuration(
+      metricName,
+      duration,
+      tags: <String, String>{'surface': 'chat', 'reason': reason.trim()},
+    );
   }
 
   Future<void> flush() {

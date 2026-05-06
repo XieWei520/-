@@ -24,6 +24,7 @@ import 'package:wukongimfluttersdk/wkim.dart';
 import '../../core/config/api_config.dart';
 import '../../core/config/im_config.dart';
 import '../../core/utils/storage_utils.dart';
+import '../../data/models/chat_session.dart';
 import '../../data/providers/user_provider.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../data/models/wk_custom_content.dart';
@@ -38,9 +39,9 @@ import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import '../../wukong_base/msg/msg_content_type.dart';
 import '../../wukong_base/db/db_helper.dart';
+import '../../wukong_push/notification/android_message_alert_manager.dart';
 import '../../wukong_push/notification/desktop_message_alert_manager.dart';
 import '../../wukong_push/notification/message_alert_plan.dart';
-import '../../wukong_push/notification/web_message_alert_plan.dart';
 import '../../wukong_push/notification/web_notification_manager.dart';
 import '../api/file_api.dart';
 import '../api/conversation_draft_api.dart';
@@ -301,8 +302,11 @@ bool shouldDisconnectForBackgroundLifecycle({
   required bool isWeb,
   required bool hasActiveCallOrPendingSetup,
   bool keepRealtimeForDesktopNotifications = false,
+  bool keepRealtimeForLocalNotifications = false,
 }) {
-  if (isWeb || keepRealtimeForDesktopNotifications) {
+  if (isWeb ||
+      keepRealtimeForDesktopNotifications ||
+      keepRealtimeForLocalNotifications) {
     return false;
   }
   return !hasActiveCallOrPendingSetup;
@@ -1001,18 +1005,23 @@ class IMService extends StateNotifier<IMServiceState>
           if (extras.isEmpty) {
             break;
           }
-          await WKIM.shared.messageManager.saveRemoteExtraMsg(
-            extras
-                .map(
-                  (item) =>
-                      WKIM.shared.messageManager.wkSyncExtraMsg2WKMsgExtra(
-                        normalizedChannelId,
-                        channelType,
-                        item,
-                      ),
-                )
-                .toList(growable: false),
-          );
+          final mappedExtras = extras
+              .map(
+                (item) => WKIM.shared.messageManager.wkSyncExtraMsg2WKMsgExtra(
+                  normalizedChannelId,
+                  channelType,
+                  item,
+                ),
+              )
+              .toList(growable: false);
+          await WKIM.shared.messageManager.saveRemoteExtraMsg(mappedExtras);
+          if (!_usesLocalPersistence) {
+            _publishRealtimeMessageExtraRefresh(
+              normalizedChannelId,
+              channelType,
+              mappedExtras,
+            );
+          }
           await Future<void>.delayed(const Duration(milliseconds: 500));
           continue;
         } catch (error, stackTrace) {
@@ -1189,6 +1198,8 @@ class IMService extends StateNotifier<IMServiceState>
       }
       if (kIsWeb) {
         _scheduleWebMessageAlert(message, currentUid: currentUid);
+      } else if (defaultTargetPlatform == TargetPlatform.android) {
+        _scheduleAndroidMessageAlert(message, currentUid: currentUid);
       } else if (defaultTargetPlatform == TargetPlatform.windows) {
         _scheduleDesktopMessageAlert(message, currentUid: currentUid);
       }
@@ -1197,18 +1208,39 @@ class IMService extends StateNotifier<IMServiceState>
 
   void _scheduleWebMessageAlert(WKMsg message, {required String currentUid}) {
     try {
-      final plan = buildWebMessageAlertPlan(message, currentUid: currentUid);
+      final plan = buildMessageAlertPlan(message, currentUid: currentUid);
       if (plan == null) {
         return;
       }
       unawaited(
         WebNotificationManager.instance.showNewMessageAlert(
-          title: plan.title,
-          body: plan.body,
+          plan: plan,
+          lifecycleState: _appLifecycleState,
         ),
       );
     } catch (error, stackTrace) {
       debugPrint('Web message alert scheduling failed: $error');
+      debugPrint('$stackTrace');
+    }
+  }
+
+  void _scheduleAndroidMessageAlert(
+    WKMsg message, {
+    required String currentUid,
+  }) {
+    try {
+      final plan = buildMessageAlertPlan(message, currentUid: currentUid);
+      if (plan == null) {
+        return;
+      }
+      unawaited(
+        AndroidMessageAlertManager.instance.showNewMessageAlert(
+          plan: plan,
+          lifecycleState: _appLifecycleState,
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Android message alert scheduling failed: $error');
       debugPrint('$stackTrace');
     }
   }
@@ -1243,6 +1275,33 @@ class IMService extends StateNotifier<IMServiceState>
       message,
       currentUid: state.uid ?? StorageUtils.getUid()?.trim(),
     );
+  }
+
+  void _publishRealtimeMessageExtraRefresh(
+    String channelId,
+    int channelType,
+    Iterable<WKMsgExtra> extras,
+  ) {
+    final read = _readProvider;
+    if (read == null) {
+      return;
+    }
+    final session = ChatSession(channelId: channelId, channelType: channelType);
+    final notifier = read(messageListProvider(session).notifier);
+    for (final extra in extras) {
+      final messageId = extra.messageID.trim();
+      if (messageId.isEmpty) {
+        continue;
+      }
+      notifier.applyLocalMessageRefresh(
+        WKMsg()
+          ..channelID = channelId
+          ..channelType = channelType
+          ..messageID = messageId
+          ..status = WKSendMsgResult.sendSuccess
+          ..wkMsgExtra = extra,
+      );
+    }
   }
 
   Future<void> _insertSensitiveWordTipMessage(WKMsg tip) async {
@@ -1860,6 +1919,8 @@ class IMService extends StateNotifier<IMServiceState>
       hasActiveCallOrPendingSetup: shouldKeepConnectionInBackground(),
       keepRealtimeForDesktopNotifications:
           !kIsWeb && defaultTargetPlatform == TargetPlatform.windows,
+      keepRealtimeForLocalNotifications:
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
     )) {
       return;
     }

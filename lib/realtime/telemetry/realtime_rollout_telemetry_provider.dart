@@ -18,12 +18,16 @@ final realtimeRolloutTelemetryProvider = Provider<RealtimeRolloutTelemetry>((
   return telemetry;
 });
 
-final conversationPatchTelemetryProvider = Provider<ConversationPatchTelemetry>((
-  ref,
-) {
+final conversationPatchTelemetryProvider = Provider<ConversationPatchTelemetry>(
+  (ref) {
+    return ref.watch(realtimeRolloutTelemetryProvider);
+  },
+);
+
+final messageQueryTelemetryProvider = Provider<MessageQueryTelemetry>((ref) {
   return ref.watch(realtimeRolloutTelemetryProvider);
 });
 
-final messageQueryTelemetryProvider = Provider<MessageQueryTelemetry>((ref) {
+final frameJankTelemetryProvider = Provider<FrameJankTelemetry>((ref) {
   return ref.watch(realtimeRolloutTelemetryProvider);
 });

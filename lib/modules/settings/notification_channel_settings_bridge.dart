@@ -30,7 +30,10 @@ class DefaultNotificationChannelSettingsBridge
           return true;
         }
       } on MissingPluginException {
-      } on PlatformException {}
+        // Fall back to the app-level notification settings page below.
+      } on PlatformException {
+        // Fall back to the app-level notification settings page below.
+      }
     }
     return openAppSettings();
   }

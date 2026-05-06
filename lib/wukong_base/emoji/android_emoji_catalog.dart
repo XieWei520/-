@@ -29,14 +29,14 @@ class AndroidEmojiCatalog {
       _entriesByTag = _buildEntriesByTag(_entries),
       _entriesForGroup = _buildEntriesForGroup(_entries),
       _groupIds = _buildGroupIds(_entries),
-      _tagsByLengthDesc = _buildTagsByLength(_entries);
+      _tagsByFirstCodeUnit = _buildTagsByFirstCodeUnit(_entries);
 
   final List<AndroidEmojiEntry> _entries;
   final Map<String, AndroidEmojiEntry> _entriesById;
   final Map<String, AndroidEmojiEntry> _entriesByTag;
   final Map<String, List<AndroidEmojiEntry>> _entriesForGroup;
   final List<String> _groupIds;
-  final List<String> _tagsByLengthDesc;
+  final Map<int, List<String>> _tagsByFirstCodeUnit;
 
   List<AndroidEmojiEntry> get entries => _entries;
 
@@ -46,12 +46,24 @@ class AndroidEmojiCatalog {
 
   AndroidEmojiEntry? lookupByTag(String tag) => _entriesByTag[tag];
 
+  bool canStartEmojiAt(String text, int start) {
+    if (start < 0 || start >= text.length) {
+      return false;
+    }
+    return _tagsByFirstCodeUnit.containsKey(text.codeUnitAt(start));
+  }
+
   AndroidEmojiEntry? longestMatchAt(String text, int start) {
     if (start < 0 || start >= text.length) {
       return null;
     }
 
-    for (final tag in _tagsByLengthDesc) {
+    final candidateTags = _tagsByFirstCodeUnit[text.codeUnitAt(start)];
+    if (candidateTags == null) {
+      return null;
+    }
+
+    for (final tag in candidateTags) {
       if (!text.startsWith(tag, start)) {
         continue;
       }
@@ -127,16 +139,35 @@ class AndroidEmojiCatalog {
     return List<String>.unmodifiable(groups);
   }
 
-  static List<String> _buildTagsByLength(Iterable<AndroidEmojiEntry> entries) {
-    final tags = <String>{for (final entry in entries) entry.tag}.toList();
-    tags.sort((a, b) {
+  static Map<int, List<String>> _buildTagsByFirstCodeUnit(
+    Iterable<AndroidEmojiEntry> entries,
+  ) {
+    final tagsByFirstCodeUnit = <int, List<String>>{};
+    for (final entry in entries) {
+      final tag = entry.tag;
+      if (tag.isEmpty) {
+        continue;
+      }
+      tagsByFirstCodeUnit
+          .putIfAbsent(tag.codeUnitAt(0), () => <String>[])
+          .add(tag);
+    }
+    return UnmodifiableMapView<int, List<String>>(<int, List<String>>{
+      for (final item in tagsByFirstCodeUnit.entries)
+        item.key: _sortTagsByLength(item.value),
+    });
+  }
+
+  static List<String> _sortTagsByLength(Iterable<String> tags) {
+    final sortedTags = tags.toSet().toList();
+    sortedTags.sort((a, b) {
       final byLength = b.length.compareTo(a.length);
       if (byLength != 0) {
         return byLength;
       }
       return a.compareTo(b);
     });
-    return List<String>.unmodifiable(tags);
+    return List<String>.unmodifiable(sortedTags);
   }
 
   static int _compareGroupIds(String left, String right) {

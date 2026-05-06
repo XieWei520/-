@@ -14,21 +14,38 @@ class ChatMotionDuration {
 class ChatMotionDurations {
   ChatMotionDurations._();
 
-  static const ChatMotionDuration micro = ChatMotionDuration(
+  /// Short feedback for lightweight IM micro-interactions.
+  static const ChatMotionDuration fast = ChatMotionDuration(
     Duration(milliseconds: 160),
   );
+
+  /// Default state and lightweight component transition duration.
+  static const ChatMotionDuration normal = ChatMotionDuration(
+    Duration(milliseconds: 300),
+  );
+
+  /// Press/scale feedback duration for touch or pointer-down affordances.
+  static const ChatMotionDuration pressedScale = ChatMotionDuration(
+    Duration(milliseconds: 120),
+  );
+
+  /// Compatibility alias for pre-existing micro-interaction callers.
+  static const ChatMotionDuration micro = fast;
+
   static const ChatMotionDuration messageEnter = ChatMotionDuration(
     Duration(milliseconds: 260),
   );
-  static const ChatMotionDuration statusChange = ChatMotionDuration(
-    Duration(milliseconds: 300),
-  );
+
+  /// Compatibility alias for read/send status transitions.
+  static const ChatMotionDuration statusChange = normal;
+
   static const ChatMotionDuration badgeBounce = ChatMotionDuration(
     Duration(milliseconds: 400),
   );
-  static const ChatMotionDuration pageStandard = ChatMotionDuration(
-    Duration(milliseconds: 300),
-  );
+
+  /// Compatibility alias for standard page transitions.
+  static const ChatMotionDuration pageStandard = normal;
+
   static const ChatMotionDuration pageEmphasized = ChatMotionDuration(
     Duration(milliseconds: 350),
   );

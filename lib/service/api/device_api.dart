@@ -157,7 +157,8 @@ class DeviceApi {
     final response = await _client.get(
       '/v1/user/device/login_logs',
       queryParameters: {
-        if (deviceId != null) 'device_id': deviceId,
+        if (deviceId case final resolvedDeviceId?)
+          'device_id': resolvedDeviceId,
         'limit': limit,
       },
     );

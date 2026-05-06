@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../modules/customer_service/customer_service_badge.dart';
 import '../modules/customer_service/customer_service_identity.dart';
 import '../modules/vip/vip_badge.dart';
+import '../core/utils/platform_utils.dart';
 import 'wk_avatar.dart';
 import 'wk_colors.dart';
 import 'wk_design_tokens.dart';
@@ -86,6 +87,10 @@ class WKConversationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isWarmMobileStyle =
+        !webStyle &&
+        PlatformUtils.isMobile &&
+        MediaQuery.sizeOf(context).width < 420;
     final labelStyle = const TextStyle(
       fontFamily: WKFontFamily.primary,
       color: WKColors.white,
@@ -104,46 +109,72 @@ class WKConversationItem extends StatelessWidget {
         : baseSubtitle;
     final reminderLabels = _parseReminderLabels();
     final hasReminder = reminderLabels.isNotEmpty;
-    final rowBackground = data.isTop ? WKColors.homeBg : WKColors.surface;
-    final unreadBackground = data.isMuted
+    final rowBackground = isWarmMobileStyle
+        ? WKWebColors.surface
+        : data.isTop
+        ? WKColors.homeBg
+        : WKColors.surface;
+    final unreadBackground = isWarmMobileStyle
+        ? const Color(0xFFEF4444)
+        : data.isMuted
         ? WKColors.textSecondary
         : WKColors.reminderColor;
     final tags = _buildTags();
-    const subtitleStyle = TextStyle(
+    final subtitleStyle = TextStyle(
       fontFamily: WKFontFamily.primary,
       fontSize: 13,
       fontWeight: FontWeight.w400,
-      color: WKColors.textSecondary,
+      color: isWarmMobileStyle
+          ? WKWebColors.textSecondary
+          : WKColors.textSecondary,
     );
 
     final effectiveRowBackground = webStyle
         ? (selected ? WKWebColors.actionSoft : WKWebColors.surface)
+        : isWarmMobileStyle
+        ? ((selected || data.isTop) ? WKWebColors.actionSoft : rowBackground)
         : rowBackground;
     final effectivePadding = webStyle
         ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
+        : isWarmMobileStyle
+        ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
         : const EdgeInsets.symmetric(horizontal: 15, vertical: 5);
     final rowBorderRadius = BorderRadius.circular(
-      webStyle ? WKWebRadius.control : 0,
+      webStyle
+          ? WKWebRadius.control
+          : isWarmMobileStyle
+          ? 12
+          : 0,
     );
     final hitbox = Container(
       key: const ValueKey<String>('wk-conversation-item-hitbox'),
-      height: webStyle ? WKWebSizes.conversationRowHeight : null,
+      height: webStyle
+          ? WKWebSizes.conversationRowHeight
+          : isWarmMobileStyle
+          ? 80
+          : null,
+      constraints: isWarmMobileStyle
+          ? const BoxConstraints(minHeight: 80)
+          : null,
       padding: effectivePadding,
       child: Row(
         children: [
           SizedBox(
-            width: 60,
-            height: 60,
+            width: isWarmMobileStyle ? 56 : 60,
+            height: isWarmMobileStyle ? 56 : 60,
             child: Center(
               child: WKAvatar(
                 url: data.avatarUrl,
                 name: data.title,
-                size: 50,
+                size: isWarmMobileStyle ? 48 : 50,
                 isGroup: data.isGroup,
+                borderRadius: isWarmMobileStyle
+                    ? BorderRadius.circular(12)
+                    : null,
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: isWarmMobileStyle ? 12 : 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -314,6 +345,13 @@ class WKConversationItem extends StatelessWidget {
           border: webStyle
               ? Border.all(
                   color: selected ? WKWebColors.action : Colors.transparent,
+                )
+              : isWarmMobileStyle
+              ? Border.all(
+                  color: (selected || data.isTop)
+                      ? WKWebColors.action
+                      : Colors.transparent,
+                  width: 1.5,
                 )
               : null,
         ),
