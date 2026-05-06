@@ -13,6 +13,7 @@ typedef PairingCodeCreator =
     Future<MonitorPairingCode> Function(String deviceName);
 typedef LocalAgentBinder =
     Future<LocalAgentBindResult> Function(LocalAgentBindRequest request);
+typedef LocalAgentAction = Future<LocalAgentActionResult> Function();
 typedef FeishuRouteCreator =
     Future<MonitorRoute> Function(CreateFeishuMonitorRouteRequest request);
 typedef MonitorRouteAction = Future<void> Function(String routeId);
@@ -43,6 +44,10 @@ class FeishuMonitorCenterPage extends StatefulWidget {
     this.onCreatePairingCode,
     this.onCreateRoute,
     this.onBindLocalAgent,
+    this.onOpenBrowserLogin,
+    this.onCheckBrowserStatus,
+    this.onClearBrowserProfile,
+    this.onListenOnce,
     this.onPauseRoute,
     this.onResumeRoute,
     this.onViewRouteLogs,
@@ -55,6 +60,10 @@ class FeishuMonitorCenterPage extends StatefulWidget {
   final PairingCodeCreator? onCreatePairingCode;
   final FeishuRouteCreator? onCreateRoute;
   final LocalAgentBinder? onBindLocalAgent;
+  final LocalAgentAction? onOpenBrowserLogin;
+  final LocalAgentAction? onCheckBrowserStatus;
+  final LocalAgentAction? onClearBrowserProfile;
+  final LocalAgentAction? onListenOnce;
   final MonitorRouteAction? onPauseRoute;
   final MonitorRouteAction? onResumeRoute;
   final MonitorRouteCallback? onViewRouteLogs;
@@ -71,6 +80,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
   bool _isCreatingPairingCode = false;
   bool _isBindingLocalAgent = false;
   bool _isRepairingAgent = false;
+  bool _isRunningBrowserAction = false;
 
   @override
   void initState() {
@@ -94,6 +104,26 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
       _snapshotFuture = nextSnapshot;
     });
     await _snapshotFuture;
+  }
+
+  Future<void> _runBrowserAction(LocalAgentAction action) async {
+    if (_isRunningBrowserAction) {
+      return;
+    }
+    setState(() => _isRunningBrowserAction = true);
+    try {
+      final result = await action();
+      _showSnackBar(result.message);
+      await _refresh();
+    } catch (error) {
+      if (mounted) {
+        _showSnackBar('椋炰功娴忚鍣ㄦ搷浣滃け璐ワ細$error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRunningBrowserAction = false);
+      }
+    }
   }
 
   Future<void> _createPairingCode() async {
@@ -269,6 +299,31 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
                     onDownloadAgent: widget.onDownloadAgent,
                   ),
                   const SizedBox(height: WKSpace.md),
+                  if (data.hasAgent)
+                    _BrowserStatusCard(
+                      status: data.browserStatus,
+                      isBusy: _isRunningBrowserAction,
+                      onOpenBrowserLogin: widget.onOpenBrowserLogin != null
+                          ? () => _runBrowserAction(
+                              widget.onOpenBrowserLogin!,
+                            )
+                          : null,
+                      onCheckBrowserStatus: widget.onCheckBrowserStatus != null
+                          ? () => _runBrowserAction(
+                              widget.onCheckBrowserStatus!,
+                            )
+                          : null,
+                      onListenOnce: widget.onListenOnce != null
+                          ? () => _runBrowserAction(widget.onListenOnce!)
+                          : null,
+                      onClearBrowserProfile:
+                          widget.onClearBrowserProfile != null
+                          ? () => _runBrowserAction(
+                              widget.onClearBrowserProfile!,
+                            )
+                          : null,
+                    ),
+                  const SizedBox(height: WKSpace.md),
                   if (!data.hasAgent || _isRepairingAgent)
                     _AgentOnboardingCard(
                       title: _isRepairingAgent
@@ -438,6 +493,80 @@ class _ActionRow extends StatelessWidget {
           label: const Text('下载 Windows Agent'),
         ),
       ],
+    );
+  }
+}
+
+class _BrowserStatusCard extends StatelessWidget {
+  const _BrowserStatusCard({
+    required this.status,
+    required this.isBusy,
+    required this.onOpenBrowserLogin,
+    required this.onCheckBrowserStatus,
+    required this.onListenOnce,
+    required this.onClearBrowserProfile,
+  });
+
+  final MonitorBrowserStatus status;
+  final bool isBusy;
+  final VoidCallback? onOpenBrowserLogin;
+  final VoidCallback? onCheckBrowserStatus;
+  final VoidCallback? onListenOnce;
+  final VoidCallback? onClearBrowserProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '飞书信息监控中心 · 浏览器状态',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: WKSpace.xs),
+          const Text('Browser: Chromium'),
+          const Text('Environment: 专属隔离环境'),
+          Text('登录状态：${status.loginStatusLabel}'),
+          Text(
+            '最后检测：${status.observedAt.isEmpty ? '暂无' : status.observedAt}',
+          ),
+          Text(
+            '最后错误：${status.errorMessage.isEmpty ? '暂无' : status.errorMessage}',
+          ),
+          const SizedBox(height: WKSpace.md),
+          Wrap(
+            spacing: WKSpace.sm,
+            runSpacing: WKSpace.sm,
+            children: [
+              FilledButton(
+                key: const ValueKey('feishu-monitor-open-browser-login'),
+                onPressed: isBusy ? null : onOpenBrowserLogin,
+                style: _monitorFilledActionButtonStyle,
+                child: const Text('打开飞书登录'),
+              ),
+              FilledButton(
+                key: const ValueKey('feishu-monitor-check-browser-status'),
+                onPressed: isBusy ? null : onCheckBrowserStatus,
+                style: _monitorFilledActionButtonStyle,
+                child: const Text('检查登录状态'),
+              ),
+              FilledButton(
+                key: const ValueKey('feishu-monitor-listen-once'),
+                onPressed: isBusy ? null : onListenOnce,
+                style: _monitorFilledActionButtonStyle,
+                child: const Text('测试监听一次'),
+              ),
+              OutlinedButton(
+                key: const ValueKey('feishu-monitor-clear-browser-profile'),
+                onPressed: isBusy ? null : onClearBrowserProfile,
+                style: _monitorOutlinedActionButtonStyle,
+                child: const Text('清除飞书登录'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
