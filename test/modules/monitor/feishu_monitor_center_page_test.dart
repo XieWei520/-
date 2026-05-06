@@ -230,6 +230,47 @@ void main() {
     expect(topNewRouteSize, equals(onboardingDownloadSize));
   });
 
+  testWidgets('Feishu center re-pair button shows onboarding actions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async => _snapshotWithData,
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async => const MonitorPairingCode(
+            code: 'ABCD-1234',
+            expiresAt: '2026-05-06 18:00',
+          ),
+          onBindLocalAgent: (_) async =>
+              const LocalAgentBindResult(message: 'Agent 已绑定并上线'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('COLORFUL-PC'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('feishu-monitor-repair-agent')),
+    );
+    await tester.tap(find.byKey(const ValueKey('feishu-monitor-repair-agent')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('feishu-monitor-create-pairing')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('feishu-monitor-one-click-bind')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('已进入重新配对模式'), findsOneWidget);
+  });
+
   testWidgets('Feishu center creates route from dialog input', (tester) async {
     CreateFeishuMonitorRouteRequest? created;
 

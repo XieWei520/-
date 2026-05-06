@@ -70,6 +70,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
   MonitorPairingCode? _pairingCode;
   bool _isCreatingPairingCode = false;
   bool _isBindingLocalAgent = false;
+  bool _isRepairingAgent = false;
 
   @override
   void initState() {
@@ -166,6 +167,14 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
     }
   }
 
+  void _startRepairAgent() {
+    setState(() {
+      _isRepairingAgent = true;
+      _pairingCode = null;
+    });
+    _showSnackBar('已进入重新配对模式，请重新生成配对码或一键绑定并上线');
+  }
+
   Future<void> _openCreateRouteDialog() async {
     final groups = await _loadDestinationGroups();
     if (!mounted) {
@@ -258,7 +267,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
                     onDownloadAgent: widget.onDownloadAgent,
                   ),
                   const SizedBox(height: WKSpace.md),
-                  if (!data.hasAgent)
+                  if (!data.hasAgent || _isRepairingAgent)
                     _AgentOnboardingCard(
                       pairingCode: _pairingCode,
                       isCreating: _isCreatingPairingCode,
@@ -286,7 +295,8 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
                         ),
                     const SizedBox(height: WKSpace.md),
                     const _SectionTitle(title: 'Windows Agent'),
-                    for (final agent in data.agents) _AgentCard(agent: agent),
+                    for (final agent in data.agents)
+                      _AgentCard(agent: agent, onRepair: _startRepairAgent),
                   ],
                   const SizedBox(height: WKSpace.md),
                   const _SectionTitle(title: '最近日志'),
@@ -556,9 +566,10 @@ class _RouteCard extends StatelessWidget {
 }
 
 class _AgentCard extends StatelessWidget {
-  const _AgentCard({required this.agent});
+  const _AgentCard({required this.agent, required this.onRepair});
 
   final MonitorAgent agent;
+  final VoidCallback onRepair;
 
   @override
   Widget build(BuildContext context) {
@@ -582,7 +593,11 @@ class _AgentCard extends StatelessWidget {
           Wrap(
             spacing: WKSpace.xs,
             children: [
-              TextButton(onPressed: () {}, child: const Text('重新配对')),
+              TextButton(
+                key: const ValueKey('feishu-monitor-repair-agent'),
+                onPressed: onRepair,
+                child: const Text('重新配对'),
+              ),
               TextButton(onPressed: () {}, child: const Text('查看日志')),
               TextButton(onPressed: () {}, child: const Text('更新 Agent')),
             ],
