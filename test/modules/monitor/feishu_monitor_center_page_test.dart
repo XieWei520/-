@@ -110,7 +110,7 @@ void main() {
                   platform: 'windows',
                   version: '0.1.0',
                   status: MonitorAgentStatus.online,
-                  lastHeartbeatAt: '??',
+                  lastHeartbeatAt: '刚刚',
                 ),
               ],
               routes: <MonitorRoute>[],
@@ -191,6 +191,57 @@ void main() {
     expect(find.textContaining('Bearer ***'), findsOneWidget);
   });
 
+  testWidgets('Feishu center one-click bind refreshes stale pairing code', (
+    tester,
+  ) async {
+    final createdCodes = <String>[];
+    LocalAgentBindRequest? bindRequest;
+    final pairingCodes = <MonitorPairingCode>[
+      const MonitorPairingCode(code: 'STALE-1', expiresAt: '2026-05-06 18:00'),
+      const MonitorPairingCode(code: 'FRESH-2', expiresAt: '2026-05-06 18:05'),
+    ];
+    var nextPairingCode = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async => FeishuMonitorSnapshot.empty,
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async {
+            final code = pairingCodes[nextPairingCode++];
+            createdCodes.add(code.code);
+            return code;
+          },
+          onBindLocalAgent: (request) async {
+            bindRequest = request;
+            return const LocalAgentBindResult(message: 'Agent 已绑定并上线');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('feishu-monitor-create-pairing')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('STALE-1'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('feishu-monitor-one-click-bind')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(createdCodes, <String>['STALE-1', 'FRESH-2']);
+    expect(bindRequest, isNotNull);
+    expect(bindRequest!.pairingCode, 'FRESH-2');
+    expect(find.textContaining('FRESH-2'), findsOneWidget);
+  });
+
   testWidgets('Feishu center aligns monitor action button sizes', (
     tester,
   ) async {
@@ -268,6 +319,12 @@ void main() {
       find.byKey(const ValueKey('feishu-monitor-one-click-bind')),
       findsOneWidget,
     );
+    expect(find.text('重新配对 Windows Agent'), findsOneWidget);
+    expect(find.text('还没有绑定 Windows Agent'), findsNothing);
+    final newRouteButton = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('feishu-monitor-new-route')),
+    );
+    expect(newRouteButton.onPressed, isNull);
     expect(find.textContaining('已进入重新配对模式'), findsOneWidget);
   });
 

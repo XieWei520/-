@@ -85,7 +85,7 @@ class MonitorLocalAgentBinder {
     ]);
     if (pair.exitCode != 0) {
       throw LocalAgentBindException(
-        'Agent 绑定失败：${_sanitizeOutput(pair.stderr.isNotEmpty ? pair.stderr : pair.stdout)}',
+        'Agent 绑定失败：${_friendlyPairError(pair.stderr.isNotEmpty ? pair.stderr : pair.stdout)}',
         phase: LocalAgentBindPhase.pair,
       );
     }
@@ -171,8 +171,33 @@ class MonitorLocalAgentBinder {
     return '.feishu_monitor_agent';
   }
 
+  static String _friendlyPairError(String value) {
+    final sanitized = _sanitizeOutput(value);
+    final lower = sanitized.toLowerCase();
+    if (lower.contains('pairing_code_used')) {
+      return '\u914d\u5bf9\u7801\u5df2\u88ab\u4f7f\u7528\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u914d\u5bf9\u7801\u540e\u518d\u7ed1\u5b9a\u3002';
+    }
+    if (lower.contains('pairing_code_expired')) {
+      return '\u914d\u5bf9\u7801\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u914d\u5bf9\u7801\u540e\u518d\u7ed1\u5b9a\u3002';
+    }
+    if (lower.contains('pairing_code_not_found') ||
+        lower.contains('invalid_pairing_code')) {
+      return '\u914d\u5bf9\u7801\u65e0\u6548\uff0c\u8bf7\u91cd\u65b0\u751f\u6210\u914d\u5bf9\u7801\u540e\u518d\u7ed1\u5b9a\u3002';
+    }
+    return sanitized;
+  }
+
   static String _sanitizeOutput(String value) {
-    final sanitized = value
+    final withoutStack = value
+        .split(RegExp(r'\r?\n'))
+        .where((line) {
+          final trimmed = line.trimLeft();
+          return !trimmed.startsWith('#') &&
+              !trimmed.startsWith('<asynchronous suspension>') &&
+              !trimmed.startsWith('Unhandled exception');
+        })
+        .join('\n');
+    final sanitized = withoutStack
         .replaceAll(
           RegExp(r'Bearer\s+[A-Za-z0-9._\-]+', caseSensitive: false),
           'Bearer ***',
@@ -183,7 +208,7 @@ class MonitorLocalAgentBinder {
         )
         .trim();
     if (sanitized.isEmpty) {
-      return '请检查 Agent 是否存在、配对码是否过期以及网络是否正常。';
+      return '\u8bf7\u68c0\u67e5 Agent \u662f\u5426\u5b58\u5728\u3001\u914d\u5bf9\u7801\u662f\u5426\u8fc7\u671f\u4ee5\u53ca\u7f51\u7edc\u662f\u5426\u6b63\u5e38\u3002';
     }
     return sanitized;
   }

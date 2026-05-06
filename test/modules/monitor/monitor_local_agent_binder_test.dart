@@ -87,6 +87,48 @@ void main() {
     },
   );
 
+  test('bindAndHeartbeat maps used pairing code to friendly error', () async {
+    final binder = MonitorLocalAgentBinder(
+      isWindows: () => true,
+      runProcess: (_, _) async => const LocalAgentProcessResult(
+        exitCode: 1,
+        stdout: '',
+        stderr:
+            'Unhandled exception:\n'
+            'AgentApiException(statusCode: 409, code: pairing_code_used, message: used)\n'
+            '#0 AgentApi._postJson (package:feishu_monitor_agent/src/agent_api.dart:72:7)',
+      ),
+    );
+
+    await expectLater(
+      binder.bindAndHeartbeat(
+        const LocalAgentBindRequest(
+          serverUrl: 'https://infoequity.qingyunshe.top',
+          pairingCode: 'USED-1',
+        ),
+      ),
+      throwsA(
+        isA<LocalAgentBindException>()
+            .having((error) => error.phase, 'phase', LocalAgentBindPhase.pair)
+            .having(
+              (error) => error.message,
+              'message',
+              contains('配对码已被使用'),
+            )
+            .having(
+              (error) => error.message,
+              'message',
+              isNot(contains('Unhandled exception')),
+            )
+            .having(
+              (error) => error.message,
+              'message',
+              isNot(contains('#0')),
+            ),
+      ),
+    );
+  });
+
   test(
     'bindAndHeartbeat returns success after pair and heartbeat complete',
     () async {

@@ -119,11 +119,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
     }
   }
 
-  Future<MonitorPairingCode?> _ensurePairingCode() async {
-    final current = _pairingCode;
-    if (current != null) {
-      return current;
-    }
+  Future<MonitorPairingCode?> _createFreshPairingCode() async {
     final creator =
         widget.onCreatePairingCode ?? widget._repository.createPairingCode;
     final code = await creator('Windows Agent');
@@ -139,7 +135,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
     }
     setState(() => _isBindingLocalAgent = true);
     try {
-      final code = await _ensurePairingCode();
+      final code = await _createFreshPairingCode();
       if (code == null) {
         return;
       }
@@ -263,12 +259,17 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
                   _StatsRow(stats: data.stats),
                   const SizedBox(height: WKSpace.md),
                   _ActionRow(
-                    onNewRoute: data.hasAgent ? _openCreateRouteDialog : null,
+                    onNewRoute: data.hasAgent && !_isRepairingAgent
+                        ? _openCreateRouteDialog
+                        : null,
                     onDownloadAgent: widget.onDownloadAgent,
                   ),
                   const SizedBox(height: WKSpace.md),
                   if (!data.hasAgent || _isRepairingAgent)
                     _AgentOnboardingCard(
+                      title: _isRepairingAgent
+                          ? '\u91cd\u65b0\u914d\u5bf9 Windows Agent'
+                          : '\u8fd8\u6ca1\u6709\u7ed1\u5b9a Windows Agent',
                       pairingCode: _pairingCode,
                       isCreating: _isCreatingPairingCode,
                       isBinding: _isBindingLocalAgent,
@@ -439,6 +440,7 @@ class _ActionRow extends StatelessWidget {
 
 class _AgentOnboardingCard extends StatelessWidget {
   const _AgentOnboardingCard({
+    required this.title,
     required this.pairingCode,
     required this.isCreating,
     required this.isBinding,
@@ -447,6 +449,7 @@ class _AgentOnboardingCard extends StatelessWidget {
     required this.onDownloadAgent,
   });
 
+  final String title;
   final MonitorPairingCode? pairingCode;
   final bool isCreating;
   final bool isBinding;
@@ -460,9 +463,9 @@ class _AgentOnboardingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '还没有绑定 Windows Agent',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: WKSpace.sm),
           const Text('1. 下载 Windows Agent'),
