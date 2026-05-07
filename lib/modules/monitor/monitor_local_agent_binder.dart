@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 class LocalAgentBindRequest {
@@ -5,11 +6,13 @@ class LocalAgentBindRequest {
     required this.serverUrl,
     required this.pairingCode,
     this.storeDir,
+    this.forcePair = false,
   });
 
   final String serverUrl;
   final String pairingCode;
   final String? storeDir;
+  final bool forcePair;
 }
 
 class LocalAgentBindResult {
@@ -19,6 +22,12 @@ class LocalAgentBindResult {
 }
 
 typedef LocalAgentActionResult = LocalAgentBindResult;
+
+class LocalAgentChatOption {
+  const LocalAgentChatOption({required this.name});
+
+  final String name;
+}
 
 enum LocalAgentBindPhase {
   platform,
@@ -74,17 +83,19 @@ class MonitorLocalAgentBinder {
     LocalAgentBindRequest request,
   ) async {
     final storeDir = _normalizeStoreDir(request.storeDir);
-    await _runAgentAction(
-      phase: LocalAgentBindPhase.pair,
-      command: 'pair',
-      arguments: <String>[
-        '--server',
-        request.serverUrl,
-        '--code',
-        request.pairingCode,
-      ],
-      storeDir: storeDir,
-    );
+    if (request.forcePair || !_hasExistingAgentConfig(storeDir)) {
+      await _runAgentAction(
+        phase: LocalAgentBindPhase.pair,
+        command: 'pair',
+        arguments: <String>[
+          '--server',
+          request.serverUrl,
+          '--code',
+          request.pairingCode,
+        ],
+        storeDir: storeDir,
+      );
+    }
     await _runAgentAction(
       phase: LocalAgentBindPhase.heartbeat,
       command: 'run',
@@ -130,8 +141,35 @@ class MonitorLocalAgentBinder {
       command: 'listen',
       arguments: const <String>['--once'],
       storeDir: storeDir,
-      fallbackMessage: '监听完成。',
+      fallbackMessage: '监听完成，页面已刷新。',
+      preferFallbackMessage: true,
     );
+  }
+
+  Future<LocalAgentActionResult> heartbeatOnce({String? storeDir}) {
+    return _runCommandAction(
+      phase: LocalAgentBindPhase.heartbeat,
+      command: 'run',
+      arguments: const <String>['--once'],
+      storeDir: storeDir,
+      fallbackMessage: 'Agent 状态已更新，页面已刷新。',
+      preferFallbackMessage: true,
+    );
+  }
+
+  Future<List<String>> listChats({String? storeDir}) async {
+    final effectiveStoreDir = _normalizeStoreDir(storeDir);
+    final result = await _runAgentAction(
+      phase: LocalAgentBindPhase.browserStatus,
+      command: 'list-chats',
+      arguments: const <String>[],
+      storeDir: effectiveStoreDir,
+    );
+    final names = _parseChatNames(result.stdout);
+    if (names.isNotEmpty) {
+      return names;
+    }
+    return _readCachedChatNames(effectiveStoreDir);
   }
 
   Future<LocalAgentActionResult> _runCommandAction({
@@ -140,6 +178,7 @@ class MonitorLocalAgentBinder {
     required List<String> arguments,
     required String? storeDir,
     required String fallbackMessage,
+    bool preferFallbackMessage = false,
   }) async {
     final result = await _runAgentAction(
       phase: phase,
@@ -147,10 +186,15 @@ class MonitorLocalAgentBinder {
       arguments: arguments,
       storeDir: storeDir,
     );
+    if (preferFallbackMessage) {
+      return LocalAgentBindResult(message: fallbackMessage);
+    }
     return LocalAgentBindResult(
-      message: _firstNonEmpty(
-        <String>[result.stdout, result.stderr, fallbackMessage],
-      ),
+      message: _firstNonEmpty(<String>[
+        result.stdout,
+        result.stderr,
+        fallbackMessage,
+      ]),
     );
   }
 
@@ -263,6 +307,24 @@ class MonitorLocalAgentBinder {
     return '.feishu_monitor_agent';
   }
 
+  static bool _hasExistingAgentConfig(String storeDir) {
+    final file = File('$storeDir${Platform.pathSeparator}agent_config.json');
+    if (!file.existsSync()) {
+      return false;
+    }
+    try {
+      final decoded = jsonDecode(file.readAsStringSync());
+      if (decoded is! Map) {
+        return false;
+      }
+      final agentId = decoded['agent_id']?.toString().trim() ?? '';
+      final agentToken = decoded['agent_token']?.toString().trim() ?? '';
+      return agentId.isNotEmpty && agentToken.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static String _actionFailureMessage(
     LocalAgentBindPhase phase,
     String stdout,
@@ -337,5 +399,43 @@ class MonitorLocalAgentBinder {
       }
     }
     return '';
+  }
+
+  static List<String> _parseChatNames(String value) {
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is! List) {
+        return const <String>[];
+      }
+      final names = <String>[];
+      final seen = <String>{};
+      for (final item in decoded) {
+        final name = item is Map
+            ? item['name']?.toString().trim() ?? ''
+            : item.toString().trim();
+        if (name.isEmpty || seen.contains(name)) {
+          continue;
+        }
+        seen.add(name);
+        names.add(name);
+      }
+      return names;
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  static List<String> _readCachedChatNames(String storeDir) {
+    final file = File(
+      '$storeDir${Platform.pathSeparator}runtime${Platform.pathSeparator}feishu-chat-cache.json',
+    );
+    if (!file.existsSync()) {
+      return const <String>[];
+    }
+    try {
+      return _parseChatNames(file.readAsStringSync());
+    } catch (_) {
+      return const <String>[];
+    }
   }
 }

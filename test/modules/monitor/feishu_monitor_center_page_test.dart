@@ -47,10 +47,16 @@ void main() {
     await tester.pump();
     expect(downloadTapCount, 1);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('monitor-route-pause-route_1')),
+    );
     await tester.tap(find.byKey(const ValueKey('monitor-route-pause-route_1')));
     await tester.pumpAndSettle();
     expect(pauseTapCount, 1);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('monitor-route-logs-route_1')),
+    );
     await tester.tap(find.byKey(const ValueKey('monitor-route-logs-route_1')));
     await tester.pump();
     expect(logTapCount, 1);
@@ -143,6 +149,7 @@ void main() {
     expect(bindRequest, isNotNull);
     expect(bindRequest!.serverUrl, 'https://infoequity.qingyunshe.top');
     expect(bindRequest!.pairingCode, 'ABCD-1234');
+    expect(bindRequest!.forcePair, isFalse);
     expect(loadCount, 2);
     expect(find.text('COLORFUL-PC'), findsOneWidget);
     expect(find.text('Agent 已绑定并上线'), findsOneWidget);
@@ -240,7 +247,10 @@ void main() {
     expect(bindRequest, isNotNull);
     expect(bindRequest!.pairingCode, 'FRESH-2');
     expect(find.textContaining('FRESH-2'), findsNothing);
-    expect(find.textContaining('Agent \u5df2\u7ed1\u5b9a\u5e76\u4e0a\u7ebf'), findsOneWidget);
+    expect(
+      find.textContaining('Agent \u5df2\u7ed1\u5b9a\u5e76\u4e0a\u7ebf'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Feishu center aligns monitor action button sizes', (
@@ -329,46 +339,28 @@ void main() {
     expect(find.textContaining('已进入重新配对模式'), findsOneWidget);
   });
 
-  testWidgets('Feishu center exits re-pair mode after one-click bind succeeds', (
+  testWidgets('Feishu center re-pair mode forces local Agent to pair again', (
     tester,
   ) async {
-    var loadCount = 0;
+    LocalAgentBindRequest? bindRequest;
 
     await tester.pumpWidget(
       MaterialApp(
         home: FeishuMonitorCenterPage(
-          loadSnapshot: () async {
-            loadCount++;
-            if (loadCount == 1) {
-              return _snapshotWithData;
-            }
-            return const FeishuMonitorSnapshot(
-              stats: MonitorStats.empty,
-              agents: <MonitorAgent>[
-                MonitorAgent(
-                  id: 'agent_1',
-                  deviceName: 'COLORFUL-PC',
-                  platform: 'windows',
-                  version: '0.1.0',
-                  status: MonitorAgentStatus.online,
-                  lastHeartbeatAt: '\u521a\u521a',
-                ),
-              ],
-              routes: <MonitorRoute>[],
-              logs: <MonitorLogEntry>[],
-            );
-          },
+          loadSnapshot: () async => _snapshotWithData,
           loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
           onDownloadAgent: () {},
           onPauseRoute: (_) async {},
           onResumeRoute: (_) async {},
           onViewRouteLogs: (_) {},
           onCreatePairingCode: (_) async => const MonitorPairingCode(
-            code: 'FRESH-2',
+            code: 'FORCE-2',
             expiresAt: '2026-05-06 18:05',
           ),
-          onBindLocalAgent: (_) async =>
-              const LocalAgentBindResult(message: 'Agent 已绑定并上线'),
+          onBindLocalAgent: (request) async {
+            bindRequest = request;
+            return const LocalAgentBindResult(message: 'Agent ??????');
+          },
         ),
       ),
     );
@@ -379,17 +371,142 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('feishu-monitor-repair-agent')));
     await tester.pumpAndSettle();
-    expect(find.text('重新配对 Windows Agent'), findsOneWidget);
-
     await tester.tap(
       find.byKey(const ValueKey('feishu-monitor-one-click-bind')),
     );
     await tester.pumpAndSettle();
 
+    expect(bindRequest, isNotNull);
+    expect(bindRequest!.pairingCode, 'FORCE-2');
+    expect(bindRequest!.forcePair, isTrue);
+  });
+
+  testWidgets(
+    'Feishu center exits re-pair mode after one-click bind succeeds',
+    (tester) async {
+      var loadCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: FeishuMonitorCenterPage(
+            loadSnapshot: () async {
+              loadCount++;
+              if (loadCount == 1) {
+                return _snapshotWithData;
+              }
+              return const FeishuMonitorSnapshot(
+                stats: MonitorStats.empty,
+                agents: <MonitorAgent>[
+                  MonitorAgent(
+                    id: 'agent_1',
+                    deviceName: 'COLORFUL-PC',
+                    platform: 'windows',
+                    version: '0.1.0',
+                    status: MonitorAgentStatus.online,
+                    lastHeartbeatAt: '\u521a\u521a',
+                  ),
+                ],
+                routes: <MonitorRoute>[],
+                logs: <MonitorLogEntry>[],
+              );
+            },
+            loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
+            onDownloadAgent: () {},
+            onPauseRoute: (_) async {},
+            onResumeRoute: (_) async {},
+            onViewRouteLogs: (_) {},
+            onCreatePairingCode: (_) async => const MonitorPairingCode(
+              code: 'FRESH-2',
+              expiresAt: '2026-05-06 18:05',
+            ),
+            onBindLocalAgent: (_) async =>
+                const LocalAgentBindResult(message: 'Agent 已绑定并上线'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('feishu-monitor-repair-agent')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('feishu-monitor-repair-agent')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('重新配对 Windows Agent'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('feishu-monitor-one-click-bind')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(loadCount, 2);
+      expect(find.text('重新配对 Windows Agent'), findsNothing);
+      expect(find.text('Windows Agent'), findsOneWidget);
+      expect(find.text('COLORFUL-PC'), findsOneWidget);
+    },
+  );
+
+  testWidgets('Feishu center refreshes Agent status with local heartbeat', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    var refreshCount = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async {
+            loadCount++;
+            return FeishuMonitorSnapshot(
+              stats: MonitorStats.empty,
+              agents: <MonitorAgent>[
+                MonitorAgent(
+                  id: 'agent_1',
+                  deviceName: 'COLORFUL-PC',
+                  platform: 'windows',
+                  version: '0.1.0',
+                  status: loadCount == 1
+                      ? MonitorAgentStatus.offline
+                      : MonitorAgentStatus.online,
+                  lastHeartbeatAt: loadCount == 1 ? '旧心跳' : '刚刚',
+                ),
+              ],
+              routes: const <MonitorRoute>[],
+              logs: const <MonitorLogEntry>[],
+            );
+          },
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[],
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async => const MonitorPairingCode(
+            code: 'ABCD-1234',
+            expiresAt: '2026-05-06 18:00',
+          ),
+          onRefreshAgentStatus: () async {
+            refreshCount++;
+            return const LocalAgentBindResult(message: 'Agent 状态已更新，页面已刷新。');
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('状态：离线'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('feishu-monitor-refresh-agent-status')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('feishu-monitor-refresh-agent-status')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(refreshCount, 1);
     expect(loadCount, 2);
-    expect(find.text('重新配对 Windows Agent'), findsNothing);
-    expect(find.text('Windows Agent'), findsOneWidget);
-    expect(find.text('COLORFUL-PC'), findsOneWidget);
+    expect(find.text('状态：在线'), findsOneWidget);
+    expect(find.textContaining('Agent 状态已更新'), findsOneWidget);
   });
 
   testWidgets('Feishu center creates route from dialog input', (tester) async {
@@ -416,6 +533,7 @@ void main() {
           loadDestinationGroups: () async => const <MonitorSelectableGroup>[
             MonitorSelectableGroup(groupNo: 'group_1', name: '悟空 IM 新闻群'),
           ],
+          loadFeishuChats: () async => const <String>[],
           onDownloadAgent: () {},
           onPauseRoute: (_) async {},
           onResumeRoute: (_) async {},
@@ -442,7 +560,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('feishu-monitor-new-route')));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.enterText(
       find.byKey(const ValueKey('feishu-route-source-chat-input')),
       '飞书新闻群',
@@ -461,6 +580,167 @@ void main() {
     expect(created!.includeLinks, isTrue);
     expect(created!.includeImages, isFalse);
     expect(created!.includeFiles, isFalse);
+  });
+
+  testWidgets('Feishu route dialog can select auto detected Feishu chat', (
+    tester,
+  ) async {
+    CreateFeishuMonitorRouteRequest? created;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async => const FeishuMonitorSnapshot(
+            stats: MonitorStats.empty,
+            agents: <MonitorAgent>[
+              MonitorAgent(
+                id: 'agent_1',
+                deviceName: 'COLORFUL-PC',
+                platform: 'windows',
+                version: '0.1.0',
+                status: MonitorAgentStatus.online,
+                lastHeartbeatAt: '2026-05-06 17:00',
+              ),
+            ],
+            routes: <MonitorRoute>[],
+            logs: <MonitorLogEntry>[],
+          ),
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[
+            MonitorSelectableGroup(groupNo: 'group_1', name: '悟空 IM 新闻群'),
+          ],
+          loadFeishuChats: () async => const <String>['飞书新闻群', '产品交流群'],
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async => const MonitorPairingCode(
+            code: 'ABCD-1234',
+            expiresAt: '2026-05-06 18:00',
+          ),
+          onCreateRoute: (request) async {
+            created = request;
+            return MonitorRoute.fromJson(const <String, dynamic>{
+              'id': 'route_created',
+              'platform': 'feishu',
+              'connector_type': 'feishu_web_group',
+              'route_type': 'feishu_web_group_to_wukong_im_group',
+              'source_name': '产品交流群',
+              'destination_name': '悟空 IM 新闻群',
+              'status': 'paused',
+            });
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('feishu-monitor-new-route')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.byKey(const ValueKey('feishu-route-source-chat-list')),
+      findsOneWidget,
+    );
+    expect(find.text('飞书新闻群'), findsOneWidget);
+
+    await tester.tap(find.text('产品交流群'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('feishu-route-submit')),
+    );
+    await tester.tap(find.byKey(const ValueKey('feishu-route-submit')));
+    await tester.pumpAndSettle();
+
+    expect(created, isNotNull);
+    expect(created!.sourceChatName, '产品交流群');
+    expect(created!.destinationGroupNo, 'group_1');
+  });
+
+  testWidgets('Feishu route dialog supports scrolling many detected chats', (
+    tester,
+  ) async {
+    CreateFeishuMonitorRouteRequest? created;
+    final chats = List<String>.generate(
+      80,
+      (index) => '飞书群 ${index.toString().padLeft(3, '0')}',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          loadSnapshot: () async => const FeishuMonitorSnapshot(
+            stats: MonitorStats.empty,
+            agents: <MonitorAgent>[
+              MonitorAgent(
+                id: 'agent_1',
+                deviceName: 'COLORFUL-PC',
+                platform: 'windows',
+                version: '0.1.0',
+                status: MonitorAgentStatus.online,
+                lastHeartbeatAt: '2026-05-06 17:00',
+              ),
+            ],
+            routes: <MonitorRoute>[],
+            logs: <MonitorLogEntry>[],
+          ),
+          loadDestinationGroups: () async => const <MonitorSelectableGroup>[
+            MonitorSelectableGroup(groupNo: 'group_1', name: '悟空 IM 新闻群'),
+          ],
+          loadFeishuChats: () async => chats,
+          onDownloadAgent: () {},
+          onPauseRoute: (_) async {},
+          onResumeRoute: (_) async {},
+          onViewRouteLogs: (_) {},
+          onCreatePairingCode: (_) async => const MonitorPairingCode(
+            code: 'ABCD-1234',
+            expiresAt: '2026-05-06 18:00',
+          ),
+          onCreateRoute: (request) async {
+            created = request;
+            return MonitorRoute.fromJson(<String, dynamic>{
+              'id': 'route_created',
+              'platform': 'feishu',
+              'connector_type': 'feishu_web_group',
+              'route_type': 'feishu_web_group_to_wukong_im_group',
+              'source_name': request.sourceChatName,
+              'destination_name': request.destinationGroupName,
+              'status': 'paused',
+            });
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('feishu-monitor-new-route')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.textContaining('已自动识别 80 个会话'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('feishu-route-source-chat-search')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('feishu-route-source-chat-list')),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('feishu-route-source-chat-search')),
+      '079',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('飞书群 079'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('feishu-route-submit')),
+    );
+    await tester.tap(find.byKey(const ValueKey('feishu-route-submit')));
+    await tester.pumpAndSettle();
+
+    expect(created, isNotNull);
+    expect(created!.sourceChatName, '飞书群 079');
   });
 }
 

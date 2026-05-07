@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'agent_api.dart';
@@ -5,6 +6,7 @@ import 'agent_models.dart';
 import 'agent_store.dart';
 import 'browser_controller.dart';
 import 'browser_profile.dart';
+import 'feishu_web_adapter.dart';
 import 'heartbeat_runner.dart';
 import 'listen_runner.dart';
 import 'message_dedupe_store.dart';
@@ -39,6 +41,8 @@ Future<int> runAgentCli(
   final storeDir = options['store-dir'] ?? defaultAgentStoreDirectory();
   final store = AgentStore(storeDir);
   final paths = BrowserProfilePaths(storeDir);
+  final logger = AgentRuntimeLogger(paths.agentLogFile);
+  await logger.info('command_start $command');
 
   if (command == 'pair') {
     final server = options['server'];
@@ -105,11 +109,20 @@ Future<int> runAgentCli(
     final browser =
         browserFactory?.call(paths) ?? PuppeteerBrowserController(paths);
     try {
-      await browser.openLogin(keepOpen: true);
+      final status = await browser.openLogin(keepOpen: true);
+      await logger.info('browser-login status=${status.apiValue}');
+      if (status == BrowserLoginStatus.browserError) {
+        out('Chromium 浏览器启动失败，请稍后重试或清除登录状态。');
+        await browser.close();
+        return 70;
+      }
       out('已打开 Chromium 飞书登录窗口，请扫码登录。');
       return 0;
-    } finally {
+    } catch (error) {
+      await logger.error('browser-login failed', error);
+      out('Chromium 浏览器启动失败：$error');
       await browser.close();
+      return 70;
     }
   }
 
@@ -126,6 +139,7 @@ Future<int> runAgentCli(
     try {
       final observedAt = clock().toUtc().toIso8601String();
       final status = await browser.checkStatus();
+      await logger.info('browser-status status=${status.apiValue}');
       await api.reportBrowserStatus(
         agentToken: config.agentToken,
         request: _browserStatusRequest(config, status, observedAt),
@@ -135,6 +149,28 @@ Future<int> runAgentCli(
     } finally {
       await browser.close();
       api.close();
+    }
+  }
+
+  if (command == 'list-chats') {
+    final config = await _loadConfigOrPrint(store, out);
+    if (config == null) {
+      return 66;
+    }
+    final browser =
+        browserFactory?.call(paths) ?? PuppeteerBrowserController(paths);
+    try {
+      final chats = await browser.listChats();
+      final unique = await _mergeChatCache(paths.chatCacheFile, chats);
+      await logger.info('list-chats count=${unique.length}');
+      out(
+        jsonEncode([
+          for (final name in unique) <String, String>{'name': name},
+        ]),
+      );
+      return 0;
+    } finally {
+      await browser.close();
     }
   }
 
@@ -196,6 +232,86 @@ Future<int> runAgentCli(
   return 64;
 }
 
+Future<List<String>> _mergeChatCache(File cacheFile, List<String> chats) async {
+  final merged = <String>[];
+  final seen = <String>{};
+
+  void add(String value) {
+    final name = FeishuChatNameNormalizer.normalize(value);
+    if (name.isEmpty) {
+      return;
+    }
+    final key = FeishuChatNameNormalizer.dedupeKey(name);
+    if (key.isEmpty || seen.contains(key)) {
+      return;
+    }
+    seen.add(key);
+    merged.add(name);
+  }
+
+  try {
+    if (await cacheFile.exists()) {
+      final decoded = jsonDecode(await cacheFile.readAsString());
+      if (decoded is List) {
+        for (final item in decoded) {
+          add(item.toString());
+        }
+      }
+    }
+  } catch (_) {
+    // Ignore a corrupt cache; current browser data will rebuild it.
+  }
+
+  for (final chat in chats) {
+    add(chat);
+  }
+
+  try {
+    await cacheFile.parent.create(recursive: true);
+    await cacheFile.writeAsString(jsonEncode(merged));
+  } catch (_) {
+    // Cache persistence must not break chat listing.
+  }
+
+  return merged;
+}
+
+class AgentRuntimeLogger {
+  const AgentRuntimeLogger(this.file);
+
+  final File file;
+
+  Future<void> info(String message) => _write('INFO', message);
+
+  Future<void> error(String message, Object error) =>
+      _write('ERROR', '$message: $error');
+
+  Future<void> _write(String level, String message) async {
+    try {
+      await file.parent.create(recursive: true);
+      final sanitized = message
+          .replaceAll(
+            RegExp(r'Bearer\s+[A-Za-z0-9._\-]+', caseSensitive: false),
+            'Bearer ***',
+          )
+          .replaceAll(
+            RegExp(
+              r'agent_token["\s:=]+[A-Za-z0-9._\-]+',
+              caseSensitive: false,
+            ),
+            'agent_token ***',
+          );
+      await file.writeAsString(
+        '${DateTime.now().toUtc().toIso8601String()} [$level] $sanitized\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+    } catch (_) {
+      // Logging must never break the local Agent command.
+    }
+  }
+}
+
 Future<AgentConfig?> _loadConfigOrPrint(AgentStore store, WriteLine out) async {
   final config = await store.load();
   if (config == null) {
@@ -247,6 +363,7 @@ void _printUsage(WriteLine out) {
   out(
     '  feishu_monitor_agent browser-status [--store-dir C:\\Temp\\feishu-agent]',
   );
+  out('  feishu_monitor_agent list-chats [--store-dir C:\\Temp\\feishu-agent]');
   out(
     '  feishu_monitor_agent clear-browser-profile [--store-dir C:\\Temp\\feishu-agent]',
   );

@@ -27,4 +27,26 @@ void main() {
 
     expect(find.byType(FeishuMonitorCenterPage), findsOneWidget);
   });
+
+  testWidgets(
+    'Feishu monitor center opened from management wires local Agent browser actions',
+    (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: VipManagementPage()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('management-center-feishu')));
+      await tester.pumpAndSettle();
+
+      final page = tester.widget<FeishuMonitorCenterPage>(
+        find.byType(FeishuMonitorCenterPage),
+      );
+      expect(page.onBindLocalAgent, isNotNull);
+      expect(page.onOpenBrowserLogin, isNotNull);
+      expect(page.onCheckBrowserStatus, isNotNull);
+      expect(page.onClearBrowserProfile, isNotNull);
+      expect(page.onListenOnce, isNotNull);
+      expect(page.onRefreshAgentStatus, isNotNull);
+      expect(page.loadFeishuChats, isNotNull);
+    },
+  );
 }

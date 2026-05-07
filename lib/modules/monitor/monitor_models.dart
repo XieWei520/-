@@ -1,4 +1,4 @@
-﻿enum MonitorPlatform {
+enum MonitorPlatform {
   feishu,
   dingtalk,
   xiaoe,
@@ -339,10 +339,7 @@ class MonitorRoute {
       connectorType: MonitorConnectorType.parse(json['connector_type']),
       routeType: _toString(json['route_type']),
       sourceName: _toString(json['source_name'], fallback: '未命名来源'),
-      destinationName: _toString(
-        json['destination_name'],
-        fallback: '未命名目标',
-      ),
+      destinationName: _toString(json['destination_name'], fallback: '未命名目标'),
       status: MonitorRouteStatus.parse(json['status']),
       todayForwardedCount: _toInt(json['today_forwarded_count']),
       lastForwardedAt: _toString(json['last_forwarded_at']),
@@ -435,12 +432,23 @@ class MonitorBrowserStatus {
 }
 
 class MonitorSelectableGroup {
-  const MonitorSelectableGroup({required this.groupNo, required this.name});
+  const MonitorSelectableGroup({
+    required this.groupNo,
+    required this.name,
+    this.displayName,
+  });
 
   final String groupNo;
   final String name;
+  final String? displayName;
 
-  String get label => name.isEmpty ? groupNo : name;
+  String get label {
+    final explicit = displayName?.trim() ?? '';
+    if (explicit.isNotEmpty) {
+      return explicit;
+    }
+    return name.isEmpty ? groupNo : name;
+  }
 }
 
 class FeishuMonitorSnapshot {

@@ -85,6 +85,36 @@ func TestMonitorAgentPairingHeartbeatFlow(t *testing.T) {
 	require.Contains(t, messages, "Windows Agent COLORFUL-PC 已在线")
 }
 
+func TestMonitorPairingSameDeviceReusesAgent(t *testing.T) {
+	s, _ := newMigratedMonitorTestServer(t)
+
+	firstAgentID, firstToken, _ := pairTestAgent(t, s)
+
+	createRecorder := requestJSON(t, s, http.MethodPost, "/v1/monitor/agent-pairing-codes", map[string]interface{}{
+		"device_name": "Windows Agent",
+		"platform":    "windows",
+	}, testutil.Token)
+	require.Equal(t, http.StatusCreated, createRecorder.Code, createRecorder.Body.String())
+	code := decodeBody(t, createRecorder)["data"].(map[string]interface{})["pairing_code"].(string)
+
+	pairRecorder := requestJSON(t, s, http.MethodPost, "/v1/monitor/agents/pair", map[string]interface{}{
+		"pairing_code":  code,
+		"device_name":   "COLORFUL-PC",
+		"platform":      "windows",
+		"agent_version": "0.1.0",
+	}, "")
+	require.Equal(t, http.StatusCreated, pairRecorder.Code, pairRecorder.Body.String())
+	pairData := decodeBody(t, pairRecorder)["data"].(map[string]interface{})
+	require.Equal(t, firstAgentID, pairData["agent_id"])
+	require.NotEqual(t, firstToken, pairData["agent_token"])
+
+	agentsRecorder := requestJSON(t, s, http.MethodGet, "/v1/monitor/agents?platform=feishu", nil, testutil.Token)
+	require.Equal(t, http.StatusOK, agentsRecorder.Code, agentsRecorder.Body.String())
+	agents := decodeBody(t, agentsRecorder)["data"].([]interface{})
+	require.Len(t, agents, 1)
+	require.Equal(t, firstAgentID, agents[0].(map[string]interface{})["id"])
+}
+
 func TestMonitorForwardingBackendFlow(t *testing.T) {
 	s, _ := newMigratedMonitorTestServer(t)
 
@@ -183,6 +213,17 @@ func TestMonitorForwardingBackendFlow(t *testing.T) {
 	routes := decodeBody(t, routesRecorder)["data"].([]interface{})
 	require.Len(t, routes, 1)
 	require.Equal(t, float64(1), routes[0].(map[string]interface{})["today_forwarded_count"])
+}
+
+func TestForwardObservedMessageContentUsesRawMessageOnly(t *testing.T) {
+	content := forwardObservedMessageContent(
+		&routeModel{SourceName: "满满正能量"},
+		&observedMessageModel{Content: "新闻正文"},
+	)
+
+	require.Equal(t, "新闻正文", content)
+	require.NotContains(t, content, "[Feishu:")
+	require.NotContains(t, content, "满满正能量")
 }
 
 func TestMonitorHeartbeatRejectsInvalidToken(t *testing.T) {

@@ -62,8 +62,23 @@ class ListenRunner {
         observedAt: observedAt,
       );
       observedCount += messages.length;
+      final dedupePrefix = '${route.routeId}:';
+      final baselineKey = '${dedupePrefix}__baseline__';
+      final hasBaseline = await dedupeStore.contains(baselineKey);
+      if (!hasBaseline) {
+        if (messages.isEmpty) {
+          continue;
+        }
+        await dedupeStore.markAll(<String>[
+          baselineKey,
+          ...messages.map(
+            (message) => '$dedupePrefix${message.sourceMessageId}',
+          ),
+        ]);
+        continue;
+      }
       for (final message in messages) {
-        final dedupeKey = '${route.routeId}:${message.sourceMessageId}';
+        final dedupeKey = '$dedupePrefix${message.sourceMessageId}';
         if (!await dedupeStore.markIfNew(dedupeKey)) {
           continue;
         }

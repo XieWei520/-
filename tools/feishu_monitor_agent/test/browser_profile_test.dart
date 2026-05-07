@@ -29,6 +29,9 @@ void main() {
         endsWith('last-browser-status.json'),
       );
       expect(paths.dedupeCacheFile.path, endsWith('dedupe-cache.json'));
+      expect(paths.chatCacheFile.path, endsWith('feishu-chat-cache.json'));
+      expect(paths.agentLogFile.path, endsWith('agent.log'));
+      expect(paths.browserEndpointFile.path, endsWith('browser-endpoint.json'));
     });
 
     test('clearProfile keeps agent_config.json', () async {
@@ -52,6 +55,36 @@ void main() {
       await BrowserProfileCleaner(paths).clearProfile();
 
       expect(await paths.profileDir.exists(), isFalse);
+      expect(
+        await File(
+          '${tempDir.path}${Platform.pathSeparator}agent_config.json',
+        ).exists(),
+        isTrue,
+      );
+    });
+
+
+    test('clearProfile removes runtime browser endpoint and dedupe cache', () async {
+      await AgentStore(tempDir.path).save(
+        const AgentConfig(
+          serverUrl: 'https://infoequity.qingyunshe.top',
+          agentId: 'agent_1',
+          agentToken: 'secret-token',
+          deviceName: 'COLORFUL-PC',
+          agentVersion: '0.1.0',
+          pairedAt: '2026-05-07T10:00:00Z',
+          heartbeatIntervalSeconds: 20,
+        ),
+      );
+      final paths = BrowserProfilePaths(tempDir.path);
+      await paths.runtimeDir.create(recursive: true);
+      await paths.browserEndpointFile.writeAsString('{"ws_endpoint":"ws://old"}');
+      await paths.dedupeCacheFile.writeAsString('["old-message"]');
+
+      await BrowserProfileCleaner(paths).clearProfile();
+
+      expect(await paths.browserEndpointFile.exists(), isFalse);
+      expect(await paths.dedupeCacheFile.exists(), isFalse);
       expect(
         await File(
           '${tempDir.path}${Platform.pathSeparator}agent_config.json',

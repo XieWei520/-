@@ -9,6 +9,7 @@ import 'monitor_repository.dart';
 
 typedef FeishuSnapshotLoader = Future<FeishuMonitorSnapshot> Function();
 typedef MonitorGroupsLoader = Future<List<MonitorSelectableGroup>> Function();
+typedef FeishuChatsLoader = Future<List<String>> Function();
 typedef PairingCodeCreator =
     Future<MonitorPairingCode> Function(String deviceName);
 typedef LocalAgentBinder =
@@ -41,6 +42,7 @@ class FeishuMonitorCenterPage extends StatefulWidget {
     MonitorRepository? repository,
     this.loadSnapshot,
     this.loadDestinationGroups,
+    this.loadFeishuChats,
     this.onCreatePairingCode,
     this.onCreateRoute,
     this.onBindLocalAgent,
@@ -48,6 +50,7 @@ class FeishuMonitorCenterPage extends StatefulWidget {
     this.onCheckBrowserStatus,
     this.onClearBrowserProfile,
     this.onListenOnce,
+    this.onRefreshAgentStatus,
     this.onPauseRoute,
     this.onResumeRoute,
     this.onViewRouteLogs,
@@ -57,6 +60,7 @@ class FeishuMonitorCenterPage extends StatefulWidget {
   final MonitorRepository _repository;
   final FeishuSnapshotLoader? loadSnapshot;
   final MonitorGroupsLoader? loadDestinationGroups;
+  final FeishuChatsLoader? loadFeishuChats;
   final PairingCodeCreator? onCreatePairingCode;
   final FeishuRouteCreator? onCreateRoute;
   final LocalAgentBinder? onBindLocalAgent;
@@ -64,6 +68,7 @@ class FeishuMonitorCenterPage extends StatefulWidget {
   final LocalAgentAction? onCheckBrowserStatus;
   final LocalAgentAction? onClearBrowserProfile;
   final LocalAgentAction? onListenOnce;
+  final LocalAgentAction? onRefreshAgentStatus;
   final MonitorRouteAction? onPauseRoute;
   final MonitorRouteAction? onResumeRoute;
   final MonitorRouteCallback? onViewRouteLogs;
@@ -81,6 +86,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
   bool _isBindingLocalAgent = false;
   bool _isRepairingAgent = false;
   bool _isRunningBrowserAction = false;
+  bool _isRefreshingAgentStatus = false;
 
   @override
   void initState() {
@@ -96,6 +102,11 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
   Future<List<MonitorSelectableGroup>> _loadDestinationGroups() {
     return widget.loadDestinationGroups?.call() ??
         widget._repository.loadDestinationGroups();
+  }
+
+  Future<List<String>> _loadFeishuChats() {
+    return widget.loadFeishuChats?.call() ??
+        MonitorLocalAgentBinder().listChats();
   }
 
   Future<void> _refresh() async {
@@ -122,6 +133,29 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
     } finally {
       if (mounted) {
         setState(() => _isRunningBrowserAction = false);
+      }
+    }
+  }
+
+  Future<void> _refreshAgentStatus() async {
+    if (_isRefreshingAgentStatus) {
+      return;
+    }
+    setState(() => _isRefreshingAgentStatus = true);
+    try {
+      final binder =
+          widget.onRefreshAgentStatus ??
+          MonitorLocalAgentBinder().heartbeatOnce;
+      final result = await binder();
+      _showSnackBar(result.message);
+      await _refresh();
+    } catch (error) {
+      if (mounted) {
+        _showSnackBar('更新 Agent 状态失败：$error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingAgentStatus = false);
       }
     }
   }
@@ -175,6 +209,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
         LocalAgentBindRequest(
           serverUrl: 'https://infoequity.qingyunshe.top',
           pairingCode: code.code,
+          forcePair: _isRepairingAgent,
         ),
       );
       if (!mounted) {
@@ -214,6 +249,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
       context: context,
       builder: (context) => _CreateFeishuRouteDialog(
         groups: groups,
+        loadFeishuChats: _loadFeishuChats,
         onSubmit: (request) async {
           final creator =
               widget.onCreateRoute ?? widget._repository.createFeishuRoute;
@@ -304,23 +340,19 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
                       status: data.browserStatus,
                       isBusy: _isRunningBrowserAction,
                       onOpenBrowserLogin: widget.onOpenBrowserLogin != null
-                          ? () => _runBrowserAction(
-                              widget.onOpenBrowserLogin!,
-                            )
+                          ? () => _runBrowserAction(widget.onOpenBrowserLogin!)
                           : null,
                       onCheckBrowserStatus: widget.onCheckBrowserStatus != null
-                          ? () => _runBrowserAction(
-                              widget.onCheckBrowserStatus!,
-                            )
+                          ? () =>
+                                _runBrowserAction(widget.onCheckBrowserStatus!)
                           : null,
                       onListenOnce: widget.onListenOnce != null
                           ? () => _runBrowserAction(widget.onListenOnce!)
                           : null,
                       onClearBrowserProfile:
                           widget.onClearBrowserProfile != null
-                          ? () => _runBrowserAction(
-                              widget.onClearBrowserProfile!,
-                            )
+                          ? () =>
+                                _runBrowserAction(widget.onClearBrowserProfile!)
                           : null,
                     ),
                   const SizedBox(height: WKSpace.md),
@@ -356,7 +388,12 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
                     const SizedBox(height: WKSpace.md),
                     const _SectionTitle(title: 'Windows Agent'),
                     for (final agent in data.agents)
-                      _AgentCard(agent: agent, onRepair: _startRepairAgent),
+                      _AgentCard(
+                        agent: agent,
+                        isRefreshing: _isRefreshingAgentStatus,
+                        onRepair: _startRepairAgent,
+                        onRefresh: _refreshAgentStatus,
+                      ),
                   ],
                   const SizedBox(height: WKSpace.md),
                   const _SectionTitle(title: '最近日志'),
@@ -528,9 +565,7 @@ class _BrowserStatusCard extends StatelessWidget {
           const Text('Browser: Chromium'),
           const Text('Environment: 专属隔离环境'),
           Text('登录状态：${status.loginStatusLabel}'),
-          Text(
-            '最后检测：${status.observedAt.isEmpty ? '暂无' : status.observedAt}',
-          ),
+          Text('最后检测：${status.observedAt.isEmpty ? '暂无' : status.observedAt}'),
           Text(
             '最后错误：${status.errorMessage.isEmpty ? '暂无' : status.errorMessage}',
           ),
@@ -702,10 +737,17 @@ class _RouteCard extends StatelessWidget {
 }
 
 class _AgentCard extends StatelessWidget {
-  const _AgentCard({required this.agent, required this.onRepair});
+  const _AgentCard({
+    required this.agent,
+    required this.isRefreshing,
+    required this.onRepair,
+    required this.onRefresh,
+  });
 
   final MonitorAgent agent;
+  final bool isRefreshing;
   final VoidCallback onRepair;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -731,11 +773,15 @@ class _AgentCard extends StatelessWidget {
             children: [
               TextButton(
                 key: const ValueKey('feishu-monitor-repair-agent'),
-                onPressed: onRepair,
+                onPressed: isRefreshing ? null : onRepair,
                 child: const Text('重新配对'),
               ),
               TextButton(onPressed: () {}, child: const Text('查看日志')),
-              TextButton(onPressed: () {}, child: const Text('更新 Agent')),
+              TextButton(
+                key: const ValueKey('feishu-monitor-refresh-agent-status'),
+                onPressed: isRefreshing ? null : onRefresh,
+                child: Text(isRefreshing ? '更新中...' : '更新 Agent 状态'),
+              ),
             ],
           ),
         ],
@@ -769,10 +815,12 @@ class _LogsCard extends StatelessWidget {
 class _CreateFeishuRouteDialog extends StatefulWidget {
   const _CreateFeishuRouteDialog({
     required this.groups,
+    required this.loadFeishuChats,
     required this.onSubmit,
   });
 
   final List<MonitorSelectableGroup> groups;
+  final FeishuChatsLoader loadFeishuChats;
   final FeishuRouteCreator onSubmit;
 
   @override
@@ -782,23 +830,69 @@ class _CreateFeishuRouteDialog extends StatefulWidget {
 
 class _CreateFeishuRouteDialogState extends State<_CreateFeishuRouteDialog> {
   final _chatController = TextEditingController();
+  final _chatSearchController = TextEditingController();
+  List<String> _chatOptions = const <String>[];
+  String? _selectedChat;
   MonitorSelectableGroup? _selectedGroup;
   bool _submitting = false;
+  bool _loadingChats = true;
+  String _chatLoadError = '';
 
   @override
   void initState() {
     super.initState();
     _selectedGroup = widget.groups.isEmpty ? null : widget.groups.first;
+    _loadChats();
   }
 
   @override
   void dispose() {
     _chatController.dispose();
+    _chatSearchController.dispose();
     super.dispose();
   }
 
+  Future<void> _loadChats() async {
+    setState(() {
+      _loadingChats = true;
+      _chatLoadError = '';
+    });
+    try {
+      final chats = await widget.loadFeishuChats();
+      final unique = <String>[];
+      final seen = <String>{};
+      for (final chat in chats) {
+        final name = chat.trim();
+        if (name.isEmpty || seen.contains(name)) {
+          continue;
+        }
+        seen.add(name);
+        unique.add(name);
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _chatOptions = unique;
+        _selectedChat = unique.isEmpty ? null : unique.first;
+        _chatSearchController.clear();
+        if (_selectedChat != null) {
+          _chatController.text = _selectedChat!;
+        }
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _chatLoadError = '$error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingChats = false);
+      }
+    }
+  }
+
   Future<void> _submit() async {
-    final chatName = _chatController.text.trim();
+    final chatName = (_selectedChat ?? _chatController.text).trim();
     final group = _selectedGroup;
     if (chatName.isEmpty || group == null || _submitting) {
       return;
@@ -824,35 +918,79 @@ class _CreateFeishuRouteDialogState extends State<_CreateFeishuRouteDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredChatOptions = _filteredChatOptions();
     return AlertDialog(
       title: const Text('新建飞书监控规则'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              key: const ValueKey('feishu-route-source-chat-input'),
-              controller: _chatController,
-              decoration: const InputDecoration(
-                labelText: '飞书群名称',
-                hintText: '例如：新闻群',
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_loadingChats)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: WKSpace.sm),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: WKSpace.sm),
+                      Text('正在识别飞书群...'),
+                    ],
+                  ),
+                )
+              else if (_chatOptions.isNotEmpty)
+                _DetectedFeishuChatPicker(
+                  allChatsCount: _chatOptions.length,
+                  filteredChats: filteredChatOptions,
+                  selectedChat: _selectedChat,
+                  searchController: _chatSearchController,
+                  onSearchChanged: (_) => setState(() {}),
+                  onSelected: (value) {
+                    setState(() {
+                      _selectedChat = value;
+                      _chatController.text = value;
+                    });
+                  },
+                )
+              else
+                TextField(
+                  key: const ValueKey('feishu-route-source-chat-input'),
+                  controller: _chatController,
+                  decoration: InputDecoration(
+                    labelText: '飞书群名称',
+                    hintText: '例如：新闻群',
+                    helperText: _chatLoadError.isEmpty
+                        ? '未识别到飞书群，可手动输入'
+                        : '自动识别失败，可手动输入',
+                  ),
+                ),
+              const SizedBox(height: WKSpace.xs),
+              TextButton.icon(
+                key: const ValueKey('feishu-route-reload-chats'),
+                onPressed: _loadingChats ? null : _loadChats,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('重新识别飞书群'),
               ),
-            ),
-            const SizedBox(height: WKSpace.md),
-            DropdownButtonFormField<MonitorSelectableGroup>(
-              initialValue: _selectedGroup,
-              decoration: const InputDecoration(labelText: '悟空 IM 群'),
-              items: [
-                for (final group in widget.groups)
-                  DropdownMenuItem(value: group, child: Text(group.label)),
-              ],
-              onChanged: (value) => setState(() => _selectedGroup = value),
-            ),
-            const SizedBox(height: WKSpace.md),
-            const Text('转发内容：文本、链接'),
-            const Text('图片、文件：暂不支持，后续支持'),
-          ],
+              const SizedBox(height: WKSpace.md),
+              DropdownButtonFormField<MonitorSelectableGroup>(
+                initialValue: _selectedGroup,
+                decoration: const InputDecoration(labelText: '悟空 IM 群'),
+                items: [
+                  for (final group in widget.groups)
+                    DropdownMenuItem(value: group, child: Text(group.label)),
+                ],
+                onChanged: (value) => setState(() => _selectedGroup = value),
+              ),
+              const SizedBox(height: WKSpace.md),
+              const Text('转发内容：文本、链接'),
+              const Text('图片、文件：暂不支持，后续支持'),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -864,6 +1002,113 @@ class _CreateFeishuRouteDialogState extends State<_CreateFeishuRouteDialog> {
           key: const ValueKey('feishu-route-submit'),
           onPressed: _submitting ? null : _submit,
           child: Text(_submitting ? '创建中...' : '确认并启动'),
+        ),
+      ],
+    );
+  }
+
+  List<String> _filteredChatOptions() {
+    final keyword = _chatSearchController.text.trim().toLowerCase();
+    if (keyword.isEmpty) {
+      return _chatOptions;
+    }
+    return _chatOptions
+        .where((chat) => chat.toLowerCase().contains(keyword))
+        .toList(growable: false);
+  }
+}
+
+class _DetectedFeishuChatPicker extends StatelessWidget {
+  const _DetectedFeishuChatPicker({
+    required this.allChatsCount,
+    required this.filteredChats,
+    required this.selectedChat,
+    required this.searchController,
+    required this.onSearchChanged,
+    required this.onSelected,
+  });
+
+  final int allChatsCount;
+  final List<String> filteredChats;
+  final String? selectedChat;
+  final TextEditingController searchController;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const ValueKey('feishu-route-source-chat-picker'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '飞书群',
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        const SizedBox(height: WKSpace.xxs),
+        Text(
+          '已自动识别 $allChatsCount 个会话，可搜索或滚动选择',
+          style: const TextStyle(fontSize: 12, color: WKColors.color999),
+        ),
+        const SizedBox(height: WKSpace.xxs),
+        const Text(
+          '如果群很多：请在 Chromium 飞书窗口手动滚动群列表，然后回到这里点“重新识别飞书群”，系统会增量合并。',
+          style: TextStyle(fontSize: 12, color: WKColors.color999),
+        ),
+        const SizedBox(height: WKSpace.sm),
+        TextField(
+          key: const ValueKey('feishu-route-source-chat-search'),
+          controller: searchController,
+          onChanged: onSearchChanged,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.search_rounded),
+            hintText: '搜索飞书群名称',
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: WKSpace.sm),
+        Container(
+          key: const ValueKey('feishu-route-source-chat-list'),
+          height: 240,
+          decoration: BoxDecoration(
+            border: Border.all(color: WKColors.colorLine),
+            borderRadius: BorderRadius.circular(WKRadius.md),
+          ),
+          child: filteredChats.isEmpty
+              ? const Center(
+                  child: Text(
+                    '没有匹配的飞书群',
+                    style: TextStyle(color: WKColors.color999),
+                  ),
+                )
+              : Scrollbar(
+                  child: ListView.separated(
+                    itemCount: filteredChats.length,
+                    separatorBuilder: (_, _) =>
+                        const Divider(height: 1, color: WKColors.colorLine),
+                    itemBuilder: (context, index) {
+                      final chat = filteredChats[index];
+                      final selected = chat == selectedChat;
+                      return ListTile(
+                        key: ValueKey('feishu-route-source-chat-$chat'),
+                        dense: true,
+                        selected: selected,
+                        title: Text(
+                          chat,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: selected
+                            ? const Icon(Icons.check_rounded)
+                            : null,
+                        onTap: () => onSelected(chat),
+                      );
+                    },
+                  ),
+                ),
         ),
       ],
     );

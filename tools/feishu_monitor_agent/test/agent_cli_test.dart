@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:feishu_monitor_agent/src/agent_cli.dart';
@@ -113,6 +114,114 @@ void main() {
       expect(fakeApi.closed, isTrue);
     });
 
+    test('list-chats prints deduplicated chat JSON without token', () async {
+      await _saveConfig(tempDir.path);
+      final fakeBrowser = _FakeBrowserController(BrowserLoginStatus.loggedIn)
+        ..chatNames = <String>[
+          '飞书新闻群',
+          '产品交流群',
+          '1 企业安全助手 机器人',
+          '企业安全助手',
+          '飞书新闻群',
+        ];
+
+      final exitCode = await runAgentCli(
+        <String>['list-chats', '--store-dir', tempDir.path],
+        browserFactory: (_) => fakeBrowser,
+        writeLine: output.add,
+      );
+
+      expect(exitCode, 0);
+      expect(output.join('\n'), contains('"name":"飞书新闻群"'));
+      expect(output.join('\n'), contains('"name":"产品交流群"'));
+      expect(output.join('\n'), contains('"name":"企业安全助手"'));
+      expect(output.join('\n'), isNot(contains('"name":"1 企业安全助手 机器人"')));
+      expect(output.join('\n'), isNot(contains('secret-token')));
+      expect(fakeBrowser.listChatsCount, 1);
+      expect(fakeBrowser.closeCount, 1);
+    });
+
+    test(
+      'list-chats merges cached chat names for manual scroll rescans',
+      () async {
+        await _saveConfig(tempDir.path);
+        final paths = BrowserProfilePaths(tempDir.path);
+        await paths.chatCacheFile.parent.create(recursive: true);
+        await paths.chatCacheFile.writeAsString(
+          jsonEncode(<String>['已缓存群', '飞书新闻群']),
+        );
+        final fakeBrowser = _FakeBrowserController(BrowserLoginStatus.loggedIn)
+          ..chatNames = <String>['飞书新闻群', '新滚动群'];
+
+        final exitCode = await runAgentCli(
+          <String>['list-chats', '--store-dir', tempDir.path],
+          browserFactory: (_) => fakeBrowser,
+          writeLine: output.add,
+        );
+
+        expect(exitCode, 0);
+        expect(output.join('\n'), contains('"name":"已缓存群"'));
+        expect(output.join('\n'), contains('"name":"飞书新闻群"'));
+        expect(output.join('\n'), contains('"name":"新滚动群"'));
+        expect(jsonDecode(await paths.chatCacheFile.readAsString()), <String>[
+          '已缓存群',
+          '飞书新闻群',
+          '新滚动群',
+        ]);
+      },
+    );
+
+    test('browser-login keeps interactive Chromium window open', () async {
+      await _saveConfig(tempDir.path);
+      final fakeBrowser = _FakeBrowserController(
+        BrowserLoginStatus.loginRequired,
+      );
+
+      final exitCode = await runAgentCli(
+        <String>['browser-login', '--store-dir', tempDir.path],
+        browserFactory: (_) => fakeBrowser,
+        writeLine: output.add,
+      );
+
+      expect(exitCode, 0);
+      expect(output.join('\n'), contains('Chromium'));
+      expect(fakeBrowser.openLoginCount, 1);
+      expect(fakeBrowser.closeCount, 0);
+      expect(
+        await File(
+          '${tempDir.path}${Platform.pathSeparator}runtime${Platform.pathSeparator}agent.log',
+        ).readAsString(),
+        contains('browser-login status=login_required'),
+      );
+    });
+
+    test(
+      'browser-login returns failure when Chromium cannot be opened',
+      () async {
+        await _saveConfig(tempDir.path);
+        final fakeBrowser = _FakeBrowserController(
+          BrowserLoginStatus.browserError,
+        );
+
+        final exitCode = await runAgentCli(
+          <String>['browser-login', '--store-dir', tempDir.path],
+          browserFactory: (_) => fakeBrowser,
+          writeLine: output.add,
+        );
+
+        expect(exitCode, isNot(0));
+        expect(output.join('\n'), contains('Chromium'));
+        expect(fakeBrowser.openLoginCount, 1);
+        expect(fakeBrowser.closeCount, 1);
+        expect(
+          await File(
+            '${tempDir.path}${Platform.pathSeparator}runtime${Platform.pathSeparator}agent.log',
+          ).readAsString(),
+          contains('browser-login status=browser_error'),
+        );
+      },
+    );
+
     test('clear-browser-profile deletes only chromium profile', () async {
       await _saveConfig(tempDir.path);
       final paths = BrowserProfilePaths(tempDir.path);
@@ -143,24 +252,27 @@ void main() {
       );
     });
 
-    test('listen once reports locally new messages', () async {
-      await _saveConfig(tempDir.path);
-      final fakeBrowser = _FakeBrowserController(BrowserLoginStatus.loggedIn);
+    test(
+      'listen once baselines visible messages without reporting them',
+      () async {
+        await _saveConfig(tempDir.path);
+        final fakeBrowser = _FakeBrowserController(BrowserLoginStatus.loggedIn);
 
-      final exitCode = await runAgentCli(
-        <String>['listen', '--once', '--store-dir', tempDir.path],
-        apiFactory: (_) => fakeApi,
-        browserFactory: (_) => fakeBrowser,
-        writeLine: output.add,
-        now: () => DateTime.utc(2026, 5, 7, 10, 0, 5),
-      );
+        final exitCode = await runAgentCli(
+          <String>['listen', '--once', '--store-dir', tempDir.path],
+          apiFactory: (_) => fakeApi,
+          browserFactory: (_) => fakeBrowser,
+          writeLine: output.add,
+          now: () => DateTime.utc(2026, 5, 7, 10, 0, 5),
+        );
 
-      expect(exitCode, 0);
-      expect(output.join('\n'), contains('监听完成'));
-      expect(output.join('\n'), isNot(contains('secret-token')));
-      expect(fakeBrowser.observeRouteCount, 1);
-      expect(fakeApi.reportedMessages.single.content, '新闻正文');
-    });
+        expect(exitCode, 0);
+        expect(output.join('\n'), contains('监听完成'));
+        expect(output.join('\n'), isNot(contains('secret-token')));
+        expect(fakeBrowser.observeRouteCount, 1);
+        expect(fakeApi.reportedMessages, isEmpty);
+      },
+    );
   });
 }
 
@@ -270,8 +382,10 @@ class _FakeBrowserController implements BrowserControllerLike {
   final BrowserLoginStatus status;
   int openLoginCount = 0;
   int checkStatusCount = 0;
+  int listChatsCount = 0;
   int observeRouteCount = 0;
   int closeCount = 0;
+  List<String> chatNames = const <String>[];
 
   @override
   Future<BrowserLoginStatus> openLogin({required bool keepOpen}) async {
@@ -283,6 +397,12 @@ class _FakeBrowserController implements BrowserControllerLike {
   Future<BrowserLoginStatus> checkStatus() async {
     checkStatusCount += 1;
     return status;
+  }
+
+  @override
+  Future<List<String>> listChats() async {
+    listChatsCount += 1;
+    return chatNames;
   }
 
   @override

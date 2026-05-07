@@ -149,20 +149,35 @@ func (a *API) pairAgent(c *wkhttp.Context) {
 		return
 	}
 
+	existingAgent, err := a.db.queryAgentByDevice(pairingCode.UID, platform, deviceName)
+	if err != nil {
+		a.Error("query monitor agent by device failed", zap.Error(err), zap.String("uid", pairingCode.UID), zap.String("device_name", deviceName))
+		a.writeError(c, http.StatusInternalServerError, "agent_query_failed", "?? Agent ??")
+		return
+	}
 	agentID := "agent_" + util.GenerUUID()
 	agentToken := "monitor_agent_" + util.GenerUUID()
-	if err := a.db.insertAgent(&agentModel{
-		AgentID:    agentID,
-		UID:        pairingCode.UID,
-		AgentToken: agentToken,
-		DeviceName: deviceName,
-		Platform:   platform,
-		Version:    version,
-		Status:     "offline",
-	}); err != nil {
-		a.Error("insert monitor agent failed", zap.Error(err), zap.String("uid", pairingCode.UID))
-		a.writeError(c, http.StatusInternalServerError, "agent_create_failed", "创建 Agent 失败")
-		return
+	if existingAgent != nil {
+		agentID = existingAgent.AgentID
+		if err := a.db.updateAgentPairing(agentID, agentToken, deviceName, version); err != nil {
+			a.Error("update monitor agent pairing failed", zap.Error(err), zap.String("uid", pairingCode.UID), zap.String("agent_id", agentID))
+			a.writeError(c, http.StatusInternalServerError, "agent_update_failed", "?? Agent ??")
+			return
+		}
+	} else {
+		if err := a.db.insertAgent(&agentModel{
+			AgentID:    agentID,
+			UID:        pairingCode.UID,
+			AgentToken: agentToken,
+			DeviceName: deviceName,
+			Platform:   platform,
+			Version:    version,
+			Status:     "offline",
+		}); err != nil {
+			a.Error("insert monitor agent failed", zap.Error(err), zap.String("uid", pairingCode.UID))
+			a.writeError(c, http.StatusInternalServerError, "agent_create_failed", "?? Agent ??")
+			return
+		}
 	}
 	if err := a.db.markPairingCodeUsed(code, now); err != nil {
 		a.Error("mark monitor pairing code used failed", zap.Error(err), zap.String("uid", pairingCode.UID))
@@ -628,10 +643,16 @@ func (a *API) forwardObservedMessage(route *routeModel, message *observedMessage
 	if route.DestinationNo == "" {
 		return errors.New("destination group is empty")
 	}
+	content := forwardObservedMessageContent(route, message)
 	payload, err := json.Marshal(map[string]interface{}{
 		"type":    common.Text,
-		"content": message.Content,
+		"content": content,
 		"source":  "feishu_monitor",
+		"robot": map[string]interface{}{
+			"provider":       "feishu_monitor",
+			"display_name":   "Feishu Monitor",
+			"display_avatar": "",
+		},
 	})
 	if err != nil {
 		return err
@@ -642,11 +663,15 @@ func (a *API) forwardObservedMessage(route *routeModel, message *observedMessage
 			RedDot:    1,
 			SyncOnce:  0,
 		},
-		FromUID:     message.UID,
+		FromUID:     a.ctx.GetConfig().Account.SystemUID,
 		ChannelID:   route.DestinationNo,
 		ChannelType: common.ChannelTypeGroup.Uint8(),
 		Payload:     payload,
 	})
+}
+
+func forwardObservedMessageContent(route *routeModel, message *observedMessageModel) string {
+	return strings.TrimSpace(message.Content)
 }
 
 func (a *API) insertEvent(uid, agentID, routeID, eventType, message string, metadata map[string]interface{}) error {

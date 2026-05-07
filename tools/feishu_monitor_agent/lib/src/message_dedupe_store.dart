@@ -8,6 +8,15 @@ class MessageDedupeStore {
   final int maxEntries;
   List<String>? _ids;
 
+  Future<bool> contains(String id) async {
+    final normalized = id.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    final ids = await _load();
+    return ids.contains(normalized);
+  }
+
   Future<bool> markIfNew(String id) async {
     final normalized = id.trim();
     if (normalized.isEmpty) {
@@ -21,6 +30,30 @@ class MessageDedupeStore {
     _trim(ids);
     await _save(ids);
     return true;
+  }
+
+  Future<void> markAll(Iterable<String> idsToMark) async {
+    final nextIds = idsToMark
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (nextIds.isEmpty) {
+      return;
+    }
+    final ids = await _load();
+    var changed = false;
+    for (final id in nextIds) {
+      if (ids.contains(id)) {
+        continue;
+      }
+      ids.add(id);
+      changed = true;
+    }
+    if (!changed) {
+      return;
+    }
+    _trim(ids);
+    await _save(ids);
   }
 
   Future<List<String>> _load() async {

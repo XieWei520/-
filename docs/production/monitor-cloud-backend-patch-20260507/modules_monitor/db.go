@@ -42,6 +42,27 @@ func (d *DB) insertAgent(m *agentModel) error {
 	return err
 }
 
+func (d *DB) queryAgentByDevice(uid, platform, deviceName string) (*agentModel, error) {
+	var model *agentModel
+	_, err := d.session.Select("*").From("monitor_agent").
+		Where("uid=? and platform=? and device_name=? and revoked_at is null", uid, platform, deviceName).
+		OrderDir("updated_at", false).
+		Limit(1).
+		Load(&model)
+	return model, err
+}
+
+func (d *DB) updateAgentPairing(agentID, token, deviceName, version string) error {
+	_, err := d.session.Update("monitor_agent").SetMap(map[string]interface{}{
+		"agent_token":       token,
+		"device_name":       deviceName,
+		"version":           version,
+		"status":            "offline",
+		"last_heartbeat_at": nil,
+	}).Where("agent_id=? and revoked_at is null", agentID).Exec()
+	return err
+}
+
 func (d *DB) queryAgentByToken(token string) (*agentModel, error) {
 	var model *agentModel
 	_, err := d.session.Select("*").From("monitor_agent").

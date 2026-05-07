@@ -36,7 +36,7 @@ void main() {
       }
     });
 
-    test('reports only locally new observed messages', () async {
+    test('skips repeated observed messages after baseline', () async {
       const config = AgentConfig(
         serverUrl: 'https://infoequity.qingyunshe.top',
         agentId: 'agent_1',
@@ -52,16 +52,76 @@ void main() {
 
       expect(first.routeCount, 1);
       expect(first.observedCount, 1);
-      expect(first.reportedCount, 1);
+      expect(first.reportedCount, 0);
       expect(second.routeCount, 1);
       expect(second.observedCount, 1);
       expect(second.reportedCount, 0);
-      expect(api.reportedMessages.single.content, '\u65b0\u95fb\u6b63\u6587');
+      expect(api.reportedMessages, isEmpty);
       expect(
         api.reportedStatuses.map((request) => request.loginStatus),
         everyElement(BrowserLoginStatus.loggedIn),
       );
     });
+
+    test(
+      'baselines existing visible messages on first listen without reporting',
+      () async {
+        const config = AgentConfig(
+          serverUrl: 'https://infoequity.qingyunshe.top',
+          agentId: 'agent_1',
+          agentToken: 'secret-token',
+          deviceName: 'COLORFUL-PC',
+          agentVersion: '0.1.0',
+          pairedAt: '2026-05-07T10:00:00Z',
+          heartbeatIntervalSeconds: 20,
+        );
+        browser.messageBatches = <List<FeishuObservedMessage>>[
+          <FeishuObservedMessage>[
+            FeishuObservedMessage.fromRaw(
+              routeId: 'route_1',
+              sourceChatName: '\u98de\u4e66\u65b0\u95fb\u7fa4',
+              rawId: 'old_1',
+              messageType: 'text',
+              content: '\u5386\u53f2\u6d88\u606f',
+              observedAt: '2026-05-07T10:00:05Z',
+              domOrder: 1,
+            ),
+          ],
+          <FeishuObservedMessage>[
+            FeishuObservedMessage.fromRaw(
+              routeId: 'route_1',
+              sourceChatName: '\u98de\u4e66\u65b0\u95fb\u7fa4',
+              rawId: 'old_1',
+              messageType: 'text',
+              content: '\u5386\u53f2\u6d88\u606f',
+              observedAt: '2026-05-07T10:00:25Z',
+              domOrder: 1,
+            ),
+            FeishuObservedMessage.fromRaw(
+              routeId: 'route_1',
+              sourceChatName: '\u98de\u4e66\u65b0\u95fb\u7fa4',
+              rawId: 'new_1',
+              messageType: 'text',
+              content: '\u65b0\u6d88\u606f',
+              observedAt: '2026-05-07T10:00:25Z',
+              domOrder: 2,
+            ),
+          ],
+        ];
+
+        final first = await runner.runOnce(config);
+        final second = await runner.runOnce(config);
+
+        expect(first.routeCount, 1);
+        expect(first.observedCount, 1);
+        expect(first.reportedCount, 0);
+        expect(second.routeCount, 1);
+        expect(second.observedCount, 2);
+        expect(second.reportedCount, 1);
+        expect(api.reportedMessages.single.sourceMessageId, 'new_1');
+        expect(api.reportedMessages.single.content, '\u65b0\u6d88\u606f');
+      },
+    );
   });
 }
 
@@ -131,6 +191,9 @@ class _FakeAgentApi implements AgentApiLike {
 }
 
 class _FakeBrowserController implements BrowserControllerLike {
+  List<List<FeishuObservedMessage>>? messageBatches;
+  var observeCount = 0;
+
   @override
   Future<BrowserLoginStatus> checkStatus() async => BrowserLoginStatus.loggedIn;
 
@@ -139,6 +202,14 @@ class _FakeBrowserController implements BrowserControllerLike {
     required AgentMonitorRoute route,
     required String observedAt,
   }) async {
+    final batches = messageBatches;
+    if (batches != null) {
+      final index = observeCount < batches.length
+          ? observeCount
+          : batches.length - 1;
+      observeCount += 1;
+      return batches[index];
+    }
     return <FeishuObservedMessage>[
       FeishuObservedMessage.fromRaw(
         routeId: route.routeId,
@@ -154,6 +225,11 @@ class _FakeBrowserController implements BrowserControllerLike {
 
   @override
   Future<BrowserLoginStatus> openLogin({required bool keepOpen}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<String>> listChats() {
     throw UnimplementedError();
   }
 

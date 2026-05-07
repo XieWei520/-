@@ -4,14 +4,26 @@ import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_sub_page_scaffold.dart';
 import '../monitor/feishu_monitor_center_page.dart';
+import '../monitor/monitor_local_agent_binder.dart';
 
 class VipManagementPage extends StatelessWidget {
   const VipManagementPage({super.key});
 
   void _openFeishuCenter(BuildContext context) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => FeishuMonitorCenterPage()));
+    final binder = MonitorLocalAgentBinder();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FeishuMonitorCenterPage(
+          onBindLocalAgent: binder.bindAndHeartbeat,
+          onOpenBrowserLogin: binder.openBrowserLogin,
+          onCheckBrowserStatus: binder.checkBrowserStatus,
+          onClearBrowserProfile: binder.clearBrowserProfile,
+          onListenOnce: binder.listenOnce,
+          onRefreshAgentStatus: binder.heartbeatOnce,
+          loadFeishuChats: binder.listChats,
+        ),
+      ),
+    );
   }
 
   void _showComingSoon(BuildContext context, String title) {
