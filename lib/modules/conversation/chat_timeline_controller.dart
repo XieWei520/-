@@ -131,6 +131,7 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
     }
     state = ChatViewportState(
       items: state.items,
+      identities: state.identities,
       identityToIndex: state.identityToIndex,
       isLoadingMore: isLoadingMore,
     );
@@ -159,11 +160,20 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
   }
 
   void _replace(List<ChatMessageViewModel> items, {bool? isLoadingMore}) {
+    final identities = _identities(items);
+    final keepIdentitySlice = listEquals(identities, state.identities);
     state = ChatViewportState(
       items: items,
-      identityToIndex: _index(items),
+      identities: keepIdentitySlice ? state.identities : identities,
+      identityToIndex: keepIdentitySlice
+          ? state.identityToIndex
+          : _index(items),
       isLoadingMore: isLoadingMore ?? state.isLoadingMore,
     );
+  }
+
+  List<String> _identities(List<ChatMessageViewModel> items) {
+    return items.map((item) => item.identity).toList(growable: false);
   }
 
   Map<String, int> _index(List<ChatMessageViewModel> items) {

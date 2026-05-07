@@ -136,11 +136,18 @@ class ChatViewportMessageMatchIndex {
 class ChatViewportState {
   const ChatViewportState({
     this.items = const <ChatMessageViewModel>[],
+    this.identities = const <String>[],
     this.identityToIndex = const <String, int>{},
     this.isLoadingMore = false,
   });
 
   final List<ChatMessageViewModel> items;
+
+  /// Stable list skeleton consumed by the chat viewport. A content/status-only
+  /// refresh must preserve this list instance so `select((s) => s.identities)`
+  /// does not rebuild the whole scrollable.
+  final List<String> identities;
+
   final Map<String, int> identityToIndex;
   final bool isLoadingMore;
 }
@@ -184,7 +191,7 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
     final items = messages
         .map((message) => _mapper.map(message, currentUid: _currentUid))
         .toList(growable: false);
-    state = ChatViewportState(items: items, identityToIndex: _index(items));
+    _replace(items);
   }
 
   void applyIncoming(Iterable<WKMsg> messages) {
@@ -198,7 +205,7 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
         insertAtHead: true,
       );
     }
-    state = ChatViewportState(items: next, identityToIndex: _index(next));
+    _replace(next);
   }
 
   void applyRefresh(WKMsg message) {
@@ -210,7 +217,7 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
       matchIndex: matchIndex,
       insertAtHead: true,
     );
-    state = ChatViewportState(items: next, identityToIndex: _index(next));
+    _replace(next);
   }
 
   ChatMessageViewModel? itemByIdentity(String identity) {
@@ -232,6 +239,23 @@ class ChatViewportController extends StateNotifier<ChatViewportState> {
       keepOffsetY: extra.keepOffsetY,
       browseTo: extra.browseTo,
     );
+  }
+
+  void _replace(List<ChatMessageViewModel> items) {
+    final identities = _identities(items);
+    final keepIdentitySlice = listEquals(identities, state.identities);
+    state = ChatViewportState(
+      items: items,
+      identities: keepIdentitySlice ? state.identities : identities,
+      identityToIndex: keepIdentitySlice
+          ? state.identityToIndex
+          : _index(items),
+      isLoadingMore: state.isLoadingMore,
+    );
+  }
+
+  List<String> _identities(List<ChatMessageViewModel> items) {
+    return items.map((item) => item.identity).toList(growable: false);
   }
 
   Map<String, int> _index(List<ChatMessageViewModel> items) {

@@ -75,6 +75,7 @@ import 'chat_media_action_service.dart';
 import 'chat_message_action_policy.dart';
 import 'chat_message_action_surface.dart';
 import 'chat_message_reaction_mapping.dart';
+import 'chat_message_providers.dart';
 import 'chat_mentions_controller.dart';
 import 'chat_message_view_model.dart';
 import 'chat_scene_gateway.dart';
@@ -1626,7 +1627,19 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
 
   @override
   Widget build(BuildContext context) {
-    final viewport = ref.watch(chatViewportProvider(widget.session));
+    final identities = ref.watch(
+      chatViewportProvider(widget.session).select((state) => state.identities),
+    );
+    final identityToIndex = ref.watch(
+      chatViewportProvider(
+        widget.session,
+      ).select((state) => state.identityToIndex),
+    );
+    final isLoadingMore = ref.watch(
+      chatViewportProvider(
+        widget.session,
+      ).select((state) => state.isLoadingMore),
+    );
     final currentUser = ref.watch(
       authProvider.select((state) => state.userInfo),
     );
@@ -1692,66 +1705,87 @@ class _ChatViewportPaneState extends ConsumerState<_ChatViewportPane> {
         child: Stack(
           children: [
             Positioned.fill(
-              child: viewport.items.isEmpty
+              child: identities.isEmpty
                   ? const Center(child: Text(_emptyMessageText))
                   : ListView.builder(
                       key: _listKey,
                       controller: _scrollController,
                       reverse: true,
                       cacheExtent: listCacheExtent,
-                      itemCount: viewport.items.length,
+                      itemCount: identities.length,
                       findChildIndexCallback: (key) {
                         if (key is ValueKey<String>) {
-                          return viewport.identityToIndex[key.value];
+                          return identityToIndex[key.value];
                         }
                         return null;
                       },
                       itemBuilder: (context, index) {
-                        final item = viewport.items[index];
-                        final contentType = item.message.contentType;
-                        return ChatMessageListItem(
-                          key: ValueKey<String>(item.identity),
-                          itemKey: ValueKey<String>(item.identity),
-                          measurementKey: _measurementKeyFor(item.identity),
-                          keepAlive: MessageHeightEstimator.shouldKeepAlive(
-                            contentType,
-                          ),
-                          child: ChatMessageEngagementBubble(
-                            session: widget.session,
-                            model: item,
-                            participant: _resolveParticipantInfo(
-                              item.message,
-                              currentUser,
-                            ),
-                            statusInfo: resolveMessageStatusInfo(
-                              item.message,
-                              isSelf: item.isSelf,
-                            ),
-                            webStyle: widget.webStyle,
-                            gateway: gateway,
-                            onTap: _messageTapHandler(item, viewport),
-                            onLongPress: () => _showMessageActionSheet(item),
-                            onSecondaryTapDown: (details) =>
-                                _showMessageActionSheet(
-                                  item,
-                                  anchorPosition: details.globalPosition,
+                        final identity = identities[index];
+                        return Consumer(
+                          key: ValueKey<String>(identity),
+                          builder: (context, ref, _) {
+                            final item = ref.watch(
+                              singleMessageProvider((
+                                session: widget.session,
+                                identity: identity,
+                              )),
+                            );
+                            if (item == null) {
+                              return const SizedBox.shrink();
+                            }
+                            final contentType = item.message.contentType;
+                            final viewportSnapshot = ref.read(
+                              chatViewportProvider(widget.session),
+                            );
+                            return ChatMessageListItem(
+                              key: ValueKey<String>(item.identity),
+                              itemKey: ValueKey<String>(item.identity),
+                              measurementKey: _measurementKeyFor(item.identity),
+                              keepAlive: MessageHeightEstimator.shouldKeepAlive(
+                                contentType,
+                              ),
+                              child: ChatMessageEngagementBubble(
+                                session: widget.session,
+                                model: item,
+                                participant: _resolveParticipantInfo(
+                                  item.message,
+                                  currentUser,
                                 ),
-                            onRetrySend:
-                                item.isSelf &&
-                                    item.message.status ==
-                                        WKSendMsgResult.sendFail
-                                ? () => unawaited(
-                                    _retryFailedMessage(item, gateway),
-                                  )
-                                : null,
-                            onReactionTap: (emoji) =>
-                                _toggleReaction(item, emoji),
-                          ),
+                                statusInfo: resolveMessageStatusInfo(
+                                  item.message,
+                                  isSelf: item.isSelf,
+                                ),
+                                webStyle: widget.webStyle,
+                                gateway: gateway,
+                                onTap: _messageTapHandler(
+                                  item,
+                                  viewportSnapshot,
+                                ),
+                                onLongPress: () =>
+                                    _showMessageActionSheet(item),
+                                onSecondaryTapDown: (details) =>
+                                    _showMessageActionSheet(
+                                      item,
+                                      anchorPosition: details.globalPosition,
+                                    ),
+                                onRetrySend:
+                                    item.isSelf &&
+                                        item.message.status ==
+                                            WKSendMsgResult.sendFail
+                                    ? () => unawaited(
+                                        _retryFailedMessage(item, gateway),
+                                      )
+                                    : null,
+                                onReactionTap: (emoji) =>
+                                    _toggleReaction(item, emoji),
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
             ),
-            if (viewport.isLoadingMore)
+            if (isLoadingMore)
               const Positioned(
                 top: 8,
                 left: 0,
