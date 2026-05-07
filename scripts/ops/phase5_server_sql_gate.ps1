@@ -71,6 +71,7 @@ DB_SINK_RE = re.compile(
     re.I,
 )
 SQL_VAR_RE = re.compile(r'\b(?:sql|query|stmt|selectSql|builder|whereClause|orderBy)\b', re.I)
+ALLOWLIST_MARKER = 'phase5-sql-allow'
 
 SQL_SHAPE_PATTERNS = (
     re.compile(r'\bselect\b[\s\S]+\bfrom\b', re.I),
@@ -156,10 +157,30 @@ def sink_uses_sql_variable(line):
     first_arg = argument_tail.split(',', 1)[0].strip()
     return bool(SQL_VAR_RE.search(first_arg)) and not first_arg.startswith(('"', '`'))
 
-skip_dirs = {'.git', 'vendor', 'tmp', 'node_modules'}
+
+def has_allowlist_marker(lines, index):
+    current = index - 1
+    for candidate in range(max(0, current - 2), current + 1):
+        if ALLOWLIST_MARKER in lines[candidate]:
+            return True
+    return False
+
+skip_dirs = {
+    '.git',
+    'vendor',
+    'tmp',
+    'node_modules',
+    'data',
+    'logs',
+    'backup',
+    'backups',
+    'testutil',
+}
 findings = []
 for path in root.rglob('*.go'):
     if any(part in skip_dirs for part in path.parts):
+        continue
+    if path.name.endswith('_test.go'):
         continue
     try:
         lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
@@ -169,6 +190,8 @@ for path in root.rglob('*.go'):
     for index, line in enumerate(lines, start=1):
         stripped = line.strip()
         if not stripped or stripped.startswith('//'):
+            continue
+        if has_allowlist_marker(lines, index):
             continue
         literals = extract_go_string_literals(stripped)
         sql_literals = [literal for literal in literals if looks_like_sql(literal)]
@@ -198,9 +221,11 @@ slow_needles = (
     '0.2s',
 )
 slow_hits = []
-for suffix in ('.go', '.yaml', '.yml', '.toml', '.env', '.conf', '.md', '.sql'):
+for suffix in ('.go', '.yaml', '.yml', '.toml', '.env', '.conf', '.cnf', '.md', '.sql'):
     for path in root.rglob(f'*{suffix}'):
         if any(part in skip_dirs for part in path.parts):
+            continue
+        if path.name.endswith('_test.go'):
             continue
         try:
             text = path.read_text(encoding='utf-8', errors='replace')

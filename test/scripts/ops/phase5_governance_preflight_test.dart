@@ -23,9 +23,12 @@ void main() {
     expect(content, contains('looks_like_sql'));
     expect(content, contains('is_db_context'));
     expect(content, contains('SQL_RISK_SQL_LITERAL'));
+    expect(content, contains('phase5-sql-allow'));
+    expect(content, contains("path.name.endswith('_test.go')"));
     expect(content, contains('slow-query'));
     expect(content, contains('long_query_time'));
     expect(content, contains('slow_query_log'));
+    expect(content, contains("'.cnf'"));
     expect(content, contains('exit 1'));
   });
 
