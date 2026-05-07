@@ -44,7 +44,7 @@ void main() {
       expect(await _hasColumn(db, 'message', 'expire_time'), isTrue);
 
       final preferences = await SharedPreferences.getInstance();
-      expect(preferences.getInt('wk_max_sql_version_$uid'), 202604251100);
+      expect(preferences.getInt('wk_max_sql_version_$uid'), 202604271430);
     },
   );
 

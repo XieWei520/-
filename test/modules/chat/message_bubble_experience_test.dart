@@ -2124,7 +2124,7 @@ void main() {
         find.byKey(const ValueKey<String>('message-bubble-body')),
       );
       final decoration = body.decoration! as BoxDecoration;
-      expect(decoration.color, const Color(0xFFFFEDD5));
+      expect(decoration.color, WKWebColors.actionSoft);
     });
 
     testWidgets(

@@ -221,17 +221,23 @@ void main() {
         const ValueKey<String>('chat-compose-plus-button'),
       );
       final sendFinder = find.byKey(const ValueKey<String>('chat-send-button'));
+      final sendMotionFinder = find.byKey(
+        const ValueKey<String>('chat-send-button-motion'),
+      );
 
       expect(inputFinder, findsOneWidget);
       expect(addFinder, findsOneWidget);
       expect(sendFinder, findsOneWidget);
+      expect(sendMotionFinder, findsOneWidget);
 
       final inputRect = tester.getRect(inputFinder);
       final addRect = tester.getRect(addFinder);
       final sendRect = tester.getRect(sendFinder);
+      final sendMotion = tester.widget<AnimatedScale>(sendMotionFinder);
+      final sendLayoutHeight = sendRect.height / sendMotion.scale;
 
       expect(addRect.height, greaterThanOrEqualTo(44));
-      expect(sendRect.height, greaterThanOrEqualTo(44));
+      expect(sendLayoutHeight, greaterThanOrEqualTo(44));
       expect(
         (addRect.center.dy - inputRect.center.dy).abs(),
         lessThanOrEqualTo(1),

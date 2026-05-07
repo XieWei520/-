@@ -1312,7 +1312,6 @@ String conversationMessageExtraDigest(WKMsgExtra? extra) {
   ].join('|');
 }
 
-@visibleForTesting
 String conversationLastMessageExtraDigest(WKUIConversationMsg conversation) {
   return _conversationLastMessageExtraDigestCache[conversation] ?? '';
 }
@@ -1686,34 +1685,6 @@ class MessageListNotifier extends StateNotifier<List<WKMsg>> {
       stopwatch.stop();
       telemetry.recordSqlitePageQuery(stopwatch.elapsed, mode: mode);
     }
-  }
-
-  WKMsg _mergeMessageExtraIntoCachedMessage(
-    WKMsg cachedMessage,
-    WKMsg refresh,
-  ) {
-    final extra = refresh.wkMsgExtra;
-    if (extra == null) {
-      return cachedMessage;
-    }
-    final updated = WKMsg()
-      ..clientSeq = cachedMessage.clientSeq
-      ..clientMsgNO = cachedMessage.clientMsgNO
-      ..channelID = cachedMessage.channelID
-      ..channelType = cachedMessage.channelType
-      ..fromUID = cachedMessage.fromUID
-      ..messageID = cachedMessage.messageID
-      ..messageSeq = cachedMessage.messageSeq
-      ..orderSeq = cachedMessage.orderSeq
-      ..timestamp = cachedMessage.timestamp
-      ..status = cachedMessage.status
-      ..isDeleted = cachedMessage.isDeleted
-      ..contentType = cachedMessage.contentType
-      ..content = cachedMessage.content
-      ..messageContent = cachedMessage.messageContent
-      ..localExtraMap = cachedMessage.localExtraMap
-      ..wkMsgExtra = extra;
-    return preferConversationMessage(cachedMessage, updated);
   }
 
   @override

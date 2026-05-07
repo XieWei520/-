@@ -157,11 +157,7 @@ class DeviceApi {
   }) async {
     final response = await _client.get(
       '/v1/user/device/login_logs',
-      queryParameters: {
-        if (deviceId case final resolvedDeviceId?)
-          'device_id': resolvedDeviceId,
-        'limit': limit,
-      },
+      queryParameters: {'device_id': ?deviceId, 'limit': limit},
     );
     _ensureSuccess(response, fallback: 'Failed to fetch login logs');
 

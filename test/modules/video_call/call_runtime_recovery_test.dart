@@ -296,7 +296,7 @@ void main() {
 
       expect(fetchCount, 1);
       expect(store.state.roomId, 'room_pending_01');
-      expect(store.state.status, CallLifecycleStatus.invited);
+      expect(store.state.status, CallLifecycleStatus.ringing);
     });
 
     test(
@@ -355,7 +355,7 @@ void main() {
 
         expect(fetchCount, 1);
         expect(store.state.roomId, 'room_pending_02');
-        expect(store.state.status, CallLifecycleStatus.invited);
+        expect(store.state.status, CallLifecycleStatus.ringing);
       },
     );
 
@@ -577,7 +577,7 @@ void main() {
           ),
         );
 
-        expect(store.state.status, CallLifecycleStatus.invited);
+        expect(store.state.status, CallLifecycleStatus.ringing);
 
         coordinator.stop();
 

@@ -44,7 +44,7 @@ void main() {
       expect(mediaEngine.connectedToken, 'test-ticket');
       expect(mediaEngine.connectedEnableVideo, isTrue);
       expect(service.state.roomId, 'room_test_01');
-      expect(service.state.status, CallLifecycleStatus.ringing);
+      expect(service.state.status, CallLifecycleStatus.connected);
       expect(service.lastQualitySample?.roomId, 'room_test_01');
       expect(service.lastQualitySample?.failureReason, isNull);
       expect(service.lastQualitySample?.mediaStats['publish_bitrate'], 128000);
@@ -90,7 +90,7 @@ void main() {
         expect(bootstrapApi.lastSessionRoomId, 'room_test_02');
         expect(mediaEngine.connectedEnableVideo, isFalse);
         expect(service.state.roomId, 'room_test_02');
-        expect(service.state.status, CallLifecycleStatus.connecting);
+        expect(service.state.status, CallLifecycleStatus.connected);
         expect(service.lastQualitySample?.roomId, 'room_test_02');
         expect(service.lastQualitySample?.failureReason, isNull);
       },
@@ -201,7 +201,7 @@ void main() {
           <String>['u_alice', 'u_bob'],
         );
         expect(service.state.roomId, 'room_test_01');
-        expect(service.state.status, CallLifecycleStatus.ringing);
+        expect(service.state.status, CallLifecycleStatus.connected);
         expect(service.state.peerUid, 'g_demo');
         expect(service.state.peerName, '研发群');
         expect(mediaEngine.connectedEnableVideo, isTrue);
@@ -233,7 +233,7 @@ void main() {
         );
 
         expect(service.state.roomId, 'room_test_01');
-        expect(service.state.status, CallLifecycleStatus.ringing);
+        expect(service.state.status, CallLifecycleStatus.connected);
         expect(service.lastQualitySample?.failureReason, isNull);
         expect(service.lastQualitySample?.mediaStats['connected'], isTrue);
         expect(service.lastQualitySample?.mediaStats['publish_bitrate'], 0);
@@ -373,6 +373,10 @@ class _FakeCallMediaEngine implements CallMediaEngine {
 
   @override
   bool get isConnected => connectedUrl != null;
+
+  @override
+  Stream<CallMediaConnectionState> get connectionStates =>
+      const Stream<CallMediaConnectionState>.empty();
 
   @override
   Object? get session => null;

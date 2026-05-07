@@ -8,7 +8,6 @@ import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
 import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
-import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_guard.dart';
 import 'package:wukong_im_app/widgets/wk_avatar.dart';

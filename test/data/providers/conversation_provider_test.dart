@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
+import 'package:wukong_im_app/modules/chat/chat_message_match_index.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';

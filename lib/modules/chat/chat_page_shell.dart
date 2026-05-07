@@ -5067,7 +5067,7 @@ class _ComposerSendButtonState extends State<_ComposerSendButton> {
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final scale = widget.enabled ? (_pressed ? 0.96 : 1.0) : 0.92;
+    final scale = widget.enabled ? (_pressed ? 0.92 : 1.0) : 0.88;
     final iconColor = widget.warmStyle
         ? (widget.enabled ? Colors.white : WKWebColors.action)
         : widget.enabled

@@ -33,7 +33,6 @@ class UserInfo {
   final int? flameSecond;
   final String? chatPwd;
   final int? chatPwdOn;
-  final String? category;
   final int vipLevel;
 
   bool get isVip => vipLevel == 1;
@@ -69,7 +68,6 @@ class UserInfo {
     this.flameSecond,
     this.chatPwd,
     this.chatPwdOn,
-    this.category,
     this.vipLevel = 0,
   }) : category = normalizePublicAccountCategory(category);
 
@@ -92,7 +90,6 @@ class UserInfo {
       zone: json['zone'],
       status: json['status'],
       token: json['token'],
-      category: normalizePublicAccountCategory(json['category']?.toString()),
       username: json['username'],
       region: json['region'],
       signature: json['signature'],
@@ -146,7 +143,6 @@ class UserInfo {
       'flame_second': flameSecond,
       'chat_pwd': chatPwd,
       'chat_pwd_on': chatPwdOn,
-      'category': category,
       'vip_level': vipLevel,
     };
   }
@@ -187,7 +183,6 @@ class UserInfo {
     int? flameSecond,
     String? chatPwd,
     int? chatPwdOn,
-    String? category,
     int? vipLevel,
   }) {
     return UserInfo(
@@ -222,7 +217,6 @@ class UserInfo {
       flameSecond: flameSecond ?? this.flameSecond,
       chatPwd: chatPwd ?? this.chatPwd,
       chatPwdOn: chatPwdOn ?? this.chatPwdOn,
-      category: category ?? this.category,
       vipLevel: vipLevel ?? this.vipLevel,
     );
   }
