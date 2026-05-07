@@ -550,6 +550,29 @@ void main() {
     expect(find.text('VIP商家'), findsOneWidget);
   });
 
+  testWidgets('contacts page normalizes customer service aliases to 客服 tag', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithApp(
+        ContactsPage(
+          friendsStateOverride: AsyncValue.data([
+            Friend(
+              uid: 'u_cs',
+              name: 'CS Alice',
+              category: 'customerService',
+            ),
+          ]),
+          requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
+          contactPresenceOverrides: const {},
+        ),
+      ),
+    );
+
+    expect(find.text('客服'), findsWidgets);
+    expect(find.text('官方'), findsNothing);
+  });
+
   testWidgets('contacts page composes extracted viewport widgets', (
     tester,
   ) async {

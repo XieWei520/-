@@ -8,6 +8,7 @@ import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
 import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
+import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_guard.dart';
 import 'package:wukong_im_app/widgets/wk_avatar.dart';
@@ -120,6 +121,28 @@ void main() {
 
     expect(find.text('Alice'), findsOneWidget);
     expect(find.byType(VipBadge), findsOneWidget);
+  });
+
+  testWidgets('user detail page shows customer service badge near nickname', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithApp(
+        UserDetailPage(
+          uid: 'u_alice',
+          skipInitialLoad: true,
+          initialUserOverride: UserInfo(
+            uid: 'u_alice',
+            name: 'Alice',
+            category: 'customerService',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Alice'), findsOneWidget);
+    expect(find.byType(CustomerServiceBadge), findsOneWidget);
+    expect(find.text('客服'), findsOneWidget);
   });
 
   testWidgets(

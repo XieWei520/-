@@ -1,4 +1,5 @@
 const String customerServiceCategory = 'customer_service';
+const String customerServicePublicCategory = customerServiceCategory;
 
 String? normalizePublicAccountCategory(String? value) {
   final normalized = value?.trim().toLowerCase() ?? '';
@@ -12,10 +13,15 @@ String? normalizePublicAccountCategory(String? value) {
     case 'service':
     case 'customersupport':
     case 'support':
+    case '\u5ba2\u670d':
       return customerServiceCategory;
     default:
       return normalized;
   }
+}
+
+String? normalizeCustomerServiceCategory(String? value) {
+  return normalizePublicAccountCategory(value);
 }
 
 bool isCustomerServiceCategory(String? value) {
