@@ -86,11 +86,11 @@ void main() {
     test('fetchUserConnectRoute parses preferred transport contract', () async {
       final adapter = _RecordingPlainAdapter(
         payload: const <String, dynamic>{
-          'tcp_addr': 'infoequity.qingyunshe.top:5100',
-          'ws_addr': 'ws://infoequity.qingyunshe.top:5200',
-          'wss_addr': 'wss://infoequity.qingyunshe.top/ws',
+          'tcp_addr': 'infoequity.cn:5100',
+          'ws_addr': 'ws://infoequity.cn:5200',
+          'wss_addr': 'wss://infoequity.cn/ws',
           'preferred_transport': 'wss',
-          'preferred_addr': 'wss://infoequity.qingyunshe.top/ws',
+          'preferred_addr': 'wss://infoequity.cn/ws',
         },
       );
       ApiClient.instance.dio.httpClientAdapter = adapter;
@@ -101,11 +101,11 @@ void main() {
 
       expect(adapter.lastRequestOptions?.path, '/v1/users/u_self/im');
       expect(route, isA<ImRouteInfo>());
-      expect(route.tcpAddr, 'infoequity.qingyunshe.top:5100');
-      expect(route.wsAddr, 'ws://infoequity.qingyunshe.top:5200');
-      expect(route.wssAddr, 'wss://infoequity.qingyunshe.top/ws');
+      expect(route.tcpAddr, 'infoequity.cn:5100');
+      expect(route.wsAddr, 'ws://infoequity.cn:5200');
+      expect(route.wssAddr, 'wss://infoequity.cn/ws');
       expect(route.preferredTransport, 'wss');
-      expect(route.preferredAddr, 'wss://infoequity.qingyunshe.top/ws');
+      expect(route.preferredAddr, 'wss://infoequity.cn/ws');
     });
 
     test('ackConversationSync posts cmd_version and device_uuid', () async {

@@ -1288,19 +1288,20 @@ class IMService extends StateNotifier<IMServiceState>
     }
     final session = ChatSession(channelId: channelId, channelType: channelType);
     final notifier = read(messageListProvider(session).notifier);
+    final conversationNotifier = read(conversationProvider.notifier);
     for (final extra in extras) {
       final messageId = extra.messageID.trim();
       if (messageId.isEmpty) {
         continue;
       }
-      notifier.applyLocalMessageRefresh(
-        WKMsg()
-          ..channelID = channelId
-          ..channelType = channelType
-          ..messageID = messageId
-          ..status = WKSendMsgResult.sendSuccess
-          ..wkMsgExtra = extra,
-      );
+      final refreshMessage = WKMsg()
+        ..channelID = channelId
+        ..channelType = channelType
+        ..messageID = messageId
+        ..status = WKSendMsgResult.sendSuccess
+        ..wkMsgExtra = extra;
+      notifier.applyLocalMessageRefresh(refreshMessage);
+      conversationNotifier.applyMessageExtraRefresh(refreshMessage);
     }
   }
 

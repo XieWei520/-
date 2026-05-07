@@ -59,21 +59,21 @@ void main() {
       expect(
         WKAvatar.shouldUseBrowserNetworkImageForTesting(
           isWeb: true,
-          url: 'https://infoequity.qingyunshe.top/v1/users/u_01/avatar',
+          url: 'https://infoequity.cn/v1/users/u_01/avatar',
         ),
         isFalse,
       );
       expect(
         WKAvatar.shouldUseBrowserNetworkImageForTesting(
           isWeb: true,
-          url: 'https://infoequity.qingyunshe.top/v1/groups/g_01/avatar',
+          url: 'https://infoequity.cn/v1/groups/g_01/avatar',
         ),
         isFalse,
       );
       expect(
         WKAvatar.shouldUseBrowserNetworkImageForTesting(
           isWeb: true,
-          url: 'https://infoequity.qingyunshe.top/v1/users/u_01/avatar?cache=1',
+          url: 'https://infoequity.cn/v1/users/u_01/avatar?cache=1',
         ),
         isFalse,
       );

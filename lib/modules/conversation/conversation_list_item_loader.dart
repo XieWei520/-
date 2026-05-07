@@ -15,6 +15,7 @@ class ConversationListItemRequest {
     this.preferredVipLevel = 0,
     this.preferredPersonalInfoKnown = false,
     required this.refreshToken,
+    this.lastMessageExtraDigest,
   });
 
   final WKUIConversationMsg conversation;
@@ -24,6 +25,7 @@ class ConversationListItemRequest {
   final int preferredVipLevel;
   final bool preferredPersonalInfoKnown;
   final int refreshToken;
+  final String? lastMessageExtraDigest;
 
   String get requestKey => buildConversationListItemRequestKey(
     channelId: conversation.channelID,
@@ -31,6 +33,7 @@ class ConversationListItemRequest {
     clientMsgNo: conversation.clientMsgNo,
     unreadCount: conversation.unreadCount,
     lastMsgTimestamp: conversation.lastMsgTimestamp,
+    lastMessageExtraDigest: lastMessageExtraDigest,
     preferredTitle: preferredTitle,
     preferredAvatarUrl: preferredAvatarUrl,
     preferredCategory: preferredCategory,
@@ -59,6 +62,7 @@ String buildConversationListItemRequestKey({
   String? clientMsgNo,
   required int unreadCount,
   required int lastMsgTimestamp,
+  String? lastMessageExtraDigest,
   String? preferredTitle,
   String? preferredAvatarUrl,
   String? preferredCategory,
@@ -72,6 +76,7 @@ String buildConversationListItemRequestKey({
     clientMsgNo?.trim() ?? '',
     unreadCount,
     lastMsgTimestamp,
+    lastMessageExtraDigest?.trim() ?? '',
     preferredTitle?.trim() ?? '',
     preferredAvatarUrl?.trim() ?? '',
     preferredCategory?.trim().toLowerCase() ?? '',

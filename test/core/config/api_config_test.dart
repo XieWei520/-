@@ -9,12 +9,12 @@ void main() {
 
   group('ApiConfig defaults', () {
     test('point to the secure production domain by default', () {
-      expect(ApiConfig.devBaseUrl, 'https://infoequity.qingyunshe.top');
-      expect(ApiConfig.prodBaseUrl, 'https://infoequity.qingyunshe.top');
-      expect(ApiConfig.devWsAddr, 'wss://infoequity.qingyunshe.top/ws');
-      expect(ApiConfig.prodWsAddr, 'wss://infoequity.qingyunshe.top/ws');
-      expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
-      expect(ApiConfig.wsAddr, 'wss://infoequity.qingyunshe.top/ws');
+      expect(ApiConfig.devBaseUrl, 'https://infoequity.cn');
+      expect(ApiConfig.prodBaseUrl, 'https://infoequity.cn');
+      expect(ApiConfig.devWsAddr, 'wss://infoequity.cn/ws');
+      expect(ApiConfig.prodWsAddr, 'wss://infoequity.cn/ws');
+      expect(ApiConfig.baseUrl, 'https://infoequity.cn');
+      expect(ApiConfig.wsAddr, 'wss://infoequity.cn/ws');
     });
 
     test(
@@ -23,7 +23,7 @@ void main() {
         SharedPreferences.setMockInitialValues(<String, Object>{});
         await StorageUtils.init();
 
-        expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
+        expect(ApiConfig.baseUrl, 'https://infoequity.cn');
 
         await StorageUtils.setString(
           AppConstants.keyAuthLoginApiBaseUrl,
@@ -32,7 +32,34 @@ void main() {
         expect(ApiConfig.baseUrl, 'http://127.0.0.1:5001');
 
         await StorageUtils.remove(AppConstants.keyAuthLoginApiBaseUrl);
-        expect(ApiConfig.baseUrl, 'https://infoequity.qingyunshe.top');
+        expect(ApiConfig.baseUrl, 'https://infoequity.cn');
+      },
+    );
+
+    test(
+      'ignores and clears persisted non-approved public host overrides',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        await StorageUtils.init();
+
+        for (final disallowedOverride in <String>[
+          'https://legacy-public.example.com',
+          'https://legacy-public.example.com/',
+          'http://legacy-public.example.com:8090',
+        ]) {
+          await StorageUtils.setString(
+            AppConstants.keyAuthLoginApiBaseUrl,
+            disallowedOverride,
+          );
+
+          expect(ApiConfig.baseUrl, 'https://infoequity.cn');
+          expect(
+            StorageUtils.getString(AppConstants.keyAuthLoginApiBaseUrl),
+            isEmpty,
+          );
+        }
+
+        await StorageUtils.clear();
       },
     );
 
@@ -80,7 +107,7 @@ void main() {
       () {
         expect(
           ApiConfig.resolveMediaUrl(
-            'https://infoequity.qingyunshe.top/minio/chat/1/u_self/demo.png?download=0',
+            'https://infoequity.cn/minio/chat/1/u_self/demo.png?download=0',
           ),
           '${ApiConfig.baseUrl}/minio/chat/1/u_self/demo.png?download=0',
         );
@@ -121,7 +148,7 @@ void main() {
 
         expect(
           ApiConfig.resolveMediaUrl(
-            'https://infoequity.qingyunshe.top/v1/file/preview/chat/1/u_self/demo.png?download=0',
+            'https://infoequity.cn/v1/file/preview/chat/1/u_self/demo.png?download=0',
           ),
           'http://127.0.0.1:15002/chat/1/u_self/demo.png?download=0',
         );
@@ -163,7 +190,7 @@ void main() {
 
         expect(
           ApiConfig.resolveMediaUrl(
-            'https://infoequity.qingyunshe.top/minio/chat/1/u_self/demo.png?download=0',
+            'https://infoequity.cn/minio/chat/1/u_self/demo.png?download=0',
           ),
           'http://127.0.0.1:15002/chat/1/u_self/demo.png?download=0',
         );
@@ -200,7 +227,7 @@ void main() {
       () {
         expect(
           ApiConfig.normalizeUploadUrl(
-            'https://infoequity.qingyunshe.top/v1/file/upload?type=chat&path=/1/u_self/demo.png',
+            'https://infoequity.cn/v1/file/upload?type=chat&path=/1/u_self/demo.png',
           ),
           '${ApiConfig.baseUrl}/v1/file/upload?type=chat&path=/1/u_self/demo.png',
         );

@@ -222,7 +222,7 @@ void main() {
           syncHttpBaseUrlWithConfig: () {
             syncedBaseUrl = true;
           },
-          readApiBaseUrl: () => 'https://infoequity.qingyunshe.top',
+          readApiBaseUrl: () => 'https://infoequity.cn',
         );
 
         final result = await repository.loginWithPhone(
@@ -267,7 +267,7 @@ void main() {
           syncHttpBaseUrlWithConfig: () {
             syncedBaseUrl = true;
           },
-          readApiBaseUrl: () => 'https://infoequity.qingyunshe.top',
+          readApiBaseUrl: () => 'https://infoequity.cn',
         );
 
         final result = await repository.loginWithPhone(
@@ -302,7 +302,7 @@ void main() {
           syncHttpBaseUrlWithConfig: () {
             syncedBaseUrl = true;
           },
-          readApiBaseUrl: () => 'https://infoequity.qingyunshe.top',
+          readApiBaseUrl: () => 'https://infoequity.cn',
         );
 
         final result = await repository.loginWithPhone(
@@ -349,7 +349,7 @@ void main() {
             syncCalls += 1;
           },
           readApiBaseUrl: () => baseUrlStore.value.isEmpty
-              ? 'https://infoequity.qingyunshe.top'
+              ? 'https://infoequity.cn'
               : baseUrlStore.value,
         );
 

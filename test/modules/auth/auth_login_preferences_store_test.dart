@@ -164,6 +164,32 @@ void main() {
     expect(restored.autoLogin, isFalse);
   });
 
+  test('API base URL store clears disallowed public host overrides', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      AppConstants.keyAuthLoginApiBaseUrl: 'https://legacy-public.example.com',
+    });
+    final store = AuthApiBaseUrlPreferencesStore();
+
+    expect(await store.load(), isEmpty);
+    expect(
+      (await SharedPreferences.getInstance()).getString(
+        AppConstants.keyAuthLoginApiBaseUrl,
+      ),
+      isEmpty,
+    );
+  });
+
+  test('API base URL store preserves local and official overrides', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final store = AuthApiBaseUrlPreferencesStore();
+
+    await store.save(' http://127.0.0.1:15001/ ');
+    expect(await store.load(), 'http://127.0.0.1:15001');
+
+    await store.save(' https://infoequity.cn/ ');
+    expect(await store.load(), 'https://infoequity.cn');
+  });
+
   test(
     'reconcileAuthenticatedLoginPreferences updates the stored account identity while preserving saved password settings',
     () async {
@@ -178,12 +204,7 @@ void main() {
 
       await reconcileAuthenticatedLoginPreferences(
         store,
-        UserInfo(
-          uid: 'u-1',
-          phone: '19212455074',
-          zone: '0086',
-          token: 't-1',
-        ),
+        UserInfo(uid: 'u-1', phone: '19212455074', zone: '0086', token: 't-1'),
       );
 
       final restored = await store.load();

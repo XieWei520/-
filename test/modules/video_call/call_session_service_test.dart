@@ -40,7 +40,7 @@ void main() {
         realtimeClient.connectedUri?.toString(),
         contains('room_id=room_test_01'),
       );
-      expect(mediaEngine.connectedUrl, 'wss://infoequity.qingyunshe.top/livekit');
+      expect(mediaEngine.connectedUrl, 'wss://infoequity.cn/livekit');
       expect(mediaEngine.connectedToken, 'test-ticket');
       expect(mediaEngine.connectedEnableVideo, isTrue);
       expect(service.state.roomId, 'room_test_01');
@@ -328,8 +328,8 @@ class _FakeCallBootstrapApi implements CallBootstrapApi {
         participant: 'u_self',
       ),
       join: CallJoinDescriptor(
-        controlUrl: 'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
-        livekitUrl: 'wss://infoequity.qingyunshe.top/livekit',
+        controlUrl: 'wss://infoequity.cn/v1/callgateway/ws',
+        livekitUrl: 'wss://infoequity.cn/livekit',
         roomName: roomId,
       ),
       capabilities: const CallMediaCapabilities(
