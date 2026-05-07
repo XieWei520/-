@@ -1232,6 +1232,7 @@ class _ConversationTile extends ConsumerWidget {
       preferredCategory: preferredInfo?.category,
       preferredVipLevel: preferredInfo?.vipLevel ?? 0,
       preferredPersonalInfoKnown: preferredInfo?.personalInfoKnown ?? false,
+      lastMessageExtraDigest: conversationLastMessageExtraDigest(conversation),
       refreshToken: refreshToken,
     );
     final data = ref

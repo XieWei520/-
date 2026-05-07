@@ -23,7 +23,7 @@ void main() {
 
   test('builds session gateway uri without introducing port zero', () {
     final uri = buildSessionGatewayUri(
-      baseUrl: 'https://infoequity.qingyunshe.top',
+      baseUrl: 'https://infoequity.cn',
       deviceSessionId: 'device_session_01',
       lastAckedSeq: 0,
     );
@@ -31,30 +31,30 @@ void main() {
     expect(uri.toString(), isNot(contains(':0/')));
     expect(
       uri.toString(),
-      'wss://infoequity.qingyunshe.top/v1/realtime/session/events/ws?device_session_id=device_session_01&last_acked_seq=0',
+      'wss://infoequity.cn/v1/realtime/session/events/ws?device_session_id=device_session_01&last_acked_seq=0',
     );
   });
 
   test('selectImConnectAddr uses preferred_addr then transport fallbacks', () {
     final route = ImRouteInfo(
-      tcpAddr: 'infoequity.qingyunshe.top:5100',
-      wsAddr: 'ws://infoequity.qingyunshe.top:5200',
-      wssAddr: 'wss://infoequity.qingyunshe.top/ws',
+      tcpAddr: 'infoequity.cn:5100',
+      wsAddr: 'ws://infoequity.cn:5200',
+      wssAddr: 'wss://infoequity.cn/ws',
       preferredTransport: 'wss',
-      preferredAddr: 'wss://infoequity.qingyunshe.top/ws',
+      preferredAddr: 'wss://infoequity.cn/ws',
     );
 
     expect(
       selectImConnectAddr(route, fallbackAddr: 'fallback.example:5100'),
-      'wss://infoequity.qingyunshe.top/ws',
+      'wss://infoequity.cn/ws',
     );
 
     final invalidPreferred = ImRouteInfo(
-      tcpAddr: 'infoequity.qingyunshe.top:5100',
-      wsAddr: 'ws://infoequity.qingyunshe.top:5200',
-      wssAddr: 'wss://infoequity.qingyunshe.top/ws',
+      tcpAddr: 'infoequity.cn:5100',
+      wsAddr: 'ws://infoequity.cn:5200',
+      wssAddr: 'wss://infoequity.cn/ws',
       preferredTransport: 'wss',
-      preferredAddr: 'https://infoequity.qingyunshe.top/ws',
+      preferredAddr: 'https://infoequity.cn/ws',
     );
 
     expect(
@@ -62,17 +62,17 @@ void main() {
         invalidPreferred,
         fallbackAddr: 'fallback.example:5100',
       ),
-      'wss://infoequity.qingyunshe.top/ws',
+      'wss://infoequity.cn/ws',
     );
   });
 
   test('selectImConnectAddr keeps explicit local fallback override first', () {
     final route = ImRouteInfo(
-      tcpAddr: 'infoequity.qingyunshe.top:5100',
-      wsAddr: 'ws://infoequity.qingyunshe.top:5200',
-      wssAddr: 'wss://infoequity.qingyunshe.top/ws',
+      tcpAddr: 'infoequity.cn:5100',
+      wsAddr: 'ws://infoequity.cn:5200',
+      wssAddr: 'wss://infoequity.cn/ws',
       preferredTransport: 'wss',
-      preferredAddr: 'wss://infoequity.qingyunshe.top/ws',
+      preferredAddr: 'wss://infoequity.cn/ws',
     );
 
     expect(

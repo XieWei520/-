@@ -10,16 +10,16 @@ class AppConfig {
   static const int buildNumber = 1;
 
   /// API base URL
-  static const String apiBaseUrl = 'https://infoequity.qingyunshe.top';
+  static const String apiBaseUrl = 'https://infoequity.cn';
 
   /// WebSocket URL
-  static const String wsUrl = 'wss://infoequity.qingyunshe.top/ws';
+  static const String wsUrl = 'wss://infoequity.cn/ws';
 
   /// Production API base URL
-  static const String apiBaseUrlProd = 'https://infoequity.qingyunshe.top';
+  static const String apiBaseUrlProd = 'https://infoequity.cn';
 
   /// Production WebSocket URL
-  static const String wsUrlProd = 'wss://infoequity.qingyunshe.top/ws';
+  static const String wsUrlProd = 'wss://infoequity.cn/ws';
 
   /// Get current API URL based on environment
   static String get apiUrl => apiBaseUrl;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'app_config.dart';
 import '../constants/app_constants.dart';
 import '../utils/storage_utils.dart';
@@ -20,17 +22,21 @@ class ApiConfig {
 
   static const String devBaseUrl = String.fromEnvironment(
     'WK_DEV_BASE_URL',
-    defaultValue: 'https://infoequity.qingyunshe.top',
+    defaultValue: 'https://infoequity.cn',
   );
   static const String prodBaseUrl = String.fromEnvironment(
     'WK_PROD_BASE_URL',
-    defaultValue: 'https://infoequity.qingyunshe.top',
+    defaultValue: 'https://infoequity.cn',
   );
 
   static String get baseUrl {
-    final runtimeOverride = _normalizeRuntimeBaseUrl(
-      StorageUtils.getString(AppConstants.keyAuthLoginApiBaseUrl),
+    final rawRuntimeOverride = StorageUtils.getString(
+      AppConstants.keyAuthLoginApiBaseUrl,
     );
+    final runtimeOverride = normalizeRuntimeBaseUrlOverride(rawRuntimeOverride);
+    if ((rawRuntimeOverride ?? '') != runtimeOverride) {
+      _saveRuntimeBaseUrlOverride(runtimeOverride);
+    }
     if (runtimeOverride.isNotEmpty) {
       return runtimeOverride;
     }
@@ -39,11 +45,11 @@ class ApiConfig {
 
   static const String devWsAddr = String.fromEnvironment(
     'WK_DEV_WS_ADDR',
-    defaultValue: 'wss://infoequity.qingyunshe.top/ws',
+    defaultValue: 'wss://infoequity.cn/ws',
   );
   static const String prodWsAddr = String.fromEnvironment(
     'WK_PROD_WS_ADDR',
-    defaultValue: 'wss://infoequity.qingyunshe.top/ws',
+    defaultValue: 'wss://infoequity.cn/ws',
   );
 
   static const String windowsDesktopTunnelBaseUrl = 'http://127.0.0.1:15001';
@@ -215,12 +221,67 @@ class ApiConfig {
         .toString();
   }
 
+  static String normalizeRuntimeBaseUrlOverride(String? rawValue) {
+    final normalized = _normalizeRuntimeBaseUrl(rawValue);
+    if (!_isAllowedRuntimeBaseUrlOverride(normalized)) {
+      return '';
+    }
+    return normalized;
+  }
+
   static String _normalizeRuntimeBaseUrl(String? rawValue) {
     final value = rawValue?.trim() ?? '';
     if (value.isEmpty) {
       return '';
     }
     return value.replaceFirst(RegExp(r'/+$'), '');
+  }
+
+  static bool _isAllowedRuntimeBaseUrlOverride(String value) {
+    if (value.isEmpty) {
+      return true;
+    }
+
+    final uri = Uri.tryParse(value) ?? Uri.tryParse('//$value');
+    final host = uri?.host.toLowerCase() ?? '';
+    if (host.isEmpty) {
+      return false;
+    }
+
+    return host == Uri.parse(prodBaseUrl).host ||
+        host == Uri.parse(devBaseUrl).host ||
+        host == 'localhost' ||
+        host == '127.0.0.1' ||
+        host == '::1' ||
+        _isPrivateIPv4Host(host);
+  }
+
+  static bool _isPrivateIPv4Host(String host) {
+    final parts = host.split('.');
+    if (parts.length != 4) {
+      return false;
+    }
+    final octets = <int>[];
+    for (final part in parts) {
+      final number = int.tryParse(part);
+      if (number == null || number < 0 || number > 255) {
+        return false;
+      }
+      octets.add(number);
+    }
+
+    return octets[0] == 10 ||
+        (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31) ||
+        (octets[0] == 192 && octets[1] == 168);
+  }
+
+  static void _saveRuntimeBaseUrlOverride(String value) {
+    if (!StorageUtils.isInitialized) {
+      return;
+    }
+    unawaited(
+      StorageUtils.setString(AppConstants.keyAuthLoginApiBaseUrl, value),
+    );
   }
 
   static bool isWindowsDesktopTunnelBaseUrl(String value) {

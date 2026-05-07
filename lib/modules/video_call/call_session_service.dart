@@ -366,8 +366,8 @@ class _TestCallBootstrapApi implements CallBootstrapApi {
         participant: 'u_self',
       ),
       join: CallJoinDescriptor(
-        controlUrl: 'wss://infoequity.qingyunshe.top/v1/callgateway/ws',
-        livekitUrl: 'wss://infoequity.qingyunshe.top/livekit',
+        controlUrl: 'wss://infoequity.cn/v1/callgateway/ws',
+        livekitUrl: 'wss://infoequity.cn/livekit',
         roomName: roomId,
       ),
       capabilities: capabilities,

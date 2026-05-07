@@ -172,50 +172,47 @@ void main() {
       expect(messages.single.wkMsgExtra?.extraVersion, 200);
     });
 
-    test(
-      'message with newer read receipt extra is preferred during merge',
-      () {
-        final cached =
-            _buildMessage(
-                clientSeq: 402,
-                clientMsgNo: 'client-read-402',
-                messageId: 'msg-read-402',
-                messageSeq: 42,
-                orderSeq: 42000,
-                status: WKSendMsgResult.sendSuccess,
-                text: 'read receipt merge',
-              )
-              ..wkMsgExtra = (WKMsgExtra()
-                ..messageID = 'msg-read-402'
-                ..readed = 0
-                ..readedCount = 0
-                ..unreadCount = 1
-                ..extraVersion = 10);
-        final refreshed =
-            _buildMessage(
-                clientSeq: 402,
-                clientMsgNo: 'client-read-402',
-                messageId: 'msg-read-402',
-                messageSeq: 42,
-                orderSeq: 42000,
-                status: WKSendMsgResult.sendSuccess,
-                text: 'read receipt merge',
-              )
-              ..wkMsgExtra = (WKMsgExtra()
-                ..messageID = 'msg-read-402'
-                ..readed = 1
-                ..readedCount = 1
-                ..unreadCount = 0
-                ..extraVersion = 10);
+    test('message with newer read receipt extra is preferred during merge', () {
+      final cached =
+          _buildMessage(
+              clientSeq: 402,
+              clientMsgNo: 'client-read-402',
+              messageId: 'msg-read-402',
+              messageSeq: 42,
+              orderSeq: 42000,
+              status: WKSendMsgResult.sendSuccess,
+              text: 'read receipt merge',
+            )
+            ..wkMsgExtra = (WKMsgExtra()
+              ..messageID = 'msg-read-402'
+              ..readed = 0
+              ..readedCount = 0
+              ..unreadCount = 1
+              ..extraVersion = 10);
+      final refreshed =
+          _buildMessage(
+              clientSeq: 402,
+              clientMsgNo: 'client-read-402',
+              messageId: 'msg-read-402',
+              messageSeq: 42,
+              orderSeq: 42000,
+              status: WKSendMsgResult.sendSuccess,
+              text: 'read receipt merge',
+            )
+            ..wkMsgExtra = (WKMsgExtra()
+              ..messageID = 'msg-read-402'
+              ..readed = 1
+              ..readedCount = 1
+              ..unreadCount = 0
+              ..extraVersion = 10);
 
-        final messages = mergeConversationMessages([cached, refreshed]);
+      final messages = mergeConversationMessages([cached, refreshed]);
 
-        expect(messages, hasLength(1));
-        expect(messages.single.wkMsgExtra?.readed, 1);
-        expect(messages.single.wkMsgExtra?.readedCount, 1);
-        expect(messages.single.wkMsgExtra?.unreadCount, 0);
-      },
-    );
+      expect(messages, hasLength(1));
+      expect(messages.single.wkMsgExtra?.readed, 1);
+      expect(messages.single.wkMsgExtra?.readedCount, 1);
+      expect(messages.single.wkMsgExtra?.unreadCount, 0);
+    });
 
     test(
       'web message extra refresh updates visible read receipt without reopen',
@@ -425,6 +422,44 @@ void main() {
     );
   });
 
+  test(
+    'message extra refresh by message id updates conversation preview cache',
+    () async {
+      final lastMessage = _buildMessage(
+        clientSeq: 0,
+        clientMsgNo: 'client-extra-refresh',
+        channelId: 'u_extra_target',
+        messageId: 'message-extra-refresh',
+        messageSeq: 95,
+        orderSeq: 95000,
+        status: WKSendMsgResult.sendSuccess,
+        text: 'before remote revoke',
+      )..timestamp = 1777185400;
+      final notifier = ConversationNotifier.forTest(const []);
+      notifier.applyRealtimeMessage(lastMessage, currentUid: 'u_me');
+
+      notifier.applyMessageExtraRefresh(
+        WKMsg()
+          ..channelID = 'u_extra_target'
+          ..channelType = WKChannelType.personal
+          ..messageID = 'message-extra-refresh'
+          ..status = WKSendMsgResult.sendSuccess
+          ..wkMsgExtra = (WKMsgExtra()
+            ..messageID = 'message-extra-refresh'
+            ..revoke = 1
+            ..revoker = 'u_other'
+            ..extraVersion = 3),
+      );
+
+      final cached = await notifier.state.single.getWkMsg();
+      expect(cached?.wkMsgExtra?.revoke, 1);
+      expect(
+        conversationLastMessageExtraDigest(notifier.state.single),
+        contains('revoke:1'),
+      );
+    },
+  );
+
   group('web outgoing message projection', () {
     test('local outgoing message is inserted at the top of the chat state', () {
       final notifier = MessageListNotifier(
@@ -557,6 +592,122 @@ void main() {
         expect(conversation.unreadCount, 0);
         expect(conversation.clientMsgNo, 'last-client');
         expect(await conversation.getWkMsg(), same(recalledLast));
+      },
+    );
+  });
+
+  test(
+    'local read override prevents stale refresh from restoring unread badge',
+    () async {
+      final notifier = ConversationNotifier.forTest(<WKUIConversationMsg>[
+        _buildConversation(
+          channelId: 'u_read_target',
+          channelType: WKChannelType.personal,
+          lastMsgSeq: 77,
+          lastMsgTimestamp: 1777185100,
+          clientMsgNo: 'client-read-target',
+          unreadCount: 3,
+        ),
+      ]);
+
+      notifier.markConversationReadLocallyForTest(
+        'u_read_target',
+        WKChannelType.personal,
+      );
+      notifier.applyRefreshForTest(<WKUIConversationMsg>[
+        _buildConversation(
+          channelId: 'u_read_target',
+          channelType: WKChannelType.personal,
+          lastMsgSeq: 77,
+          lastMsgTimestamp: 1777185100,
+          clientMsgNo: 'client-read-target',
+          unreadCount: 3,
+        ),
+      ]);
+
+      expect(notifier.state.single.unreadCount, 0);
+    },
+  );
+
+  test(
+    'local read override is released when refresh contains a newer message',
+    () async {
+      final notifier = ConversationNotifier.forTest(<WKUIConversationMsg>[
+        _buildConversation(
+          channelId: 'u_read_target_newer',
+          channelType: WKChannelType.personal,
+          lastMsgSeq: 77,
+          lastMsgTimestamp: 1777185100,
+          clientMsgNo: 'client-read-target-old',
+          unreadCount: 4,
+        ),
+      ]);
+
+      notifier.markConversationReadLocallyForTest(
+        'u_read_target_newer',
+        WKChannelType.personal,
+      );
+      notifier.applyRefreshForTest(<WKUIConversationMsg>[
+        _buildConversation(
+          channelId: 'u_read_target_newer',
+          channelType: WKChannelType.personal,
+          lastMsgSeq: 78,
+          lastMsgTimestamp: 1777185110,
+          clientMsgNo: 'client-read-target-new',
+          unreadCount: 1,
+        ),
+      ]);
+
+      expect(notifier.state.single.unreadCount, 1);
+      expect(notifier.state.single.clientMsgNo, 'client-read-target-new');
+    },
+  );
+
+  group('conversation read suppression persistence', () {
+    setUpAll(() async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await StorageUtils.init();
+    });
+
+    setUp(() async {
+      await StorageUtils.clear();
+      await StorageUtils.setUid('conversation_read_user');
+    });
+
+    test(
+      'local read override survives notifier recreation for stale web sync',
+      () async {
+        final original = ConversationNotifier.forTest(<WKUIConversationMsg>[
+          _buildConversation(
+            channelId: 'u_read_persisted',
+            channelType: WKChannelType.personal,
+            lastMsgSeq: 91,
+            lastMsgTimestamp: 1777185300,
+            clientMsgNo: 'client-read-persisted',
+            unreadCount: 6,
+          ),
+        ]);
+
+        await original.markConversationReadLocallyForTest(
+          'u_read_persisted',
+          WKChannelType.personal,
+        );
+
+        final recreated = ConversationNotifier.forTest(
+          const <WKUIConversationMsg>[],
+        );
+        recreated.applyRefreshForTest(<WKUIConversationMsg>[
+          _buildConversation(
+            channelId: 'u_read_persisted',
+            channelType: WKChannelType.personal,
+            lastMsgSeq: 91,
+            lastMsgTimestamp: 1777185300,
+            clientMsgNo: 'client-read-persisted',
+            unreadCount: 6,
+          ),
+        ]);
+
+        expect(recreated.state.single.unreadCount, 0);
       },
     );
   });

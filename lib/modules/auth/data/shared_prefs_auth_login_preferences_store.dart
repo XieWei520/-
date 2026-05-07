@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/config/api_config.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/storage_utils.dart';
 import '../domain/auth_login_preferences.dart';
@@ -73,18 +74,37 @@ class AuthApiBaseUrlPreferencesStore {
 
   Future<String> load() async {
     if (StorageUtils.isInitialized) {
-      return (StorageUtils.getString(key) ?? '').trim();
+      return _sanitizeStoredValue(
+        StorageUtils.getString(key),
+        saveSanitized: (value) => StorageUtils.setString(key, value),
+      );
     }
     final prefs = await _prefs;
-    return (prefs.getString(key) ?? '').trim();
+    return _sanitizeStoredValue(
+      prefs.getString(key),
+      saveSanitized: (value) => prefs.setString(key, value),
+    );
   }
 
   Future<void> save(String value) async {
+    final normalized = ApiConfig.normalizeRuntimeBaseUrlOverride(value);
     if (StorageUtils.isInitialized) {
-      await StorageUtils.setString(key, value.trim());
+      await StorageUtils.setString(key, normalized);
       return;
     }
     final prefs = await _prefs;
-    await prefs.setString(key, value.trim());
+    await prefs.setString(key, normalized);
+  }
+
+  Future<String> _sanitizeStoredValue(
+    String? rawValue, {
+    required Future<bool> Function(String value) saveSanitized,
+  }) async {
+    final raw = rawValue ?? '';
+    final normalized = ApiConfig.normalizeRuntimeBaseUrlOverride(raw);
+    if (normalized != raw) {
+      await saveSanitized(normalized);
+    }
+    return normalized;
   }
 }

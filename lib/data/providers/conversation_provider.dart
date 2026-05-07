@@ -41,8 +41,12 @@ typedef ConversationDraftDeleteAction =
 final Expando<WKMsg> _conversationLastMessageCache = Expando<WKMsg>(
   'conversationLastMessageCache',
 );
+final Expando<String> _conversationLastMessageExtraDigestCache =
+    Expando<String>('conversationLastMessageExtraDigestCache');
 const String _deletedConversationTombstonesStoragePrefix =
     'conversation_deleted_tombstones';
+const String _readConversationTombstonesStoragePrefix =
+    'conversation_read_tombstones';
 
 final conversationProjectionRepositoryProvider =
     Provider<ConversationProjectionRepository>((ref) {
@@ -83,6 +87,7 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
        _attachSdkListeners = attachSdkListeners,
        _deletedConversationTombstones =
            _loadPersistedDeletedConversationTombstones(),
+       _readConversationTombstones = _loadPersistedReadConversationTombstones(),
        super(const <WKUIConversationMsg>[]) {
     if (_attachSdkListeners) {
       _setupListeners();
@@ -120,6 +125,7 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
   final bool _attachSdkListeners;
   final Map<String, _ConversationDeletionTombstone>
   _deletedConversationTombstones;
+  final Map<String, _ConversationReadTombstone> _readConversationTombstones;
 
   static Future<void> _deleteConversationFromSdk(
     String channelId,
@@ -163,6 +169,37 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
     return tombstones;
   }
 
+  static Map<String, _ConversationReadTombstone>
+  _loadPersistedReadConversationTombstones() {
+    final storageKey = _readConversationTombstonesStorageKey();
+    if (storageKey.isEmpty) {
+      return <String, _ConversationReadTombstone>{};
+    }
+    final rows = StorageUtils.getStringList(storageKey) ?? const <String>[];
+    final tombstones = <String, _ConversationReadTombstone>{};
+    for (final row in rows) {
+      try {
+        final decoded = jsonDecode(row);
+        if (decoded is! Map) {
+          continue;
+        }
+        final item = Map<String, dynamic>.from(decoded);
+        final channelId = (item['channel_id'] ?? '').toString().trim();
+        final channelType = _readTombstoneInt(item['channel_type']);
+        if (channelId.isEmpty || channelType <= 0) {
+          continue;
+        }
+        tombstones['$channelType:$channelId'] = _ConversationReadTombstone(
+          lastMsgSeq: _readTombstoneInt(item['last_msg_seq']),
+          lastMsgTimestamp: _readTombstoneInt(item['last_msg_timestamp']),
+        );
+      } catch (_) {
+        continue;
+      }
+    }
+    return tombstones;
+  }
+
   static int _readTombstoneInt(dynamic value) {
     if (value is num) {
       return value.toInt();
@@ -181,6 +218,14 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
     return '${_deletedConversationTombstonesStoragePrefix}_$uid';
   }
 
+  static String _readConversationTombstonesStorageKey() {
+    final uid = StorageUtils.getUid()?.trim() ?? '';
+    if (uid.isEmpty) {
+      return '';
+    }
+    return '${_readConversationTombstonesStoragePrefix}_$uid';
+  }
+
   Future<void> _persistDeletedConversationTombstones() async {
     final storageKey = _deletedConversationTombstonesStorageKey();
     if (storageKey.isEmpty) {
@@ -193,6 +238,44 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
 
     final rows = <String>[];
     for (final entry in _deletedConversationTombstones.entries) {
+      final separatorIndex = entry.key.indexOf(':');
+      if (separatorIndex <= 0) {
+        continue;
+      }
+      final channelType = int.tryParse(entry.key.substring(0, separatorIndex));
+      final channelId = entry.key.substring(separatorIndex + 1).trim();
+      if (channelType == null || channelId.isEmpty) {
+        continue;
+      }
+      rows.add(
+        jsonEncode(<String, dynamic>{
+          'channel_id': channelId,
+          'channel_type': channelType,
+          'last_msg_seq': entry.value.lastMsgSeq,
+          'last_msg_timestamp': entry.value.lastMsgTimestamp,
+        }),
+      );
+    }
+
+    if (rows.isEmpty) {
+      await StorageUtils.remove(storageKey);
+      return;
+    }
+    await StorageUtils.setStringList(storageKey, rows);
+  }
+
+  Future<void> _persistReadConversationTombstones() async {
+    final storageKey = _readConversationTombstonesStorageKey();
+    if (storageKey.isEmpty) {
+      return;
+    }
+    if (_readConversationTombstones.isEmpty) {
+      await StorageUtils.remove(storageKey);
+      return;
+    }
+
+    final rows = <String>[];
+    for (final entry in _readConversationTombstones.entries) {
       final separatorIndex = entry.key.indexOf(':');
       if (separatorIndex <= 0) {
         continue;
@@ -243,7 +326,13 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
   }
 
   void _replaceState(List<WKUIConversationMsg> conversations) {
-    final visibleConversations = _filterDeletedConversations(conversations);
+    final visibleConversations = _filterDeletedConversations(conversations)
+        .map((item) {
+          final normalized = _cloneConversation(item);
+          _applyReadTombstoneToConversation(normalized);
+          return normalized;
+        })
+        .toList(growable: false);
     final previousProjectionByKey = <String, ConversationProjection>{
       for (final item in _projectionRepository.snapshot)
         _conversationProjectionKey(item.channelId, item.channelType): item,
@@ -295,10 +384,12 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
         continue;
       }
 
+      final normalizedRefresh = _cloneConversation(refreshed);
+      _applyReadTombstoneToConversation(normalizedRefresh);
       if (index == -1) {
-        next.add(refreshed);
+        next.add(normalizedRefresh);
       } else {
-        final preserved = _cloneConversation(refreshed);
+        final preserved = normalizedRefresh;
         final existing = next[index];
         if (preserved.clientMsgNo.trim().isEmpty &&
             existing.clientMsgNo.trim().isNotEmpty) {
@@ -553,6 +644,13 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
       return;
     }
 
+    _releaseReadTombstoneIfNewer(
+      channelId,
+      message.channelType,
+      lastMsgSeq: message.messageSeq,
+      lastMsgTimestamp: timestamp,
+    );
+
     final next = List<WKUIConversationMsg>.from(state, growable: true);
     final index = _findConversationIndex(next, channelId, message.channelType);
     final existing = index == -1 ? null : next[index];
@@ -620,6 +718,76 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
     _replaceState(next);
   }
 
+  void applyMessageExtraRefresh(WKMsg message) {
+    if (!mounted) {
+      return;
+    }
+
+    final channelId = message.channelID.trim();
+    if (channelId.isEmpty) {
+      return;
+    }
+
+    final next = List<WKUIConversationMsg>.from(state, growable: true);
+    final index = _findConversationIndex(next, channelId, message.channelType);
+    if (index == -1) {
+      return;
+    }
+
+    final current = next[index];
+    if (!_conversationReferencesMessage(current, message)) {
+      return;
+    }
+
+    final cachedMessage = _conversationLastMessageCache[current];
+    final updatedMessage = cachedMessage == null
+        ? message
+        : _mergeMessageExtraIntoCachedMessage(cachedMessage, message);
+
+    final updated = _cloneConversation(current);
+    final clientMsgNo = updatedMessage.clientMsgNO.trim();
+    if (clientMsgNo.isNotEmpty) {
+      updated.clientMsgNo = clientMsgNo;
+    }
+    if (updatedMessage.messageSeq > 0) {
+      updated.lastMsgSeq = updatedMessage.messageSeq;
+    }
+    if (updatedMessage.timestamp > 0) {
+      updated.lastMsgTimestamp = updatedMessage.timestamp;
+    }
+    _cacheConversationLastMessage(updated, updatedMessage);
+    next[index] = updated;
+    _replaceState(next);
+  }
+
+  WKMsg _mergeMessageExtraIntoCachedMessage(
+    WKMsg cachedMessage,
+    WKMsg refresh,
+  ) {
+    final extra = refresh.wkMsgExtra;
+    if (extra == null) {
+      return cachedMessage;
+    }
+    final updated = WKMsg()
+      ..clientSeq = cachedMessage.clientSeq
+      ..clientMsgNO = cachedMessage.clientMsgNO
+      ..channelID = cachedMessage.channelID
+      ..channelType = cachedMessage.channelType
+      ..fromUID = cachedMessage.fromUID
+      ..messageID = cachedMessage.messageID
+      ..messageSeq = cachedMessage.messageSeq
+      ..orderSeq = cachedMessage.orderSeq
+      ..timestamp = cachedMessage.timestamp
+      ..status = cachedMessage.status
+      ..isDeleted = cachedMessage.isDeleted
+      ..contentType = cachedMessage.contentType
+      ..content = cachedMessage.content
+      ..messageContent = cachedMessage.messageContent
+      ..localExtraMap = cachedMessage.localExtraMap
+      ..wkMsgExtra = extra;
+    return preferConversationMessage(cachedMessage, updated);
+  }
+
   @override
   void dispose() {
     if (_attachSdkListeners) {
@@ -675,6 +843,10 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
     required int channelType,
     required int unread,
   }) {
+    if (unread == 0) {
+      _rememberReadConversation(channelId, channelType);
+      unawaited(_persistReadConversationTombstones());
+    }
     final existing = _findConversation(state, channelId, channelType);
     applyPatch(
       ConversationPatch(
@@ -687,6 +859,95 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
             : _projectionDigestFromConversation(existing),
       ),
     );
+  }
+
+  void _rememberReadConversation(String channelId, int channelType) {
+    final normalizedChannelId = channelId.trim();
+    if (normalizedChannelId.isEmpty) {
+      return;
+    }
+    final existing = _findConversation(state, normalizedChannelId, channelType);
+    _readConversationTombstones[_conversationProjectionKey(
+      normalizedChannelId,
+      channelType,
+    )] = _ConversationReadTombstone(
+      lastMsgSeq: existing?.lastMsgSeq ?? 0,
+      lastMsgTimestamp: existing?.lastMsgTimestamp ?? 0,
+    );
+  }
+
+  void _applyReadTombstoneToConversation(WKUIConversationMsg conversation) {
+    final normalizedChannelId = conversation.channelID.trim();
+    if (normalizedChannelId.isEmpty) {
+      return;
+    }
+    final key = _conversationProjectionKey(
+      normalizedChannelId,
+      conversation.channelType,
+    );
+    final tombstone = _readConversationTombstones[key];
+    if (tombstone == null) {
+      return;
+    }
+    if (_isNewerThanReadConversation(
+      tombstone,
+      lastMsgSeq: conversation.lastMsgSeq,
+      lastMsgTimestamp: conversation.lastMsgTimestamp,
+    )) {
+      _readConversationTombstones.remove(key);
+      unawaited(_persistReadConversationTombstones());
+      return;
+    }
+    conversation.unreadCount = 0;
+  }
+
+  void _releaseReadTombstoneIfNewer(
+    String channelId,
+    int channelType, {
+    required int lastMsgSeq,
+    required int lastMsgTimestamp,
+  }) {
+    final normalizedChannelId = channelId.trim();
+    if (normalizedChannelId.isEmpty) {
+      return;
+    }
+    final key = _conversationProjectionKey(normalizedChannelId, channelType);
+    final tombstone = _readConversationTombstones[key];
+    if (tombstone == null) {
+      return;
+    }
+    if (_isNewerThanReadConversation(
+      tombstone,
+      lastMsgSeq: lastMsgSeq,
+      lastMsgTimestamp: lastMsgTimestamp,
+    )) {
+      _readConversationTombstones.remove(key);
+      unawaited(_persistReadConversationTombstones());
+    }
+  }
+
+  bool _isNewerThanReadConversation(
+    _ConversationReadTombstone tombstone, {
+    required int lastMsgSeq,
+    required int lastMsgTimestamp,
+  }) {
+    if (lastMsgSeq > 0 && tombstone.lastMsgSeq > 0) {
+      return lastMsgSeq > tombstone.lastMsgSeq;
+    }
+    return lastMsgTimestamp > tombstone.lastMsgTimestamp;
+  }
+
+  @visibleForTesting
+  Future<void> markConversationReadLocallyForTest(
+    String channelId,
+    int channelType,
+  ) async {
+    _applyUnreadPatch(
+      channelId: channelId,
+      channelType: channelType,
+      unread: 0,
+    );
+    await _persistReadConversationTombstones();
   }
 
   WKUIConversationMsg? _findConversation(
@@ -922,6 +1183,11 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
     final cachedMessage = _conversationLastMessageCache[source];
     if (cachedMessage != null) {
       _cacheConversationLastMessage(clone, cachedMessage);
+    } else {
+      final sourceDigest = _conversationLastMessageExtraDigestCache[source];
+      if (sourceDigest != null) {
+        _conversationLastMessageExtraDigestCache[clone] = sourceDigest;
+      }
     }
     return clone;
   }
@@ -929,6 +1195,16 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
 
 class _ConversationDeletionTombstone {
   const _ConversationDeletionTombstone({
+    required this.lastMsgSeq,
+    required this.lastMsgTimestamp,
+  });
+
+  final int lastMsgSeq;
+  final int lastMsgTimestamp;
+}
+
+class _ConversationReadTombstone {
+  const _ConversationReadTombstone({
     required this.lastMsgSeq,
     required this.lastMsgTimestamp,
   });
@@ -1013,6 +1289,30 @@ void _cacheConversationLastMessage(
 ) {
   conversation.setWkMsg(msg);
   _conversationLastMessageCache[conversation] = msg;
+  _conversationLastMessageExtraDigestCache[conversation] =
+      conversationMessageExtraDigest(msg.wkMsgExtra);
+}
+
+@visibleForTesting
+String conversationMessageExtraDigest(WKMsgExtra? extra) {
+  if (extra == null) {
+    return '';
+  }
+  return [
+    'revoke:${extra.revoke}',
+    'version:${extra.extraVersion}',
+    'revoker:${extra.revoker.trim()}',
+    'readed:${extra.readed}',
+    'readed_count:${extra.readedCount}',
+    'unread_count:${extra.unreadCount}',
+    'pinned:${extra.isPinned}',
+    'edit:${extra.editedAt}:${extra.contentEdit.toString().trim()}',
+  ].join('|');
+}
+
+@visibleForTesting
+String conversationLastMessageExtraDigest(WKUIConversationMsg conversation) {
+  return _conversationLastMessageExtraDigestCache[conversation] ?? '';
 }
 
 WKMsg? _latestRecentMessageForConversation(WKSyncConvMsg conversation) {
@@ -1389,6 +1689,34 @@ class MessageListNotifier extends StateNotifier<List<WKMsg>> {
       stopwatch.stop();
       telemetry.recordSqlitePageQuery(stopwatch.elapsed, mode: mode);
     }
+  }
+
+  WKMsg _mergeMessageExtraIntoCachedMessage(
+    WKMsg cachedMessage,
+    WKMsg refresh,
+  ) {
+    final extra = refresh.wkMsgExtra;
+    if (extra == null) {
+      return cachedMessage;
+    }
+    final updated = WKMsg()
+      ..clientSeq = cachedMessage.clientSeq
+      ..clientMsgNO = cachedMessage.clientMsgNO
+      ..channelID = cachedMessage.channelID
+      ..channelType = cachedMessage.channelType
+      ..fromUID = cachedMessage.fromUID
+      ..messageID = cachedMessage.messageID
+      ..messageSeq = cachedMessage.messageSeq
+      ..orderSeq = cachedMessage.orderSeq
+      ..timestamp = cachedMessage.timestamp
+      ..status = cachedMessage.status
+      ..isDeleted = cachedMessage.isDeleted
+      ..contentType = cachedMessage.contentType
+      ..content = cachedMessage.content
+      ..messageContent = cachedMessage.messageContent
+      ..localExtraMap = cachedMessage.localExtraMap
+      ..wkMsgExtra = extra;
+    return preferConversationMessage(cachedMessage, updated);
   }
 
   @override

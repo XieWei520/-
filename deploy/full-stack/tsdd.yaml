@@ -21,8 +21,8 @@ db:
 # External config
 external:
   ip: "103.207.68.33"
-  baseURL: "http://103.207.68.33:8090"
-  webLoginURL: ""
+  baseURL: "https://infoequity.cn"
+  webLoginURL: "https://infoequity.cn"
 
 # Logger config
 logger:

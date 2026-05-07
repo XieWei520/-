@@ -31,14 +31,14 @@ void main() {
     test('parses short number edit switch from appconfig body', () {
       final capabilities = AppRuntimeCapabilities.fromAppConfigBody(
         body: {
-          'web_url': 'https://infoequity.qingyunshe.top',
+          'web_url': 'https://infoequity.cn',
           'shortno_edit_off': 1,
         },
         webLoginReachable: false,
         webLoginStatusMessage: 'Web disabled',
       );
 
-      expect(capabilities.webLoginUrl, 'https://infoequity.qingyunshe.top');
+      expect(capabilities.webLoginUrl, 'https://infoequity.cn');
       expect(capabilities.shortNoEditable, isFalse);
       expect(capabilities.phoneSearchEnabled, isTrue);
       expect(capabilities.pcWebLoginEntryEnabled, isFalse);
@@ -47,7 +47,7 @@ void main() {
     test('treats short number editing as enabled when switch is off', () {
       final capabilities = AppRuntimeCapabilities.fromAppConfigBody(
         body: {
-          'web_url': 'https://infoequity.qingyunshe.top',
+          'web_url': 'https://infoequity.cn',
           'shortno_edit_off': 0,
         },
         webLoginReachable: true,

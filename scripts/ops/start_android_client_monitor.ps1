@@ -3,8 +3,8 @@ param(
   [string]$PackageId = 'com.im.wukong_im_app',
   [string]$FlutterExe = 'D:\Apps\flutter\bin\flutter.bat',
   [string]$AdbExe = 'D:\Apps\Android\SDK\platform-tools\adb.exe',
-  [string]$ApiBaseUrl = 'https://wemx.cc',
-  [string]$WsAddr = 'wemx.cc:5100'
+  [string]$ApiBaseUrl = 'https://infoequity.cn',
+  [string]$WsAddr = 'wss://infoequity.cn/ws'
 )
 
 $ErrorActionPreference = 'Stop'

@@ -181,6 +181,8 @@ echo "Flutter Web release deployed. Backup: ${BACKUP_DIR}"
         Replace('__ARCHIVE__', (Quote-Bash -Value $remoteArchive)).
         Replace('__TIMESTAMP__', (Quote-Bash -Value $timestamp)).
         Replace('__SERVER__', $Server)
+    $remoteCommand = $remoteCommand -replace "`r`n", "`n"
+    $remoteCommand = $remoteCommand -replace "`r", "`n"
 
     $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     [System.IO.File]::WriteAllText($localRemoteScript, $remoteCommand, $utf8NoBom)

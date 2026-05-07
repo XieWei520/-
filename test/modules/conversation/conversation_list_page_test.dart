@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_list_page.dart';
+import 'package:wukong_im_app/modules/conversation/conversation_list_item_loader.dart';
 import 'package:wukong_im_app/wukong_base/msg/msg_content_type.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -142,6 +143,37 @@ void main() {
       expect(status.showSingleTick, isTrue);
       expect(status.showDoubleTick, isFalse);
       expect(status.showSendFailed, isFalse);
+    },
+  );
+
+  test(
+    'conversation item request key changes when cached message extra changes',
+    () {
+      final baseKey = buildConversationListItemRequestKey(
+        channelId: 'u_revoke_preview',
+        channelType: WKChannelType.personal,
+        clientMsgNo: 'client-revoke-preview',
+        unreadCount: 0,
+        lastMsgTimestamp: 1777185200,
+        lastMessageExtraDigest: '',
+        refreshToken: 0,
+      );
+      final revokedKey = buildConversationListItemRequestKey(
+        channelId: 'u_revoke_preview',
+        channelType: WKChannelType.personal,
+        clientMsgNo: 'client-revoke-preview',
+        unreadCount: 0,
+        lastMsgTimestamp: 1777185200,
+        lastMessageExtraDigest: conversationMessageExtraDigest(
+          WKMsgExtra()
+            ..revoke = 1
+            ..extraVersion = 2
+            ..revoker = 'u_me',
+        ),
+        refreshToken: 0,
+      );
+
+      expect(revokedKey, isNot(baseKey));
     },
   );
 

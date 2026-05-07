@@ -415,7 +415,7 @@ void main() {
     (tester) async {
       const oldAvatar = 'groups/g_task2/avatar-old.png';
       const newAvatar =
-          'https://infoequity.qingyunshe.top/v1/groups/g_task2/avatar?t=123';
+          'https://infoequity.cn/v1/groups/g_task2/avatar?t=123';
       final adapter = _GroupDetailRoutingAdapter(
         groupNo: _groupNo,
         group: _buildGroupJson(role: 1, invite: 0, avatar: oldAvatar),

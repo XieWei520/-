@@ -145,7 +145,7 @@ void main() {
 
       final gateway = container.read(chatSceneGatewayProvider(session));
       final content = WKImageContent(320, 240)
-        ..url = 'https://infoequity.qingyunshe.top/minio/chat/image.png';
+        ..url = 'https://infoequity.cn/minio/chat/image.png';
 
       await gateway.sendMessageContent(
         content,
