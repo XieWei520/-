@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
@@ -60,6 +61,12 @@ abstract class ChatHistoryGateway {
   });
 }
 
+final chatHistoryGatewayProvider = Provider<ChatHistoryGateway>(
+  (ref) => WkImChatHistoryGateway(
+    webCacheStore: kIsWeb ? createWebChatCacheStore() : null,
+  ),
+);
+
 class WkImChatHistoryGateway implements ChatHistoryGateway {
   WkImChatHistoryGateway({
     RequestHistoryMessages? requestHistoryMessages,
@@ -78,9 +85,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
        _uidProvider = uidProvider ?? _defaultUidProvider,
        _webCacheStore =
            webCacheStore ??
-           ((useDirectRemoteSync ?? kIsWeb)
-               ? WebChatCacheStoreFactory.create(isWeb: kIsWeb)
-               : null),
+           ((useDirectRemoteSync ?? kIsWeb) ? createWebChatCacheStore() : null),
        _useDirectRemoteSync = useDirectRemoteSync ?? kIsWeb;
 
   final RequestHistoryMessages _requestHistoryMessages;

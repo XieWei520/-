@@ -268,7 +268,7 @@ class _AllMembersPageState extends State<AllMembersPage> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
+      onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
           return;
         }
@@ -539,12 +539,12 @@ class _ForbiddenTimePickerState extends State<_ForbiddenTimePicker> {
           RadioGroup<int>(
             groupValue: _selected?.key,
             onChanged: (value) {
-              final selected = widget.options
-                  .where((option) => option.key == value)
-                  .firstOrNull;
-              if (selected == null) {
+              if (value == null) {
                 return;
               }
+              final selected = widget.options.firstWhere(
+                (option) => option.key == value,
+              );
               setState(() => _selected = selected);
             },
             child: Column(

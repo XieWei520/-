@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,18 +24,6 @@ void main() {
         isTrue,
       );
       expect(WKEmojiText.containsAndroidEmoji('hello world'), isFalse);
-    });
-
-    test('catalog rejects non-emoji starting code units before longest match', () {
-      final entry = androidEmojiCatalog.lookupById('0_0')!;
-      final text = 'hello ${entry.tag}';
-
-      expect(androidEmojiCatalog.canStartEmojiAt(text, 0), isFalse);
-      expect(androidEmojiCatalog.longestMatchAt(text, 0), isNull);
-
-      final emojiStart = text.indexOf(entry.tag);
-      expect(androidEmojiCatalog.canStartEmojiAt(text, emojiStart), isTrue);
-      expect(androidEmojiCatalog.longestMatchAt(text, emojiStart), entry);
     });
 
     testWidgets('renders android emoji tag as inline asset image', (

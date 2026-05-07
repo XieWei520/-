@@ -18,7 +18,10 @@ void main() {
     );
   }
 
-  GroupMember member({required String uid, required String name}) {
+  GroupMember member({
+    required String uid,
+    required String name,
+  }) {
     return GroupMember(groupNo: 'group_demo', uid: uid, name: name, role: 0);
   }
 

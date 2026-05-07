@@ -1,24 +1,23 @@
-import 'indexed_db_web_chat_cache_store_adapter.dart';
+import 'indexed_db_web_chat_cache_store_adapter_base.dart';
 
-IndexedDbWebChatCacheAdapter createIndexedDbWebChatCacheAdapter() {
-  return const _UnimplementedIndexedDbWebChatCacheAdapter();
+IndexedDbChatCacheAdapter createIndexedDbChatCacheAdapter() {
+  return const _UnavailableIndexedDbChatCacheAdapter();
 }
 
-class _UnimplementedIndexedDbWebChatCacheAdapter
-    implements IndexedDbWebChatCacheAdapter {
-  const _UnimplementedIndexedDbWebChatCacheAdapter();
+class _UnavailableIndexedDbChatCacheAdapter
+    implements IndexedDbChatCacheAdapter {
+  const _UnavailableIndexedDbChatCacheAdapter();
 
   @override
   Future<List<Map<String, Object?>>> readAll() {
-    return Future.error(
-      StateError('IndexedDB is not available on this platform'),
-    );
+    throw StateError('IndexedDB is unavailable on this platform');
   }
 
   @override
-  Future<void> writeAll(List<Map<String, Object?>> records) {
-    return Future.error(
-      StateError('IndexedDB is not available on this platform'),
-    );
+  Future<void> applyChanges({
+    required List<Map<String, Object?>> upserts,
+    required Iterable<String> deleteKeys,
+  }) {
+    throw StateError('IndexedDB is unavailable on this platform');
   }
 }

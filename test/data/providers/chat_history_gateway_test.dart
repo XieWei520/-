@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/providers/chat_history_gateway.dart';
+import 'package:wukong_im_app/core/repositories/message_repository.dart';
+import 'package:wukong_im_app/data/repositories/wk_message_repository.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
@@ -158,4 +160,74 @@ void main() {
       expect(syncCalled, isFalse);
     },
   );
+
+  test(
+    'WkMessageRepository delegates paging queries directly to gateway',
+    () async {
+      final gateway = _RecordingHistoryGateway();
+      final repository = WkMessageRepository(gateway: gateway);
+
+      await repository.loadLatest(
+        const MessagePageQuery(channelId: 'c1', channelType: 1, limit: 10),
+      );
+      await repository.loadOlder(
+        const MessagePageQuery(
+          channelId: 'c1',
+          channelType: 1,
+          limit: 11,
+          anchorOrderSeq: 900,
+        ),
+      );
+      await repository.loadAround(
+        const MessagePageQuery(
+          channelId: 'c1',
+          channelType: 1,
+          limit: 12,
+          anchorOrderSeq: 800,
+        ),
+      );
+
+      expect(gateway.calls, <String>[
+        'latest:c1:1:10',
+        'older:c1:1:900:11',
+        'around:c1:1:800:12',
+      ]);
+    },
+  );
+}
+
+class _RecordingHistoryGateway implements ChatHistoryGateway {
+  final List<String> calls = <String>[];
+
+  @override
+  Future<List<WKMsg>> loadAroundOrderSeq({
+    required String channelId,
+    required int channelType,
+    required int limit,
+    required int aroundOrderSeq,
+  }) async {
+    calls.add('around:$channelId:$channelType:$aroundOrderSeq:$limit');
+    return const <WKMsg>[];
+  }
+
+  @override
+  Future<List<WKMsg>> loadLatest({
+    required String channelId,
+    required int channelType,
+    required int limit,
+  }) async {
+    calls.add('latest:$channelId:$channelType:$limit');
+    return const <WKMsg>[];
+  }
+
+  @override
+  Future<List<WKMsg>> loadMore({
+    required String channelId,
+    required int channelType,
+    required int oldestOrderSeq,
+    required int limit,
+  }) async {
+    calls.add('older:$channelId:$channelType:$oldestOrderSeq:$limit');
+    return const <WKMsg>[];
+  }
 }

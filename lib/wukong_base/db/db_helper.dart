@@ -169,15 +169,28 @@ class DBHelper {
 
     // Create indexes
     await db.execute('CREATE INDEX idx_user_setting_uid ON user_setting(uid)');
-    await db.execute('CREATE INDEX idx_friend_apply_uid ON friend_apply_record(uid)');
-    await db.execute('CREATE INDEX idx_group_setting_uid ON group_setting(uid)');
-    await db.execute('CREATE INDEX idx_message_extra_msgid ON message_extra(message_id)');
-    await db.execute('CREATE INDEX idx_message_reaction_msgid ON message_reaction(message_id)');
-    await db.execute('CREATE INDEX idx_conversation_extra_uid ON conversation_extra(uid)');
+    await db.execute(
+      'CREATE INDEX idx_friend_apply_uid ON friend_apply_record(uid)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_group_setting_uid ON group_setting(uid)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_message_extra_msgid ON message_extra(message_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_message_reaction_msgid ON message_reaction(message_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_conversation_extra_uid ON conversation_extra(uid)',
+    );
     await db.execute(
       'CREATE UNIQUE INDEX idx_prohibit_word_sid ON prohibit_word(sid) WHERE sid > 0',
     );
-    await db.execute('CREATE INDEX idx_prohibit_word_version ON prohibit_word(version)');
+    await db.execute(
+      'CREATE INDEX idx_prohibit_word_version ON prohibit_word(version)',
+    );
+    await _ensureMessageIndexes(db);
 
     // Contacts table (v2)
     await ContactsDB.createTable(db);
@@ -190,6 +203,7 @@ class DBHelper {
     if (oldVersion < 3) {
       await _upgradeProhibitWordTable(db);
     }
+    await _ensureMessageIndexes(db);
     await _ensureProhibitWordIndexes(db);
   }
 
@@ -292,10 +306,30 @@ class DBHelper {
     );
   }
 
+  Future<void> _ensureMessageIndexes(Database db) async {
+    await _safeExecute(db, '''
+      CREATE INDEX IF NOT EXISTS idx_message_channel_seq
+      ON message(channel_id, channel_type, message_seq DESC)
+      ''');
+    await _safeExecute(db, '''
+      CREATE INDEX IF NOT EXISTS idx_message_channel_order_seq
+      ON message(channel_id, channel_type, order_seq DESC)
+      ''');
+    await _safeExecute(db, '''
+      CREATE INDEX IF NOT EXISTS idx_message_client_msg_no
+      ON message(client_msg_no)
+      ''');
+    await _safeExecute(db, '''
+      CREATE INDEX IF NOT EXISTS idx_message_message_id
+      ON message(message_id)
+      ''');
+  }
+
   Future<void> _safeExecute(Database db, String sql) async {
     try {
       await db.execute(sql);
-    } catch (_) {
+    } catch (error) {
+      debugPrint('DBHelper safe execute ignored migration SQL error: $error');
       // Ignore duplicate column/index errors during migrations.
     }
   }

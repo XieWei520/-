@@ -1,3 +1,6 @@
+/// Robot module exports - all public APIs for robot functionality.
+library;
+
 // Models
 export 'models/robot.dart';
 

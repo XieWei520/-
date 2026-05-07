@@ -58,9 +58,15 @@ void main() {
       addTearDown(container.dispose);
 
       final friendSub = container.listen(friendListProvider, (_, _) {});
-      final requestSub = container.listen(friendRequestListProvider, (_, _) {});
+      final requestSub = container.listen(
+        friendRequestListProvider,
+        (_, _) {},
+      );
       final groupSub = container.listen(myGroupListProvider, (_, _) {});
-      final conversationSub = container.listen(conversationProvider, (_, _) {});
+      final conversationSub = container.listen(
+        conversationProvider,
+        (_, _) {},
+      );
       addTearDown(friendSub.close);
       addTearDown(requestSub.close);
       addTearDown(groupSub.close);
