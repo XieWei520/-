@@ -41,6 +41,8 @@ class NotificationHelper {
   static AndroidNotificationDetails buildAndroidMessageAlertDetails({
     String? groupKey,
     bool onlyAlertOnce = false,
+    bool playSound = true,
+    bool enableVibration = true,
   }) {
     return AndroidNotificationDetails(
       messageAlertChannelId,
@@ -48,9 +50,9 @@ class NotificationHelper {
       channelDescription: messageAlertChannelDescription,
       importance: Importance.high,
       priority: Priority.high,
-      playSound: true,
-      sound: _messageSound,
-      enableVibration: true,
+      playSound: playSound,
+      sound: playSound ? _messageSound : null,
+      enableVibration: enableVibration,
       audioAttributesUsage: AudioAttributesUsage.notification,
       category: AndroidNotificationCategory.message,
       groupKey: groupKey,
@@ -179,6 +181,7 @@ class NotificationHelper {
     bool onlyAlertOnce = false,
     String? groupKey,
     AndroidNotificationCategory? category,
+    bool enableVibration = true,
     AudioAttributesUsage audioAttributesUsage =
         AudioAttributesUsage.notification,
   }) async {
@@ -190,6 +193,7 @@ class NotificationHelper {
       priority: priority,
       playSound: playSound,
       sound: sound,
+      enableVibration: enableVibration,
       onlyAlertOnce: onlyAlertOnce,
       groupKey: groupKey,
       category: category,

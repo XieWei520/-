@@ -56,8 +56,8 @@ class ChatComposer extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (header != null) header!,
-            if (robotInlineHeader != null) robotInlineHeader!,
+            ?header,
+            ?robotInlineHeader,
             Padding(
               key: const ValueKey<String>('chat-composer-input-row'),
               padding: EdgeInsets.fromLTRB(

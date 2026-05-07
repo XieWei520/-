@@ -6,11 +6,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/settings/notification_channel_settings_bridge.dart';
 import 'package:wukong_im_app/modules/settings/notification_settings_page.dart';
+import 'package:wukong_im_app/modules/settings/settings_strings.dart';
 import 'package:wukong_im_app/modules/settings/settings_surface_widgets.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/widgets/wk_sub_page_scaffold.dart';
 import 'package:wukong_im_app/wukong_base/endpoint/endpoint_handler.dart';
 import 'package:wukong_im_app/wukong_base/endpoint/endpoint_manager.dart';
+import 'package:wukong_im_app/wukong_push/notification/notification_helper.dart';
 
 void main() {
   late HttpClientAdapter originalAdapter;
@@ -49,24 +51,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final strings = resolveSettingsStrings(locale: const Locale('en', 'US'));
       final messageSettingsFinder = find.text(
-        'Open New Message Notification Settings',
+        strings.openMessageNotificationSettings,
       );
-      await tester.scrollUntilVisible(
-        messageSettingsFinder,
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.drag(find.byType(ListView), const Offset(0, -500));
+      await tester.pumpAndSettle();
       await tester.tap(messageSettingsFinder);
       await tester.pumpAndSettle();
       final rtcSettingsFinder = find.text(
-        'Open Call Invitation Notification Settings',
+        strings.openCallInvitationNotificationSettings,
       );
-      await tester.scrollUntilVisible(
-        rtcSettingsFinder,
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
       await tester.pumpAndSettle();
       await tester.tap(rtcSettingsFinder);
       await tester.pumpAndSettle();
@@ -75,6 +71,22 @@ void main() {
         NotificationSettingsChannel.message,
         NotificationSettingsChannel.rtc,
       ]);
+    },
+  );
+
+  test(
+    'message notification settings open the actual Android alert channel',
+    () {
+      const bridge = DefaultNotificationChannelSettingsBridge();
+
+      expect(
+        bridge.resolveChannelIdForTesting(NotificationSettingsChannel.message),
+        NotificationHelper.messageAlertChannelId,
+      );
+      expect(
+        bridge.resolveChannelIdForTesting(NotificationSettingsChannel.rtc),
+        NotificationHelper.rtcChannelId,
+      );
     },
   );
 
@@ -99,8 +111,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('\u65b0\u6d88\u606f\u901a\u77e5'), findsOneWidget);
-    expect(find.text('\u65b0\u6d88\u606f\u901a\u77e5\u603b\u5f00\u5173'), findsOneWidget);
-    expect(find.text('\u6253\u5f00\u65b0\u6d88\u606f\u901a\u77e5\u8bbe\u7f6e'), findsOneWidget);
+    expect(
+      find.text('\u65b0\u6d88\u606f\u901a\u77e5\u603b\u5f00\u5173'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('\u6253\u5f00\u65b0\u6d88\u606f\u901a\u77e5\u8bbe\u7f6e'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('notification settings render keep-alive extension widgets', (
@@ -143,7 +161,7 @@ void main() {
     await tester.scrollUntilVisible(
       keepAliveFinder,
       200,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.byType(Scrollable),
     );
     expect(find.text('Keep Alive'), findsOneWidget);
   });
@@ -175,24 +193,19 @@ void main() {
       expect(find.byType(SettingsSection), findsAtLeastNWidgets(1));
       expect(find.byType(WKSubPageScaffold), findsNothing);
 
+      final strings = resolveSettingsStrings(locale: const Locale('en', 'US'));
       final messageSettingsFinder = find.text(
-        'Open New Message Notification Settings',
+        strings.openMessageNotificationSettings,
       );
-      await tester.scrollUntilVisible(
-        messageSettingsFinder,
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.drag(find.byType(ListView), const Offset(0, -500));
+      await tester.pumpAndSettle();
       await tester.tap(messageSettingsFinder);
       await tester.pumpAndSettle();
       final rtcSettingsFinder = find.text(
-        'Open Call Invitation Notification Settings',
+        strings.openCallInvitationNotificationSettings,
       );
-      await tester.scrollUntilVisible(
-        rtcSettingsFinder,
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
       await tester.tap(rtcSettingsFinder);
       await tester.pumpAndSettle();
 

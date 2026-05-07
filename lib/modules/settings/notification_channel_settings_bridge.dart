@@ -38,10 +38,15 @@ class DefaultNotificationChannelSettingsBridge
     return openAppSettings();
   }
 
+  @visibleForTesting
+  String resolveChannelIdForTesting(NotificationSettingsChannel channel) {
+    return _resolveChannelId(channel);
+  }
+
   String _resolveChannelId(NotificationSettingsChannel channel) {
     switch (channel) {
       case NotificationSettingsChannel.message:
-        return NotificationHelper.messageChannelId;
+        return NotificationHelper.messageAlertChannelId;
       case NotificationSettingsChannel.rtc:
         return NotificationHelper.rtcChannelId;
     }

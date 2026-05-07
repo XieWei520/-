@@ -13,6 +13,7 @@ import '../modules/home/home_surface_kernel.dart';
 import '../modules/video_call/call_coordinator.dart';
 import '../core/theme/wk_dark_theme.dart';
 import '../widgets/wk_theme.dart';
+import '../wukong_push/android_keep_alive_service.dart';
 import '../wukong_push/device_badge_service.dart';
 import '../wukong_push/notification/browser_notification_click_bridge.dart';
 import '../wukong_push/notification_permission_prompt_bridge.dart';
@@ -49,6 +50,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       isLoggedIn: () => ref.read(authProvider).isLoggedIn,
     );
     DeviceBadgeService.instance.registerEndpoint();
+    AndroidKeepAliveService.instance.registerEndpoint();
     _browserNotificationClickBridge = BrowserNotificationClickBridge.instance;
     _browserNotificationClickBridge.start(
       onNotificationClick: PushService.instance.handleNotificationTapPayload,

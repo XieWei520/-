@@ -5,9 +5,71 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../core/utils/storage_utils.dart';
 import 'desktop_message_alert_policy.dart';
 import 'message_alert_plan.dart';
 import 'notification_helper.dart';
+
+const String androidMessageAlertNewMsgNoticeKey =
+    'wk_android_message_alert_new_msg_notice';
+const String androidMessageAlertShowMessageDetailKey =
+    'wk_android_message_alert_show_message_detail';
+const String androidMessageAlertVoiceOnKey =
+    'wk_android_message_alert_voice_on';
+const String androidMessageAlertShockOnKey =
+    'wk_android_message_alert_shock_on';
+
+class MessageAlertSettings {
+  const MessageAlertSettings({
+    this.newMsgNotice = true,
+    this.showMessageDetail = true,
+    this.voiceOn = true,
+    this.shockOn = true,
+  });
+
+  final bool newMsgNotice;
+  final bool showMessageDetail;
+  final bool voiceOn;
+  final bool shockOn;
+}
+
+abstract class MessageAlertSettingsStore {
+  MessageAlertSettings read();
+}
+
+class StorageMessageAlertSettingsStore implements MessageAlertSettingsStore {
+  const StorageMessageAlertSettingsStore();
+
+  @override
+  MessageAlertSettings read() {
+    return MessageAlertSettings(
+      newMsgNotice:
+          StorageUtils.getBool(androidMessageAlertNewMsgNoticeKey) ?? true,
+      showMessageDetail:
+          StorageUtils.getBool(androidMessageAlertShowMessageDetailKey) ?? true,
+      voiceOn: StorageUtils.getBool(androidMessageAlertVoiceOnKey) ?? true,
+      shockOn: StorageUtils.getBool(androidMessageAlertShockOnKey) ?? true,
+    );
+  }
+}
+
+Future<void> persistAndroidMessageAlertSettings({
+  required bool newMsgNotice,
+  required bool showMessageDetail,
+  required bool voiceOn,
+  required bool shockOn,
+}) async {
+  if (!StorageUtils.isInitialized) {
+    return;
+  }
+  await StorageUtils.setBool(androidMessageAlertNewMsgNoticeKey, newMsgNotice);
+  await StorageUtils.setBool(
+    androidMessageAlertShowMessageDetailKey,
+    showMessageDetail,
+  );
+  await StorageUtils.setBool(androidMessageAlertVoiceOnKey, voiceOn);
+  await StorageUtils.setBool(androidMessageAlertShockOnKey, shockOn);
+}
 
 class AndroidMessageNotification {
   const AndroidMessageNotification({
@@ -17,6 +79,8 @@ class AndroidMessageNotification {
     required this.groupKey,
     this.payload = '',
     this.onlyAlertOnce = false,
+    this.playSound = true,
+    this.enableVibration = true,
   });
 
   final int id;
@@ -25,6 +89,8 @@ class AndroidMessageNotification {
   final String groupKey;
   final String payload;
   final bool onlyAlertOnce;
+  final bool playSound;
+  final bool enableVibration;
 }
 
 abstract class AndroidMessageAlertPresenter {
@@ -41,10 +107,18 @@ class AndroidMessageAlertManager {
   AndroidMessageAlertManager({
     AndroidMessageAlertPresenter? presenter,
     DesktopMessageAlertPolicy? policy,
+    MessageAlertSettingsStore? alertSettingsStore,
+    MessageAlertSettings? alertSettings,
     bool Function()? isWeb,
     TargetPlatform Function()? targetPlatform,
   }) : _presenter = presenter ?? AndroidMessageAlertPresenterIo(),
        _policy = policy ?? DesktopMessageAlertPolicy(),
+       _alertSettingsStore =
+           alertSettingsStore ??
+           _FixedMessageAlertSettingsStore(
+             alertSettings,
+             fallback: const StorageMessageAlertSettingsStore(),
+           ),
        _isWeb = isWeb ?? (() => kIsWeb),
        _targetPlatform = targetPlatform ?? (() => defaultTargetPlatform);
 
@@ -53,6 +127,7 @@ class AndroidMessageAlertManager {
 
   final AndroidMessageAlertPresenter _presenter;
   final DesktopMessageAlertPolicy _policy;
+  final MessageAlertSettingsStore _alertSettingsStore;
   final bool Function() _isWeb;
   final TargetPlatform Function() _targetPlatform;
 
@@ -64,12 +139,17 @@ class AndroidMessageAlertManager {
       return;
     }
 
+    final settings = _alertSettingsStore.read();
+    if (!settings.newMsgNotice) {
+      return;
+    }
+
     final decision = _policy.resolve(
       plan: plan,
       lifecycleState: lifecycleState,
     );
 
-    if (decision.playForegroundSound) {
+    if (decision.playForegroundSound && settings.voiceOn) {
       await _presenter.playForegroundTick();
     }
 
@@ -79,16 +159,31 @@ class AndroidMessageAlertManager {
         AndroidMessageNotification(
           id: _stablePositiveId(notification.identifier),
           title: notification.title,
-          body: notification.body,
+          body: settings.showMessageDetail ? notification.body : 'New message',
           groupKey: notification.identifier,
           payload: plan.payload,
           onlyAlertOnce: notification.count > 1,
+          playSound: settings.voiceOn,
+          enableVibration: settings.shockOn,
         ),
       );
     }
   }
 
   Future<void> dispose() => _presenter.dispose();
+}
+
+class _FixedMessageAlertSettingsStore implements MessageAlertSettingsStore {
+  const _FixedMessageAlertSettingsStore(
+    this._settings, {
+    required MessageAlertSettingsStore fallback,
+  }) : _fallback = fallback;
+
+  final MessageAlertSettings? _settings;
+  final MessageAlertSettingsStore _fallback;
+
+  @override
+  MessageAlertSettings read() => _settings ?? _fallback.read();
 }
 
 class AndroidMessageAlertPresenterIo implements AndroidMessageAlertPresenter {
@@ -154,13 +249,16 @@ class AndroidMessageAlertPresenterIo implements AndroidMessageAlertPresenter {
       channelDescription: NotificationHelper.messageAlertChannelDescription,
       importance: Importance.high,
       priority: Priority.high,
-      playSound: true,
-      sound: const RawResourceAndroidNotificationSound(
-        NotificationHelper.messageSoundResource,
-      ),
+      playSound: notification.playSound,
+      sound: notification.playSound
+          ? const RawResourceAndroidNotificationSound(
+              NotificationHelper.messageSoundResource,
+            )
+          : null,
       onlyAlertOnce: notification.onlyAlertOnce,
       groupKey: notification.groupKey,
       category: AndroidNotificationCategory.message,
+      enableVibration: notification.enableVibration,
       audioAttributesUsage: AudioAttributesUsage.notification,
     );
   }

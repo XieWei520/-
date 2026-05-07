@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../service/api/collection_api.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../wukong_base/endpoint/endpoint_manager.dart';
+import '../../wukong_push/notification/android_message_alert_manager.dart';
 import 'notification_channel_settings_bridge.dart';
 import 'settings_strings.dart';
 import 'settings_surface_widgets.dart';
@@ -59,6 +62,14 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
             settings['msg_show_detail'] != 0;
         _voiceOn = settings['voice_on'] != 0;
         _shockOn = settings['shock_on'] != 0;
+        unawaited(
+          persistAndroidMessageAlertSettings(
+            newMsgNotice: _newMsgNotice,
+            showMessageDetail: _showMessageDetail,
+            voiceOn: _voiceOn,
+            shockOn: _shockOn,
+          ),
+        );
       });
     } catch (_) {
     } finally {
@@ -78,6 +89,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         'voice_on': _voiceOn ? 1 : 0,
         'shock_on': _shockOn ? 1 : 0,
       });
+      await persistAndroidMessageAlertSettings(
+        newMsgNotice: _newMsgNotice,
+        showMessageDetail: _showMessageDetail,
+        voiceOn: _voiceOn,
+        shockOn: _shockOn,
+      );
       _showSnackBar(strings.notificationSaveSuccess);
       return true;
     } catch (error) {
@@ -174,10 +191,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                 value: _newMsgNotice,
                 onChanged: _isSaving
                     ? null
-                    : (value) => _updateToggle(
-                        value,
-                        (next) => _newMsgNotice = next,
-                      ),
+                    : (value) =>
+                          _updateToggle(value, (next) => _newMsgNotice = next),
               ),
               SwitchSettingTile(
                 icon: Icons.message_outlined,

@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/utils/storage_utils.dart';
 import '../wukong_base/net/api_client.dart';
+import 'android_keep_alive_service.dart';
 import 'handlers/fcm_handler.dart';
 import 'handlers/push_handler.dart';
 import 'models/push_models.dart';
@@ -38,6 +39,7 @@ typedef NotificationInitializer =
 typedef LocalNotificationPermissionRequester = Future<bool> Function();
 typedef NotificationPermissionDeniedCallback = Future<void> Function();
 typedef PushSupportChecker = bool Function();
+typedef AndroidKeepAliveStarter = Future<bool> Function();
 typedef ForegroundNotificationPresenter =
     Future<void> Function(
       ForegroundNotificationPlan plan,
@@ -52,6 +54,7 @@ class PushService {
     LocalNotificationPermissionRequester? requestLocalNotificationPermission,
     NotificationPermissionDeniedCallback? onPermissionDenied,
     PushSupportChecker? isPushSupported,
+    AndroidKeepAliveStarter? startAndroidKeepAlive,
     ForegroundNotificationPresenter? showForegroundNotification,
   }) : _client = client ?? ApiClient.instance,
        _handlerSelector = handlerSelector ?? _defaultSelectHandler,
@@ -62,6 +65,9 @@ class PushService {
            _defaultRequestLocalNotificationPermission,
        _onPermissionDenied = onPermissionDenied ?? _defaultOnPermissionDenied,
        _isPushSupported = isPushSupported ?? _defaultIsPushSupported,
+       _startAndroidKeepAlive =
+           startAndroidKeepAlive ??
+           AndroidKeepAliveService.instance.startForLoggedInAndroidAlerts,
        _foregroundNotificationPresenter =
            showForegroundNotification ?? _defaultShowForegroundNotification;
   static final PushService _instance = PushService();
@@ -74,6 +80,7 @@ class PushService {
   _requestLocalNotificationPermission;
   final NotificationPermissionDeniedCallback _onPermissionDenied;
   final PushSupportChecker _isPushSupported;
+  final AndroidKeepAliveStarter _startAndroidKeepAlive;
   final ForegroundNotificationPresenter _foregroundNotificationPresenter;
   final StreamController<PushMessageEvent> _messageController =
       StreamController<PushMessageEvent>.broadcast();
@@ -198,6 +205,21 @@ class PushService {
     await _onPermissionDenied();
   }
 
+  Future<void> _ensureAndroidKeepAliveStarted() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    if (!StorageUtils.isLoggedIn()) {
+      return;
+    }
+    final started = await _startAndroidKeepAlive();
+    if (!started) {
+      debugPrint(
+        'PushService: Android keep-alive foreground service was not started.',
+      );
+    }
+  }
+
   static Future<void> _defaultShowForegroundNotification(
     ForegroundNotificationPlan plan,
     PushMessageEvent event,
@@ -233,6 +255,7 @@ class PushService {
   /// Should be called after successful login to ensure token registration.
   Future<void> handleLogin() async {
     await ensureInitialized();
+    await _ensureAndroidKeepAliveStarted();
     await _syncTokenWithServer(force: true);
   }
 
