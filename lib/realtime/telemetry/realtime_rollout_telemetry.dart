@@ -41,19 +41,14 @@ class RealtimeTelemetryEvent {
 
 abstract class SessionRuntimeTelemetry {
   void bindSessionId(String sessionId);
-
   void setSessionRunning(bool isRunning);
-
   void recordGatewayReconnect();
-
   void recordGapRepairPull();
 }
 
 abstract class SessionEventGatewayTelemetry {
   void bindSessionId(String sessionId);
-
   void recordInboundControlFrame();
-
   void recordControlFrameDecodeError();
 }
 
@@ -151,21 +146,15 @@ class RealtimeRolloutTelemetry
 
   @override
   void bindSessionId(String sessionId) {
-    if (_disposed) {
-      return;
-    }
+    if (_disposed) return;
     final normalized = sessionId.trim();
-    if (normalized.isEmpty) {
-      return;
-    }
+    if (normalized.isEmpty) return;
     _sessionId = normalized;
   }
 
   @override
   void setSessionRunning(bool isRunning) {
-    if (_disposed) {
-      return;
-    }
+    if (_disposed) return;
     _sessionRunning = isRunning;
   }
 
@@ -215,9 +204,7 @@ class RealtimeRolloutTelemetry
       FrameJankTelemetry.reasonTotal => metricChatFrameTotalJankMs,
       _ => null,
     };
-    if (metricName == null) {
-      return;
-    }
+    if (metricName == null) return;
     _recordDuration(
       metricName,
       duration,
@@ -260,20 +247,14 @@ class RealtimeRolloutTelemetry
         growable: true,
       );
       final heartbeat = _buildSessionHeartbeatEvent();
-      if (heartbeat != null) {
-        pending.add(heartbeat);
-      }
-      if (pending.isEmpty) {
-        return;
-      }
+      if (heartbeat != null) pending.add(heartbeat);
+      if (pending.isEmpty) return;
       try {
         await _transport(List<RealtimeTelemetryEvent>.unmodifiable(pending));
         final clearCount = bufferedEventCount > _buffer.length
             ? _buffer.length
             : bufferedEventCount;
-        if (clearCount > 0) {
-          _buffer.removeRange(0, clearCount);
-        }
+        if (clearCount > 0) _buffer.removeRange(0, clearCount);
       } catch (_) {
         // Keep buffered events for the next flush attempt.
       }
@@ -287,9 +268,7 @@ class RealtimeRolloutTelemetry
     _flushTimer = null;
   }
 
-  void _recordCount(String metricName) {
-    _record(metricName, value: 1);
-  }
+  void _recordCount(String metricName) => _record(metricName, value: 1);
 
   void _recordDuration(
     String metricName,
@@ -304,9 +283,7 @@ class RealtimeRolloutTelemetry
     required num value,
     Map<String, String>? tags,
   }) {
-    if (_disposed) {
-      return;
-    }
+    if (_disposed) return;
     _buffer.add(
       RealtimeTelemetryEvent(
         name: metricName,
@@ -320,9 +297,7 @@ class RealtimeRolloutTelemetry
   }
 
   void _trimBuffer() {
-    if (_buffer.length <= maxBufferedEvents) {
-      return;
-    }
+    if (_buffer.length <= maxBufferedEvents) return;
     final overflow = _buffer.length - maxBufferedEvents;
     _buffer.removeRange(0, overflow);
   }

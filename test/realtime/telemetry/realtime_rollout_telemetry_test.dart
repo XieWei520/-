@@ -47,9 +47,7 @@ void main() {
     final telemetry = RealtimeRolloutTelemetry(
       transport: (events) async {
         attempt += 1;
-        if (attempt == 1) {
-          throw StateError('network down');
-        }
+        if (attempt == 1) throw StateError('network down');
         flushed.add(List<RealtimeTelemetryEvent>.from(events));
       },
       flushInterval: const Duration(hours: 1),
@@ -116,9 +114,7 @@ void main() {
       var failTransport = true;
       final telemetry = RealtimeRolloutTelemetry(
         transport: (events) async {
-          if (failTransport) {
-            throw StateError('telemetry endpoint unavailable');
-          }
+          if (failTransport) throw StateError('telemetry endpoint unavailable');
           batches.add(List<RealtimeTelemetryEvent>.from(events));
         },
         flushInterval: const Duration(hours: 1),
@@ -205,6 +201,95 @@ void main() {
       expect(batches.single.last.rawValue, 1);
       expect(batches.single.last.tags, containsPair('state', 'failed'));
       expect(batches.single.last.tags, containsPair('reason', 'token_invalid'));
+    },
+  );
+
+  test(
+    'records build chat frame jank with safe low-cardinality tags',
+    () async {
+      final batches = <List<RealtimeTelemetryEvent>>[];
+      final telemetry = RealtimeRolloutTelemetry(
+        transport: (events) async {
+          batches.add(List<RealtimeTelemetryEvent>.from(events));
+        },
+        flushInterval: const Duration(hours: 1),
+      );
+      addTearDown(telemetry.dispose);
+
+      telemetry.bindSessionId('sess_jank_01');
+      telemetry.recordChatFrameJank(
+        duration: const Duration(milliseconds: 13),
+        reason: FrameJankTelemetry.reasonBuild,
+      );
+
+      await telemetry.flush();
+
+      expect(batches, hasLength(1));
+      expect(batches.single, hasLength(1));
+      final event = batches.single.single;
+      expect(event.name, RealtimeRolloutTelemetry.metricChatFrameBuildJankMs);
+      expect(event.rawValue, 13);
+      expect(event.sessionId, 'sess_jank_01');
+      expect(event.tags, <String, String>{
+        'surface': 'chat',
+        'reason': 'build',
+      });
+    },
+  );
+
+  test('records raster and total chat frame jank metrics', () async {
+    final batches = <List<RealtimeTelemetryEvent>>[];
+    final telemetry = RealtimeRolloutTelemetry(
+      transport: (events) async {
+        batches.add(List<RealtimeTelemetryEvent>.from(events));
+      },
+      flushInterval: const Duration(hours: 1),
+    );
+    addTearDown(telemetry.dispose);
+
+    telemetry.recordChatFrameJank(
+      duration: const Duration(milliseconds: 21),
+      reason: FrameJankTelemetry.reasonRaster,
+    );
+    telemetry.recordChatFrameJank(
+      duration: const Duration(milliseconds: 33),
+      reason: FrameJankTelemetry.reasonTotal,
+    );
+
+    await telemetry.flush();
+
+    expect(batches, hasLength(1));
+    expect(batches.single.map((event) => event.name), <String>[
+      RealtimeRolloutTelemetry.metricChatFrameRasterJankMs,
+      RealtimeRolloutTelemetry.metricChatFrameTotalJankMs,
+    ]);
+    expect(batches.single.map((event) => event.rawValue), <int>[21, 33]);
+    expect(batches.single.map((event) => event.tags), <Map<String, String>>[
+      <String, String>{'surface': 'chat', 'reason': 'raster'},
+      <String, String>{'surface': 'chat', 'reason': 'total'},
+    ]);
+  });
+
+  test(
+    'ignores unknown chat frame jank reasons to prevent high-cardinality tags',
+    () async {
+      final batches = <List<RealtimeTelemetryEvent>>[];
+      final telemetry = RealtimeRolloutTelemetry(
+        transport: (events) async {
+          batches.add(List<RealtimeTelemetryEvent>.from(events));
+        },
+        flushInterval: const Duration(hours: 1),
+      );
+      addTearDown(telemetry.dispose);
+
+      telemetry.recordChatFrameJank(
+        duration: const Duration(milliseconds: 99),
+        reason: 'channel-12345',
+      );
+
+      await telemetry.flush();
+
+      expect(batches, isEmpty);
     },
   );
 }

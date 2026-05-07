@@ -19,6 +19,7 @@ import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../../core/config/api_config.dart';
 import '../../core/config/im_config.dart';
+import '../../core/motion/chat_motion.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../data/models/call.dart';
 import '../../data/models/chat_session.dart';
@@ -5046,9 +5047,9 @@ class _ComposerSendButtonState extends State<_ComposerSendButton> {
       child: AnimatedScale(
         key: const ValueKey<String>('chat-send-button-motion'),
         scale: scale,
-        duration: reduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 140),
+        duration: ChatMotionDurations.pressedScale.resolve(
+          disableAnimations: reduceMotion,
+        ),
         curve: Curves.easeOutCubic,
         child: SizedBox(
           width: widget.width,
