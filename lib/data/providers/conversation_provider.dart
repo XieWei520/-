@@ -15,6 +15,7 @@ import '../../core/utils/storage_utils.dart';
 import '../repositories/wk_message_repository.dart';
 import 'chat_history_gateway.dart';
 import '../../modules/chat/chat_composer_controller.dart';
+import '../../modules/chat/chat_message_match_index.dart';
 import '../../modules/chat/chat_message_mapper.dart';
 import '../../modules/settings/chat_history_reset_service.dart';
 import '../../modules/chat/chat_viewport_controller.dart';
@@ -1736,20 +1737,20 @@ final currentChatProvider = StateProvider<ChatSession?>((ref) => null);
 
 List<WKMsg> mergeConversationMessages(Iterable<WKMsg> messages) {
   final merged = <WKMsg>[];
-  final matchIndex = ChatMessageMatchIndex(merged);
+  final matchIndex = ChatMessageMatchIndex.empty();
   for (final message in messages) {
     if (!shouldDisplayConversationMessage(message)) {
       continue;
     }
     final index = matchIndex.find(message);
     if (index == -1) {
-      matchIndex.add(merged.length, message);
       merged.add(message);
+      matchIndex.indexMessage(message, merged.length - 1);
       continue;
     }
     final preferred = preferConversationMessage(merged[index], message);
     merged[index] = preferred;
-    matchIndex.add(index, preferred);
+    matchIndex.indexMessage(preferred, index);
   }
   return merged;
 }
@@ -1814,113 +1815,7 @@ bool shouldDisplayConversationMessage(WKMsg message) {
 }
 
 int findConversationMessageIndex(List<WKMsg> messages, WKMsg target) {
-  return ChatMessageMatchIndex(messages).find(target);
-}
-
-class ChatMessageMatchIndex {
-  ChatMessageMatchIndex(Iterable<WKMsg> messages) {
-    var index = 0;
-    for (final message in messages) {
-      add(index, message);
-      index += 1;
-    }
-  }
-
-  final Map<int, int> _clientSeq = <int, int>{};
-  final Map<String, int> _clientMsgNo = <String, int>{};
-  final Map<String, int> _messageId = <String, int>{};
-  final Map<String, int> _messageSeq = <String, int>{};
-  final Map<String, int> _orderSeq = <String, int>{};
-
-  int find(WKMsg target) {
-    final clientSeq = target.clientSeq;
-    if (clientSeq > 0) {
-      final index = _clientSeq[clientSeq];
-      if (index != null) {
-        return index;
-      }
-    }
-
-    final clientMsgNo = target.clientMsgNO.trim();
-    if (clientMsgNo.isNotEmpty) {
-      final index = _clientMsgNo[clientMsgNo];
-      if (index != null) {
-        return index;
-      }
-    }
-
-    final messageId = target.messageID.trim();
-    if (messageId.isNotEmpty) {
-      final index = _messageId[messageId];
-      if (index != null) {
-        return index;
-      }
-    }
-
-    final messageSeq = _conversationScopedSeqKey(
-      target.channelID,
-      target.channelType,
-      target.messageSeq,
-    );
-    if (messageSeq != null) {
-      final index = _messageSeq[messageSeq];
-      if (index != null) {
-        return index;
-      }
-    }
-
-    final orderSeq = _conversationScopedSeqKey(
-      target.channelID,
-      target.channelType,
-      target.orderSeq,
-    );
-    if (orderSeq != null) {
-      final index = _orderSeq[orderSeq];
-      if (index != null) {
-        return index;
-      }
-    }
-
-    return -1;
-  }
-
-  void add(int index, WKMsg message) {
-    if (message.clientSeq > 0) {
-      _clientSeq.putIfAbsent(message.clientSeq, () => index);
-    }
-    final clientMsgNo = message.clientMsgNO.trim();
-    if (clientMsgNo.isNotEmpty) {
-      _clientMsgNo.putIfAbsent(clientMsgNo, () => index);
-    }
-    final messageId = message.messageID.trim();
-    if (messageId.isNotEmpty) {
-      _messageId.putIfAbsent(messageId, () => index);
-    }
-    final messageSeq = _conversationScopedSeqKey(
-      message.channelID,
-      message.channelType,
-      message.messageSeq,
-    );
-    if (messageSeq != null) {
-      _messageSeq.putIfAbsent(messageSeq, () => index);
-    }
-    final orderSeq = _conversationScopedSeqKey(
-      message.channelID,
-      message.channelType,
-      message.orderSeq,
-    );
-    if (orderSeq != null) {
-      _orderSeq.putIfAbsent(orderSeq, () => index);
-    }
-  }
-}
-
-String? _conversationScopedSeqKey(String channelId, int channelType, int seq) {
-  final normalizedChannelId = channelId.trim();
-  if (normalizedChannelId.isEmpty || seq <= 0) {
-    return null;
-  }
-  return '$channelType:$normalizedChannelId:$seq';
+  return ChatMessageMatchIndex.findMessageIndex(messages, target);
 }
 
 String _messageRefreshKey(WKMsg message) {

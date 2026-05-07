@@ -4,6 +4,7 @@ import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 
 import 'chat_message_mapper.dart';
+import 'chat_message_match_index.dart';
 import 'chat_message_view_model.dart';
 
 @immutable
@@ -12,11 +13,7 @@ class ChatViewportMessageMatcher {
 
   static bool equivalent(WKMsg left, WKMsg right) {
     return chatMessageIdentity(left) == chatMessageIdentity(right) ||
-        _sameClientSeq(left, right) ||
-        _sameClientMsgNo(left, right) ||
-        _sameMessageId(left, right) ||
-        _sameMessageSeq(left, right) ||
-        _sameOrderSeq(left, right);
+        ChatMessageMatchIndex.equivalent(left, right);
   }
 
   static bool snapshotEquals(WKMsg left, WKMsg right) {
@@ -91,103 +88,47 @@ class ChatViewportMessageMatcher {
     }
     return value.hashCode;
   }
-
-  static bool _sameClientSeq(WKMsg left, WKMsg right) {
-    return left.clientSeq > 0 &&
-        right.clientSeq > 0 &&
-        left.clientSeq == right.clientSeq;
-  }
-
-  static bool _sameClientMsgNo(WKMsg left, WKMsg right) {
-    final leftClientMsgNo = left.clientMsgNO.trim();
-    final rightClientMsgNo = right.clientMsgNO.trim();
-    return leftClientMsgNo.isNotEmpty &&
-        rightClientMsgNo.isNotEmpty &&
-        leftClientMsgNo == rightClientMsgNo;
-  }
-
-  static bool _sameMessageId(WKMsg left, WKMsg right) {
-    final leftMessageId = left.messageID.trim();
-    final rightMessageId = right.messageID.trim();
-    return leftMessageId.isNotEmpty &&
-        rightMessageId.isNotEmpty &&
-        leftMessageId == rightMessageId;
-  }
-
-  static bool _sameMessageSeq(WKMsg left, WKMsg right) {
-    return _sameConversation(left, right) &&
-        left.messageSeq > 0 &&
-        right.messageSeq > 0 &&
-        left.messageSeq == right.messageSeq;
-  }
-
-  static bool _sameOrderSeq(WKMsg left, WKMsg right) {
-    return _sameConversation(left, right) &&
-        left.orderSeq > 0 &&
-        right.orderSeq > 0 &&
-        left.orderSeq == right.orderSeq;
-  }
-
-  static bool _sameConversation(WKMsg left, WKMsg right) {
-    return left.channelType == right.channelType &&
-        left.channelID.trim() == right.channelID.trim();
-  }
 }
 
 class ChatViewportMessageMatchIndex {
-  ChatViewportMessageMatchIndex(Iterable<ChatMessageViewModel> items) {
+  ChatViewportMessageMatchIndex(Iterable<ChatMessageViewModel> items)
+    : _messageIndex = ChatMessageMatchIndex.empty() {
     var index = 0;
     for (final item in items) {
-      register(item, index);
+      _indexAt(item, index);
       index++;
     }
   }
 
-  final Map<String, int> _baseIndexByKey = <String, int>{};
-  int _headInsertions = 0;
+  final Map<String, int> _identityToIndex = <String, int>{};
+  final ChatMessageMatchIndex _messageIndex;
 
   int find(WKMsg message) {
-    for (final key in _keysFor(message)) {
-      final baseIndex = _baseIndexByKey[key];
-      if (baseIndex != null) {
-        return baseIndex + _headInsertions;
-      }
+    final identityIndex = _identityToIndex[chatMessageIdentity(message)];
+    if (identityIndex != null) {
+      return identityIndex;
     }
-    return -1;
+    return _messageIndex.find(message);
   }
 
   void register(ChatMessageViewModel model, int index) {
-    final baseIndex = index - _headInsertions;
-    for (final key in _keysFor(model.message)) {
-      _baseIndexByKey.putIfAbsent(key, () => baseIndex);
-    }
+    _indexAt(model, index);
   }
 
   void noteHeadInsertion() {
-    _headInsertions++;
+    shiftIndexesAtOrAfter(0);
   }
 
-  static List<String> _keysFor(WKMsg message) {
-    final keys = <String>[chatMessageIdentity(message)];
-    if (message.clientSeq > 0) {
-      keys.add('client_seq:${message.clientSeq}');
-    }
-    final clientMsgNo = message.clientMsgNO.trim();
-    if (clientMsgNo.isNotEmpty) {
-      keys.add('client_msg_no:$clientMsgNo');
-    }
-    final messageId = message.messageID.trim();
-    if (messageId.isNotEmpty) {
-      keys.add('message_id:$messageId');
-    }
-    final channelKey = '${message.channelType}:${message.channelID.trim()}';
-    if (message.messageSeq > 0) {
-      keys.add('message_seq:$channelKey:${message.messageSeq}');
-    }
-    if (message.orderSeq > 0) {
-      keys.add('order_seq:$channelKey:${message.orderSeq}');
-    }
-    return keys;
+  void shiftIndexesAtOrAfter(int insertionIndex) {
+    _identityToIndex.updateAll(
+      (_, value) => value >= insertionIndex ? value + 1 : value,
+    );
+    _messageIndex.shiftIndexesAtOrAfter(insertionIndex);
+  }
+
+  void _indexAt(ChatMessageViewModel model, int index) {
+    _identityToIndex[model.identity] = index;
+    _messageIndex.indexMessage(model.message, index);
   }
 }
 
