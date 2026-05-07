@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wukong_im_app/core/constants/app_constants.dart';
+import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/wukong_push/handlers/push_handler.dart'
     as handler;
 import 'package:wukong_im_app/wukong_push/models/push_models.dart';
@@ -9,8 +12,13 @@ import 'package:wukong_im_app/wukong_push/notification/foreground_notification_p
 import 'package:wukong_im_app/wukong_push/push_service.dart';
 
 void main() {
-  tearDown(() {
+  tearDown(() async {
     debugDefaultTargetPlatformOverride = null;
+    if (StorageUtils.isInitialized) {
+      await StorageUtils.remove(AppConstants.keyUid);
+      await StorageUtils.remove(AppConstants.keyToken);
+      await StorageUtils.remove(AppConstants.keyImToken);
+    }
   });
 
   test(
@@ -121,6 +129,61 @@ void main() {
           ),
         ),
       );
+    },
+  );
+
+  test(
+    'push service starts Android keep-alive after login for local IM alerts',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        AppConstants.keyUid: 'u_self',
+        AppConstants.keyToken: 'api-token',
+      });
+      await StorageUtils.init();
+      var keepAliveStartCount = 0;
+
+      final service = PushService(
+        isPushSupported: () => true,
+        handlerSelector: () async => null,
+        initializeNotifications:
+            ({void Function(String payload)? onNotificationTap}) async {},
+        requestLocalNotificationPermission: () async => true,
+        onPermissionDenied: () async {},
+        startAndroidKeepAlive: () async {
+          keepAliveStartCount += 1;
+          return true;
+        },
+      );
+
+      await service.handleLogin();
+
+      expect(keepAliveStartCount, 1);
+    },
+  );
+
+  test(
+    'push service does not start Android keep-alive before an authenticated login',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      var keepAliveStartCount = 0;
+
+      final service = PushService(
+        isPushSupported: () => true,
+        handlerSelector: () async => null,
+        initializeNotifications:
+            ({void Function(String payload)? onNotificationTap}) async {},
+        requestLocalNotificationPermission: () async => true,
+        onPermissionDenied: () async {},
+        startAndroidKeepAlive: () async {
+          keepAliveStartCount += 1;
+          return true;
+        },
+      );
+
+      await service.handleLogin();
+
+      expect(keepAliveStartCount, 0);
     },
   );
 

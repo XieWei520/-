@@ -40,5 +40,16 @@ void main() {
       expect(details.onlyAlertOnce, isTrue);
       expect(details.audioAttributesUsage, AudioAttributesUsage.notification);
     });
+
+    test('details can follow user sound and vibration switches', () {
+      final details = NotificationHelper.buildAndroidMessageAlertDetails(
+        playSound: false,
+        enableVibration: false,
+      );
+
+      expect(details.playSound, isFalse);
+      expect(details.sound, isNull);
+      expect(details.enableVibration, isFalse);
+    });
   });
 }

@@ -143,6 +143,8 @@ class AudioRecordManager {
 
   void setConfig(RecordingConfig config) {}
 
+  double getAmplitude() => 0.0;
+
   Future<bool> start() async {
     _notifyRecordingError('Audio recording is unavailable on this platform');
     return false;

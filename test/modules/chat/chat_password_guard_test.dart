@@ -44,7 +44,7 @@ void main() {
                     ..remoteExtraMap = <String, dynamic>{'chat_pwd_on': 1}
                     ..localExtra = <String, dynamic>{'chat_pwd_on': 1};
                 },
-                clearChannelMessages: (_, __) async {},
+                clearChannelMessages: (_, _) async {},
               ),
             ),
             chatSceneGatewayProvider.overrideWith(

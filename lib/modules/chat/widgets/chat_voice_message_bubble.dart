@@ -491,7 +491,7 @@ class ChatVoiceMessageBubble extends ConsumerWidget {
     final textPainter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: Directionality.of(context),
-      textScaleFactor: MediaQuery.textScaleFactorOf(context),
+      textScaler: MediaQuery.textScalerOf(context),
     )..layout(minWidth: 0, maxWidth: double.infinity);
     return textPainter.width;
   }

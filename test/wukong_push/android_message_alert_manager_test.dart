@@ -100,6 +100,72 @@ void main() {
         expect(presenter.notifications.last.onlyAlertOnce, isTrue);
       },
     );
+
+    test('respects disabled new message notice setting', () async {
+      final presenter = _FakePresenter();
+      final manager = AndroidMessageAlertManager(
+        presenter: presenter,
+        policy: DesktopMessageAlertPolicy(),
+        alertSettings: const MessageAlertSettings(newMsgNotice: false),
+        isWeb: () => false,
+        targetPlatform: () => TargetPlatform.android,
+      );
+
+      await manager.showNewMessageAlert(
+        plan: _plan(),
+        lifecycleState: AppLifecycleState.hidden,
+      );
+
+      expect(presenter.foregroundSoundCount, 0);
+      expect(presenter.notifications, isEmpty);
+    });
+
+    test(
+      'can hide message detail and disable background sound/vibration',
+      () async {
+        final presenter = _FakePresenter();
+        final manager = AndroidMessageAlertManager(
+          presenter: presenter,
+          policy: DesktopMessageAlertPolicy(),
+          alertSettings: const MessageAlertSettings(
+            showMessageDetail: false,
+            voiceOn: false,
+            shockOn: false,
+          ),
+          isWeb: () => false,
+          targetPlatform: () => TargetPlatform.android,
+        );
+
+        await manager.showNewMessageAlert(
+          plan: _plan(body: 'private details'),
+          lifecycleState: AppLifecycleState.hidden,
+        );
+
+        final notification = presenter.notifications.single;
+        expect(notification.body, 'New message');
+        expect(notification.playSound, isFalse);
+        expect(notification.enableVibration, isFalse);
+      },
+    );
+
+    test('disabled voice setting suppresses focused foreground tick', () async {
+      final presenter = _FakePresenter();
+      final manager = AndroidMessageAlertManager(
+        presenter: presenter,
+        policy: DesktopMessageAlertPolicy(),
+        alertSettings: const MessageAlertSettings(voiceOn: false),
+        isWeb: () => false,
+        targetPlatform: () => TargetPlatform.android,
+      );
+
+      await manager.showNewMessageAlert(
+        plan: _plan(),
+        lifecycleState: AppLifecycleState.resumed,
+      );
+
+      expect(presenter.foregroundSoundCount, 0);
+      expect(presenter.notifications, isEmpty);
+    });
   });
 }
 
