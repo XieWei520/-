@@ -16,7 +16,7 @@ void main() {
         GroupMember(groupNo: 'group_001', uid: 'uid_002', name: 'Member'),
       ],
       qrRawContent:
-          'http://42.194.218.158/join_group.html?group_no=group_001&auth_code=auth_001',
+          'https://infoequity.cn/join_group.html?group_no=group_001&auth_code=auth_001',
       internalJoinGroupNo: 'group_001',
       internalJoinAuthCode: 'auth_001',
       usedSyntheticInternalJoin: false,

@@ -147,7 +147,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(bindRequest, isNotNull);
-    expect(bindRequest!.serverUrl, 'https://infoequity.qingyunshe.top');
+    expect(bindRequest!.serverUrl, 'https://infoequity.cn');
     expect(bindRequest!.pairingCode, 'ABCD-1234');
     expect(bindRequest!.forcePair, isFalse);
     expect(loadCount, 2);

@@ -207,7 +207,7 @@ class _FeishuMonitorCenterPageState extends State<FeishuMonitorCenterPage> {
           widget.onBindLocalAgent ?? MonitorLocalAgentBinder().bindAndHeartbeat;
       final result = await binder(
         LocalAgentBindRequest(
-          serverUrl: 'https://infoequity.qingyunshe.top',
+          serverUrl: 'https://infoequity.cn',
           pairingCode: code.code,
           forcePair: _isRepairingAgent,
         ),

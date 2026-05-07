@@ -129,7 +129,7 @@ void main() {
       addTearDown(sub.cancel);
 
       await engine.connect(
-        url: 'wss://infoequity.qingyunshe.top/livekit',
+        url: 'wss://infoequity.cn/livekit',
         token: 'lk-token',
         enableVideo: true,
       );

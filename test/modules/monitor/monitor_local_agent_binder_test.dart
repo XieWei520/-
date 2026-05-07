@@ -15,7 +15,7 @@ void main() {
     await expectLater(
       binder.bindAndHeartbeat(
         const LocalAgentBindRequest(
-          serverUrl: 'https://infoequity.qingyunshe.top',
+          serverUrl: 'https://infoequity.cn',
           pairingCode: 'ABC123',
         ),
       ),
@@ -63,7 +63,7 @@ void main() {
       await expectLater(
         binder.bindAndHeartbeat(
           LocalAgentBindRequest(
-            serverUrl: 'https://infoequity.qingyunshe.top',
+            serverUrl: 'https://infoequity.cn',
             pairingCode: 'ABC123',
             storeDir: tempDir.path,
           ),
@@ -120,7 +120,7 @@ void main() {
     await expectLater(
       binder.bindAndHeartbeat(
         LocalAgentBindRequest(
-          serverUrl: 'https://infoequity.qingyunshe.top',
+          serverUrl: 'https://infoequity.cn',
           pairingCode: 'USED-1',
           storeDir: tempDir.path,
         ),
@@ -165,7 +165,7 @@ void main() {
 
       final result = await binder.bindAndHeartbeat(
         LocalAgentBindRequest(
-          serverUrl: 'https://infoequity.qingyunshe.top',
+          serverUrl: 'https://infoequity.cn',
           pairingCode: 'ABC123',
           storeDir: tempDir.path,
         ),
@@ -178,7 +178,7 @@ void main() {
         containsAll(<String>[
           'pair',
           '--server',
-          'https://infoequity.qingyunshe.top',
+          'https://infoequity.cn',
           '--code',
           'ABC123',
         ]),
@@ -217,7 +217,7 @@ void main() {
 
       final result = await binder.bindAndHeartbeat(
         LocalAgentBindRequest(
-          serverUrl: 'https://infoequity.qingyunshe.top',
+          serverUrl: 'https://infoequity.cn',
           pairingCode: 'SHOULD-NOT-PAIR',
           storeDir: tempDir.path,
         ),
@@ -259,7 +259,7 @@ void main() {
 
     await binder.bindAndHeartbeat(
       LocalAgentBindRequest(
-        serverUrl: 'https://infoequity.qingyunshe.top',
+        serverUrl: 'https://infoequity.cn',
         pairingCode: 'FORCE-PAIR',
         storeDir: tempDir.path,
         forcePair: true,
