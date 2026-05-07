@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../call/call_state_machine.dart';
+
 typedef RealtimeTelemetryTransport =
     Future<void> Function(List<RealtimeTelemetryEvent> events);
 typedef RealtimeTelemetryClock = DateTime Function();
@@ -74,13 +76,27 @@ abstract class FrameJankTelemetry {
   });
 }
 
+abstract class CallTelemetry {
+  void recordCallEvent({
+    required String roomId,
+    required String event,
+    required CallLifecycleStatus state,
+    CallFailureReason? reason,
+    Duration? duration,
+    Map<String, dynamic>? stats,
+    String? callId,
+    String? uid,
+  });
+}
+
 class RealtimeRolloutTelemetry
     implements
         SessionRuntimeTelemetry,
         SessionEventGatewayTelemetry,
         ConversationPatchTelemetry,
         MessageQueryTelemetry,
-        FrameJankTelemetry {
+        FrameJankTelemetry,
+        CallTelemetry {
   RealtimeRolloutTelemetry({
     RealtimeTelemetryTransport? transport,
     this.flushInterval = const Duration(seconds: 30),
@@ -110,6 +126,16 @@ class RealtimeRolloutTelemetry
   static const String metricChatFrameBuildJankMs = 'chat_frame_build_jank_ms';
   static const String metricChatFrameRasterJankMs = 'chat_frame_raster_jank_ms';
   static const String metricChatFrameTotalJankMs = 'chat_frame_total_jank_ms';
+  static const String callInviteReceivedEvent = 'call.invite.received';
+  static const String callDialStartedEvent = 'call.dial.started';
+  static const String callAcceptedEvent = 'call.accepted';
+  static const String callLiveKitConnectingEvent = 'call.livekit.connecting';
+  static const String callLiveKitConnectedEvent = 'call.livekit.connected';
+  static const String callLiveKitReconnectingEvent =
+      'call.livekit.reconnecting';
+  static const String callLiveKitReconnectedEvent = 'call.livekit.reconnected';
+  static const String callEndedEvent = 'call.ended';
+  static const String callFailedEvent = 'call.failed';
 
   final Duration flushInterval;
   final int maxBufferedEvents;
@@ -182,7 +208,8 @@ class RealtimeRolloutTelemetry
     required Duration duration,
     required String reason,
   }) {
-    final metricName = switch (reason.trim()) {
+    final normalizedReason = reason.trim();
+    final metricName = switch (normalizedReason) {
       FrameJankTelemetry.reasonBuild => metricChatFrameBuildJankMs,
       FrameJankTelemetry.reasonRaster => metricChatFrameRasterJankMs,
       FrameJankTelemetry.reasonTotal => metricChatFrameTotalJankMs,
@@ -194,8 +221,35 @@ class RealtimeRolloutTelemetry
     _recordDuration(
       metricName,
       duration,
-      tags: <String, String>{'surface': 'chat', 'reason': reason.trim()},
+      tags: <String, String>{'surface': 'chat', 'reason': normalizedReason},
     );
+  }
+
+  @override
+  void recordCallEvent({
+    required String roomId,
+    required String event,
+    required CallLifecycleStatus state,
+    CallFailureReason? reason,
+    Duration? duration,
+    Map<String, dynamic>? stats,
+    String? callId,
+    String? uid,
+  }) {
+    final tags = <String, String>{
+      'room_id': roomId,
+      'state': state.name,
+      if (reason != null) 'reason': reason.code,
+      if (callId != null && callId.trim().isNotEmpty) 'call_id': callId.trim(),
+      if (uid != null && uid.trim().isNotEmpty) 'uid': uid.trim(),
+    };
+    stats?.forEach((key, value) {
+      final normalizedKey = key.trim();
+      if (normalizedKey.isNotEmpty && value != null) {
+        tags[normalizedKey] = value.toString();
+      }
+    });
+    _record(event, value: duration?.inMilliseconds ?? 1, tags: tags);
   }
 
   Future<void> flush() {
@@ -266,27 +320,27 @@ class RealtimeRolloutTelemetry
   }
 
   void _trimBuffer() {
-    if (maxBufferedEvents <= 0) {
-      _buffer.clear();
+    if (_buffer.length <= maxBufferedEvents) {
       return;
     }
     final overflow = _buffer.length - maxBufferedEvents;
-    if (overflow > 0) {
-      _buffer.removeRange(0, overflow);
-    }
+    _buffer.removeRange(0, overflow);
   }
 
   RealtimeTelemetryEvent? _buildSessionHeartbeatEvent() {
-    if (!_sessionRunning) {
+    final sessionId = _sessionId;
+    if (sessionId == null || sessionId.trim().isEmpty || !_sessionRunning) {
       return null;
     }
     return RealtimeTelemetryEvent(
       name: metricActiveRealtimeSessionCount,
       value: 1,
       recordedAt: _now().toUtc(),
-      sessionId: _sessionId,
+      sessionId: sessionId,
     );
   }
 
-  static Future<void> _discardTransport(List<RealtimeTelemetryEvent> _) async {}
+  static Future<void> _discardTransport(
+    List<RealtimeTelemetryEvent> events,
+  ) async {}
 }

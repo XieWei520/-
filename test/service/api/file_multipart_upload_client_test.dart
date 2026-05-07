@@ -61,6 +61,7 @@ void main() {
         ApiConfig.resolveMediaUrl('file/preview/chat/c1/big.bin'),
       );
       expect(adapter.initBody['chunk_size'], 256);
+      expect(adapter.partPath, '/v1/file/multipart/parts/2');
       expect(adapter.partQuery['part_number'], '2');
       expect(adapter.partBytes, <int>[1, 2, 3]);
       expect(adapter.completeBody['parts'], <int>[1, 2, 3, 4]);
@@ -70,6 +71,7 @@ void main() {
 
 class _RecordingMultipartAdapter implements HttpClientAdapter {
   Map<String, dynamic> initBody = <String, dynamic>{};
+  String? partPath;
   Map<String, dynamic> partQuery = <String, dynamic>{};
   List<int> partBytes = <int>[];
   Map<String, dynamic> completeBody = <String, dynamic>{};
@@ -91,7 +93,8 @@ class _RecordingMultipartAdapter implements HttpClientAdapter {
     }
 
     if (options.method.toUpperCase() == 'PUT' &&
-        options.uri.path == ApiConfig.fileMultipartPart) {
+        options.uri.path == '/v1/file/multipart/parts/2') {
+      partPath = options.uri.path;
       partQuery = options.queryParameters.map(
         (key, value) => MapEntry<String, dynamic>(key, value.toString()),
       );

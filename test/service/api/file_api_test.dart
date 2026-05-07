@@ -181,7 +181,7 @@ class _RecordingUploadAdapter implements HttpClientAdapter {
     }
 
     if (options.method.toUpperCase() == 'PUT' &&
-        options.uri.path == ApiConfig.fileMultipartPart) {
+        options.uri.path.startsWith('${ApiConfig.fileMultipartParts}/')) {
       multipartPartQueries.add(
         options.queryParameters.map(
           (key, value) => MapEntry<String, dynamic>(key, value.toString()),

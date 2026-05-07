@@ -1,5 +1,17 @@
+import 'dart:async';
+
+enum CallMediaConnectionState {
+  connecting,
+  connected,
+  reconnecting,
+  disconnected,
+  failed,
+}
+
 abstract interface class CallMediaEngine {
   bool get isConnected;
+
+  Stream<CallMediaConnectionState> get connectionStates;
 
   Object? get session;
 

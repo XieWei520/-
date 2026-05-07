@@ -111,6 +111,7 @@ class ApiConfig {
   static const String fileUpload = '$v1/file/upload';
   static const String fileMultipartInit = '$v1/file/multipart/init';
   static const String fileMultipartPart = '$v1/file/multipart/part';
+  static const String fileMultipartParts = '$v1/file/multipart/parts';
   static const String fileMultipartComplete = '$v1/file/multipart/complete';
   static const String reportCategories = '$v1/report/categories';
   static const String reports = '$v1/reports';

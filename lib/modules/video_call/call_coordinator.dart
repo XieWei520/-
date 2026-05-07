@@ -480,10 +480,10 @@ class CallCoordinator with WidgetsBindingObserver {
 
   void _handleCallState(CallSessionState state) {
     _pendingRecoveryLoop.notifyStateChanged();
-    if (state.status != CallLifecycleStatus.invited) {
+    if (!_isIncomingInviteState(state)) {
       _cancelRtcNotification();
     }
-    if (state.status == CallLifecycleStatus.invited) {
+    if (_isIncomingInviteState(state)) {
       _showOverlayForCurrentInviteIfNeeded();
       return;
     }
@@ -498,6 +498,11 @@ class CallCoordinator with WidgetsBindingObserver {
 
   void _handleRecoveredRoom(CallRoom room, CallEvent event) {
     _knownRooms[room.roomId] = room;
+  }
+
+  bool _isIncomingInviteState(CallSessionState state) {
+    return state.direction == CallDirection.incoming &&
+        state.status == CallLifecycleStatus.ringing;
   }
 
   void _rememberRoomFromFrame(SessionEventFrame frame, CallEvent event) {
@@ -560,6 +565,10 @@ class CallCoordinator with WidgetsBindingObserver {
                 );
       case RemoteSignalCallEvent():
       case LocalAcceptCallEvent():
+      case LocalConnectingCallEvent():
+      case LocalConnectedCallEvent():
+      case LocalReconnectingCallEvent():
+      case LocalFailedCallEvent():
       case LocalHangupCallEvent():
         break;
     }
@@ -573,7 +582,7 @@ class CallCoordinator with WidgetsBindingObserver {
 
   void _showOverlayForCurrentInviteIfNeeded() {
     final state = _callStore.state;
-    if (!_isForeground || state.status != CallLifecycleStatus.invited) {
+    if (!_isForeground || !_isIncomingInviteState(state)) {
       return;
     }
     final room = _knownRooms[state.roomId];
