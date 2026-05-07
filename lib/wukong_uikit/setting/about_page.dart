@@ -194,7 +194,7 @@ class _AboutPageState extends State<AboutPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'ICP备案号 沪ICP备2026016828号 >',
+                  'ICP备案号 湘ICP备2026016828号 >',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: WKColors.color999),

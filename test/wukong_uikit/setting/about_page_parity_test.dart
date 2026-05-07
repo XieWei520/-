@@ -51,6 +51,23 @@ void main() {
     expect(find.text('wukong_im_app'), findsNothing);
   });
 
+  testWidgets('about page shows readable Xiang ICP filing number', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: AboutPage()));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('\u6e58ICP\u59072026016828\u53f7'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('?ICP?2026016828?'), findsNothing);
+    expect(
+      find.textContaining('\u6caaICP\u59072026016828\u53f7'),
+      findsNothing,
+    );
+  });
+
   testWidgets('about page legal footer does not overflow on narrow screens', (
     tester,
   ) async {
