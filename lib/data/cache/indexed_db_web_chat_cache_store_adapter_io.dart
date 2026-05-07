@@ -10,11 +10,15 @@ class _UnimplementedIndexedDbWebChatCacheAdapter
 
   @override
   Future<List<Map<String, Object?>>> readAll() {
-    return Future.error(StateError('IndexedDB is not available on this platform'));
+    return Future.error(
+      StateError('IndexedDB is not available on this platform'),
+    );
   }
 
   @override
   Future<void> writeAll(List<Map<String, Object?>> records) {
-    return Future.error(StateError('IndexedDB is not available on this platform'));
+    return Future.error(
+      StateError('IndexedDB is not available on this platform'),
+    );
   }
 }

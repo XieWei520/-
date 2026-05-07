@@ -22,7 +22,10 @@ void main() {
       expect(result.importedCount, 2);
       expect(result.skippedCount, 0);
       expect(result.conversationCount, 2);
-      expect(result.serverArchiveMessageIds, unorderedEquals(result.messageIds));
+      expect(
+        result.serverArchiveMessageIds,
+        unorderedEquals(result.messageIds),
+      );
       expect(
         result.restoredMessagesById.keys.toSet(),
         unorderedEquals(result.messageIds),

@@ -109,49 +109,48 @@ void main() {
     expect(find.byType(WKTabShell), findsOneWidget);
   });
 
-  testWidgets(
-    'home shell overlays reconnecting banner without blocking tabs',
-    (tester) async {
-      final service = _FakeIMService(() async => true)
-        ..setConnectionState(
-          const IMServiceState(
-            isInitialized: true,
-            isConnected: false,
-            connectionStatus: WKConnectStatus.connecting,
-          ),
-        );
-
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            imServiceProvider.overrideWith((ref) => service),
-            homeBadgeSnapshotProvider.overrideWith((ref) {
-              return HomeBadgeSnapshot();
-            }),
-          ],
-          child: const MaterialApp(
-            home: HomeShellPage(
-              autoInitializeIM: false,
-              pagesOverride: <Widget>[
-                Text('conversation body'),
-                SizedBox(),
-                SizedBox(),
-              ],
-            ),
-          ),
+  testWidgets('home shell overlays reconnecting banner without blocking tabs', (
+    tester,
+  ) async {
+    final service = _FakeIMService(() async => true)
+      ..setConnectionState(
+        const IMServiceState(
+          isInitialized: true,
+          isConnected: false,
+          connectionStatus: WKConnectStatus.connecting,
         ),
       );
-      await tester.pump();
 
-      expect(
-        find.byKey(const ValueKey<String>('home-im-connection-banner')),
-        findsOneWidget,
-      );
-      expect(find.text('正在重连，消息会在连接恢复后发送'), findsOneWidget);
-      expect(find.byType(WKTabShell), findsOneWidget);
-      expect(find.text('conversation body'), findsOneWidget);
-    },
-  );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          imServiceProvider.overrideWith((ref) => service),
+          homeBadgeSnapshotProvider.overrideWith((ref) {
+            return HomeBadgeSnapshot();
+          }),
+        ],
+        child: const MaterialApp(
+          home: HomeShellPage(
+            autoInitializeIM: false,
+            pagesOverride: <Widget>[
+              Text('conversation body'),
+              SizedBox(),
+              SizedBox(),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('home-im-connection-banner')),
+      findsOneWidget,
+    );
+    expect(find.text('正在重连，消息会在连接恢复后发送'), findsOneWidget);
+    expect(find.byType(WKTabShell), findsOneWidget);
+    expect(find.text('conversation body'), findsOneWidget);
+  });
 
   testWidgets('home shell hides connection banner after sync completes', (
     tester,

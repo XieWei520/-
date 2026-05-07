@@ -194,7 +194,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const ValueKey<String>('search-member-results-page-u_alice')),
+        find.byKey(
+          const ValueKey<String>('search-member-results-page-u_alice'),
+        ),
         findsOneWidget,
       );
       expect(find.text('member result'), findsOneWidget);

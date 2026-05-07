@@ -150,72 +150,72 @@ void main() {
     },
   );
 
-  testWidgets(
-    'chat page saves Android conversation extra snapshot on pop',
-    (tester) async {
-      const channelId = 'u_exit_cover_extra';
-      const channelType = WKChannelType.personal;
-      final gateway = _FakeConversationExtraGateway();
+  testWidgets('chat page saves Android conversation extra snapshot on pop', (
+    tester,
+  ) async {
+    const channelId = 'u_exit_cover_extra';
+    const channelType = WKChannelType.personal;
+    final gateway = _FakeConversationExtraGateway();
 
-      await pumpChatPageRoute(
-        tester,
-        channelId: channelId,
-        channelType: channelType,
-        channelName: 'Exit Extra',
-        overrides: <Override>[
-          chatConversationExtraGatewayProvider.overrideWithValue(gateway),
-          messageListProvider.overrideWith((ref, session) {
-            if (session.channelId == channelId &&
-                session.channelType == channelType) {
-              return _StaticMessageListNotifier(
-                session.channelId,
-                session.channelType,
-                _buildDescendingMessages(
-                  channelId: channelId,
-                  channelType: channelType,
-                  highestSeq: 30,
-                  lowestSeq: 1,
-                ),
-              );
-            }
-            return _EmptyMessageListNotifier(
+    await pumpChatPageRoute(
+      tester,
+      channelId: channelId,
+      channelType: channelType,
+      channelName: 'Exit Extra',
+      overrides: <Override>[
+        chatConversationExtraGatewayProvider.overrideWithValue(gateway),
+        messageListProvider.overrideWith((ref, session) {
+          if (session.channelId == channelId &&
+              session.channelType == channelType) {
+            return _StaticMessageListNotifier(
               session.channelId,
               session.channelType,
+              _buildDescendingMessages(
+                channelId: channelId,
+                channelType: channelType,
+                highestSeq: 30,
+                lowestSeq: 1,
+              ),
             );
-          }),
-        ],
-      );
-      await tester.drag(find.byType(ListView), const Offset(0, 480));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 350));
+          }
+          return _EmptyMessageListNotifier(
+            session.channelId,
+            session.channelType,
+          );
+        }),
+      ],
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, 480));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
-      await tester.enterText(find.byType(TextField).first, 'exit cover extra');
-      await tester.pump();
+    await tester.enterText(find.byType(TextField).first, 'exit cover extra');
+    await tester.pump();
 
-      await tester.tap(
-        find.descendant(
-          of: find.byType(AppBar),
-          matching: find.byType(IconButton),
-        ).first,
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 350));
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(AppBar),
+            matching: find.byType(IconButton),
+          )
+          .first,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
-      expect(gateway.saveCalls, hasLength(1));
-      expect(gateway.saveCalls.single.draft, 'exit cover extra');
-      expect(gateway.saveCalls.single.browseTo, greaterThan(0));
-      expect(gateway.saveCalls.single.keepMessageSeq, greaterThan(0));
-      expect(gateway.saveCalls.single.keepOffsetY, isNonZero);
-    },
-  );
+    expect(gateway.saveCalls, hasLength(1));
+    expect(gateway.saveCalls.single.draft, 'exit cover extra');
+    expect(gateway.saveCalls.single.browseTo, greaterThan(0));
+    expect(gateway.saveCalls.single.keepMessageSeq, greaterThan(0));
+    expect(gateway.saveCalls.single.keepOffsetY, isNonZero);
+  });
 }
 
 class _FakeConversationExtraGateway implements ChatConversationExtraGateway {
   _FakeConversationExtraGateway({this.loadedExtra});
 
   final WKConversationMsgExtra? loadedExtra;
-  final List<_SavedConversationExtra> saveCalls =
-      <_SavedConversationExtra>[];
+  final List<_SavedConversationExtra> saveCalls = <_SavedConversationExtra>[];
 
   @override
   Future<WKConversationMsgExtra?> load({

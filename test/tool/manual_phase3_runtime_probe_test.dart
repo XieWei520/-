@@ -113,7 +113,9 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('phase3_probe_open_group_detail')));
+    await tester.tap(
+      find.byKey(const ValueKey('phase3_probe_open_group_detail')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('group-detail-destination'), findsOneWidget);
 

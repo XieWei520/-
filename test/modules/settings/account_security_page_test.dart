@@ -190,7 +190,10 @@ void main() {
         containsPair('chat_pwd', CryptoUtils.md5('chat-passu_chatpwd')),
       );
       expect(request.data, containsPair('login_pwd', 'login-pass'));
-      expect(authNotifier.state.userInfo?.chatPwd, CryptoUtils.md5('chat-passu_chatpwd'));
+      expect(
+        authNotifier.state.userInfo?.chatPwd,
+        CryptoUtils.md5('chat-passu_chatpwd'),
+      );
     },
   );
 }

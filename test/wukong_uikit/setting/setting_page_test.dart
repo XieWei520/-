@@ -313,7 +313,10 @@ void main() {
       expect(value.trim(), isNotEmpty);
     }
 
-    expect(zhStrings.generalHeroTitle, isNot(equals(enStrings.generalHeroTitle)));
+    expect(
+      zhStrings.generalHeroTitle,
+      isNot(equals(enStrings.generalHeroTitle)),
+    );
     expect(
       zhStrings.notificationHeroTitle,
       isNot(equals(enStrings.notificationHeroTitle)),
@@ -374,7 +377,9 @@ void main() {
     await tester.enterText(find.byType(TextField), 'keyword');
     expect(changedValue, 'keyword');
 
-    await tester.tap(find.byKey(const ValueKey<String>('settings-search-clear')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-search-clear')),
+    );
     await tester.pump();
     expect(clearInvoked, isTrue);
     expect(controller.text, isEmpty);

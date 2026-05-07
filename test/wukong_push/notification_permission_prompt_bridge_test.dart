@@ -41,10 +41,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(
-        find.text('\u6253\u5f00\u8bbe\u7f6e'),
-        findsOneWidget,
-      );
+      expect(find.text('\u6253\u5f00\u8bbe\u7f6e'), findsOneWidget);
 
       await tester.tap(find.text('\u6253\u5f00\u8bbe\u7f6e'));
       await tester.pumpAndSettle();

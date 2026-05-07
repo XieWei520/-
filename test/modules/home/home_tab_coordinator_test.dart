@@ -24,8 +24,9 @@ void main() {
   });
 
   test('visibility controller keeps cold surfaces cold', () {
-    final controller =
-        HomeSurfaceVisibilityController(HomeSurfaceId.conversations);
+    final controller = HomeSurfaceVisibilityController(
+      HomeSurfaceId.conversations,
+    );
 
     controller.markVisible(HomeSurfaceId.contacts);
 
@@ -51,10 +52,12 @@ void main() {
 
     await done;
     expect(
-      () => bus.emit(const HomeSurfaceInvalidation(
-        surfaceId: HomeSurfaceId.conversations,
-        kind: HomeInvalidationKind.structural,
-      )),
+      () => bus.emit(
+        const HomeSurfaceInvalidation(
+          surfaceId: HomeSurfaceId.conversations,
+          kind: HomeInvalidationKind.structural,
+        ),
+      ),
       throwsStateError,
     );
   });

@@ -31,32 +31,35 @@ void main() {
     expect(telemetry.sqliteDurations, hasLength(1));
   });
 
-  test('conversation applyPatch records patch latency without changing behavior', () {
-    final telemetry = _RecordingConversationTelemetry();
-    final notifier = ConversationNotifier(
-      attachSdkListeners: false,
-      loadInitialConversations: false,
-      projectionRepository: ConversationProjectionRepository(
-        const ConversationProjectionReducer(),
-      ),
-      telemetry: telemetry,
-    );
-    addTearDown(notifier.dispose);
+  test(
+    'conversation applyPatch records patch latency without changing behavior',
+    () {
+      final telemetry = _RecordingConversationTelemetry();
+      final notifier = ConversationNotifier(
+        attachSdkListeners: false,
+        loadInitialConversations: false,
+        projectionRepository: ConversationProjectionRepository(
+          const ConversationProjectionReducer(),
+        ),
+        telemetry: telemetry,
+      );
+      addTearDown(notifier.dispose);
 
-    notifier.applyPatch(
-      const ConversationPatch.unreadAndDigest(
-        channelId: 'u_patch_01',
-        channelType: 1,
-        unreadCount: 3,
-        lastMessageDigest: 'hello',
-        sortTimestamp: 123,
-      ),
-    );
+      notifier.applyPatch(
+        const ConversationPatch.unreadAndDigest(
+          channelId: 'u_patch_01',
+          channelType: 1,
+          unreadCount: 3,
+          lastMessageDigest: 'hello',
+          sortTimestamp: 123,
+        ),
+      );
 
-    expect(notifier.state, hasLength(1));
-    expect(notifier.state.single.channelID, 'u_patch_01');
-    expect(telemetry.patchDurations, hasLength(1));
-  });
+      expect(notifier.state, hasLength(1));
+      expect(notifier.state.single.channelID, 'u_patch_01');
+      expect(telemetry.patchDurations, hasLength(1));
+    },
+  );
 
   test('conversation provider wires shared patch telemetry by default', () {
     final telemetry = _RecordingConversationTelemetry();
@@ -82,27 +85,33 @@ void main() {
     expect(telemetry.patchDurations, hasLength(1));
   });
 
-  test('message list provider wires shared sqlite telemetry by default', () async {
-    final telemetry = _RecordingConversationTelemetry();
-    final gateway = _RecordingHistoryGateway();
-    final session = const ChatSession(channelId: 'g_provider_telemetry', channelType: 2);
-    final container = ProviderContainer(
-      overrides: [
-        chatHistoryGatewayProvider.overrideWithValue(gateway),
-        messageQueryTelemetryProvider.overrideWithValue(telemetry),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'message list provider wires shared sqlite telemetry by default',
+    () async {
+      final telemetry = _RecordingConversationTelemetry();
+      final gateway = _RecordingHistoryGateway();
+      final session = const ChatSession(
+        channelId: 'g_provider_telemetry',
+        channelType: 2,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          chatHistoryGatewayProvider.overrideWithValue(gateway),
+          messageQueryTelemetryProvider.overrideWithValue(telemetry),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final notifier = container.read(messageListProvider(session).notifier);
+      final notifier = container.read(messageListProvider(session).notifier);
 
-    await notifier.loadMessages();
-    telemetry.reset();
-    await notifier.loadMore();
+      await notifier.loadMessages();
+      telemetry.reset();
+      await notifier.loadMore();
 
-    expect(telemetry.sqliteModes, <String>['older_page']);
-    expect(telemetry.sqliteDurations, hasLength(1));
-  });
+      expect(telemetry.sqliteModes, <String>['older_page']);
+      expect(telemetry.sqliteDurations, hasLength(1));
+    },
+  );
 }
 
 class _RecordingConversationTelemetry

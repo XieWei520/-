@@ -30,10 +30,7 @@ void main() {
   Widget buildApp({required Widget home}) {
     return MaterialApp(
       locale: const Locale('zh', 'CN'),
-      supportedLocales: const <Locale>[
-        Locale('zh', 'CN'),
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const <Locale>[Locale('zh', 'CN'), Locale('en', 'US')],
       localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

@@ -39,8 +39,10 @@ void main() {
     );
 
     final registry = SlotRegistry();
-    LegacyEndpointImporter(manager: manager, registry: registry)
-        .importContactsHeader();
+    LegacyEndpointImporter(
+      manager: manager,
+      registry: registry,
+    ).importContactsHeader();
 
     final items = registry.resolve(
       contactsHeaderSlot,
@@ -70,7 +72,10 @@ void main() {
     );
 
     final registry = SlotRegistry();
-    final importer = LegacyEndpointImporter(manager: manager, registry: registry);
+    final importer = LegacyEndpointImporter(
+      manager: manager,
+      registry: registry,
+    );
     importer.importContactsHeader();
     importer.importContactsHeader();
 
@@ -93,7 +98,10 @@ void main() {
     );
 
     final registry = SlotRegistry();
-    final importer = LegacyEndpointImporter(manager: manager, registry: registry);
+    final importer = LegacyEndpointImporter(
+      manager: manager,
+      registry: registry,
+    );
     importer.importContactsHeader();
 
     manager.register(
@@ -137,8 +145,10 @@ void main() {
     );
 
     final registry = SlotRegistry();
-    LegacyEndpointImporter(manager: manager, registry: registry)
-        .importPersonalCenter();
+    LegacyEndpointImporter(
+      manager: manager,
+      registry: registry,
+    ).importPersonalCenter();
 
     final items = registry.resolve(
       personalCenterSlot,
@@ -149,49 +159,54 @@ void main() {
     expect(items.single.isNewVersion, isTrue);
   });
 
-  test('legacy importer adds new personal_center entries on subsequent import',
-      () {
-    manager.register(
-      'personal_center_currency',
-      'personal_center',
-      2,
-      SimpleFunctionHandler(([dynamic _]) {
-        return PersonalInfoMenu(
-          sid: 'personal_center_currency',
-          text: 'General',
-        );
-      }),
-    );
+  test(
+    'legacy importer adds new personal_center entries on subsequent import',
+    () {
+      manager.register(
+        'personal_center_currency',
+        'personal_center',
+        2,
+        SimpleFunctionHandler(([dynamic _]) {
+          return PersonalInfoMenu(
+            sid: 'personal_center_currency',
+            text: 'General',
+          );
+        }),
+      );
 
-    final registry = SlotRegistry();
-    final importer = LegacyEndpointImporter(manager: manager, registry: registry);
-    importer.importPersonalCenter();
+      final registry = SlotRegistry();
+      final importer = LegacyEndpointImporter(
+        manager: manager,
+        registry: registry,
+      );
+      importer.importPersonalCenter();
 
-    manager.register(
-      'personal_center_support',
-      'personal_center',
-      10,
-      SimpleFunctionHandler(([dynamic param]) {
-        final context = param as PersonalCenterSlotContext;
-        return PersonalInfoMenu(
-          sid: 'personal_center_support',
-          text: 'Support',
-          isNewVersion: context.hasNewVersion,
-        );
-      }),
-    );
+      manager.register(
+        'personal_center_support',
+        'personal_center',
+        10,
+        SimpleFunctionHandler(([dynamic param]) {
+          final context = param as PersonalCenterSlotContext;
+          return PersonalInfoMenu(
+            sid: 'personal_center_support',
+            text: 'Support',
+            isNewVersion: context.hasNewVersion,
+          );
+        }),
+      );
 
-    importer.importPersonalCenter();
+      importer.importPersonalCenter();
 
-    final items = registry.resolve(
-      personalCenterSlot,
-      const PersonalCenterSlotContext(hasNewVersion: true),
-    );
+      final items = registry.resolve(
+        personalCenterSlot,
+        const PersonalCenterSlotContext(hasNewVersion: true),
+      );
 
-    expect(
-      items.map((item) => item.sid),
-      <String>['personal_center_support', 'personal_center_currency'],
-    );
-    expect(items.first.isNewVersion, isTrue);
-  });
+      expect(items.map((item) => item.sid), <String>[
+        'personal_center_support',
+        'personal_center_currency',
+      ]);
+      expect(items.first.isNewVersion, isTrue);
+    },
+  );
 }

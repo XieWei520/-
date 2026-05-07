@@ -50,7 +50,11 @@ void main() {
     });
 
     test('skips self, muted, deleted, internal, and non-red-dot messages', () {
-      final self = _textMessage(fromUid: 'me', channelId: 'alice', text: 'self');
+      final self = _textMessage(
+        fromUid: 'me',
+        channelId: 'alice',
+        text: 'self',
+      );
       final muted = _textMessage(
         fromUid: 'alice',
         channelId: 'muted',

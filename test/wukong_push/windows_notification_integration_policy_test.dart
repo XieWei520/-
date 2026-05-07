@@ -3,18 +3,21 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('IMService forwards Windows incoming messages to desktop alert manager', () {
-    final source = File('lib/service/im/im_service.dart').readAsStringSync();
+  test(
+    'IMService forwards Windows incoming messages to desktop alert manager',
+    () {
+      final source = File('lib/service/im/im_service.dart').readAsStringSync();
 
-    expect(source, contains('desktop_message_alert_manager.dart'));
-    expect(source, contains('message_alert_plan.dart'));
-    expect(source, contains('_scheduleDesktopMessageAlert'));
-    expect(source, contains('TargetPlatform.windows'));
-    expect(
-      source,
-      contains('DesktopMessageAlertManager.instance.showNewMessageAlert'),
-    );
-  });
+      expect(source, contains('desktop_message_alert_manager.dart'));
+      expect(source, contains('message_alert_plan.dart'));
+      expect(source, contains('_scheduleDesktopMessageAlert'));
+      expect(source, contains('TargetPlatform.windows'));
+      expect(
+        source,
+        contains('DesktopMessageAlertManager.instance.showNewMessageAlert'),
+      );
+    },
+  );
 
   test('Windows presenter uses local_notifier and bundled audio assets', () {
     final source = File(

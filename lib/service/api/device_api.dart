@@ -52,7 +52,8 @@ class DeviceApi {
     final status = body['status'];
     final message = (body['msg'] ?? body['message'] ?? fallback).toString();
 
-    final hasErrorCode = (code is num && code.toInt() != 0) ||
+    final hasErrorCode =
+        (code is num && code.toInt() != 0) ||
         (status is num && status.toInt() >= 400);
 
     if (statusCode >= 400 || hasErrorCode) {

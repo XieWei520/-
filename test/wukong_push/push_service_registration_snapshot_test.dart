@@ -188,51 +188,58 @@ void main() {
 
       expect(service.registrationSnapshot?.isApnsReady, isTrue);
       expect(
-        logLines.any((line) => line.contains('APNs token is not available yet')),
+        logLines.any(
+          (line) => line.contains('APNs token is not available yet'),
+        ),
         isFalse,
       );
     },
   );
 
-  test('push service marks Android registrations as APNs-not-applicable', () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    final fakeHandler = _FakePushHandler(
-      permissionGranted: true,
-      registrationSnapshot: const PushRegistrationSnapshot(
-        deviceToken: 'fcm-token',
-        applePushTokenState: ApplePushTokenState.notApplicable,
-      ),
-    );
-    final logLines = <String>[];
-    final originalDebugPrint = debugPrint;
-    debugPrint = (String? message, {int? wrapWidth}) {
-      if (message != null) {
-        logLines.add(message);
-      }
-    };
-    addTearDown(() {
-      debugPrint = originalDebugPrint;
-    });
+  test(
+    'push service marks Android registrations as APNs-not-applicable',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final fakeHandler = _FakePushHandler(
+        permissionGranted: true,
+        registrationSnapshot: const PushRegistrationSnapshot(
+          deviceToken: 'fcm-token',
+          applePushTokenState: ApplePushTokenState.notApplicable,
+        ),
+      );
+      final logLines = <String>[];
+      final originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) {
+          logLines.add(message);
+        }
+      };
+      addTearDown(() {
+        debugPrint = originalDebugPrint;
+      });
 
-    final service = PushService(
-      isPushSupported: () => true,
-      handlerSelector: () async => fakeHandler,
-      initializeNotifications:
-          ({void Function(String payload)? onNotificationTap}) async {},
-      onPermissionDenied: () async {},
-    );
+      final service = PushService(
+        isPushSupported: () => true,
+        handlerSelector: () async => fakeHandler,
+        initializeNotifications:
+            ({void Function(String payload)? onNotificationTap}) async {},
+        onPermissionDenied: () async {},
+      );
 
-    await service.ensureInitialized();
+      await service.ensureInitialized();
 
-    expect(
-      service.registrationSnapshot?.applePushTokenState,
-      ApplePushTokenState.notApplicable,
-    );
-    expect(
-      logLines.any((line) => line.contains('APNs token is not available yet')),
-      isFalse,
-    );
-  });
+      expect(
+        service.registrationSnapshot?.applePushTokenState,
+        ApplePushTokenState.notApplicable,
+      );
+      expect(
+        logLines.any(
+          (line) => line.contains('APNs token is not available yet'),
+        ),
+        isFalse,
+      );
+    },
+  );
 }
 
 class _FakePushHandler implements handler.PushHandler {

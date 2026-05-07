@@ -8,10 +8,7 @@ import 'package:wukong_im_app/modules/search/presentation/chat_search_image_forw
 void main() {
   Widget wrapWithApp(Widget child) {
     return ProviderScope(
-      child: MaterialApp(
-        locale: const Locale('en'),
-        home: child,
-      ),
+      child: MaterialApp(locale: const Locale('en'), home: child),
     );
   }
 

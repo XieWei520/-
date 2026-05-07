@@ -70,32 +70,40 @@ void main() {
     expect(notifier.state.requireValue.single.uid, 'u_friend');
   });
 
-  test('friend request sync ignores local cache and persistence on web', () async {
-    var cacheRead = false;
-    var persist = false;
-    final notifier = FriendRequestListNotifier(
-      loadOnInit: false,
-      queryCachedRequests: () async {
-        cacheRead = true;
-        throw StateError('web must not read sqflite request cache');
-      },
-      syncRequests: () async => <FriendRequest>[
-        FriendRequest(id: 1, fromUid: 'u_friend', toUid: 'u_owner', status: 0),
-      ],
-      persistRequests: (_) async {
-        persist = true;
-        throw StateError('web must not persist request cache');
-      },
-      useLocalPersistence: false,
-    );
-    addTearDown(notifier.dispose);
+  test(
+    'friend request sync ignores local cache and persistence on web',
+    () async {
+      var cacheRead = false;
+      var persist = false;
+      final notifier = FriendRequestListNotifier(
+        loadOnInit: false,
+        queryCachedRequests: () async {
+          cacheRead = true;
+          throw StateError('web must not read sqflite request cache');
+        },
+        syncRequests: () async => <FriendRequest>[
+          FriendRequest(
+            id: 1,
+            fromUid: 'u_friend',
+            toUid: 'u_owner',
+            status: 0,
+          ),
+        ],
+        persistRequests: (_) async {
+          persist = true;
+          throw StateError('web must not persist request cache');
+        },
+        useLocalPersistence: false,
+      );
+      addTearDown(notifier.dispose);
 
-    await notifier.loadRequests();
+      await notifier.loadRequests();
 
-    expect(cacheRead, isFalse);
-    expect(persist, isFalse);
-    expect(notifier.state.requireValue.single.fromUid, 'u_friend');
-  });
+      expect(cacheRead, isFalse);
+      expect(persist, isFalse);
+      expect(notifier.state.requireValue.single.fromUid, 'u_friend');
+    },
+  );
 }
 
 class _FriendListAdapter implements HttpClientAdapter {

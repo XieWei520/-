@@ -164,7 +164,10 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
       final channelId = _stringValue(record, 'channelId');
       final channelType = _intValue(record, 'channelType');
       final partitionKey = _partitionKey(uid, channelId, channelType);
-      _recordsByPartition.putIfAbsent(partitionKey, () => <Map<String, Object?>>[]);
+      _recordsByPartition.putIfAbsent(
+        partitionKey,
+        () => <Map<String, Object?>>[],
+      );
       _recordsByPartition[partitionKey]!.add(Map<String, Object?>.from(record));
     }
     for (final entry in _recordsByPartition.entries) {
@@ -203,9 +206,11 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
       return _pageLatest(filtered, pageLimit);
     }
     if (aroundOrderSeq > 0) {
-      return _windowAround(records, aroundOrderSeq, pageLimit)
-          .map((record) => _messageFromRecord(record))
-          .toList(growable: false);
+      return _windowAround(
+        records,
+        aroundOrderSeq,
+        pageLimit,
+      ).map((record) => _messageFromRecord(record)).toList(growable: false);
     }
     return _pageLatest(records, pageLimit);
   }
@@ -229,8 +234,9 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
     return <String, Object?>{
       'uid': uid,
       'channelId': message.channelID.isEmpty ? channelId : message.channelID,
-      'channelType':
-          message.channelType == 0 ? channelType : message.channelType,
+      'channelType': message.channelType == 0
+          ? channelType
+          : message.channelType,
       'messageID': message.messageID,
       'clientMsgNO': message.clientMsgNO,
       'messageSeq': message.messageSeq,
@@ -339,23 +345,31 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
     Map<String, Object?> left,
     Map<String, Object?> right,
   ) {
-    final orderCompare =
-        _intValue(left, 'orderSeq').compareTo(_intValue(right, 'orderSeq'));
+    final orderCompare = _intValue(
+      left,
+      'orderSeq',
+    ).compareTo(_intValue(right, 'orderSeq'));
     if (orderCompare != 0) {
       return orderCompare;
     }
-    final messageSeqCompare = _intValue(left, 'messageSeq')
-        .compareTo(_intValue(right, 'messageSeq'));
+    final messageSeqCompare = _intValue(
+      left,
+      'messageSeq',
+    ).compareTo(_intValue(right, 'messageSeq'));
     if (messageSeqCompare != 0) {
       return messageSeqCompare;
     }
-    final messageIdCompare = _stringValue(left, 'messageID')
-        .compareTo(_stringValue(right, 'messageID'));
+    final messageIdCompare = _stringValue(
+      left,
+      'messageID',
+    ).compareTo(_stringValue(right, 'messageID'));
     if (messageIdCompare != 0) {
       return messageIdCompare;
     }
-    return _stringValue(left, 'clientMsgNO')
-        .compareTo(_stringValue(right, 'clientMsgNO'));
+    return _stringValue(
+      left,
+      'clientMsgNO',
+    ).compareTo(_stringValue(right, 'clientMsgNO'));
   }
 
   static int _intValue(Map<String, Object?> record, String key) {

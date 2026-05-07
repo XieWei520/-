@@ -52,34 +52,36 @@ void main() {
     expect(container.read(authProvider).isLoggedIn, isTrue);
   });
 
-  test('restored login binds device session before exposing authenticated state', () async {
-    await StorageUtils.setUid('u_restore_01');
-    await StorageUtils.setToken('token_restore_01');
+  test(
+    'restored login binds device session before exposing authenticated state',
+    () async {
+      await StorageUtils.setUid('u_restore_01');
+      await StorageUtils.setToken('token_restore_01');
 
-    final authority = _FakeDeviceIdentityAuthority(
-      deviceSessionId: 'session_restore_01',
-    );
-    final container = ProviderContainer(
-      overrides: [
-        deviceIdentityAuthorityProvider.overrideWithValue(authority),
-        authCurrentUserLoaderProvider.overrideWithValue(
-          () async => UserInfo(uid: 'u_restore_01', token: 'token_restore_01'),
-        ),
-        authDraftSyncProvider.overrideWithValue(() async {}),
-      ],
-    );
-    addTearDown(container.dispose);
+      final authority = _FakeDeviceIdentityAuthority(
+        deviceSessionId: 'session_restore_01',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          deviceIdentityAuthorityProvider.overrideWithValue(authority),
+          authCurrentUserLoaderProvider.overrideWithValue(
+            () async =>
+                UserInfo(uid: 'u_restore_01', token: 'token_restore_01'),
+          ),
+          authDraftSyncProvider.overrideWithValue(() async {}),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    await _waitFor(
-      () => !container.read(authProvider).isRestoringSession,
-    );
+      await _waitFor(() => !container.read(authProvider).isRestoringSession);
 
-    expect(authority.bindCalls, hasLength(1));
-    expect(authority.bindCalls.single.userId, 'u_restore_01');
-    expect(authority.bindCalls.single.token, 'token_restore_01');
-    expect(StorageUtils.getDeviceSessionId(), 'session_restore_01');
-    expect(container.read(authProvider).isLoggedIn, isTrue);
-  });
+      expect(authority.bindCalls, hasLength(1));
+      expect(authority.bindCalls.single.userId, 'u_restore_01');
+      expect(authority.bindCalls.single.token, 'token_restore_01');
+      expect(StorageUtils.getDeviceSessionId(), 'session_restore_01');
+      expect(container.read(authProvider).isLoggedIn, isTrue);
+    },
+  );
 }
 
 class _BindCall {

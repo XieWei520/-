@@ -15,6 +15,7 @@
 - Security: `docs/production/abuse-control-reference.md`
 - Sensitive-word filtering: `docs/production/sensitive-word-filtering.md`
 - Release: `docs/production/backend-release-runbook.md`
+- Phase 5 release preflight: `docs/production/phase-5-release-preflight.md`
 
 ## Current Constraints
 - The current production host is single-node and small (`4 vCPU / 7.5 GiB RAM`).

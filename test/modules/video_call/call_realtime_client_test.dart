@@ -54,7 +54,9 @@ void main() {
           connect: (_, {headers}) => socket,
         );
 
-        await client.connect(uri: Uri.parse('wss://infoequity.cn/v1/callgateway/ws'));
+        await client.connect(
+          uri: Uri.parse('wss://infoequity.cn/v1/callgateway/ws'),
+        );
         final nextEvent = client.events.first;
         socket.emit('{"type":"accept","room_id":"room_01","accepted":true}');
 
@@ -104,7 +106,9 @@ void main() {
           connect: (_, {headers}) => socket,
         );
 
-        await client.connect(uri: Uri.parse('wss://infoequity.cn/v1/callgateway/ws'));
+        await client.connect(
+          uri: Uri.parse('wss://infoequity.cn/v1/callgateway/ws'),
+        );
         await socket.finish();
         await Future<void>.delayed(Duration.zero);
 

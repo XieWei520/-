@@ -60,7 +60,10 @@ void main() {
       });
 
       expect(bootstrap.ticket.token, 'jwt-token');
-      expect(bootstrap.join.controlUrl, 'wss://infoequity.cn/v1/callgateway/ws');
+      expect(
+        bootstrap.join.controlUrl,
+        'wss://infoequity.cn/v1/callgateway/ws',
+      );
       expect(bootstrap.capabilities.platform, 'web');
       expect(bootstrap.room.callType, CallType.video);
       expect(bootstrap.room.roomName, '研发群多人通话');

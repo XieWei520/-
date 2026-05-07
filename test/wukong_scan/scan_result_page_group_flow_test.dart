@@ -133,49 +133,58 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.byKey(const ValueKey('scan_open_link_button')), findsNothing);
-        expect(find.byKey(const ValueKey('scan_copy_link_button')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('scan_open_link_button')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('scan_copy_link_button')),
+          findsNothing,
+        );
 
-        await tester.tap(find.byKey(const ValueKey('scan_internal_join_button')));
+        await tester.tap(
+          find.byKey(const ValueKey('scan_internal_join_button')),
+        );
         await tester.pumpAndSettle();
 
         expect(find.text('join:g_1001:auth_123'), findsOneWidget);
       },
     );
 
-    testWidgets('generic web urls open an in-app webview page as primary flow', (
-      tester,
-    ) async {
-      final result = ScanServiceResult.fromJson({
-        'forward': 'h5',
-        'type': 'webview',
-        'data': {'url': 'https://example.com/docs'},
-      }, 'https://example.com/docs');
-      Uri? launchedUri;
+    testWidgets(
+      'generic web urls open an in-app webview page as primary flow',
+      (tester) async {
+        final result = ScanServiceResult.fromJson({
+          'forward': 'h5',
+          'type': 'webview',
+          'data': {'url': 'https://example.com/docs'},
+        }, 'https://example.com/docs');
+        Uri? launchedUri;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ScanResultPage(
-            result: result,
-            buildWebviewPage: (url) => _MarkerPage(label: 'webview:$url'),
-            launchUrlExternally: (uri) async {
-              launchedUri = uri;
-              return true;
-            },
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ScanResultPage(
+              result: result,
+              buildWebviewPage: (url) => _MarkerPage(label: 'webview:$url'),
+              launchUrlExternally: (uri) async {
+                launchedUri = uri;
+                return true;
+              },
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('scan_open_in_app_button')), findsOne);
-      expect(find.byKey(const ValueKey('scan_open_link_button')), findsOne);
+        expect(find.byKey(const ValueKey('scan_open_in_app_button')), findsOne);
+        expect(find.byKey(const ValueKey('scan_open_link_button')), findsOne);
 
-      await tester.tap(find.byKey(const ValueKey('scan_open_in_app_button')));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('scan_open_in_app_button')));
+        await tester.pumpAndSettle();
 
-      expect(find.text('webview:https://example.com/docs'), findsOneWidget);
-      expect(launchedUri, isNull);
-    });
+        expect(find.text('webview:https://example.com/docs'), findsOneWidget);
+        expect(launchedUri, isNull);
+      },
+    );
   });
 }
 

@@ -339,10 +339,9 @@ class RobotService {
       if (cacheKey.endsWith(':')) {
         continue;
       }
-      final cachedVersion =
-          robotId != null && robotId.isNotEmpty
-              ? (_robotCache[robotId]?.version ?? 0)
-              : 0;
+      final cachedVersion = robotId != null && robotId.isNotEmpty
+          ? (_robotCache[robotId]?.version ?? 0)
+          : 0;
       deduped[cacheKey] = RobotSyncTarget(
         robotId: robotId,
         username: username,

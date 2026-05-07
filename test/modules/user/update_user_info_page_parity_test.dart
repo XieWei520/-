@@ -63,7 +63,10 @@ void main() {
       );
 
       expect(find.byType(WKSubPageScaffold), findsOneWidget);
-      expect(find.byKey(const ValueKey('update_user_info_input')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('update_user_info_input')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey('update_user_info_complete_action')),
         findsNothing,
@@ -86,11 +89,7 @@ void main() {
     'update user info page matches Android 10-unit input limit for nickname',
     (tester) async {
       await tester.pumpWidget(
-        wrapWithApp(
-          const UpdateUserInfoPage(
-            type: UserInfoUpdateType.name,
-          ),
-        ),
+        wrapWithApp(const UpdateUserInfoPage(type: UserInfoUpdateType.name)),
       );
 
       await tester.enterText(
@@ -99,7 +98,9 @@ void main() {
       );
       await tester.pump();
 
-      final editableText = tester.widget<EditableText>(find.byType(EditableText));
+      final editableText = tester.widget<EditableText>(
+        find.byType(EditableText),
+      );
       expect(editableText.controller.text, '1234567890');
     },
   );
@@ -181,7 +182,10 @@ void main() {
 
       expect(adapter.lastRequestOptions?.method, 'PUT');
       expect(adapter.lastRequestOptions?.path, '/v1/user/current');
-      expect(adapter.lastRequestOptions?.data, containsPair('name', 'New Name'));
+      expect(
+        adapter.lastRequestOptions?.data,
+        containsPair('name', 'New Name'),
+      );
       expect(updatedChannel, isNotNull);
       expect(updatedChannel!.channelName, 'New Name');
     },

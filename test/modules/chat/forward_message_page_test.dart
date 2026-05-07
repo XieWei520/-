@@ -9,8 +9,9 @@ import 'package:wukongimfluttersdk/model/wk_message_content.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 
 void main() {
-  testWidgets('forward chooser uses Android title and selection-aware submit',
-      (tester) async {
+  testWidgets('forward chooser uses Android title and selection-aware submit', (
+    tester,
+  ) async {
     final gateway = _FakeChatSceneGateway(
       targets: const <ForwardTarget>[
         ForwardTarget(
@@ -33,10 +34,7 @@ void main() {
       MaterialApp(
         home: ForwardMessagePage(
           payloads: const <ForwardPayload>[
-            ForwardPayload(
-              clientMsgNo: 'client-1',
-              content: null,
-            ),
+            ForwardPayload(clientMsgNo: 'client-1', content: null),
           ],
           channelId: 'source_chat',
           channelType: 1,
@@ -49,9 +47,11 @@ void main() {
     expect(find.text('选择会话'), findsOneWidget);
     expect(find.widgetWithText(ElevatedButton, '确定'), findsOneWidget);
     expect(
-      tester.widget<ElevatedButton>(
-        find.byKey(const ValueKey<String>('forward-submit')),
-      ).enabled,
+      tester
+          .widget<ElevatedButton>(
+            find.byKey(const ValueKey<String>('forward-submit')),
+          )
+          .enabled,
       isFalse,
     );
 
@@ -69,8 +69,9 @@ void main() {
     expect(gateway.sentTargets.single.channelId, 'g_product');
   });
 
-  testWidgets('forward chooser shows empty state for unmatched search',
-      (tester) async {
+  testWidgets('forward chooser shows empty state for unmatched search', (
+    tester,
+  ) async {
     final gateway = _FakeChatSceneGateway(
       targets: const <ForwardTarget>[
         ForwardTarget(
@@ -86,10 +87,7 @@ void main() {
       MaterialApp(
         home: ForwardMessagePage(
           payloads: const <ForwardPayload>[
-            ForwardPayload(
-              clientMsgNo: 'client-1',
-              content: null,
-            ),
+            ForwardPayload(clientMsgNo: 'client-1', content: null),
           ],
           channelId: 'source_chat',
           channelType: 1,

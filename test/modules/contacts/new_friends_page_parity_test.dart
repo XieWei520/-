@@ -250,9 +250,7 @@ void main() {
       await tester.pump();
 
       final loadingAction = tester.widget<InkWell>(
-        find.byKey(
-          const ValueKey<String>('new-friend-approve-action-u_alice'),
-        ),
+        find.byKey(const ValueKey<String>('new-friend-approve-action-u_alice')),
       );
       expect(loadingAction.onTap, isNull);
       expect(approvedUid, isNull);
@@ -265,7 +263,9 @@ void main() {
     },
   );
 
-  testWidgets('new friends page blocks non vip add-friend entry', (tester) async {
+  testWidgets('new friends page blocks non vip add-friend entry', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       wrapWithApp(
         NewFriendsPage(initialRequests: [buildPendingRequest()]),
@@ -273,7 +273,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const ValueKey('new-friends-add-friend-entry')));
+    await tester.tap(
+      find.byKey(const ValueKey('new-friends-add-friend-entry')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text(vipRequiredMessage), findsOneWidget);

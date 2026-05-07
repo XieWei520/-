@@ -65,31 +65,34 @@ void main() {
       },
     );
 
-    test('prepareEdit exposes Android-style edit request from visible text', () {
-      final controller = ChatMessageActionController(
-        gateway: _FakeChatSceneGateway(),
-        favoriteRegistry: _FakeFavoriteRegistry(),
-      );
-      addTearDown(controller.dispose);
-      final message = WKMsg()
-        ..messageID = 'mid-edit'
-        ..clientMsgNO = 'client-edit'
-        ..channelID = 'u_edit'
-        ..channelType = WKChannelType.personal
-        ..messageSeq = 77
-        ..contentType = WkMessageContentType.text
-        ..messageContent = WKTextContent('original')
-        ..wkMsgExtra = (WKMsgExtra()
-          ..contentEdit = '{"type":1,"content":"edited"}'
-          ..messageContent = WKTextContent('edited'));
+    test(
+      'prepareEdit exposes Android-style edit request from visible text',
+      () {
+        final controller = ChatMessageActionController(
+          gateway: _FakeChatSceneGateway(),
+          favoriteRegistry: _FakeFavoriteRegistry(),
+        );
+        addTearDown(controller.dispose);
+        final message = WKMsg()
+          ..messageID = 'mid-edit'
+          ..clientMsgNO = 'client-edit'
+          ..channelID = 'u_edit'
+          ..channelType = WKChannelType.personal
+          ..messageSeq = 77
+          ..contentType = WkMessageContentType.text
+          ..messageContent = WKTextContent('original')
+          ..wkMsgExtra = (WKMsgExtra()
+            ..contentEdit = '{"type":1,"content":"edited"}'
+            ..messageContent = WKTextContent('edited'));
 
-      controller.prepareEdit(message);
+        controller.prepareEdit(message);
 
-      expect(controller.state.editRequest, isNotNull);
-      expect(controller.state.editRequest!.messageId, 'mid-edit');
-      expect(controller.state.editRequest!.messageSeq, 77);
-      expect(controller.state.editRequest!.initialText, 'edited');
-    });
+        expect(controller.state.editRequest, isNotNull);
+        expect(controller.state.editRequest!.messageId, 'mid-edit');
+        expect(controller.state.editRequest!.messageSeq, 77);
+        expect(controller.state.editRequest!.initialText, 'edited');
+      },
+    );
 
     test(
       'favorite suppresses duplicate in-flight requests for the same message',

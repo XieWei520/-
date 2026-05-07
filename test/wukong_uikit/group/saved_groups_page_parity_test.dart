@@ -59,16 +59,16 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      wrapWithApp(
-        const SavedGroupsPage(autoLoad: false, initialGroups: []),
-      ),
+      wrapWithApp(const SavedGroupsPage(autoLoad: false, initialGroups: [])),
     );
 
     expect(find.text('你可以通过群聊中的"保存到通讯录"选项，将其保存到这里'), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_border), findsNothing);
   });
 
-  testWidgets('saved groups page blocks non vip create-group entry', (tester) async {
+  testWidgets('saved groups page blocks non vip create-group entry', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       wrapWithApp(
         const SavedGroupsPage(autoLoad: false, initialGroups: []),

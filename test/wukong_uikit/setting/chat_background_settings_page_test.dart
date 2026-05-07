@@ -44,7 +44,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey<String>('chat-background-complete')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('chat-background-complete')),
+    );
     await tester.pumpAndSettle();
 
     expect(

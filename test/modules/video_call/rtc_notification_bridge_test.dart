@@ -13,28 +13,31 @@ import 'package:wukong_im_app/wukong_base/endpoint/endpoint_manager.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('rtc notification bridge registers legacy endpoints and shows/cancels', () async {
-    final adapter = _FakeRtcNotificationAdapter();
-    final bridge = RtcNotificationBridge(adapter: adapter);
-    final endpointManager = EndpointManager.getInstance();
-    endpointManager.clear();
-    addTearDown(endpointManager.clear);
+  test(
+    'rtc notification bridge registers legacy endpoints and shows/cancels',
+    () async {
+      final adapter = _FakeRtcNotificationAdapter();
+      final bridge = RtcNotificationBridge(adapter: adapter);
+      final endpointManager = EndpointManager.getInstance();
+      endpointManager.clear();
+      addTearDown(endpointManager.clear);
 
-    bridge.registerEndpoints(endpointManager: endpointManager);
+      bridge.registerEndpoints(endpointManager: endpointManager);
 
-    await endpointManager.invoke('show_rtc_notification', <String, dynamic>{
-      'from_uid': 'u_peer',
-      'from_name': 'Peer',
-      'call_type': 1,
-    });
-    await endpointManager.invoke('cancel_rtc_notification');
+      await endpointManager.invoke('show_rtc_notification', <String, dynamic>{
+        'from_uid': 'u_peer',
+        'from_name': 'Peer',
+        'call_type': 1,
+      });
+      await endpointManager.invoke('cancel_rtc_notification');
 
-    expect(adapter.showRequests, hasLength(1));
-    expect(adapter.showRequests.single.fromUid, 'u_peer');
-    expect(adapter.showRequests.single.fromName, 'Peer');
-    expect(adapter.showRequests.single.callType, 1);
-    expect(adapter.cancelCount, 1);
-  });
+      expect(adapter.showRequests, hasLength(1));
+      expect(adapter.showRequests.single.fromUid, 'u_peer');
+      expect(adapter.showRequests.single.fromName, 'Peer');
+      expect(adapter.showRequests.single.callType, 1);
+      expect(adapter.cancelCount, 1);
+    },
+  );
 
   test(
     'call coordinator shows rtc notification in background and cancels it on resume',
@@ -127,8 +130,7 @@ void main() {
 }
 
 class _FakeRtcNotificationAdapter implements RtcNotificationAdapter {
-  final List<RtcNotificationRequest> showRequests =
-      <RtcNotificationRequest>[];
+  final List<RtcNotificationRequest> showRequests = <RtcNotificationRequest>[];
   int cancelCount = 0;
 
   @override
@@ -147,10 +149,10 @@ class _FakeRtcNotificationAdapter implements RtcNotificationAdapter {
 
 class _FakeVideoCallService extends VideoCallService {
   _FakeVideoCallService()
-      : super(
-          callStore: CallStore(machine: const CallStateMachine()),
-          currentUidReader: () => 'u_self',
-        );
+    : super(
+        callStore: CallStore(machine: const CallStateMachine()),
+        currentUidReader: () => 'u_self',
+      );
 
   @override
   bool get hasActiveCallOrPendingSetup => false;

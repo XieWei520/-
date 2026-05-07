@@ -5,7 +5,9 @@ import 'package:wukong_im_app/wukong_uikit/group/group_scan_join_page.dart';
 
 void main() {
   group('GroupScanJoinPage', () {
-    testWidgets('loads and renders group info with join action', (tester) async {
+    testWidgets('loads and renders group info with join action', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: GroupScanJoinPage(
@@ -73,7 +75,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('group_scan_join_primary_button')));
+      await tester.tap(
+        find.byKey(const ValueKey('group_scan_join_primary_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(joined, isTrue);
@@ -104,16 +108,23 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('group_scan_join_primary_button')));
+      await tester.tap(
+        find.byKey(const ValueKey('group_scan_join_primary_button')),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('group_scan_join_error_text')), findsOne);
+      expect(
+        find.byKey(const ValueKey('group_scan_join_error_text')),
+        findsOne,
+      );
       final button = tester.widget<ElevatedButton>(
         find.byKey(const ValueKey('group_scan_join_primary_button')),
       );
       expect(button.onPressed, isNotNull);
 
-      await tester.tap(find.byKey(const ValueKey('group_scan_join_primary_button')));
+      await tester.tap(
+        find.byKey(const ValueKey('group_scan_join_primary_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(joinAttempts, 2);

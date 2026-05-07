@@ -19,7 +19,10 @@ void main() {
 
       expect(find.byType(WKSubPageScaffold), findsOneWidget);
       expect(find.text('设置备注'), findsOneWidget);
-      expect(find.byKey(const ValueKey('set_user_remark_input')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('set_user_remark_input')),
+        findsOneWidget,
+      );
       expect(find.text('确定'), findsNothing);
 
       await tester.enterText(
@@ -32,7 +35,9 @@ void main() {
     },
   );
 
-  testWidgets('set user remark page uses Android confirm action', (tester) async {
+  testWidgets('set user remark page uses Android confirm action', (
+    tester,
+  ) async {
     String? savedRemark;
 
     await tester.pumpWidget(

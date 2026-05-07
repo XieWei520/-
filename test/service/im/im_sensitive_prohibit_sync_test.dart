@@ -34,26 +34,34 @@ void main() {
   });
 
   group('MessageApi Android word sync parity', () {
-    test('syncSensitiveWords parses Android tips version and list payload', () async {
-      final adapter = _RecordingPlainAdapter(
-        payload: <String, dynamic>{
-          'tips': '该消息包含敏感词，仅自己可见',
-          'version': 7,
-          'list': <String>['bad', 'secret'],
-        },
-      );
-      ApiClient.instance.dio.httpClientAdapter = adapter;
+    test(
+      'syncSensitiveWords parses Android tips version and list payload',
+      () async {
+        final adapter = _RecordingPlainAdapter(
+          payload: <String, dynamic>{
+            'tips': '该消息包含敏感词，仅自己可见',
+            'version': 7,
+            'list': <String>['bad', 'secret'],
+          },
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
 
-      final snapshot = await MessageApi.instance.syncSensitiveWords(version: 3);
+        final snapshot = await MessageApi.instance.syncSensitiveWords(
+          version: 3,
+        );
 
-      expect(adapter.lastRequestOptions?.path, '/v1/message/sync/sensitivewords');
-      expect(adapter.lastRequestOptions?.queryParameters, <String, dynamic>{
-        'version': 3,
-      });
-      expect(snapshot.tips, '该消息包含敏感词，仅自己可见');
-      expect(snapshot.version, 7);
-      expect(snapshot.list, <String>['bad', 'secret']);
-    });
+        expect(
+          adapter.lastRequestOptions?.path,
+          '/v1/message/sync/sensitivewords',
+        );
+        expect(adapter.lastRequestOptions?.queryParameters, <String, dynamic>{
+          'version': 3,
+        });
+        expect(snapshot.tips, '该消息包含敏感词，仅自己可见');
+        expect(snapshot.version, 7);
+        expect(snapshot.list, <String>['bad', 'secret']);
+      },
+    );
 
     test('syncProhibitWords parses Android prohibit word payload', () async {
       final adapter = _RecordingPlainAdapter(
@@ -158,7 +166,10 @@ void main() {
         final changed = service.applyProhibitWordsToMessage(message);
 
         expect(changed, isTrue);
-        expect((message.messageContent as WKTextContent).content, '*** content');
+        expect(
+          (message.messageContent as WKTextContent).content,
+          '*** content',
+        );
       },
     );
 

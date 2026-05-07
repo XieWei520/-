@@ -105,30 +105,24 @@ void main() {
       },
     );
 
-    test(
-      'enterSearchMode from selecting leaves selection mode first',
-      () {
-        final transitions = <String>[];
-        late ChatSceneController controller;
-        controller = ChatSceneController(
-          onLeaveSelectionMode: () {
-            transitions.add('leave-selection');
-            transitions.add('mode-at-leave:${controller.state.mode.name}');
-          },
-        );
-        addTearDown(controller.dispose);
+    test('enterSearchMode from selecting leaves selection mode first', () {
+      final transitions = <String>[];
+      late ChatSceneController controller;
+      controller = ChatSceneController(
+        onLeaveSelectionMode: () {
+          transitions.add('leave-selection');
+          transitions.add('mode-at-leave:${controller.state.mode.name}');
+        },
+      );
+      addTearDown(controller.dispose);
 
-        controller.enterSelectionMode(seedIdentity: 'mid:seed');
-        controller.enterSearchMode(anchorOrderSeq: 21, initialKeyword: 'find');
+      controller.enterSelectionMode(seedIdentity: 'mid:seed');
+      controller.enterSearchMode(anchorOrderSeq: 21, initialKeyword: 'find');
 
-        expect(
-          transitions,
-          ['leave-selection', 'mode-at-leave:selecting'],
-        );
-        expect(controller.state.mode, ChatSceneMode.searching);
-        expect(controller.state.searchAnchorOrderSeq, 21);
-      },
-    );
+      expect(transitions, ['leave-selection', 'mode-at-leave:selecting']);
+      expect(controller.state.mode, ChatSceneMode.searching);
+      expect(controller.state.searchAnchorOrderSeq, 21);
+    });
 
     test('restoreNormal from searching leaves search mode first', () {
       final transitions = <String>[];
@@ -184,10 +178,7 @@ void main() {
       controller.restoreNormal();
       controller.restoreNormal();
 
-      expect(
-        transitions,
-        ['leave-reply', 'leave-selection', 'leave-search'],
-      );
+      expect(transitions, ['leave-reply', 'leave-selection', 'leave-search']);
     });
 
     test(
