@@ -33,8 +33,42 @@
 
   <title>信息平权</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    .wk-icp-footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 8px;
+      z-index: 2147483647;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+      font-size: 12px;
+      line-height: 1.5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .wk-icp-footer a {
+      pointer-events: auto;
+      color: rgba(15, 23, 42, 0.56);
+      text-decoration: none;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .wk-icp-footer a:hover,
+    .wk-icp-footer a:focus-visible {
+      color: rgba(14, 116, 144, 0.9);
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
+  <div class="wk-icp-footer" aria-label="ICP备案信息">
+    <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">沪ICP备2026016828号</a>
+  </div>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
