@@ -366,6 +366,42 @@ void main() {
 
   group('Task 3 parity hooks', () {
     test(
+      'selectImConnectAddr uses preferred_addr then transport fallbacks',
+      () {
+        final preferredRoute = ImRouteInfo(
+          tcpAddr: 'wemx.cc:5100',
+          wsAddr: 'ws://wemx.cc:5200',
+          wssAddr: 'wss://wemx.cc/ws',
+          preferredTransport: 'wss',
+          preferredAddr: 'wss://preferred.wemx.cc/ws',
+        );
+
+        expect(
+          selectImConnectAddr(
+            preferredRoute,
+            fallbackAddr: 'fallback.example:5100',
+          ),
+          'wss://preferred.wemx.cc/ws',
+        );
+
+        final invalidPreferredRoute = ImRouteInfo(
+          tcpAddr: 'wemx.cc:5100',
+          wsAddr: 'ws://wemx.cc:5200',
+          wssAddr: 'wss://wemx.cc/ws',
+          preferredTransport: 'wss',
+          preferredAddr: 'http://wemx.cc/ws',
+        );
+        expect(
+          selectImConnectAddr(
+            invalidPreferredRoute,
+            fallbackAddr: 'fallback.example:5100',
+          ),
+          'wss://wemx.cc/ws',
+        );
+      },
+    );
+
+    test(
       'cmd manager preserves channel target for top-level syncMessageExtra payloads',
       () {
         WKCMD? captured;

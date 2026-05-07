@@ -53,13 +53,21 @@ class ImRouteInfo {
 
 bool isValidTcpConnectAddr(String value) {
   final normalized = value.trim();
-  final separator = normalized.lastIndexOf(':');
-  if (separator <= 0 || separator >= normalized.length - 1) {
+  if (normalized.isEmpty || normalized.contains('://')) {
     return false;
   }
-  final host = normalized.substring(0, separator).trim();
-  final port = int.tryParse(normalized.substring(separator + 1).trim());
-  return host.isNotEmpty && port != null && port > 0;
+
+  final uri = Uri.tryParse('tcp://$normalized');
+  if (uri == null || !uri.hasAuthority || uri.host.trim().isEmpty) {
+    return false;
+  }
+  if (uri.path.trim().isNotEmpty ||
+      uri.query.isNotEmpty ||
+      uri.fragment.isNotEmpty) {
+    return false;
+  }
+  final port = uri.port;
+  return port > 0 && port <= 65535;
 }
 
 bool isValidWebSocketConnectUri(
@@ -67,14 +75,16 @@ bool isValidWebSocketConnectUri(
   required String expectedScheme,
 }) {
   final normalized = value.trim();
-  if (normalized.isEmpty) {
+  final normalizedScheme = expectedScheme.trim().toLowerCase();
+  if (normalized.isEmpty ||
+      (normalizedScheme != 'ws' && normalizedScheme != 'wss')) {
     return false;
   }
   final uri = Uri.tryParse(normalized);
-  if (uri == null) {
+  if (uri == null || !uri.hasAuthority || uri.host.trim().isEmpty) {
     return false;
   }
-  return uri.scheme == expectedScheme && uri.host.trim().isNotEmpty;
+  return uri.scheme.toLowerCase() == normalizedScheme;
 }
 
 bool shouldPreferLocalFallbackImAddr(String fallbackAddr) {
@@ -83,22 +93,22 @@ bool shouldPreferLocalFallbackImAddr(String fallbackAddr) {
     return false;
   }
 
-  final host = _extractHost(normalized);
+  final host = _extractHost(normalized).toLowerCase();
   if (host.isEmpty) {
     return false;
   }
 
-  final lowerHost = host.toLowerCase();
-  if (lowerHost == 'localhost' || lowerHost == '127.0.0.1' || lowerHost == '::1') {
+  if (host == 'localhost' || host == '127.0.0.1' || host == '::1') {
     return true;
   }
 
-  if (lowerHost.startsWith('10.') || lowerHost.startsWith('192.168.')) {
+  if (host.startsWith('10.') || host.startsWith('192.168.')) {
     return true;
   }
 
-  final octets = lowerHost.split('.');
-  if (octets.length == 4 && octets.every((item) => int.tryParse(item) != null)) {
+  final octets = host.split('.');
+  if (octets.length == 4 &&
+      octets.every((item) => int.tryParse(item) != null)) {
     final secondOctet = int.parse(octets[1]);
     if (octets[0] == '172' && secondOctet >= 16 && secondOctet <= 31) {
       return true;
@@ -128,9 +138,18 @@ String _extractHost(String value) {
   if (parsedUri != null && parsedUri.host.trim().isNotEmpty) {
     return parsedUri.host.trim();
   }
+
+  final tcpUri = Uri.tryParse('tcp://$value');
+  if (tcpUri != null && tcpUri.host.trim().isNotEmpty) {
+    return tcpUri.host.trim();
+  }
+
   final separator = value.lastIndexOf(':');
   if (separator <= 0) {
     return '';
   }
-  return value.substring(0, separator).trim();
+  return value
+      .substring(0, separator)
+      .trim()
+      .replaceAll(RegExp(r'^\[|\]$'), '');
 }
