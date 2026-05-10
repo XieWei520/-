@@ -143,6 +143,7 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
   late final FeishuNetworkCaptureBridge _networkCaptureBridge;
   late final FeishuNetworkCaptureStore _networkCaptureStore;
   late final FeishuNetworkForwardableImageResolver _networkImageResolver;
+  final Set<String> _recordedNetworkImageDedupeKeys = <String>{};
   StreamSubscription<FeishuNetworkCaptureEvent>? _networkCaptureSubscription;
   StreamSubscription<String>? _networkCaptureUnavailableSubscription;
   late final ProbeScheduler _probeScheduler;
@@ -503,18 +504,23 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
         }
       }
       var probedSnapshot = applyPageProbe(current, probe);
-      if (_networkCaptureStore.recentCandidates.isNotEmpty ||
-          _networkCaptureStore.recentAttributions.isNotEmpty) {
-        final imageResolution = _networkImageResolver.resolve(
-          candidates: _networkCaptureStore.recentCandidates,
-          attributions: _networkCaptureStore.recentAttributions,
-          recentEvents: probedSnapshot.recentEvents,
-        );
-        _networkCaptureStore.recordForwardableImageResolution(imageResolution);
-        probedSnapshot = applyNetworkForwardableImages(
-          probedSnapshot,
-          imageResolution.events,
-        );
+      final enrichment = applyNetworkImageEnrichment(
+        probedSnapshot,
+        candidates: _networkCaptureStore.recentCandidates,
+        attributions: _networkCaptureStore.recentAttributions,
+        recordedNetworkImageDedupeKeys: _recordedNetworkImageDedupeKeys,
+        resolve: _networkImageResolver.resolve,
+      );
+      probedSnapshot = enrichment.snapshot;
+      final recordableResolution = enrichment.recordableResolution;
+      if (recordableResolution != null) {
+        try {
+          _networkCaptureStore.recordForwardableImageResolution(
+            recordableResolution,
+          );
+        } catch (_) {
+          // Network image diagnostics are best-effort and must not fail probe.
+        }
       }
       final next = _withShellDiagnostics(
         probedSnapshot,

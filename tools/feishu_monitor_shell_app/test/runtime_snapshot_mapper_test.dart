@@ -278,6 +278,76 @@ void main() {
     );
   });
 
+  test('applyNetworkForwardableImages leaves empty event list unchanged', () {
+    final lastUpdatedAt = DateTime.utc(2026, 5, 10, 4);
+    final initial = ShellSnapshot.initial().copyWith(
+      lastUpdatedAt: lastUpdatedAt,
+      recentEvents: const <NormalizedMessageEvent>[
+        NormalizedMessageEvent(
+          eventId: 'event_existing',
+          dedupeKey: 'feed:alpha:msg_1',
+          accountId: 'account-1',
+          conversationId: 'feed:alpha',
+          conversationName: 'Alpha Group',
+          conversationType: 'group',
+          messageId: 'msg_1',
+          senderId: 'sender-1',
+          senderName: 'Alice',
+          messageType: 'text',
+          text: 'hello',
+          sentAt: '2026-05-10T03:59:59Z',
+          observedAt: '2026-05-10T04:00:00Z',
+          captureSource: 'feed_card_probe',
+        ),
+      ],
+    );
+
+    final updated = applyNetworkForwardableImages(
+      initial,
+      const <NormalizedMessageEvent>[],
+    );
+
+    expect(identical(updated, initial), isTrue);
+    expect(updated.recentEvents, same(initial.recentEvents));
+    expect(updated.lastUpdatedAt, lastUpdatedAt);
+  });
+
+  test(
+    'applyNetworkForwardableImages updates timestamp for non-empty events',
+    () {
+      final lastUpdatedAt = DateTime.utc(2026, 5, 10, 4);
+      final initial = ShellSnapshot.initial().copyWith(
+        lastUpdatedAt: lastUpdatedAt,
+      );
+
+      final before = DateTime.now().toUtc();
+      final updated =
+          applyNetworkForwardableImages(initial, const <NormalizedMessageEvent>[
+            NormalizedMessageEvent(
+              eventId: 'event_network_image_sha1alpha',
+              dedupeKey: 'feed:alpha:network_image:sha1alpha',
+              accountId: 'account-1',
+              conversationId: 'feed:alpha',
+              conversationName: 'Alpha Group',
+              conversationType: 'group',
+              messageId: 'network_image:sha1alpha',
+              senderId: 'sender-1',
+              senderName: 'Alice',
+              messageType: 'image',
+              text: '[Image]',
+              sentAt: '2026-05-10T04:29:59Z',
+              observedAt: '2026-05-10T04:30:02Z',
+              captureSource: 'network_original_image',
+            ),
+          ]);
+      final after = DateTime.now().toUtc();
+
+      expect(updated.lastUpdatedAt, isNot(lastUpdatedAt));
+      expect(updated.lastUpdatedAt.compareTo(before), greaterThanOrEqualTo(0));
+      expect(updated.lastUpdatedAt.compareTo(after), lessThanOrEqualTo(0));
+    },
+  );
+
   test(
     'applyNetworkForwardableImages replaces existing event with same dedupe key',
     () {
@@ -342,7 +412,10 @@ void main() {
 
       expect(updated.recentEvents, hasLength(1));
       expect(updated.recentEvents.single.eventId, 'event_new');
-      expect(updated.recentEvents.single.captureSource, 'network_original_image');
+      expect(
+        updated.recentEvents.single.captureSource,
+        'network_original_image',
+      );
       expect(
         updated.recentEvents.single.imageAttachments.single.localPath,
         r'C:\tmp\alpha.webp',

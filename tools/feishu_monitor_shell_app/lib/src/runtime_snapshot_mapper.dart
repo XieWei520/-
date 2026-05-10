@@ -1,6 +1,27 @@
 import 'package:feishu_monitor_shell/feishu_monitor_shell.dart';
 
+import 'feishu_network_capture.dart';
+import 'feishu_network_forwardable_image_resolver.dart';
 import 'feishu_page_probe.dart';
+
+typedef NetworkImageResolverCallback =
+    FeishuNetworkForwardableImageResolution Function({
+      required List<FeishuNetworkImageCandidate> candidates,
+      required List<FeishuNetworkImageAttribution> attributions,
+      required List<NormalizedMessageEvent> recentEvents,
+    });
+
+class NetworkImageEnrichmentResult {
+  const NetworkImageEnrichmentResult({
+    required this.snapshot,
+    this.recordableResolution,
+    this.error = '',
+  });
+
+  final ShellSnapshot snapshot;
+  final FeishuNetworkForwardableImageResolution? recordableResolution;
+  final String error;
+}
 
 String deriveLoginStateFromUrl(String url) {
   final normalized = url.trim().toLowerCase();
@@ -80,6 +101,73 @@ ShellSnapshot applyNetworkForwardableImages(
   return snapshot.copyWith(
     recentEvents: mergeRecentEvents(snapshot.recentEvents, events),
     lastUpdatedAt: DateTime.now().toUtc(),
+  );
+}
+
+NetworkImageEnrichmentResult applyNetworkImageEnrichment(
+  ShellSnapshot snapshot, {
+  required List<FeishuNetworkImageCandidate> candidates,
+  required List<FeishuNetworkImageAttribution> attributions,
+  required Set<String> recordedNetworkImageDedupeKeys,
+  required NetworkImageResolverCallback resolve,
+}) {
+  if (candidates.isEmpty && attributions.isEmpty) {
+    return NetworkImageEnrichmentResult(snapshot: snapshot);
+  }
+  try {
+    final imageResolution = resolve(
+      candidates: candidates,
+      attributions: attributions,
+      recentEvents: snapshot.recentEvents,
+    );
+    final enrichedSnapshot = applyNetworkForwardableImages(
+      snapshot,
+      imageResolution.events,
+    );
+    final recordableResolution = _recordableNetworkImageResolution(
+      imageResolution,
+      recordedNetworkImageDedupeKeys,
+    );
+    return NetworkImageEnrichmentResult(
+      snapshot: enrichedSnapshot,
+      recordableResolution: recordableResolution,
+    );
+  } catch (error) {
+    return NetworkImageEnrichmentResult(
+      snapshot: snapshot,
+      error: error.toString(),
+    );
+  }
+}
+
+FeishuNetworkForwardableImageResolution? _recordableNetworkImageResolution(
+  FeishuNetworkForwardableImageResolution resolution,
+  Set<String> recordedNetworkImageDedupeKeys,
+) {
+  if (resolution.events.isEmpty) {
+    if (resolution.skipReason.trim().isEmpty) {
+      return null;
+    }
+    return resolution;
+  }
+  final recordableEvents = <NormalizedMessageEvent>[];
+  for (final event in resolution.events) {
+    final dedupeKey = event.dedupeKey.trim();
+    if (event.captureSource.trim() != 'network_original_image' ||
+        dedupeKey.isEmpty ||
+        recordedNetworkImageDedupeKeys.contains(dedupeKey)) {
+      continue;
+    }
+    recordedNetworkImageDedupeKeys.add(dedupeKey);
+    recordableEvents.add(event);
+  }
+  if (recordableEvents.isEmpty) {
+    return null;
+  }
+  return FeishuNetworkForwardableImageResolution(
+    events: recordableEvents,
+    skipReason: resolution.skipReason,
+    decision: resolution.decision,
   );
 }
 
