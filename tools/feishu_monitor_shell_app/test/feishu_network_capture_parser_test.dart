@@ -201,6 +201,11 @@ void main() {
       statusCode: 200,
       mimeType: 'image/png',
       payloadPreview: '',
+      bodyLocalPath: r'C:\Temp\wukong_feishu_monitor_images\static.png',
+      bodySha1: 'static123',
+      bodySize: 12345,
+      bodyMimeType: 'image/png',
+      bodySaved: true,
     );
 
     expect(parseFeishuNetworkImageCandidates(event), isEmpty);
@@ -217,6 +222,11 @@ void main() {
       statusCode: 200,
       mimeType: 'image/webp',
       payloadPreview: '',
+      bodyLocalPath: r'C:\Temp\wukong_feishu_monitor_images\avatar.webp',
+      bodySha1: 'avatar123',
+      bodySize: 12345,
+      bodyMimeType: 'image/webp',
+      bodySaved: true,
     );
     final inline = FeishuNetworkCaptureEvent(
       id: 'evt_inline',
@@ -227,10 +237,52 @@ void main() {
       statusCode: 200,
       mimeType: 'image/gif',
       payloadPreview: '',
+      bodyLocalPath: r'C:\Temp\wukong_feishu_monitor_images\inline.gif',
+      bodySha1: 'inline123',
+      bodySize: 12345,
+      bodyMimeType: 'image/gif',
+      bodySaved: true,
     );
 
     expect(parseFeishuNetworkImageCandidates(avatar), isEmpty);
     expect(parseFeishuNetworkImageCandidates(inline), isEmpty);
+  });
+
+  test('parser ignores saved direct image responses with zero body size', () {
+    final event = _savedDirectImageEvent('evt_zero_body_size', bodySize: 0);
+
+    expect(parseFeishuNetworkImageCandidates(event), isEmpty);
+  });
+
+  test('parser ignores saved direct image responses with negative body size', () {
+    final event = _savedDirectImageEvent('evt_negative_body_size', bodySize: -1);
+
+    expect(parseFeishuNetworkImageCandidates(event), isEmpty);
+  });
+
+  test('parser ignores saved direct image responses with blank local path', () {
+    final event = _savedDirectImageEvent('evt_blank_path', bodyLocalPath: '   ');
+
+    expect(parseFeishuNetworkImageCandidates(event), isEmpty);
+  });
+
+  test('parser ignores saved direct image responses with blank body sha1', () {
+    final event = _savedDirectImageEvent('evt_blank_sha1', bodySha1: '   ');
+
+    expect(parseFeishuNetworkImageCandidates(event), isEmpty);
+  });
+
+  test('parser uses event mime type when saved body mime type is empty', () {
+    final event = _savedDirectImageEvent(
+      'evt_empty_body_mime_type',
+      bodyMimeType: '',
+      mimeType: 'image/png',
+    );
+
+    final candidates = parseFeishuNetworkImageCandidates(event);
+
+    expect(candidates, hasLength(1));
+    expect(candidates.single.bodyMimeType, 'image/png');
   });
 
   test('parser ignores generic url without image hints', () {
@@ -273,5 +325,32 @@ FeishuNetworkCaptureEvent _eventWithPayload(String id, String payloadPreview) {
     statusCode: 200,
     mimeType: 'application/json',
     payloadPreview: payloadPreview,
+  );
+}
+
+FeishuNetworkCaptureEvent _savedDirectImageEvent(
+  String id, {
+  String url =
+      'https://internal-api.feishu.cn/messenger/image/abc.webp?token=secret',
+  String mimeType = 'image/webp',
+  String bodyLocalPath = r'C:\Temp\wukong_feishu_monitor_images\abc.webp',
+  String bodySha1 = 'abc123',
+  int bodySize = 12345,
+  String bodyMimeType = 'image/webp',
+}) {
+  return FeishuNetworkCaptureEvent(
+    id: id,
+    observedAt: DateTime.utc(2026, 5, 10, 6, 4),
+    source: FeishuNetworkEventSource.httpResponse,
+    url: url,
+    method: 'GET',
+    statusCode: 200,
+    mimeType: mimeType,
+    payloadPreview: '',
+    bodyLocalPath: bodyLocalPath,
+    bodySha1: bodySha1,
+    bodySize: bodySize,
+    bodyMimeType: bodyMimeType,
+    bodySaved: true,
   );
 }
