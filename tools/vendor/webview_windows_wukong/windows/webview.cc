@@ -1,15 +1,21 @@
 #include "webview.h"
 
+#include <bcrypt.h>
+#include <wincrypt.h>
 #include <wrl.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
-#include <ctime>
 #include <cctype>
+#include <ctime>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 #include "util/composition.desktop.interop.h"
 #include "util/string_converter.h"
@@ -21,6 +27,8 @@ namespace {
 
 constexpr size_t kMaxPayloadPreviewBytes = 16 * 1024;
 constexpr size_t kMaxPendingNetworkEvents = 256;
+constexpr size_t kMaxSavedImageBodyBytes = 25 * 1024 * 1024;
+constexpr auto kSavedImageCacheMaxAge = std::chrono::hours(24);
 
 inline void ConvertColor(COREWEBVIEW2_COLOR& webview_color, int32_t color) {
   webview_color.B = color & 0xFF;
@@ -78,6 +86,15 @@ std::string TruncatePreview(const std::string& value) {
     return value;
   }
   return value.substr(0, kMaxPayloadPreviewBytes);
+}
+
+std::string LowerCopy(const std::string& value) {
+  std::string lower = value;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
+  return lower;
 }
 
 std::string JsonStringValue(const std::string& json, const std::string& key) {
@@ -167,16 +184,286 @@ int JsonIntValue(const std::string& json, const std::string& key) {
   }
 }
 
+bool JsonBoolValue(const std::string& json, const std::string& key) {
+  const auto key_pos = json.find("\"" + key + "\"");
+  if (key_pos == std::string::npos) {
+    return false;
+  }
+  const auto colon_pos = json.find(':', key_pos);
+  if (colon_pos == std::string::npos) {
+    return false;
+  }
+  const auto start = json.find_first_not_of(" \t\r\n", colon_pos + 1);
+  if (start == std::string::npos) {
+    return false;
+  }
+  return json.compare(start, 4, "true") == 0;
+}
+
 bool JsonHasKey(const std::string& json, const std::string& key) {
   return json.find("\"" + key + "\"") != std::string::npos;
 }
 
+bool MimeTypeStartsWithImage(const std::string& mime_type) {
+  const std::string lower_mime = LowerCopy(mime_type);
+  return lower_mime.rfind("image/", 0) == 0;
+}
+
+bool ContainsAny(const std::string& value,
+                 const std::initializer_list<const char*> needles) {
+  for (const auto* needle : needles) {
+    if (value.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool LooksLikeFeishuMessageImage(const std::string& url) {
+  const std::string lower = LowerCopy(url);
+  if (lower.rfind("data:", 0) == 0 || lower.rfind("blob:", 0) == 0) {
+    return false;
+  }
+
+  if (!ContainsAny(lower, {"feishu.cn", "feishu.net", "feishucdn.com",
+                          "larksuite.com", "larksuitecdn.com",
+                          "larkoffice.com"})) {
+    return false;
+  }
+  if (ContainsAny(lower, {"avatar", "default-avatar", "feishu-static",
+                          "lark-static", "scmcdn", "emoji", "emoticon",
+                          "sprite", "favicon", "/icon", "logo", "badge"})) {
+    return false;
+  }
+
+  const bool known_message_image_host_or_path =
+      ContainsAny(lower, {"imfile.feishucdn.com/static-resource/v1/",
+                          "internal-api-lark-file", "/messenger/image",
+                          "/im/v1/images",
+                          "/open-apis/im/", "/space/api/box/stream/download"});
+  if (known_message_image_host_or_path) {
+    return true;
+  }
+
+  return ContainsAny(lower, {"message", "messenger", "image_key", "origin",
+                             "preview", "thumbnail", "static-resource/v1"});
+}
+
+std::string ImageExtensionForMimeType(const std::string& mime_type) {
+  const std::string lower_mime = LowerCopy(mime_type);
+  if (lower_mime.find("png") != std::string::npos) {
+    return "png";
+  }
+  if (lower_mime.find("gif") != std::string::npos) {
+    return "gif";
+  }
+  if (lower_mime.find("webp") != std::string::npos) {
+    return "webp";
+  }
+  return "jpg";
+}
+
+std::filesystem::path NetworkImageCacheDirectory() {
+  std::error_code error;
+  auto root = std::filesystem::temp_directory_path(error);
+  if (error) {
+    root = std::filesystem::current_path(error);
+  }
+  return root / "wukong_feishu_monitor_shell" / "network_images";
+}
+
+void CleanupOldNetworkImageCacheFiles() {
+  std::error_code error;
+  const auto cache_dir = NetworkImageCacheDirectory();
+  if (!std::filesystem::exists(cache_dir, error)) {
+    return;
+  }
+
+  const auto now = std::filesystem::file_time_type::clock::now();
+  for (const auto& entry :
+       std::filesystem::directory_iterator(cache_dir, error)) {
+    if (error) {
+      return;
+    }
+    if (!entry.is_regular_file(error)) {
+      error.clear();
+      continue;
+    }
+    const auto last_write = entry.last_write_time(error);
+    if (error) {
+      error.clear();
+      continue;
+    }
+    if (now - last_write > kSavedImageCacheMaxAge) {
+      std::filesystem::remove(entry.path(), error);
+      error.clear();
+    }
+  }
+}
+
+bool DecodeBase64Body(const std::string& body, std::vector<uint8_t>* output) {
+  if (!output) {
+    return false;
+  }
+  output->clear();
+  if (body.empty()) {
+    return true;
+  }
+
+  DWORD decoded_size = 0;
+  if (!CryptStringToBinaryA(body.c_str(), static_cast<DWORD>(body.size()),
+                            CRYPT_STRING_BASE64, nullptr, &decoded_size,
+                            nullptr, nullptr)) {
+    return false;
+  }
+  output->resize(decoded_size);
+  if (decoded_size == 0) {
+    return true;
+  }
+  return CryptStringToBinaryA(
+             body.c_str(), static_cast<DWORD>(body.size()),
+             CRYPT_STRING_BASE64, output->data(), &decoded_size, nullptr,
+             nullptr) &&
+         decoded_size == output->size();
+}
+
+bool ComputeSha1Hex(const std::vector<uint8_t>& bytes, std::string* output) {
+  if (!output) {
+    return false;
+  }
+  output->clear();
+
+  BCRYPT_ALG_HANDLE algorithm = nullptr;
+  BCRYPT_HASH_HANDLE hash = nullptr;
+  std::vector<uint8_t> hash_object;
+  std::array<uint8_t, 20> digest{};
+
+  auto cleanup = [&]() {
+    if (hash) {
+      BCryptDestroyHash(hash);
+    }
+    if (algorithm) {
+      BCryptCloseAlgorithmProvider(algorithm, 0);
+    }
+  };
+
+  if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(
+          &algorithm, BCRYPT_SHA1_ALGORITHM, nullptr, 0))) {
+    cleanup();
+    return false;
+  }
+
+  DWORD hash_object_size = 0;
+  DWORD result_size = 0;
+  if (!BCRYPT_SUCCESS(BCryptGetProperty(
+          algorithm, BCRYPT_OBJECT_LENGTH,
+          reinterpret_cast<PUCHAR>(&hash_object_size), sizeof(hash_object_size),
+          &result_size, 0))) {
+    cleanup();
+    return false;
+  }
+
+  hash_object.resize(hash_object_size);
+  if (!BCRYPT_SUCCESS(BCryptCreateHash(
+          algorithm, &hash, hash_object.data(),
+          static_cast<ULONG>(hash_object.size()), nullptr, 0, 0))) {
+    cleanup();
+    return false;
+  }
+
+  if (!bytes.empty() &&
+      !BCRYPT_SUCCESS(BCryptHashData(
+          hash, const_cast<PUCHAR>(bytes.data()),
+          static_cast<ULONG>(bytes.size()), 0))) {
+    cleanup();
+    return false;
+  }
+
+  if (!BCRYPT_SUCCESS(BCryptFinishHash(
+          hash, digest.data(), static_cast<ULONG>(digest.size()), 0))) {
+    cleanup();
+    return false;
+  }
+
+  std::ostringstream stream;
+  stream << std::hex << std::setfill('0');
+  for (const auto byte : digest) {
+    stream << std::setw(2) << static_cast<int>(byte);
+  }
+  *output = stream.str();
+  cleanup();
+  return true;
+}
+
+void TrySaveImageBody(WebviewNetworkEvent* event, const std::string& body,
+                      bool base64_encoded) {
+  if (!event || !MimeTypeStartsWithImage(event->mime_type) ||
+      !LooksLikeFeishuMessageImage(event->url)) {
+    return;
+  }
+
+  event->body_base64_encoded = base64_encoded;
+  event->body_mime_type = event->mime_type;
+
+  std::vector<uint8_t> bytes;
+  if (base64_encoded) {
+    if (!DecodeBase64Body(body, &bytes)) {
+      event->body_save_error = "decode_failed";
+      return;
+    }
+  } else {
+    bytes.assign(body.begin(), body.end());
+  }
+
+  if (bytes.empty()) {
+    event->body_save_error = "empty_body";
+    return;
+  }
+  event->body_size = static_cast<int64_t>(bytes.size());
+  if (bytes.size() > kMaxSavedImageBodyBytes) {
+    event->body_save_error = "body_too_large";
+    return;
+  }
+
+  std::string sha1;
+  if (!ComputeSha1Hex(bytes, &sha1) || sha1.empty()) {
+    event->body_save_error = "hash_failed";
+    return;
+  }
+  event->body_sha1 = sha1;
+
+  std::error_code error;
+  const auto cache_dir = NetworkImageCacheDirectory();
+  std::filesystem::create_directories(cache_dir, error);
+  if (error) {
+    event->body_save_error = "write_failed";
+    return;
+  }
+
+  const auto path =
+      cache_dir / std::format("{}.{}", sha1,
+                              ImageExtensionForMimeType(event->body_mime_type));
+  {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+      event->body_save_error = "write_failed";
+      return;
+    }
+    file.write(reinterpret_cast<const char*>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()));
+    if (!file.good()) {
+      event->body_save_error = "write_failed";
+      return;
+    }
+  }
+
+  event->body_local_path = path.string();
+  event->body_saved = true;
+  event->body_save_error.clear();
+}
+
 bool ShouldReadResponseBody(const WebviewNetworkEvent& event) {
-  std::string probe = event.mime_type + " " + event.url;
-  std::transform(probe.begin(), probe.end(), probe.begin(),
-                 [](unsigned char c) {
-                   return static_cast<char>(std::tolower(c));
-                 });
+  const std::string probe = LowerCopy(event.mime_type + " " + event.url);
   return probe.find("json") != std::string::npos ||
          probe.find("text") != std::string::npos ||
          probe.find("messenger") != std::string::npos ||
@@ -722,7 +1009,11 @@ void Webview::HandleNetworkResponseReceived(const std::string& json) {
 
   EmitNetworkEvent(event);
 
-  if (!event.id.empty() && ShouldReadResponseBody(event)) {
+  if (!event.id.empty() &&
+      (ShouldReadResponseBody(event) ||
+       (event.status_code >= 200 && event.status_code < 300 &&
+        MimeTypeStartsWithImage(event.mime_type) &&
+        LooksLikeFeishuMessageImage(event.url)))) {
     StorePendingNetworkEvent(event);
   }
 }
@@ -769,8 +1060,14 @@ void Webview::HandleNetworkLoadingFinished(const std::string& json) {
             WebviewNetworkEvent event_with_body = event;
             const std::string response_json =
                 util::Utf8FromUtf16(return_object_as_json);
+            const std::string body = JsonStringValue(response_json, "body");
+            const bool base64_encoded =
+                JsonBoolValue(response_json, "base64Encoded");
             event_with_body.payload_preview =
-                TruncatePreview(JsonStringValue(response_json, "body"));
+                TruncatePreview(body);
+            if (event.status_code >= 200 && event.status_code < 300) {
+              TrySaveImageBody(&event_with_body, body, base64_encoded);
+            }
             network_event_callback(event_with_body);
             return S_OK;
           })
@@ -870,6 +1167,7 @@ WebviewNetworkCaptureStartResult Webview::StartNetworkCapture() {
     return {false, "WebView2 instance is not valid."};
   }
 
+  CleanupOldNetworkImageCacheFiles();
   network_capture_enabled_ = true;
   if (FAILED(webview_->CallDevToolsProtocolMethod(L"Network.enable", L"{}",
                                                   nullptr))) {

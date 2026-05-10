@@ -51,6 +51,13 @@ struct WebviewNetworkEvent {
   int status_code = 0;
   std::string mime_type;
   std::string payload_preview;
+  std::string body_local_path;
+  std::string body_sha1;
+  int64_t body_size = 0;
+  std::string body_mime_type;
+  bool body_base64_encoded = false;
+  bool body_saved = false;
+  std::string body_save_error;
 };
 
 struct WebviewNetworkCaptureStartResult {

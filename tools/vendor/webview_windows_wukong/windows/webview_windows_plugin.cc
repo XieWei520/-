@@ -252,6 +252,20 @@ void WebviewWindowsPlugin::EmitNetworkCaptureEvent(
        flutter::EncodableValue(event.mime_type)},
       {flutter::EncodableValue("payload_preview"),
        flutter::EncodableValue(event.payload_preview)},
+      {flutter::EncodableValue("body_local_path"),
+       flutter::EncodableValue(event.body_local_path)},
+      {flutter::EncodableValue("body_sha1"),
+       flutter::EncodableValue(event.body_sha1)},
+      {flutter::EncodableValue("body_size"),
+       flutter::EncodableValue(event.body_size)},
+      {flutter::EncodableValue("body_mime_type"),
+       flutter::EncodableValue(event.body_mime_type)},
+      {flutter::EncodableValue("body_base64_encoded"),
+       flutter::EncodableValue(event.body_base64_encoded)},
+      {flutter::EncodableValue("body_saved"),
+       flutter::EncodableValue(event.body_saved)},
+      {flutter::EncodableValue("body_save_error"),
+       flutter::EncodableValue(event.body_save_error)},
   });
   network_capture_channel_->InvokeMethod("networkEvent", std::move(args));
 }
