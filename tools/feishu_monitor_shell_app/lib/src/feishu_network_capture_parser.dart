@@ -146,6 +146,14 @@ FeishuNetworkImageCandidate? _candidateFromDirectImageResponse(
   if (event.source != FeishuNetworkEventSource.httpResponse) {
     return null;
   }
+  final bodyLocalPath = event.bodyLocalPath.trim();
+  final bodySha1 = event.bodySha1.trim();
+  if (!event.bodySaved ||
+      bodyLocalPath.isEmpty ||
+      bodySha1.isEmpty ||
+      event.bodySize <= 0) {
+    return null;
+  }
   final mimeType = event.mimeType.toLowerCase();
   if (!mimeType.startsWith('image/')) {
     return null;
@@ -168,6 +176,12 @@ FeishuNetworkImageCandidate? _candidateFromDirectImageResponse(
     height: 0,
     quality: FeishuNetworkImageQuality.unknown,
     observedAt: event.observedAt,
+    localPath: bodyLocalPath,
+    bodySha1: bodySha1,
+    bodySize: event.bodySize,
+    bodyMimeType: event.bodyMimeType.trim().isEmpty
+        ? event.mimeType
+        : event.bodyMimeType.trim(),
   );
 }
 

@@ -65,6 +65,32 @@ void main() {
     expect(json['conversation_name'], groupName);
   });
 
+  test('image candidate summary redacts saved body local path', () {
+    final candidate = FeishuNetworkImageCandidate(
+      conversationId: 'conversation-1',
+      conversationName: 'chat',
+      messageId: 'message-1',
+      senderName: 'sender',
+      resourceUrl: 'https://internal-api.feishu.cn/image/origin',
+      resourceKey: 'image_1',
+      width: 640,
+      height: 480,
+      quality: FeishuNetworkImageQuality.original,
+      observedAt: DateTime.utc(2026, 5, 10, 4, 31),
+      localPath: r'C:\Temp\wukong_feishu_monitor_images\abc.webp',
+      bodySha1: 'abc123',
+      bodySize: 12345,
+      bodyMimeType: 'image/webp',
+    );
+
+    final json = candidate.toStatusJson();
+
+    expect(json, containsPair('local_path', '<local-cache-file>'));
+    expect(json, containsPair('body_sha1', 'abc123'));
+    expect(json, containsPair('body_size', 12345));
+    expect(json, containsPair('body_mime_type', 'image/webp'));
+  });
+
   test('parser extracts image candidate from json payload', () {
     const groupName = '\u6ee1\u6ee1\u6b63\u80fd\u91cf';
     const senderName = '\u6a58\u751f\u6dee\u5357';
@@ -115,7 +141,7 @@ void main() {
     expect(parseFeishuNetworkImageCandidates(event), isEmpty);
   });
 
-  test('parser records direct image http responses as candidates', () {
+  test('parser ignores direct image responses without saved local body', () {
     final event = FeishuNetworkCaptureEvent(
       id: 'evt_image_response',
       observedAt: DateTime.utc(2026, 5, 10, 6, 2),
@@ -128,12 +154,40 @@ void main() {
       payloadPreview: '',
     );
 
+    expect(parseFeishuNetworkImageCandidates(event), isEmpty);
+  });
+
+  test('parser records saved direct image responses as candidates', () {
+    final event = FeishuNetworkCaptureEvent(
+      id: 'evt_image_response',
+      observedAt: DateTime.utc(2026, 5, 10, 6, 2),
+      source: FeishuNetworkEventSource.httpResponse,
+      url:
+          'https://internal-api.feishu.cn/messenger/image/abc.webp?token=secret',
+      method: 'GET',
+      statusCode: 200,
+      mimeType: 'image/webp',
+      payloadPreview: '',
+      bodyLocalPath: r' C:\Temp\wukong_feishu_monitor_images\abc.webp ',
+      bodySha1: ' abc123 ',
+      bodySize: 12345,
+      bodyMimeType: ' image/webp ',
+      bodySaved: true,
+    );
+
     final candidates = parseFeishuNetworkImageCandidates(event);
 
     expect(candidates, hasLength(1));
     expect(candidates.single.resourceUrl, event.url);
     expect(candidates.single.messageId, event.id);
     expect(candidates.single.quality, FeishuNetworkImageQuality.unknown);
+    expect(
+      candidates.single.localPath,
+      r'C:\Temp\wukong_feishu_monitor_images\abc.webp',
+    );
+    expect(candidates.single.bodySha1, 'abc123');
+    expect(candidates.single.bodySize, 12345);
+    expect(candidates.single.bodyMimeType, 'image/webp');
   });
 
   test('parser ignores direct frontend static image responses', () {

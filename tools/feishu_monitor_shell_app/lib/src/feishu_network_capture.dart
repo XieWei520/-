@@ -77,6 +77,10 @@ class FeishuNetworkImageCandidate {
     required this.height,
     required this.quality,
     required this.observedAt,
+    this.localPath = '',
+    this.bodySha1 = '',
+    this.bodySize = 0,
+    this.bodyMimeType = '',
   });
 
   final String conversationId;
@@ -89,6 +93,10 @@ class FeishuNetworkImageCandidate {
   final int height;
   final FeishuNetworkImageQuality quality;
   final DateTime observedAt;
+  final String localPath;
+  final String bodySha1;
+  final int bodySize;
+  final String bodyMimeType;
 
   Map<String, Object?> toStatusJson() {
     return <String, Object?>{
@@ -102,6 +110,10 @@ class FeishuNetworkImageCandidate {
       'height': height,
       'quality': quality.name,
       'observed_at': observedAt.toUtc().toIso8601String(),
+      'local_path': localPath.trim().isEmpty ? '' : '<local-cache-file>',
+      'body_sha1': bodySha1,
+      'body_size': bodySize,
+      'body_mime_type': bodyMimeType,
     };
   }
 }
