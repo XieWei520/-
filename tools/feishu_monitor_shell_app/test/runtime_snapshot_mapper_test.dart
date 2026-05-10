@@ -239,6 +239,117 @@ void main() {
     );
   });
 
+  test('applyNetworkForwardableImages merges network image events', () {
+    final updated = applyNetworkForwardableImages(
+      ShellSnapshot.initial(),
+      const <NormalizedMessageEvent>[
+        NormalizedMessageEvent(
+          eventId: 'event_network_image_sha1alpha',
+          dedupeKey: 'feed:alpha:network_image:sha1alpha',
+          accountId: 'account-1',
+          conversationId: 'feed:alpha',
+          conversationName: 'Alpha Group',
+          conversationType: 'group',
+          messageId: 'network_image:sha1alpha',
+          senderId: 'sender-1',
+          senderName: 'Alice',
+          messageType: 'image',
+          text: '[Image]',
+          sentAt: '2026-05-10T04:29:59Z',
+          observedAt: '2026-05-10T04:30:02Z',
+          captureSource: 'network_original_image',
+          imageAttachments: <MessageImageAttachment>[
+            MessageImageAttachment(
+              sourceUrl: 'https://a.test/image?token=secret',
+              localPath: r'C:\tmp\alpha.webp',
+              width: 640,
+              height: 480,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    expect(updated.recentEvents, hasLength(1));
+    expect(updated.recentEvents.single.captureSource, 'network_original_image');
+    expect(
+      updated.recentEvents.single.imageAttachments.single.localPath,
+      r'C:\tmp\alpha.webp',
+    );
+  });
+
+  test(
+    'applyNetworkForwardableImages replaces existing event with same dedupe key',
+    () {
+      final initial = ShellSnapshot.initial().copyWith(
+        recentEvents: const <NormalizedMessageEvent>[
+          NormalizedMessageEvent(
+            eventId: 'event_old',
+            dedupeKey: 'feed:alpha:network_image:sha1alpha',
+            accountId: 'account-1',
+            conversationId: 'feed:alpha',
+            conversationName: 'Alpha Group',
+            conversationType: 'group',
+            messageId: 'network_image:sha1alpha',
+            senderId: 'sender-1',
+            senderName: 'Alice',
+            messageType: 'image',
+            text: '[Image]',
+            sentAt: '2026-05-10T04:29:59Z',
+            observedAt: '2026-05-10T04:30:00Z',
+            captureSource: 'feed_card_probe',
+            imageAttachments: <MessageImageAttachment>[
+              MessageImageAttachment(
+                sourceUrl: 'https://a.test/preview',
+                localPath: '',
+                width: 320,
+                height: 240,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final updated = applyNetworkForwardableImages(
+        initial,
+        const <NormalizedMessageEvent>[
+          NormalizedMessageEvent(
+            eventId: 'event_new',
+            dedupeKey: 'feed:alpha:network_image:sha1alpha',
+            accountId: 'account-1',
+            conversationId: 'feed:alpha',
+            conversationName: 'Alpha Group',
+            conversationType: 'group',
+            messageId: 'network_image:sha1alpha',
+            senderId: 'sender-1',
+            senderName: 'Alice',
+            messageType: 'image',
+            text: '[Image]',
+            sentAt: '2026-05-10T04:29:59Z',
+            observedAt: '2026-05-10T04:30:02Z',
+            captureSource: 'network_original_image',
+            imageAttachments: <MessageImageAttachment>[
+              MessageImageAttachment(
+                sourceUrl: 'https://a.test/original',
+                localPath: r'C:\tmp\alpha.webp',
+                width: 640,
+                height: 480,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      expect(updated.recentEvents, hasLength(1));
+      expect(updated.recentEvents.single.eventId, 'event_new');
+      expect(updated.recentEvents.single.captureSource, 'network_original_image');
+      expect(
+        updated.recentEvents.single.imageAttachments.single.localPath,
+        r'C:\tmp\alpha.webp',
+      );
+    },
+  );
+
   test(
     'normalizeObservedMessages drops dom text noise but keeps feed text',
     () {

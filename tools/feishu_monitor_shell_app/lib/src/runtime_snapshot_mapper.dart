@@ -70,6 +70,19 @@ ShellSnapshot applyPageProbe(ShellSnapshot snapshot, FeishuPageProbe probe) {
   );
 }
 
+ShellSnapshot applyNetworkForwardableImages(
+  ShellSnapshot snapshot,
+  List<NormalizedMessageEvent> events,
+) {
+  if (events.isEmpty) {
+    return snapshot;
+  }
+  return snapshot.copyWith(
+    recentEvents: mergeRecentEvents(snapshot.recentEvents, events),
+    lastUpdatedAt: DateTime.now().toUtc(),
+  );
+}
+
 List<NormalizedMessageEvent> normalizeObservedMessages(
   List<ObservedMessageCandidate> messages,
 ) {

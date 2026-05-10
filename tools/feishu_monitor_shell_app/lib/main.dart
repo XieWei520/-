@@ -10,6 +10,7 @@ import 'package:webview_windows/webview_windows.dart';
 import 'src/feishu_network_capture.dart';
 import 'src/feishu_network_capture_bridge.dart';
 import 'src/feishu_network_capture_parser.dart';
+import 'src/feishu_network_forwardable_image_resolver.dart';
 import 'src/feishu_network_capture_store.dart';
 import 'src/feishu_page_observer.dart';
 import 'src/feishu_page_probe.dart';
@@ -141,6 +142,7 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
   StreamSubscription<ShellEvent>? _shellEventSubscription;
   late final FeishuNetworkCaptureBridge _networkCaptureBridge;
   late final FeishuNetworkCaptureStore _networkCaptureStore;
+  late final FeishuNetworkForwardableImageResolver _networkImageResolver;
   StreamSubscription<FeishuNetworkCaptureEvent>? _networkCaptureSubscription;
   StreamSubscription<String>? _networkCaptureUnavailableSubscription;
   late final ProbeScheduler _probeScheduler;
@@ -162,6 +164,7 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     _networkCaptureStore = FeishuNetworkCaptureStore(
       diagnosticsFile: widget.networkDiagnosticsFile,
     );
+    _networkImageResolver = FeishuNetworkForwardableImageResolver();
     _networkCaptureSubscription = _networkCaptureBridge.events.listen(
       _handleNetworkCaptureEvent,
     );
@@ -499,8 +502,22 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
           await _openLatestFeedIfNeeded();
         }
       }
+      var probedSnapshot = applyPageProbe(current, probe);
+      if (_networkCaptureStore.recentCandidates.isNotEmpty ||
+          _networkCaptureStore.recentAttributions.isNotEmpty) {
+        final imageResolution = _networkImageResolver.resolve(
+          candidates: _networkCaptureStore.recentCandidates,
+          attributions: _networkCaptureStore.recentAttributions,
+          recentEvents: probedSnapshot.recentEvents,
+        );
+        _networkCaptureStore.recordForwardableImageResolution(imageResolution);
+        probedSnapshot = applyNetworkForwardableImages(
+          probedSnapshot,
+          imageResolution.events,
+        );
+      }
       final next = _withShellDiagnostics(
-        applyPageProbe(current, probe),
+        probedSnapshot,
         probe,
         reason: reason,
         runtimeUrl: _runtimeUrl,
