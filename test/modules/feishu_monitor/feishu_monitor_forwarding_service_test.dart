@@ -104,6 +104,60 @@ void main() {
     },
   );
 
+  test('findRouteForEvent rejects ambiguous enabled source names', () {
+    final routes = <FeishuMonitorForwardingRoute>[
+      _route(
+        id: 'route_alpha_1',
+        sourceConversationId: 'feed:stale-alpha-1',
+        sourceConversationName: 'Alpha Group',
+        targetGroupId: 'wk_alpha_1',
+      ),
+      _route(
+        id: 'route_alpha_2',
+        sourceConversationId: 'feed:stale-alpha-2',
+        sourceConversationName: ' alpha   group ',
+        targetGroupId: 'wk_alpha_2',
+      ),
+    ];
+
+    final matched = findFeishuMonitorRouteForEvent(
+      routes: routes,
+      event: _event(
+        conversationId: 'feed:current-alpha',
+        conversationName: 'Alpha Group',
+      ),
+    );
+
+    expect(matched, isNull);
+  });
+
+  test('findRouteForEvent rejects duplicate enabled source ids', () {
+    final routes = <FeishuMonitorForwardingRoute>[
+      _route(
+        id: 'route_alpha_1',
+        sourceConversationId: 'feed:alpha',
+        sourceConversationName: 'Alpha Group',
+        targetGroupId: 'wk_alpha_1',
+      ),
+      _route(
+        id: 'route_alpha_2',
+        sourceConversationId: 'feed:alpha',
+        sourceConversationName: 'Alpha Archive',
+        targetGroupId: 'wk_alpha_2',
+      ),
+    ];
+
+    final matched = findFeishuMonitorRouteForEvent(
+      routes: routes,
+      event: _event(
+        conversationId: 'feed:alpha',
+        conversationName: 'Alpha Group',
+      ),
+    );
+
+    expect(matched, isNull);
+  });
+
   test('disabled routes are ignored by matcher', () {
     final route = _route(
       enabled: false,
@@ -568,10 +622,7 @@ void main() {
     ]);
 
     expect(results.fold<int>(0, (sum, item) => sum + item.sent), 1);
-    expect(
-      results.fold<int>(0, (sum, item) => sum + item.skippedDuplicate),
-      1,
-    );
+    expect(results.fold<int>(0, (sum, item) => sum + item.skippedDuplicate), 1);
     expect(sender.sentTexts, hasLength(1));
   });
 
@@ -791,6 +842,97 @@ void main() {
   );
 
   test(
+    'forwardRoutedRecentEvents sends network_original_image local files',
+    () async {
+      final sender = _RecordingSender();
+      final service = FeishuMonitorForwardingService(sender: sender);
+      final settings = FeishuMonitorForwardingSettings(
+        enabled: true,
+        routes: <FeishuMonitorForwardingRoute>[
+          _route(sourceConversationId: 'feed:alpha', targetGroupId: 'wk_alpha'),
+        ],
+      );
+
+      final result = await service.forwardRoutedRecentEvents(
+        settings: settings,
+        events: <FeishuMonitorMessageEvent>[
+          _event(
+            messageId: 'network:image_1',
+            dedupeKey: 'feed:alpha:network:image_1',
+            conversationId: 'feed:alpha',
+            text: '[Image]',
+            captureSource: 'network_original_image',
+            imageAttachments: const <FeishuMonitorImageAttachment>[
+              FeishuMonitorImageAttachment(
+                sourceUrl: 'https://internal.feishu.cn/original-image.png',
+                localPath: r'C:\tmp\feishu-original-image.png',
+                width: 1280,
+                height: 720,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      expect(result.sent, 1);
+      expect(result.failed, 0);
+      expect(sender.sentTexts, isEmpty);
+      expect(sender.sentImages, hasLength(1));
+      expect(sender.sentImages.single.channelId, 'wk_alpha');
+      expect(
+        sender.sentImages.single.sourceUrl,
+        'https://internal.feishu.cn/original-image.png',
+      );
+      expect(
+        sender.sentImages.single.localPath,
+        r'C:\tmp\feishu-original-image.png',
+      );
+      expect(sender.sentImages.single.width, 1280);
+      expect(sender.sentImages.single.height, 720);
+    },
+  );
+
+  test(
+    'forwardRoutedRecentEvents rejects network_original_image without local file',
+    () async {
+      final sender = _RecordingSender();
+      final service = FeishuMonitorForwardingService(sender: sender);
+      final settings = FeishuMonitorForwardingSettings(
+        enabled: true,
+        routes: <FeishuMonitorForwardingRoute>[
+          _route(sourceConversationId: 'feed:alpha', targetGroupId: 'wk_alpha'),
+        ],
+      );
+
+      final result = await service.forwardRoutedRecentEvents(
+        settings: settings,
+        events: <FeishuMonitorMessageEvent>[
+          _event(
+            messageId: 'network:image_without_file',
+            dedupeKey: 'feed:alpha:network:image_without_file',
+            conversationId: 'feed:alpha',
+            text: '[Image]',
+            captureSource: 'network_original_image',
+            imageAttachments: const <FeishuMonitorImageAttachment>[
+              FeishuMonitorImageAttachment(
+                sourceUrl: 'https://internal.feishu.cn/original-image.png',
+                localPath: '',
+                width: 1280,
+                height: 720,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      expect(result.sent, 0);
+      expect(result.skippedDuplicate, 1);
+      expect(sender.sentTexts, isEmpty);
+      expect(sender.sentImages, isEmpty);
+    },
+  );
+
+  test(
     'forwardRoutedRecentEvents does not send dom_probe image attachments',
     () async {
       final sender = _RecordingSender();
@@ -963,91 +1105,88 @@ void main() {
     },
   );
 
-  test(
-    'forwardRoutedRecentEvents skips dom blob image placeholders',
-    () async {
-      final dedupeStore = _MemoryForwardingDedupeStore();
-      final pendingSender = _RecordingSender()..failImageSends = true;
-      final resolvedSender = _RecordingSender();
-      final pendingService = FeishuMonitorForwardingService(
-        sender: pendingSender,
-        dedupeStore: dedupeStore,
-      );
-      final retryService = FeishuMonitorForwardingService(
-        sender: resolvedSender,
-        dedupeStore: dedupeStore,
-      );
-      final settings = FeishuMonitorForwardingSettings(
-        enabled: true,
-        routes: <FeishuMonitorForwardingRoute>[
-          _route(sourceConversationId: 'feed:alpha', targetGroupId: 'wk_alpha'),
-        ],
-      );
-      final imageEvent = _event(
-        messageId: 'dom:image_retry',
-        dedupeKey: 'feed:alpha:dom:image_retry',
-        conversationId: 'feed:alpha',
-        text: '[图片]',
-        captureSource: 'dom_probe',
-        imageAttachments: const <FeishuMonitorImageAttachment>[
-          FeishuMonitorImageAttachment(
-            sourceUrl: 'blob:https://example.feishu.cn/image-retry',
-            localPath: '',
-            width: 640,
-            height: 480,
-          ),
-        ],
-      );
-      final resolvedImageEvent = _event(
-        messageId: 'dom:image_retry',
-        dedupeKey: 'feed:alpha:dom:image_retry',
-        conversationId: 'feed:alpha',
-        text: '[图片]',
-        captureSource: 'dom_probe',
-        imageAttachments: const <FeishuMonitorImageAttachment>[
-          FeishuMonitorImageAttachment(
-            sourceUrl: 'data:image/png;base64,AQIDBAU=',
-            localPath: '',
-            width: 640,
-            height: 480,
-          ),
-        ],
-      );
+  test('forwardRoutedRecentEvents skips dom blob image placeholders', () async {
+    final dedupeStore = _MemoryForwardingDedupeStore();
+    final pendingSender = _RecordingSender()..failImageSends = true;
+    final resolvedSender = _RecordingSender();
+    final pendingService = FeishuMonitorForwardingService(
+      sender: pendingSender,
+      dedupeStore: dedupeStore,
+    );
+    final retryService = FeishuMonitorForwardingService(
+      sender: resolvedSender,
+      dedupeStore: dedupeStore,
+    );
+    final settings = FeishuMonitorForwardingSettings(
+      enabled: true,
+      routes: <FeishuMonitorForwardingRoute>[
+        _route(sourceConversationId: 'feed:alpha', targetGroupId: 'wk_alpha'),
+      ],
+    );
+    final imageEvent = _event(
+      messageId: 'dom:image_retry',
+      dedupeKey: 'feed:alpha:dom:image_retry',
+      conversationId: 'feed:alpha',
+      text: '[图片]',
+      captureSource: 'dom_probe',
+      imageAttachments: const <FeishuMonitorImageAttachment>[
+        FeishuMonitorImageAttachment(
+          sourceUrl: 'blob:https://example.feishu.cn/image-retry',
+          localPath: '',
+          width: 640,
+          height: 480,
+        ),
+      ],
+    );
+    final resolvedImageEvent = _event(
+      messageId: 'dom:image_retry',
+      dedupeKey: 'feed:alpha:dom:image_retry',
+      conversationId: 'feed:alpha',
+      text: '[图片]',
+      captureSource: 'dom_probe',
+      imageAttachments: const <FeishuMonitorImageAttachment>[
+        FeishuMonitorImageAttachment(
+          sourceUrl: 'data:image/png;base64,AQIDBAU=',
+          localPath: '',
+          width: 640,
+          height: 480,
+        ),
+      ],
+    );
 
-      FeishuMonitorForwardingResult? first;
-      for (var i = 0; i < 5; i += 1) {
-        first = await pendingService.forwardRoutedRecentEvents(
-          settings: settings,
-          events: <FeishuMonitorMessageEvent>[imageEvent],
-        );
-      }
-      final fallback = await pendingService.forwardRoutedRecentEvents(
+    FeishuMonitorForwardingResult? first;
+    for (var i = 0; i < 5; i += 1) {
+      first = await pendingService.forwardRoutedRecentEvents(
         settings: settings,
         events: <FeishuMonitorMessageEvent>[imageEvent],
       );
-      final third = await retryService.forwardRoutedRecentEvents(
-        settings: settings,
-        events: <FeishuMonitorMessageEvent>[resolvedImageEvent],
-      );
-      final keysAfterResolve = await dedupeStore.loadSentKeys();
+    }
+    final fallback = await pendingService.forwardRoutedRecentEvents(
+      settings: settings,
+      events: <FeishuMonitorMessageEvent>[imageEvent],
+    );
+    final third = await retryService.forwardRoutedRecentEvents(
+      settings: settings,
+      events: <FeishuMonitorMessageEvent>[resolvedImageEvent],
+    );
+    final keysAfterResolve = await dedupeStore.loadSentKeys();
 
-      expect(first?.sent, 0);
-      expect(first?.skippedDuplicate, 1);
-      expect(fallback.sent, 0);
-      expect(fallback.skippedDuplicate, 1);
-      expect(third.sent, 0);
-      expect(third.skippedDuplicate, 1);
-      expect(pendingSender.sentTexts, isEmpty);
-      expect(pendingSender.sentImages, isEmpty);
-      expect(resolvedSender.sentTexts, isEmpty);
-      expect(resolvedSender.sentImages, isEmpty);
-      expect(keysAfterResolve, isNot(contains('feed:alpha:dom:image_retry')));
-      expect(
-        keysAfterResolve,
-        isNot(contains('feed:alpha:dom:image_retry:media')),
-      );
-    },
-  );
+    expect(first?.sent, 0);
+    expect(first?.skippedDuplicate, 1);
+    expect(fallback.sent, 0);
+    expect(fallback.skippedDuplicate, 1);
+    expect(third.sent, 0);
+    expect(third.skippedDuplicate, 1);
+    expect(pendingSender.sentTexts, isEmpty);
+    expect(pendingSender.sentImages, isEmpty);
+    expect(resolvedSender.sentTexts, isEmpty);
+    expect(resolvedSender.sentImages, isEmpty);
+    expect(keysAfterResolve, isNot(contains('feed:alpha:dom:image_retry')));
+    expect(
+      keysAfterResolve,
+      isNot(contains('feed:alpha:dom:image_retry:media')),
+    );
+  });
 
   test(
     'forwardRoutedRecentEvents skips dom blob placeholder fallback',

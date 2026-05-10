@@ -911,6 +911,10 @@ bool _shouldSkipProbeTextEvent(FeishuMonitorMessageEvent event) {
       _isFeishuMonitorMediaPlaceholderText(event.text)) {
     return _firstUsableImageAttachmentForEvent(event) == null;
   }
+  if (captureSource == 'network_original_image' &&
+      _isFeishuMonitorMediaPlaceholderText(event.text)) {
+    return _firstUsableImageAttachmentForEvent(event) == null;
+  }
   if (_eventHasDomFallbackMedia(event)) {
     return true;
   }
@@ -983,7 +987,12 @@ FeishuMonitorImageAttachment? _firstUsableImageAttachmentForEvent(
   if (_isDomFallbackCaptureSource(event.captureSource)) {
     return null;
   }
-  return _rawFirstUsableImageAttachmentForEvent(event);
+  final image = _rawFirstUsableImageAttachmentForEvent(event);
+  if (event.captureSource.trim() == 'network_original_image' &&
+      (image == null || image.localPath.trim().isEmpty)) {
+    return null;
+  }
+  return image;
 }
 
 FeishuMonitorImageAttachment? _rawFirstUsableImageAttachmentForEvent(
@@ -1031,10 +1040,14 @@ FeishuMonitorForwardingRoute? findFeishuMonitorRouteForEvent({
       .toList(growable: false);
   final conversationId = event.conversationId.trim();
   if (conversationId.isNotEmpty) {
-    for (final route in eligibleRoutes) {
-      if (route.sourceConversationId.trim() == conversationId) {
-        return route;
-      }
+    final matches = eligibleRoutes
+        .where((route) => route.sourceConversationId.trim() == conversationId)
+        .toList(growable: false);
+    if (matches.length == 1) {
+      return matches.single;
+    }
+    if (matches.length > 1) {
+      return null;
     }
   }
 
@@ -1044,13 +1057,15 @@ FeishuMonitorForwardingRoute? findFeishuMonitorRouteForEvent({
   if (conversationName.isEmpty) {
     return null;
   }
-  for (final route in eligibleRoutes) {
-    final sourceConversationName = normalizeFeishuMonitorRouteName(
-      route.sourceConversationName,
-    );
-    if (sourceConversationName == conversationName) {
-      return route;
-    }
+  final matches = eligibleRoutes
+      .where(
+        (route) =>
+            normalizeFeishuMonitorRouteName(route.sourceConversationName) ==
+            conversationName,
+      )
+      .toList(growable: false);
+  if (matches.length == 1) {
+    return matches.single;
   }
   return null;
 }
@@ -1061,10 +1076,14 @@ FeishuMonitorForwardingRoute? _findFeishuMonitorRouteCandidateForEvent({
 }) {
   final conversationId = event.conversationId.trim();
   if (conversationId.isNotEmpty) {
-    for (final route in routes) {
-      if (route.sourceConversationId.trim() == conversationId) {
-        return route;
-      }
+    final matches = routes
+        .where((route) => route.sourceConversationId.trim() == conversationId)
+        .toList(growable: false);
+    if (matches.length == 1) {
+      return matches.single;
+    }
+    if (matches.length > 1) {
+      return null;
     }
   }
 
@@ -1074,13 +1093,15 @@ FeishuMonitorForwardingRoute? _findFeishuMonitorRouteCandidateForEvent({
   if (conversationName.isEmpty) {
     return null;
   }
-  for (final route in routes) {
-    final sourceConversationName = normalizeFeishuMonitorRouteName(
-      route.sourceConversationName,
-    );
-    if (sourceConversationName == conversationName) {
-      return route;
-    }
+  final matches = routes
+      .where(
+        (route) =>
+            normalizeFeishuMonitorRouteName(route.sourceConversationName) ==
+            conversationName,
+      )
+      .toList(growable: false);
+  if (matches.length == 1) {
+    return matches.single;
   }
   return null;
 }
