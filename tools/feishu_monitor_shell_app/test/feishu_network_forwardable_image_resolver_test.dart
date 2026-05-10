@@ -89,6 +89,19 @@ void main() {
     expect(result.events.single.imageAttachments.single.localPath, betaPath);
   });
 
+  test('emits trimmed local path when candidate path has surrounding whitespace', () {
+    final result = _resolver().resolve(
+      candidates: <FeishuNetworkImageCandidate>[
+        _candidate(localPath: '  $_localPath  '),
+      ],
+      attributions: <FeishuNetworkImageAttribution>[_attribution()],
+      recentEvents: <NormalizedMessageEvent>[_feedEvent()],
+    );
+
+    expect(result.skipReason, isEmpty);
+    expect(result.events.single.imageAttachments.single.localPath, _localPath);
+  });
+
   test('rejects multiple metadata-valid candidates when no local files exist', () {
     final result = _resolver(existingPaths: <String>{}).resolve(
       candidates: <FeishuNetworkImageCandidate>[
@@ -165,6 +178,92 @@ void main() {
 
     expect(result.events, isEmpty);
     expect(result.skipReason, 'ambiguous_candidates');
+  });
+
+  test('rejects multiple strict attributions as ambiguous candidates', () {
+    final result = _resolver().resolve(
+      candidates: <FeishuNetworkImageCandidate>[_candidate()],
+      attributions: <FeishuNetworkImageAttribution>[
+        _attribution(),
+        _attribution(observedAt: _candidateObservedAt),
+      ],
+      recentEvents: <NormalizedMessageEvent>[_feedEvent()],
+    );
+
+    expect(result.events, isEmpty);
+    expect(result.skipReason, 'ambiguous_candidates');
+  });
+
+  test('rejects feed placeholder outside attribution window', () {
+    final result = _resolver().resolve(
+      candidates: <FeishuNetworkImageCandidate>[_candidate()],
+      attributions: <FeishuNetworkImageAttribution>[
+        _attribution(
+          observedAt: _candidateObservedAt.add(const Duration(seconds: 8)),
+        ),
+      ],
+      recentEvents: <NormalizedMessageEvent>[
+        _feedEvent(observedAt: '2026-05-10T04:29:59Z'),
+      ],
+    );
+
+    expect(result.events, isEmpty);
+    expect(result.skipReason, 'feed_placeholder_missing');
+  });
+
+  test('rejects one-sided missing conversation id even when names match', () {
+    final result = _resolver().resolve(
+      candidates: <FeishuNetworkImageCandidate>[_candidate()],
+      attributions: <FeishuNetworkImageAttribution>[
+        _attribution(conversationId: ''),
+      ],
+      recentEvents: <NormalizedMessageEvent>[_feedEvent()],
+    );
+
+    expect(result.events, isEmpty);
+    expect(result.skipReason, 'feed_placeholder_missing');
+  });
+
+  test('allows name fallback when both conversation ids are missing', () {
+    final result = _resolver().resolve(
+      candidates: <FeishuNetworkImageCandidate>[_candidate()],
+      attributions: <FeishuNetworkImageAttribution>[
+        _attribution(conversationId: ''),
+      ],
+      recentEvents: <NormalizedMessageEvent>[
+        _feedEvent(conversationId: '', conversationName: ' alpha   group '),
+      ],
+    );
+
+    expect(result.skipReason, isEmpty);
+    expect(result.events, hasLength(1));
+    expect(result.events.single.conversationName, ' alpha   group ');
+  });
+
+  test('accepts uppercase image message type', () {
+    final result = _resolver().resolve(
+      candidates: <FeishuNetworkImageCandidate>[_candidate()],
+      attributions: <FeishuNetworkImageAttribution>[_attribution()],
+      recentEvents: <NormalizedMessageEvent>[
+        _feedEvent(messageType: 'IMAGE', text: ''),
+      ],
+    );
+
+    expect(result.skipReason, isEmpty);
+    expect(result.events, hasLength(1));
+  });
+
+  test('accepts feed capture source with surrounding whitespace', () {
+    final result = _resolver().resolve(
+      candidates: <FeishuNetworkImageCandidate>[_candidate()],
+      attributions: <FeishuNetworkImageAttribution>[_attribution()],
+      recentEvents: <NormalizedMessageEvent>[
+        _feedEvent(captureSource: '  feed_card_probe  '),
+      ],
+    );
+
+    expect(result.skipReason, isEmpty);
+    expect(result.events, hasLength(1));
   });
 
   test('rejects ambiguous feed image events', () {
@@ -255,6 +354,7 @@ NormalizedMessageEvent _feedEvent({
   String text = '[Image]',
   String senderName = 'Alice',
   String observedAt = '2026-05-10T04:30:02Z',
+  String captureSource = 'feed_card_probe',
 }) {
   return NormalizedMessageEvent(
     eventId: 'event_$messageId',
@@ -270,6 +370,6 @@ NormalizedMessageEvent _feedEvent({
     text: text,
     sentAt: '2026-05-10T04:29:59Z',
     observedAt: observedAt,
-    captureSource: 'feed_card_probe',
+    captureSource: captureSource,
   );
 }

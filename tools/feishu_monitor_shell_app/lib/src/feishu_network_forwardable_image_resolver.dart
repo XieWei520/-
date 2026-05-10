@@ -39,7 +39,13 @@ class FeishuNetworkForwardableImageResolver {
     }
 
     final existingBodyCandidates = localBodyCandidates
-        .where((candidate) => _fileExists(candidate.localPath.trim()))
+        .map(
+          (candidate) => (
+            candidate: candidate,
+            localPath: candidate.localPath.trim(),
+          ),
+        )
+        .where((entry) => _fileExists(entry.localPath))
         .toList();
     if (existingBodyCandidates.isEmpty) {
       return _skip('body_file_missing');
@@ -48,7 +54,9 @@ class FeishuNetworkForwardableImageResolver {
       return _skip('ambiguous_candidates');
     }
 
-    final candidate = existingBodyCandidates.single;
+    final selectedCandidate = existingBodyCandidates.single;
+    final candidate = selectedCandidate.candidate;
+    final localPath = selectedCandidate.localPath;
 
     final matchingAttributions = attributions
         .where((attribution) => attribution.sourceUrl == candidate.resourceUrl)
@@ -107,7 +115,7 @@ class FeishuNetworkForwardableImageResolver {
       imageAttachments: <MessageImageAttachment>[
         MessageImageAttachment(
           sourceUrl: candidate.resourceUrl,
-          localPath: candidate.localPath,
+          localPath: localPath,
           width: candidate.width,
           height: candidate.height,
         ),
@@ -151,11 +159,12 @@ class FeishuNetworkForwardableImageResolver {
     }
     final eventObservedAt = DateTime.tryParse(event.observedAt.trim());
     return eventObservedAt != null &&
-        _withinWindow(candidate.observedAt, eventObservedAt);
+        _withinWindow(candidate.observedAt, eventObservedAt) &&
+        _withinWindow(attribution.observedAt, eventObservedAt);
   }
 
   bool _isFeedImagePlaceholder(NormalizedMessageEvent event) {
-    return event.messageType.trim() == 'image' ||
+    return event.messageType.trim().toLowerCase() == 'image' ||
         isFeishuMediaPreviewText(event.text);
   }
 
@@ -169,9 +178,18 @@ class FeishuNetworkForwardableImageResolver {
         attributionConversationId.isNotEmpty) {
       return eventConversationId == attributionConversationId;
     }
+    if (eventConversationId.isNotEmpty ||
+        attributionConversationId.isNotEmpty) {
+      return false;
+    }
 
-    return _normalizedName(event.conversationName) ==
-        _normalizedName(attribution.conversationName);
+    final eventConversationName = _normalizedName(event.conversationName);
+    final attributionConversationName = _normalizedName(
+      attribution.conversationName,
+    );
+    return eventConversationName.isNotEmpty &&
+        attributionConversationName.isNotEmpty &&
+        eventConversationName == attributionConversationName;
   }
 
   bool _withinWindow(DateTime left, DateTime right) {
