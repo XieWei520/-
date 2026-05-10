@@ -443,6 +443,91 @@ void main() {
     expect(diagnosticsText, isNot(contains('token=secret')));
   });
 
+  test('forwardable image diagnostics are isolated from caller mutation', () {
+    final store = FeishuNetworkCaptureStore();
+    store.recordForwardableImageResolution(
+      FeishuNetworkForwardableImageResolution(
+        events: <NormalizedMessageEvent>[_networkImageEvent()],
+        skipReason: '',
+        decision: const <String, Object?>{'body_sha1': 'sha1beta'},
+      ),
+    );
+
+    final summary = store.toDiagnosticsJson();
+    final lastForwardable =
+        summary['network_last_forwardable_image']! as Map<String, Object?>;
+    final attachments = lastForwardable['image_attachments']! as List<Object?>;
+    final attachment = attachments.single! as Map<String, Object?>;
+
+    lastForwardable['capture_source'] = 'mutated';
+    attachments.add(<String, Object?>{'local_path': r'C:\tmp\mutated.webp'});
+    attachment['local_path'] = r'C:\tmp\mutated.webp';
+
+    final nextSummary = store.toDiagnosticsJson();
+    final nextForwardable =
+        nextSummary['network_last_forwardable_image']! as Map<String, Object?>;
+    final nextAttachments =
+        nextForwardable['image_attachments']! as List<Object?>;
+    final nextAttachment = nextAttachments.single! as Map<String, Object?>;
+
+    expect(nextForwardable['capture_source'], 'network_original_image');
+    expect(nextAttachments, hasLength(1));
+    expect(nextAttachment['local_path'], r'C:\tmp\alpha.webp');
+  });
+
+  test('resolver decision diagnostics are deeply isolated', () {
+    final store = FeishuNetworkCaptureStore();
+    final nestedMetadata = <String, Object?>{
+      'attempts': <Object?>[
+        <String, Object?>{'reason': 'initial'},
+      ],
+    };
+    final decision = <String, Object?>{
+      'reason': 'nested',
+      'metadata': nestedMetadata,
+    };
+
+    store.recordForwardableImageResolution(
+      FeishuNetworkForwardableImageResolution(
+        events: const <NormalizedMessageEvent>[],
+        skipReason: 'nested',
+        decision: decision,
+      ),
+    );
+    (nestedMetadata['attempts']! as List<Object?>).add(<String, Object?>{
+      'reason': 'mutated_original',
+    });
+    nestedMetadata['extra'] = 'mutated_original';
+
+    final summary = store.toDiagnosticsJson();
+    final decisions =
+        summary['network_recent_image_resolver_decisions']! as List<Object?>;
+    final storedDecision = decisions.single! as Map<String, Object?>;
+    final storedMetadata = storedDecision['metadata']! as Map<String, Object?>;
+    final storedAttempts = storedMetadata['attempts']! as List<Object?>;
+    final storedAttempt = storedAttempts.single! as Map<String, Object?>;
+
+    storedDecision['reason'] = 'mutated_returned';
+    storedMetadata['extra'] = 'mutated_returned';
+    storedAttempts.add(<String, Object?>{'reason': 'mutated_returned'});
+    storedAttempt['reason'] = 'mutated_returned';
+
+    final nextSummary = store.toDiagnosticsJson();
+    final nextDecision =
+        (nextSummary['network_recent_image_resolver_decisions']!
+                    as List<Object?>)
+                .single!
+            as Map<String, Object?>;
+    final nextMetadata = nextDecision['metadata']! as Map<String, Object?>;
+    final nextAttempts = nextMetadata['attempts']! as List<Object?>;
+    final nextAttempt = nextAttempts.single! as Map<String, Object?>;
+
+    expect(nextDecision['reason'], 'nested');
+    expect(nextMetadata, isNot(containsPair('extra', anything)));
+    expect(nextAttempts, hasLength(1));
+    expect(nextAttempt['reason'], 'initial');
+  });
+
   test('store omits resolver decision fields when decision is null', () async {
     final dir = await Directory.systemTemp.createTemp(
       'feishu_network_capture_test_',

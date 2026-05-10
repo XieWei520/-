@@ -37,7 +37,7 @@ class FeishuNetworkCaptureStore {
   int _attributionCount = 0;
   int _forwardableImageCount = 0;
   String _lastImageSkipReason = '';
-  Map<String, dynamic>? _lastForwardableImage;
+  Map<String, Object?>? _lastForwardableImage;
 
   List<FeishuNetworkImageCandidate> get recentCandidates =>
       List<FeishuNetworkImageCandidate>.unmodifiable(_candidates);
@@ -81,7 +81,9 @@ class FeishuNetworkCaptureStore {
   ) {
     if (resolution.events.isNotEmpty) {
       _forwardableImageCount += resolution.events.length;
-      _lastForwardableImage = resolution.events.last.toJson();
+      _lastForwardableImage =
+          _deepJsonCopy(resolution.events.last.toJson())
+              as Map<String, Object?>;
       _lastImageSkipReason = '';
     } else {
       _lastImageSkipReason = resolution.skipReason;
@@ -118,10 +120,12 @@ class FeishuNetworkCaptureStore {
       'network_last_attributed_image_candidate':
           _lastAttributedImageCandidate(),
       'network_forwardable_image_count': _forwardableImageCount,
-      'network_last_forwardable_image': _lastForwardableImage,
+      'network_last_forwardable_image': _lastForwardableImage == null
+          ? null
+          : _deepJsonCopy(_lastForwardableImage),
       'network_last_image_skip_reason': _lastImageSkipReason,
       'network_recent_image_resolver_decisions': _resolverDecisions
-          .map((decision) => Map<String, Object?>.unmodifiable(decision))
+          .map((decision) => _deepJsonCopy(decision) as Map<String, Object?>)
           .toList(growable: false),
       'network_last_error': _lastError,
     };
@@ -156,10 +160,26 @@ class FeishuNetworkCaptureStore {
   ) {
     final decision = resolution.decision;
     if (decision != null) {
-      return Map<String, Object?>.unmodifiable(decision);
+      return _deepJsonCopy(decision) as Map<String, Object?>;
     }
     return const <String, Object?>{};
   }
+}
+
+Object? _deepJsonCopy(Object? value) {
+  if (value is Map) {
+    return <String, Object?>{
+      for (final entry in value.entries)
+        entry.key.toString(): _deepJsonCopy(entry.value),
+    };
+  }
+  if (value is Iterable) {
+    return value.map(_deepJsonCopy).toList(growable: true);
+  }
+  if (value == null || value is String || value is num || value is bool) {
+    return value;
+  }
+  return value.toString();
 }
 
 void _trim<T>(List<T> items, int maxItems) {
