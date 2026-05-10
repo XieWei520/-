@@ -37,14 +37,18 @@ class FeishuNetworkForwardableImageResolver {
     if (localBodyCandidates.isEmpty) {
       return _skip('missing_local_body');
     }
-    if (localBodyCandidates.length > 1) {
+
+    final existingBodyCandidates = localBodyCandidates
+        .where((candidate) => _fileExists(candidate.localPath.trim()))
+        .toList();
+    if (existingBodyCandidates.isEmpty) {
+      return _skip('body_file_missing');
+    }
+    if (existingBodyCandidates.length > 1) {
       return _skip('ambiguous_candidates');
     }
 
-    final candidate = localBodyCandidates.single;
-    if (!_fileExists(candidate.localPath.trim())) {
-      return _skip('body_file_missing');
-    }
+    final candidate = existingBodyCandidates.single;
 
     final matchingAttributions = attributions
         .where((attribution) => attribution.sourceUrl == candidate.resourceUrl)

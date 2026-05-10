@@ -63,6 +63,50 @@ void main() {
     expect(result.skipReason, 'body_file_missing');
   });
 
+  test('resolves one existing file among multiple metadata-valid candidates', () {
+    const betaUrl = 'https://internal-api-lark-file.feishu.cn/beta.webp';
+    const betaPath = r'C:\tmp\beta.webp';
+
+    final result = _resolver(existingPaths: <String>{betaPath}).resolve(
+      candidates: <FeishuNetworkImageCandidate>[
+        _candidate(),
+        _candidate(
+          resourceUrl: betaUrl,
+          localPath: betaPath,
+          bodySha1: 'sha1beta',
+        ),
+      ],
+      attributions: <FeishuNetworkImageAttribution>[
+        _attribution(sourceUrl: betaUrl),
+      ],
+      recentEvents: <NormalizedMessageEvent>[_feedEvent()],
+    );
+
+    expect(result.skipReason, isEmpty);
+    expect(result.events, hasLength(1));
+    expect(result.events.single.messageId, 'network_image:sha1beta');
+    expect(result.events.single.imageAttachments.single.sourceUrl, betaUrl);
+    expect(result.events.single.imageAttachments.single.localPath, betaPath);
+  });
+
+  test('rejects multiple metadata-valid candidates when no local files exist', () {
+    final result = _resolver(existingPaths: <String>{}).resolve(
+      candidates: <FeishuNetworkImageCandidate>[
+        _candidate(),
+        _candidate(
+          resourceUrl: 'https://internal-api-lark-file.feishu.cn/beta.webp',
+          localPath: r'C:\tmp\beta.webp',
+          bodySha1: 'sha1beta',
+        ),
+      ],
+      attributions: <FeishuNetworkImageAttribution>[_attribution()],
+      recentEvents: <NormalizedMessageEvent>[_feedEvent()],
+    );
+
+    expect(result.events, isEmpty);
+    expect(result.skipReason, 'body_file_missing');
+  });
+
   test('rejects medium confidence attribution', () {
     final result = _resolver().resolve(
       candidates: <FeishuNetworkImageCandidate>[_candidate()],
