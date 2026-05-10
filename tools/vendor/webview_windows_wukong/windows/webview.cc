@@ -14,6 +14,8 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <mutex>
 #include <sstream>
 #include <vector>
 
@@ -29,6 +31,7 @@ constexpr size_t kMaxPayloadPreviewBytes = 16 * 1024;
 constexpr size_t kMaxPendingNetworkEvents = 256;
 constexpr size_t kMaxSavedImageBodyBytes = 25 * 1024 * 1024;
 constexpr auto kSavedImageCacheMaxAge = std::chrono::hours(24);
+constexpr auto kSavedImageCacheCleanupInterval = std::chrono::minutes(30);
 
 inline void ConvertColor(COREWEBVIEW2_COLOR& webview_color, int32_t color) {
   webview_color.B = color & 0xFF;
@@ -219,34 +222,147 @@ bool ContainsAny(const std::string& value,
   return false;
 }
 
-bool LooksLikeFeishuMessageImage(const std::string& url) {
-  const std::string lower = LowerCopy(url);
-  if (lower.rfind("data:", 0) == 0 || lower.rfind("blob:", 0) == 0) {
-    return false;
+bool StartsWith(const std::string& value, const std::string& prefix) {
+  return value.rfind(prefix, 0) == 0;
+}
+
+struct ParsedUrlParts {
+  bool valid = false;
+  std::string scheme;
+  std::string host;
+  std::string path;
+};
+
+ParsedUrlParts ParseUrlParts(const std::string& url) {
+  ParsedUrlParts parts;
+  const auto scheme_end = url.find(':');
+  if (scheme_end == std::string::npos) {
+    return parts;
   }
 
-  if (!ContainsAny(lower, {"feishu.cn", "feishu.net", "feishucdn.com",
-                          "larksuite.com", "larksuitecdn.com",
-                          "larkoffice.com"})) {
-    return false;
+  parts.scheme = LowerCopy(url.substr(0, scheme_end));
+  if (parts.scheme != "http" && parts.scheme != "https") {
+    return parts;
   }
-  if (ContainsAny(lower, {"avatar", "default-avatar", "feishu-static",
-                          "lark-static", "scmcdn", "emoji", "emoticon",
-                          "sprite", "favicon", "/icon", "logo", "badge"})) {
-    return false;
+  if (scheme_end + 3 > url.size() ||
+      url.compare(scheme_end + 1, 2, "//") != 0) {
+    return parts;
   }
 
-  const bool known_message_image_host_or_path =
-      ContainsAny(lower, {"imfile.feishucdn.com/static-resource/v1/",
-                          "internal-api-lark-file", "/messenger/image",
-                          "/im/v1/images",
-                          "/open-apis/im/", "/space/api/box/stream/download"});
-  if (known_message_image_host_or_path) {
+  const auto authority_start = scheme_end + 3;
+  const auto authority_end = url.find_first_of("/?#", authority_start);
+  std::string authority =
+      url.substr(authority_start,
+                 authority_end == std::string::npos
+                     ? std::string::npos
+                     : authority_end - authority_start);
+  if (authority.empty()) {
+    return parts;
+  }
+
+  const auto userinfo_end = authority.rfind('@');
+  if (userinfo_end != std::string::npos) {
+    authority = authority.substr(userinfo_end + 1);
+  }
+
+  if (!authority.empty() && authority.front() == '[') {
+    const auto ipv6_end = authority.find(']');
+    if (ipv6_end == std::string::npos) {
+      return parts;
+    }
+    parts.host = authority.substr(0, ipv6_end + 1);
+  } else {
+    const auto port_start = authority.find(':');
+    parts.host = authority.substr(
+        0, port_start == std::string::npos ? std::string::npos : port_start);
+  }
+
+  parts.host = LowerCopy(parts.host);
+  while (!parts.host.empty() && parts.host.back() == '.') {
+    parts.host.pop_back();
+  }
+  if (parts.host.empty()) {
+    return parts;
+  }
+
+  if (authority_end != std::string::npos && url[authority_end] == '/') {
+    const auto path_end = url.find_first_of("?#", authority_end);
+    parts.path = LowerCopy(
+        url.substr(authority_end, path_end == std::string::npos
+                                      ? std::string::npos
+                                      : path_end - authority_end));
+  } else {
+    parts.path = "/";
+  }
+
+  parts.valid = true;
+  return parts;
+}
+
+bool HostIsOrSubdomainOf(const std::string& host, const std::string& domain) {
+  if (host == domain) {
     return true;
   }
+  if (host.size() <= domain.size() ||
+      host.compare(host.size() - domain.size(), domain.size(), domain) != 0) {
+    return false;
+  }
+  return host[host.size() - domain.size() - 1] == '.';
+}
 
-  return ContainsAny(lower, {"message", "messenger", "image_key", "origin",
-                             "preview", "thumbnail", "static-resource/v1"});
+bool IsTrustedFeishuHost(const std::string& host) {
+  return HostIsOrSubdomainOf(host, "feishu.cn") ||
+         HostIsOrSubdomainOf(host, "feishu.net") ||
+         HostIsOrSubdomainOf(host, "feishucdn.com") ||
+         HostIsOrSubdomainOf(host, "larksuite.com") ||
+         HostIsOrSubdomainOf(host, "larksuitecdn.com") ||
+         HostIsOrSubdomainOf(host, "larkoffice.com");
+}
+
+bool IsKnownMessageImagePath(const std::string& path) {
+  return StartsWith(path, "/messenger/image") ||
+         StartsWith(path, "/im/v1/images") ||
+         StartsWith(path, "/open-apis/im/") ||
+         StartsWith(path, "/space/api/box/stream/download");
+}
+
+bool IsMessageImageHintPath(const std::string& path) {
+  const bool has_message_context =
+      ContainsAny(path, {"message", "messenger", "/im/", "resource"});
+  const bool has_image_context =
+      ContainsAny(path, {"image", "origin", "preview", "thumbnail"});
+  return has_message_context && has_image_context;
+}
+
+bool LooksLikeFeishuMessageImage(const std::string& url) {
+  const auto parts = ParseUrlParts(url);
+  if (!parts.valid || !IsTrustedFeishuHost(parts.host)) {
+    return false;
+  }
+
+  const std::string host_and_path = parts.host + parts.path;
+  if (ContainsAny(host_and_path,
+                  {"avatar", "default-avatar", "feishu-static",
+                   "lark-static", "scmcdn", "emoji", "emoticon", "sprite",
+                   "favicon", "/icon", "logo", "badge"})) {
+    return false;
+  }
+
+  if (HostIsOrSubdomainOf(parts.host, "imfile.feishucdn.com")) {
+    return StartsWith(parts.path, "/static-resource/v1/");
+  }
+
+  const bool is_internal_file_host =
+      parts.host == "internal-api-lark-file.feishu.cn";
+  if (is_internal_file_host) {
+    return IsKnownMessageImagePath(parts.path) ||
+           ContainsAny(parts.path, {"message", "messenger", "image",
+                                    "resource", "origin", "preview",
+                                    "thumbnail"});
+  }
+
+  return IsKnownMessageImagePath(parts.path) ||
+         IsMessageImageHintPath(parts.path);
 }
 
 std::string ImageExtensionForMimeType(const std::string& mime_type) {
@@ -259,6 +375,23 @@ std::string ImageExtensionForMimeType(const std::string& mime_type) {
   }
   if (lower_mime.find("webp") != std::string::npos) {
     return "webp";
+  }
+  if (lower_mime.find("avif") != std::string::npos) {
+    return "avif";
+  }
+  if (lower_mime.find("bmp") != std::string::npos) {
+    return "bmp";
+  }
+  if (lower_mime.find("svg") != std::string::npos) {
+    return "svg";
+  }
+  if (lower_mime.find("tiff") != std::string::npos ||
+      lower_mime.find("tif") != std::string::npos) {
+    return "tiff";
+  }
+  if (lower_mime.find("icon") != std::string::npos ||
+      lower_mime.find("x-icon") != std::string::npos) {
+    return "ico";
   }
   return "jpg";
 }
@@ -301,30 +434,52 @@ void CleanupOldNetworkImageCacheFiles() {
   }
 }
 
-bool DecodeBase64Body(const std::string& body, std::vector<uint8_t>* output) {
+void CleanupOldNetworkImageCacheFilesThrottled(bool force) {
+  static std::mutex cleanup_mutex;
+  static auto last_cleanup = (std::chrono::steady_clock::time_point::min)();
+
+  std::lock_guard<std::mutex> lock(cleanup_mutex);
+  const auto now = std::chrono::steady_clock::now();
+  if (!force &&
+      last_cleanup != (std::chrono::steady_clock::time_point::min)() &&
+      now - last_cleanup < kSavedImageCacheCleanupInterval) {
+    return;
+  }
+
+  last_cleanup = now;
+  CleanupOldNetworkImageCacheFiles();
+}
+
+bool TryGetDecodedBase64BodySize(const std::string& body,
+                                 DWORD* decoded_size) {
+  if (!decoded_size ||
+      body.size() > static_cast<size_t>((std::numeric_limits<DWORD>::max)())) {
+    return false;
+  }
+  *decoded_size = 0;
+  return CryptStringToBinaryA(body.c_str(), static_cast<DWORD>(body.size()),
+                              CRYPT_STRING_BASE64, nullptr, decoded_size,
+                              nullptr, nullptr);
+}
+
+bool DecodeBase64Body(const std::string& body, DWORD decoded_size,
+                      std::vector<uint8_t>* output) {
   if (!output) {
     return false;
   }
-  output->clear();
-  if (body.empty()) {
-    return true;
-  }
 
-  DWORD decoded_size = 0;
-  if (!CryptStringToBinaryA(body.c_str(), static_cast<DWORD>(body.size()),
-                            CRYPT_STRING_BASE64, nullptr, &decoded_size,
-                            nullptr, nullptr)) {
-    return false;
-  }
+  output->clear();
   output->resize(decoded_size);
   if (decoded_size == 0) {
     return true;
   }
+
+  DWORD actual_decoded_size = decoded_size;
   return CryptStringToBinaryA(
              body.c_str(), static_cast<DWORD>(body.size()),
-             CRYPT_STRING_BASE64, output->data(), &decoded_size, nullptr,
+             CRYPT_STRING_BASE64, output->data(), &actual_decoded_size, nullptr,
              nullptr) &&
-         decoded_size == output->size();
+         actual_decoded_size == output->size();
 }
 
 bool ComputeSha1Hex(const std::vector<uint8_t>& bytes, std::string* output) {
@@ -395,6 +550,15 @@ bool ComputeSha1Hex(const std::vector<uint8_t>& bytes, std::string* output) {
   return true;
 }
 
+std::string Utf8FromPath(const std::filesystem::path& path) {
+#ifdef _WIN32
+  return util::Utf8FromUtf16(path.native());
+#else
+  const auto utf8_path = path.u8string();
+  return std::string(utf8_path.begin(), utf8_path.end());
+#endif
+}
+
 void TrySaveImageBody(WebviewNetworkEvent* event, const std::string& body,
                       bool base64_encoded) {
   if (!event || !MimeTypeStartsWithImage(event->mime_type) ||
@@ -402,27 +566,42 @@ void TrySaveImageBody(WebviewNetworkEvent* event, const std::string& body,
     return;
   }
 
+  CleanupOldNetworkImageCacheFilesThrottled(false);
+
   event->body_base64_encoded = base64_encoded;
   event->body_mime_type = event->mime_type;
 
   std::vector<uint8_t> bytes;
   if (base64_encoded) {
-    if (!DecodeBase64Body(body, &bytes)) {
+    DWORD decoded_size = 0;
+    if (!TryGetDecodedBase64BodySize(body, &decoded_size)) {
+      event->body_save_error = "decode_failed";
+      return;
+    }
+    event->body_size = static_cast<int64_t>(decoded_size);
+    if (decoded_size == 0) {
+      event->body_save_error = "empty_body";
+      return;
+    }
+    if (decoded_size > kMaxSavedImageBodyBytes) {
+      event->body_save_error = "body_too_large";
+      return;
+    }
+    if (!DecodeBase64Body(body, decoded_size, &bytes)) {
       event->body_save_error = "decode_failed";
       return;
     }
   } else {
+    event->body_size = static_cast<int64_t>(body.size());
+    if (body.empty()) {
+      event->body_save_error = "empty_body";
+      return;
+    }
+    if (body.size() > kMaxSavedImageBodyBytes) {
+      event->body_save_error = "body_too_large";
+      return;
+    }
     bytes.assign(body.begin(), body.end());
-  }
-
-  if (bytes.empty()) {
-    event->body_save_error = "empty_body";
-    return;
-  }
-  event->body_size = static_cast<int64_t>(bytes.size());
-  if (bytes.size() > kMaxSavedImageBodyBytes) {
-    event->body_save_error = "body_too_large";
-    return;
   }
 
   std::string sha1;
@@ -457,7 +636,7 @@ void TrySaveImageBody(WebviewNetworkEvent* event, const std::string& body,
     }
   }
 
-  event->body_local_path = path.string();
+  event->body_local_path = Utf8FromPath(path);
   event->body_saved = true;
   event->body_save_error.clear();
 }
@@ -1167,7 +1346,7 @@ WebviewNetworkCaptureStartResult Webview::StartNetworkCapture() {
     return {false, "WebView2 instance is not valid."};
   }
 
-  CleanupOldNetworkImageCacheFiles();
+  CleanupOldNetworkImageCacheFilesThrottled(true);
   network_capture_enabled_ = true;
   if (FAILED(webview_->CallDevToolsProtocolMethod(L"Network.enable", L"{}",
                                                   nullptr))) {
