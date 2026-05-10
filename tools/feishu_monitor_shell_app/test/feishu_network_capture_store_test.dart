@@ -1,45 +1,53 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:feishu_monitor_shell/feishu_monitor_shell.dart';
 import 'package:feishu_monitor_shell_app/src/feishu_network_capture.dart';
+import 'package:feishu_monitor_shell_app/src/feishu_network_forwardable_image_resolver.dart';
 import 'package:feishu_monitor_shell_app/src/feishu_network_capture_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('image attribution preserves raw source url and redacts status json', () {
-    final attribution = FeishuNetworkImageAttribution.fromJson(<String, Object?>{
-      'type': 'feishu_monitor_image_attribution',
-      'source_url': 'blob:https://example.feishu.cn/abc?token=secret',
-      'source_kind': 'blob',
-      'blob_mime_type': 'image/webp',
-      'blob_size': 12345,
-      'conversation_id': 'feed:abc',
-      'conversation_name': '婊℃弧姝ｈ兘閲?',
-      'message_id': 'msg_1',
-      'sender_name': '姗樼敓娣崡',
-      'display_time': '14:29',
-      'message_text': '[鍥剧墖]',
-      'feed_card_id': 'feed_card_1',
-      'feed_card_text': '婊℃弧姝ｈ兘閲?14:29 姗樼敓娣崡: [鍥剧墖]',
-      'confidence': 0.92,
-      'confidence_label': 'high',
-      'reason': 'dom_img_src',
-      'observed_at': '2026-05-10T06:29:00Z',
-      'evidence': <String>['exact_dom_node', 'feed_card_context'],
-    });
+  test(
+    'image attribution preserves raw source url and redacts status json',
+    () {
+      final attribution = FeishuNetworkImageAttribution.fromJson(
+        <String, Object?>{
+          'type': 'feishu_monitor_image_attribution',
+          'source_url': 'blob:https://example.feishu.cn/abc?token=secret',
+          'source_kind': 'blob',
+          'blob_mime_type': 'image/webp',
+          'blob_size': 12345,
+          'conversation_id': 'feed:abc',
+          'conversation_name': '婊℃弧姝ｈ兘閲?',
+          'message_id': 'msg_1',
+          'sender_name': '姗樼敓娣崡',
+          'display_time': '14:29',
+          'message_text': '[鍥剧墖]',
+          'feed_card_id': 'feed_card_1',
+          'feed_card_text': '婊℃弧姝ｈ兘閲?14:29 姗樼敓娣崡: [鍥剧墖]',
+          'confidence': 0.92,
+          'confidence_label': 'high',
+          'reason': 'dom_img_src',
+          'observed_at': '2026-05-10T06:29:00Z',
+          'evidence': <String>['exact_dom_node', 'feed_card_context'],
+        },
+      );
 
-    expect(attribution.conversationName, '婊℃弧姝ｈ兘閲?');
-    expect(
-      attribution.sourceUrl,
-      'blob:https://example.feishu.cn/abc?token=secret',
-    );
+      expect(attribution.conversationName, '婊℃弧姝ｈ兘閲?');
+      expect(
+        attribution.sourceUrl,
+        'blob:https://example.feishu.cn/abc?token=secret',
+      );
 
-    final status = attribution.toStatusJson();
-    expect(
-      status['source_url'],
-      'blob:https://example.feishu.cn/abc?token=<redacted>',
-    );
-    expect(status['stable'], isTrue);
-  });
+      final status = attribution.toStatusJson();
+      expect(
+        status['source_url'],
+        'blob:https://example.feishu.cn/abc?token=<redacted>',
+      );
+      expect(status['stable'], isTrue);
+    },
+  );
 
   test('store keeps bounded recent events and image candidates', () {
     final store = FeishuNetworkCaptureStore(maxEvents: 2, maxCandidates: 2);
@@ -154,8 +162,7 @@ void main() {
         summary['network_recent_image_attributions']! as List<Object?>;
     expect(
       recentAttributions.map(
-        (attribution) =>
-            (attribution! as Map<String, Object?>)['source_url'],
+        (attribution) => (attribution! as Map<String, Object?>)['source_url'],
       ),
       <String>[
         'https://a.test/image-2?token=<redacted>',
@@ -164,38 +171,41 @@ void main() {
     );
   });
 
-  test('store exposes latest attribution and exact raw url candidate match', () {
-    final store = FeishuNetworkCaptureStore();
+  test(
+    'store exposes latest attribution and exact raw url candidate match',
+    () {
+      final store = FeishuNetworkCaptureStore();
 
-    store.addCandidate(
-      _candidate(resourceUrl: 'https://a.test/exact?token=secret'),
-    );
-    store.addAttribution(_attribution('https://a.test/exact?token=secret'));
+      store.addCandidate(
+        _candidate(resourceUrl: 'https://a.test/exact?token=secret'),
+      );
+      store.addAttribution(_attribution('https://a.test/exact?token=secret'));
 
-    final summary = store.toDiagnosticsJson();
+      final summary = store.toDiagnosticsJson();
 
-    final lastAttribution =
-        summary['network_last_image_attribution']! as Map<String, Object?>;
-    expect(
-      lastAttribution['source_url'],
-      'https://a.test/exact?token=<redacted>',
-    );
+      final lastAttribution =
+          summary['network_last_image_attribution']! as Map<String, Object?>;
+      expect(
+        lastAttribution['source_url'],
+        'https://a.test/exact?token=<redacted>',
+      );
 
-    final attributedCandidate =
-        summary['network_last_attributed_image_candidate']!
-            as Map<String, Object?>;
-    expect(attributedCandidate['stable'], isTrue);
-    expect(
-      (attributedCandidate['candidate']! as Map<String, Object?>)
-          ['resource_url'],
-      'https://a.test/exact?token=<redacted>',
-    );
-    expect(
-      (attributedCandidate['attribution']! as Map<String, Object?>)
-          ['source_url'],
-      'https://a.test/exact?token=<redacted>',
-    );
-  });
+      final attributedCandidate =
+          summary['network_last_attributed_image_candidate']!
+              as Map<String, Object?>;
+      expect(attributedCandidate['stable'], isTrue);
+      expect(
+        (attributedCandidate['candidate']!
+            as Map<String, Object?>)['resource_url'],
+        'https://a.test/exact?token=<redacted>',
+      );
+      expect(
+        (attributedCandidate['attribution']!
+            as Map<String, Object?>)['source_url'],
+        'https://a.test/exact?token=<redacted>',
+      );
+    },
+  );
 
   test('store exact attribution match does not normalize redacted urls', () {
     final store = FeishuNetworkCaptureStore();
@@ -335,6 +345,91 @@ void main() {
     expect(text.trim().split('\n'), hasLength(1));
   });
 
+  test('store exposes forwardable image resolver diagnostics', () async {
+    final dir = await Directory.systemTemp.createTemp(
+      'feishu_network_capture_test_',
+    );
+    addTearDown(() async {
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+    });
+    final file = File('${dir.path}${Platform.pathSeparator}network.jsonl');
+    final store = FeishuNetworkCaptureStore(diagnosticsFile: file);
+
+    store.recordForwardableImageResolution(
+      const FeishuNetworkForwardableImageResolution(
+        events: <NormalizedMessageEvent>[],
+        skipReason: 'attribution_missing',
+        decision: <String, Object?>{
+          'reason': 'attribution_missing',
+          'body_sha1': 'sha1alpha',
+        },
+      ),
+    );
+
+    var summary = store.toDiagnosticsJson();
+    expect(summary['network_forwardable_image_count'], 0);
+    expect(summary['network_last_image_skip_reason'], 'attribution_missing');
+    expect(summary['network_recent_image_resolver_decisions'], hasLength(1));
+    expect(
+      (summary['network_recent_image_resolver_decisions']! as List<Object?>)
+          .single,
+      <String, Object?>{
+        'reason': 'attribution_missing',
+        'body_sha1': 'sha1alpha',
+      },
+    );
+
+    store.recordForwardableImageResolution(
+      FeishuNetworkForwardableImageResolution(
+        events: <NormalizedMessageEvent>[_networkImageEvent()],
+        skipReason: '',
+        decision: const <String, Object?>{'body_sha1': 'sha1beta'},
+      ),
+    );
+
+    summary = store.toDiagnosticsJson();
+    expect(summary['network_forwardable_image_count'], 1);
+    expect(summary['network_last_image_skip_reason'], '');
+
+    final lastForwardable =
+        summary['network_last_forwardable_image']! as Map<String, Object?>;
+    expect(lastForwardable['capture_source'], 'network_original_image');
+
+    for (var index = 0; index < 25; index += 1) {
+      store.recordForwardableImageResolution(
+        FeishuNetworkForwardableImageResolution(
+          events: const <NormalizedMessageEvent>[],
+          skipReason: 'bounded_$index',
+          decision: <String, Object?>{'reason': 'bounded_$index'},
+        ),
+      );
+    }
+
+    summary = store.toDiagnosticsJson();
+    final decisions =
+        summary['network_recent_image_resolver_decisions']! as List<Object?>;
+    expect(decisions, hasLength(20));
+    expect((decisions.first! as Map<String, Object?>)['reason'], 'bounded_5');
+    expect((decisions.last! as Map<String, Object?>)['reason'], 'bounded_24');
+
+    final lines = (await file.readAsLines())
+        .map((line) => jsonDecode(line) as Map<String, Object?>)
+        .toList(growable: false);
+    final resolverLines = lines
+        .where((line) => line['diagnostic_type'] == 'image_resolver')
+        .toList(growable: false);
+
+    expect(resolverLines, hasLength(27));
+    expect(resolverLines.first['reason'], 'attribution_missing');
+    expect(resolverLines.first['body_sha1'], 'sha1alpha');
+
+    final diagnosticsText = await file.readAsString();
+    expect(diagnosticsText, isNot(contains(r'C:\tmp\alpha.webp')));
+    expect(diagnosticsText, isNot(contains('token=secret')));
+  });
+
   test('store redacts data image attribution payloads', () async {
     final dir = await Directory.systemTemp.createTemp(
       'feishu_network_capture_test_',
@@ -452,5 +547,32 @@ FeishuNetworkImageAttribution _attribution(String sourceUrl) {
     reason: 'dom_img_src',
     observedAt: DateTime.utc(2026, 5, 10, 6, 29),
     evidence: const <String>['exact_dom_node', 'feed_card_context'],
+  );
+}
+
+NormalizedMessageEvent _networkImageEvent() {
+  return const NormalizedMessageEvent(
+    eventId: 'event_network_image',
+    dedupeKey: 'feed:alpha:network_image:sha1beta',
+    accountId: 'account-1',
+    conversationId: 'feed:alpha',
+    conversationName: 'Alpha Group',
+    conversationType: 'group',
+    messageId: 'network_image:sha1beta',
+    senderId: 'sender-1',
+    senderName: 'Alice',
+    messageType: 'image',
+    text: '[Image]',
+    sentAt: '2026-05-10T04:29:59Z',
+    observedAt: '2026-05-10T04:30:02Z',
+    captureSource: 'network_original_image',
+    imageAttachments: <MessageImageAttachment>[
+      MessageImageAttachment(
+        sourceUrl: 'https://a.test/image?token=secret',
+        localPath: r'C:\tmp\alpha.webp',
+        width: 640,
+        height: 480,
+      ),
+    ],
   );
 }

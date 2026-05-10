@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'feishu_network_capture.dart';
+import 'feishu_network_forwardable_image_resolver.dart';
 
 class FeishuNetworkCaptureStore {
+  static const int _maxResolverDecisions = 20;
+
   FeishuNetworkCaptureStore({
     int maxEvents = 50,
     int maxCandidates = 20,
@@ -18,18 +21,28 @@ class FeishuNetworkCaptureStore {
   final int maxAttributions;
   final File? diagnosticsFile;
 
-  final List<FeishuNetworkCaptureEvent> _events =
-      <FeishuNetworkCaptureEvent>[];
+  final List<FeishuNetworkCaptureEvent> _events = <FeishuNetworkCaptureEvent>[];
   final List<FeishuNetworkImageCandidate> _candidates =
       <FeishuNetworkImageCandidate>[];
   final List<FeishuNetworkImageAttribution> _attributions =
       <FeishuNetworkImageAttribution>[];
+  final List<Map<String, Object?>> _resolverDecisions =
+      <Map<String, Object?>>[];
 
   String _state = 'running';
   String _lastError = '';
   int _eventCount = 0;
   int _candidateCount = 0;
   int _attributionCount = 0;
+  int _forwardableImageCount = 0;
+  String _lastImageSkipReason = '';
+  Map<String, dynamic>? _lastForwardableImage;
+
+  List<FeishuNetworkImageCandidate> get recentCandidates =>
+      List<FeishuNetworkImageCandidate>.unmodifiable(_candidates);
+
+  List<FeishuNetworkImageAttribution> get recentAttributions =>
+      List<FeishuNetworkImageAttribution>.unmodifiable(_attributions);
 
   void setUnavailable(String error) {
     _state = 'unavailable';
@@ -59,6 +72,26 @@ class FeishuNetworkCaptureStore {
     });
   }
 
+  void recordForwardableImageResolution(
+    FeishuNetworkForwardableImageResolution resolution,
+  ) {
+    if (resolution.events.isNotEmpty) {
+      _forwardableImageCount += resolution.events.length;
+      _lastForwardableImage = resolution.events.last.toJson();
+      _lastImageSkipReason = '';
+    } else {
+      _lastImageSkipReason = resolution.skipReason;
+    }
+
+    final decision = _resolverDecision(resolution);
+    _resolverDecisions.add(decision);
+    _trim(_resolverDecisions, _maxResolverDecisions);
+    _appendDiagnosticsLine(<String, Object?>{
+      'diagnostic_type': 'image_resolver',
+      ...decision,
+    });
+  }
+
   Map<String, Object?> toDiagnosticsJson() {
     return <String, Object?>{
       'network_capture_state': _state,
@@ -67,6 +100,9 @@ class FeishuNetworkCaptureStore {
           .map((event) => event.toRedactedJson())
           .toList(growable: false),
       'network_image_candidate_count': _candidateCount,
+      'network_saved_image_count': _candidates
+          .where((candidate) => candidate.localPath.trim().isNotEmpty)
+          .length,
       'network_last_image_candidate': _candidates.isEmpty
           ? null
           : _candidates.last.toStatusJson(),
@@ -79,6 +115,12 @@ class FeishuNetworkCaptureStore {
           : _attributions.last.toStatusJson(),
       'network_last_attributed_image_candidate':
           _lastAttributedImageCandidate(),
+      'network_forwardable_image_count': _forwardableImageCount,
+      'network_last_forwardable_image': _lastForwardableImage,
+      'network_last_image_skip_reason': _lastImageSkipReason,
+      'network_recent_image_resolver_decisions': _resolverDecisions
+          .map((decision) => Map<String, Object?>.unmodifiable(decision))
+          .toList(growable: false),
       'network_last_error': _lastError,
     };
   }
@@ -105,6 +147,20 @@ class FeishuNetworkCaptureStore {
     }
     file.parent.createSync(recursive: true);
     file.writeAsStringSync('${jsonEncode(json)}\n', mode: FileMode.append);
+  }
+
+  Map<String, Object?> _resolverDecision(
+    FeishuNetworkForwardableImageResolution resolution,
+  ) {
+    final decision = resolution.decision;
+    if (decision != null) {
+      return Map<String, Object?>.unmodifiable(decision);
+    }
+    final reason = resolution.skipReason.trim();
+    if (reason.isEmpty) {
+      return const <String, Object?>{};
+    }
+    return <String, Object?>{'reason': reason};
   }
 }
 
