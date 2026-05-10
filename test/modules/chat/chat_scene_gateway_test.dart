@@ -101,6 +101,34 @@ void main() {
     expect(targets.single.channelId, 'u-target');
   });
 
+  test('sendPersistentSdkMessage waits for sendWithOption', () async {
+    final completer = Completer<void>();
+    final channel = WKChannel('g-active', WKChannelType.group);
+    final content = WKTextContent('send through sdk');
+    final calls = <String>[];
+
+    var completed = false;
+    final sendFuture = sendPersistentSdkMessage(
+      content: content,
+      channel: channel,
+      sendWithOption: (sentContent, sentChannel, options) {
+        calls.add('${sentChannel.channelType}:${sentChannel.channelID}');
+        expect(sentContent, same(content));
+        expect(options, isA<WKSendOptions>());
+        return completer.future;
+      },
+    ).then((_) => completed = true);
+
+    await Future<void>.delayed(Duration.zero);
+    expect(calls, <String>['2:g-active']);
+    expect(completed, isFalse);
+
+    completer.complete();
+    await sendFuture;
+
+    expect(completed, isTrue);
+  });
+
   test('sendForwardPayloads uses the injected sender', () async {
     final sent = <String>[];
     final gateway = ApiChatSceneGateway(
@@ -151,6 +179,30 @@ void main() {
       expect(sent, <String>['2:g-active:send now']);
     },
   );
+
+  test('sendMessageContent waits for injected sender futures to complete', () async {
+    final completer = Completer<void>();
+    final gateway = ApiChatSceneGateway(
+      sendMessage: (content, channel) => completer.future,
+    );
+
+    var completed = false;
+    final sendFuture = gateway
+        .sendMessageContent(
+          WKTextContent('send after persistence'),
+          channelId: 'g-active',
+          channelType: WKChannelType.group,
+        )
+        .then((_) => completed = true);
+
+    await Future<void>.delayed(Duration.zero);
+    expect(completed, isFalse);
+
+    completer.complete();
+    await sendFuture;
+
+    expect(completed, isTrue);
+  });
 
   test(
     'sendForwardPayloads waits for injected sender futures to complete',

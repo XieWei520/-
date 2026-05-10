@@ -53,6 +53,23 @@ void main() {
     );
   });
 
+  test('normalizes monitor file preview paths without v1 prefix', () {
+    final content = WKFileContent()
+      ..name = 'report.xlsx'
+      ..url = 'file/preview/chat/2/group_1/report.xlsx';
+
+    final target = resolveChatFileOpenTarget(messageContent: content);
+
+    expect(target, isNotNull);
+    expect(target!.type, ChatFileOpenTargetType.remoteUrl);
+    final uri = Uri.parse(target.value);
+    expect(uri.path, '/minio/chat/2/group_1/report.xlsx');
+    expect(
+      uri.queryParameters['response-content-disposition'],
+      'attachment; filename="report.xlsx"',
+    );
+  });
+
   test('treats chat object paths as remote minio targets, not local files', () {
     final target = resolveChatFileOpenTarget(
       structuredPayload: <String, dynamic>{

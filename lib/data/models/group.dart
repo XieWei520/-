@@ -65,8 +65,25 @@ class GroupInfo {
 
   factory GroupInfo.fromJson(Map<String, dynamic> json) {
     return GroupInfo(
-      groupNo: json['group_no'] ?? '',
-      name: json['name'],
+      groupNo:
+          _firstNonEmptyString(
+            json['group_no'],
+            json['groupNo'],
+            json['channel_id'],
+            json['channelId'],
+            json['group_id'],
+            json['groupId'],
+          ) ??
+          '',
+      name: _firstNonEmptyString(
+        json['name'],
+        json['group_name'],
+        json['groupName'],
+        json['channel_name'],
+        json['channelName'],
+        json['display_name'],
+        json['displayName'],
+      ),
       avatar: json['avatar'],
       creator: json['creator'],
       notice: json['notice'],
@@ -90,7 +107,13 @@ class GroupInfo {
       save: json['save'],
       flame: json['flame'],
       flameSecond: json['flame_second'] ?? json['flameSecond'],
-      remark: json['remark'],
+      remark: _firstNonEmptyString(
+        json['remark'],
+        json['channel_remark'],
+        json['channelRemark'],
+        json['group_remark'],
+        json['groupRemark'],
+      ),
       role: json['role'],
       forbiddenExpirTime: json['forbidden_expir_time'],
       createdAt: json['created_at'],
@@ -305,8 +328,24 @@ class GroupMember {
   }
 }
 
-String? _firstNonEmptyString(dynamic first, [dynamic second, dynamic third]) {
-  for (final value in <dynamic>[first, second, third]) {
+String? _firstNonEmptyString(
+  dynamic first, [
+  dynamic second,
+  dynamic third,
+  dynamic fourth,
+  dynamic fifth,
+  dynamic sixth,
+  dynamic seventh,
+]) {
+  for (final value in <dynamic>[
+    first,
+    second,
+    third,
+    fourth,
+    fifth,
+    sixth,
+    seventh,
+  ]) {
     final text = value?.toString().trim() ?? '';
     if (text.isNotEmpty) {
       return text;

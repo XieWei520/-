@@ -3,25 +3,15 @@ import 'package:flutter/material.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_sub_page_scaffold.dart';
-import '../monitor/feishu_monitor_center_page.dart';
-import '../monitor/monitor_local_agent_binder.dart';
+import '../feishu_monitor/feishu_monitor_center_page.dart';
 
 class VipManagementPage extends StatelessWidget {
   const VipManagementPage({super.key});
 
   void _openFeishuCenter(BuildContext context) {
-    final binder = MonitorLocalAgentBinder();
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FeishuMonitorCenterPage(
-          onBindLocalAgent: binder.bindAndHeartbeat,
-          onOpenBrowserLogin: binder.openBrowserLogin,
-          onCheckBrowserStatus: binder.checkBrowserStatus,
-          onClearBrowserProfile: binder.clearBrowserProfile,
-          onListenOnce: binder.listenOnce,
-          onRefreshAgentStatus: binder.heartbeatOnce,
-          loadFeishuChats: binder.listChats,
-        ),
+        builder: (_) => FeishuMonitorCenterPage(),
       ),
     );
   }
@@ -44,8 +34,8 @@ class VipManagementPage extends StatelessWidget {
           _ManagementCenterCard(
             key: const ValueKey('management-center-feishu'),
             title: '飞书信息监控中心',
-            description: '同步飞书 Web 群消息到悟空 IM 群',
-            status: '可用',
+            description: '查看独立飞书监控壳程序状态，并从悟空 IM 内发起基础控制。',
+            status: '第一阶段',
             icon: Icons.forum_rounded,
             enabled: true,
             onTap: () => _openFeishuCenter(context),
@@ -54,7 +44,7 @@ class VipManagementPage extends StatelessWidget {
           _ManagementCenterCard(
             key: const ValueKey('management-center-dingtalk'),
             title: '钉钉信息监控中心',
-            description: '同步钉钉群、机器人消息到悟空 IM 群',
+            description: '后续统一接入到消息监控中心的多平台管理模型。',
             status: '即将上线',
             icon: Icons.notifications_active_rounded,
             enabled: false,
@@ -64,7 +54,7 @@ class VipManagementPage extends StatelessWidget {
           _ManagementCenterCard(
             key: const ValueKey('management-center-xiaoe'),
             title: '小鹅通信息监控中心',
-            description: '监控课程、订单、通知并转发到悟空 IM 群',
+            description: '课程、订单、通知类消息后续会并入统一监控控制台。',
             status: '即将上线',
             icon: Icons.school_rounded,
             enabled: false,
@@ -103,7 +93,7 @@ class _ManagementHeader extends StatelessWidget {
           ),
           SizedBox(height: WKSpace.xs),
           Text(
-            '按平台管理消息监控与自动转发，当前优先支持飞书 Web 群转发到悟空 IM 群。',
+            '按平台管理消息监控与自动转发。飞书监控已切换到新的壳程序 + 控制台架构，当前先接入本地状态与基础控制。',
             style: TextStyle(
               fontFamily: WKFontFamily.primary,
               fontSize: 14,

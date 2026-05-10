@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../core/config/app_config.dart';
 import 'app_display_preferences.dart';
 import '../data/providers/auth_provider.dart';
+import '../modules/feishu_monitor/feishu_monitor_auto_forward_runner.dart';
 import '../modules/home/home_badge_snapshot.dart';
 import '../modules/home/home_surface_kernel.dart';
 import '../modules/video_call/call_coordinator.dart';
@@ -38,6 +39,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
   late final BrowserNotificationClickBridge _browserNotificationClickBridge;
   late final NotificationPermissionPromptBridge
   _notificationPermissionPromptBridge;
+  late final FeishuMonitorAutoForwardRunner _feishuAutoForwardRunner;
   GoRouter? _boundRouter;
   bool _callCoordinatorRunning = false;
   bool _flushPendingScheduled = false;
@@ -58,6 +60,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
     _notificationPermissionPromptBridge =
         NotificationPermissionPromptBridge.instance;
     _notificationPermissionPromptBridge.ensureRegistered();
+    _feishuAutoForwardRunner = FeishuMonitorAutoForwardRunner();
     _pushRouteBridge = AppPushRouteBridge(
       messageEvents: PushService.instance.messageEvents,
       isLoggedIn: () => ref.read(authProvider).isLoggedIn,
@@ -75,6 +78,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
         _deviceBadgeSyncBridge.reset();
       }
       _syncCallCoordinator(next.isLoggedIn);
+      _syncFeishuAutoForwarding(next.isLoggedIn);
       _scheduleFlushPending();
     });
     _badgeSubscription = ref.listenManual<HomeBadgeSnapshot>(
@@ -84,6 +88,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       },
     );
     unawaited(_deviceBadgeSyncBridge.sync(ref.read(homeBadgeSnapshotProvider)));
+    _syncFeishuAutoForwarding(ref.read(authProvider).isLoggedIn);
     _scheduleFlushPending();
   }
 
@@ -120,6 +125,14 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
     }
   }
 
+  void _syncFeishuAutoForwarding(bool isLoggedIn) {
+    if (isLoggedIn) {
+      _feishuAutoForwardRunner.start();
+    } else {
+      _feishuAutoForwardRunner.stop();
+    }
+  }
+
   @override
   void dispose() {
     _badgeSubscription.close();
@@ -130,6 +143,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       CallCoordinator.instance.stop();
       _callCoordinatorRunning = false;
     }
+    _feishuAutoForwardRunner.dispose();
     super.dispose();
   }
 

@@ -49,6 +49,20 @@ void main() {
       expect(group.updatedAt, '2026-04-01T11:22:33Z');
     });
 
+    test('fromJson supports channel-style aliases for display names', () {
+      final group = GroupInfo.fromJson({
+        'group_no': 'g-10002',
+        'group_name': 'Alpha Group',
+        'channel_name': 'Channel Alpha',
+        'display_name': 'Display Alpha',
+        'channel_remark': 'Pinned Alpha',
+        'group_remark': 'Remark Alpha',
+      });
+
+      expect(group.name, 'Alpha Group');
+      expect(group.remark, 'Pinned Alpha');
+    });
+
     test('toJson serializes server-backed group detail settings', () {
       final group = GroupInfo(
         groupNo: 'g-10001',

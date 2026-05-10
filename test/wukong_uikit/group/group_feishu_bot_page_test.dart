@@ -115,6 +115,63 @@ void main() {
     expect(updatePayload?.containsKey('official_secret'), isFalse);
   });
 
+
+  testWidgets('does not render or submit per-group Feishu OpenAPI credentials', (
+    tester,
+  ) async {
+    Map<String, dynamic>? updatePayload;
+
+    ApiClient.instance.dio.httpClientAdapter = _RoutingJsonAdapter((options) {
+      final method = options.method.toUpperCase();
+      final path = options.uri.path;
+
+      if (method == 'GET' &&
+          path == '${ApiConfig.groups}/g_feishu/robot/feishu') {
+        return _MockJsonResponse(<String, dynamic>{
+          'code': 0,
+          'data': _buildFeishuConfigJson(),
+        });
+      }
+
+      if (method == 'PUT' &&
+          path == '${ApiConfig.groups}/g_feishu/robot/feishu') {
+        updatePayload = Map<String, dynamic>.from(
+          (options.data as Map?) ?? const <String, dynamic>{},
+        );
+        return _MockJsonResponse(<String, dynamic>{
+          'code': 0,
+          'data': _buildFeishuConfigJson(
+            displayName: updatePayload?['display_name']?.toString() ?? '?????',
+            displayAvatar:
+                updatePayload?['display_avatar']?.toString() ??
+                'https://im.example.com/robot-feishu.png',
+          ),
+        });
+      }
+
+      return _MockJsonResponse(<String, dynamic>{
+        'code': 404,
+        'msg': 'Unhandled request: $method $path',
+      }, statusCode: 404);
+    });
+
+    await _pumpPage(tester);
+
+    expect(find.text('?? OpenAPI ??'), findsNothing);
+    expect(find.text('????'), findsNothing);
+    expect(find.text('????'), findsNothing);
+    expect(find.textContaining('App Secret'), findsNothing);
+
+    final saveCell = find.byKey(const ValueKey('group-robot-save-config-cell'));
+    await _scrollTo(tester, saveCell);
+    await tester.tap(saveCell);
+    await tester.pumpAndSettle();
+
+    expect(updatePayload, isNotNull);
+    expect(updatePayload?.containsKey('app_id'), isFalse);
+    expect(updatePayload?.containsKey('app_secret'), isFalse);
+  });
+
   testWidgets('can switch to official mode', (tester) async {
     ApiClient.instance.dio.httpClientAdapter = _RoutingJsonAdapter((options) {
       final method = options.method.toUpperCase();

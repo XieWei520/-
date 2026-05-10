@@ -891,16 +891,12 @@ class GroupApi {
     bool enabled = true,
     bool regenerateWebhook = false,
     bool regenerateSecret = false,
-    String? appId,
-    String? appSecret,
     String? webhookMode,
     String? officialWebhookUrl,
     String? officialSecret,
     String? displayName,
     String? displayAvatar,
   }) async {
-    final trimmedAppId = appId?.trim();
-    final trimmedAppSecret = appSecret?.trim();
     final normalizedWebhookMode = _normalizeWebhookModePayload(webhookMode);
     final trimmedOfficialWebhookUrl = officialWebhookUrl?.trim();
     final trimmedOfficialSecret = officialSecret?.trim();
@@ -911,12 +907,6 @@ class GroupApi {
       if (regenerateWebhook) 'regenerate_webhook': 1,
       if (regenerateSecret) 'regenerate_secret': 1,
     };
-    if (trimmedAppId != null) {
-      data['app_id'] = trimmedAppId;
-    }
-    if (trimmedAppSecret != null) {
-      data['app_secret'] = trimmedAppSecret;
-    }
     if (normalizedWebhookMode != null) {
       data['webhook_mode'] = normalizedWebhookMode;
     }
@@ -942,8 +932,6 @@ class GroupApi {
       groupNo,
       response.data,
       enabled: enabled,
-      appId: trimmedAppId,
-      appSecret: trimmedAppSecret,
       webhookMode: normalizedWebhookMode,
       officialWebhookUrl: trimmedOfficialWebhookUrl,
       officialSecret: trimmedOfficialSecret,

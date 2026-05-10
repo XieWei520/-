@@ -1,0 +1,873 @@
+# Feishu Monitor Center Test Report
+
+Date: 2026-05-09
+
+## Scope
+
+This report covers the WuKongIM Feishu Monitor Center, the local Feishu Web shell app, and the local shell HTTP API used for login state, message observation, capture control, and routed forwarding.
+
+The test goal is to determine whether the current implementation is ready for unattended Windows testing, especially multi-source routing from Feishu groups to different WuKongIM groups.
+
+## Environment
+
+- OS/runtime target: Windows desktop
+- Project root: `C:\Users\COLORFUL\Desktop\WuKong`
+- WuKongIM desktop executable: `build\windows\x64\runner\Debug\InfoEquity.exe`
+- Feishu shell executable: `tools\feishu_monitor_shell_app\build\windows\x64\runner\Debug\feishu_monitor_shell_app.exe`
+- Local shell API: `http://127.0.0.1:18766`
+- Shell API auth token used in tests: `Bearer wukong-feishu-shell-dev`
+
+## Automated Tests
+
+### Main WuKongIM Feishu Monitor Tests
+
+Command:
+
+```powershell
+D:\Apps\flutter\bin\flutter.bat test test/modules/feishu_monitor/feishu_monitor_forwarding_service_test.dart test/modules/feishu_monitor/feishu_monitor_shell_client_test.dart test/modules/feishu_monitor/feishu_monitor_center_page_test.dart
+```
+
+Result:
+
+- Passed: 42
+- Failed: 0
+
+Coverage highlights:
+
+- Forwarding routes serialize and deserialize correctly.
+- Route matching prefers Feishu conversation ID and falls back to normalized name.
+- Disabled routes do not match active forwarding.
+- V2 route-list settings persist and load correctly.
+- Legacy single-target settings remain a legacy hint and do not become a global catch-all.
+- Routed forwarding sends each Feishu source to its configured target group.
+- Duplicate routed events are skipped.
+- Disabled or empty-target matching routes are counted as disabled skips.
+- The UI can render console sections, recent events, rules, Feishu groups, image settings, and system settings.
+- The target group picker resolves display names and hides inactive/unsaved groups.
+- Creating and updating a route from a Feishu group row is covered.
+
+### Feishu Shell HTTP Service Tests
+
+Command:
+
+```powershell
+D:\Apps\flutter\bin\flutter.bat test
+```
+
+Working directory:
+
+```powershell
+C:\Users\COLORFUL\Desktop\WuKong\tools\feishu_monitor_shell
+```
+
+Result:
+
+- Passed: 11
+- Failed: 0
+
+Coverage highlights:
+
+- `GET /status` returns stored snapshot.
+- Invalid status files safely fall back to an initial snapshot.
+- `GET /health` returns derived health payload.
+- `POST /capture/start` updates capture state.
+- Conversation, recent message, and normalized recent event endpoints work.
+- Recent events are deduplicated and limited deterministically.
+
+### Feishu Web Shell App Tests
+
+Command:
+
+```powershell
+D:\Apps\flutter\bin\flutter.bat test
+```
+
+Working directory:
+
+```powershell
+C:\Users\COLORFUL\Desktop\WuKong\tools\feishu_monitor_shell_app
+```
+
+Result:
+
+- Passed: 18
+- Failed: 0
+
+Coverage highlights:
+
+- Login and messenger page probes normalize correctly.
+- Feishu feed cards are converted into observed messages/events.
+- Body text fallback can derive observed conversation/message candidates.
+- Runtime URL login-state derivation works.
+- Page probes merge into status snapshots and dedupe recent events.
+- Regression added: shell app runtime probes preserve external capture-state changes written by the shell API.
+
+## Static Analysis
+
+### Main Feishu Monitor Module
+
+Command:
+
+```powershell
+D:\Apps\flutter\bin\flutter.bat analyze lib/modules/feishu_monitor test/modules/feishu_monitor
+```
+
+Result:
+
+- No issues found.
+
+### Feishu Shell HTTP Service
+
+Command:
+
+```powershell
+D:\Apps\flutter\bin\flutter.bat analyze
+```
+
+Working directory:
+
+```powershell
+C:\Users\COLORFUL\Desktop\WuKong\tools\feishu_monitor_shell
+```
+
+Result:
+
+- No issues found.
+
+### Feishu Web Shell App
+
+Command:
+
+```powershell
+D:\Apps\flutter\bin\flutter.bat analyze
+```
+
+Working directory:
+
+```powershell
+C:\Users\COLORFUL\Desktop\WuKong\tools\feishu_monitor_shell_app
+```
+
+Result:
+
+- No issues found.
+
+## Build Verification
+
+### WuKongIM Windows Desktop Debug Build
+
+Command:
+
+```powershell
+D:\Apps\flutter\bin\flutter.bat build windows --debug
+```
+
+Result:
+
+- Built `build\windows\x64\runner\Debug\InfoEquity.exe`
+
+Initial attempt failed because the running `InfoEquity.exe` process locked the debug output. After stopping the process and rebuilding, the build passed.
+
+### Feishu Shell App Windows Debug Build
+
+Command:
+
+```powershell
+D:\Apps\flutter\bin\flutter.bat build windows --debug
+```
+
+Working directory:
+
+```powershell
+C:\Users\COLORFUL\Desktop\WuKong\tools\feishu_monitor_shell_app
+```
+
+Result:
+
+- Built `build\windows\x64\runner\Debug\feishu_monitor_shell_app.exe`
+
+Initial attempt failed because the running `feishu_monitor_shell_app.exe` process locked `WebView2Loader.dll`. After stopping the process and rebuilding, the build passed.
+
+Non-blocking note:
+
+- CMake emitted a WebView plugin development warning for `add_custom_command(TARGET): DEPENDS`; it did not block the build.
+
+## Runtime Verification
+
+Both desktop programs were relaunched after the successful builds:
+
+- `feishu_monitor_shell_app.exe`
+- `InfoEquity.exe`
+
+Shell status after relaunch and `POST /capture/start`:
+
+```json
+{
+  "ShellState": "online",
+  "CaptureState": "running",
+  "LoginState": "logged_in",
+  "HookState": "healthy",
+  "PageKind": "messenger",
+  "PageTitle": "消息 - 飞书",
+  "RecentEvents": 50,
+  "Conversations": 13,
+  "LastError": ""
+}
+```
+
+Additional capture-state persistence test:
+
+- Before start: `stopped`
+- Immediately after `POST /capture/start`: `running`
+- After 10 seconds: `running`
+- After 20 seconds: `running`
+
+This confirms the capture-state regression found during testing was fixed.
+
+## Runtime Feishu Conversations Observed
+
+The shell observed 13 Feishu conversations from the messenger page:
+
+| Feishu group | Source ID |
+| --- | --- |
+| 格兰�?| `feed:6db06198` |
+| 账号安全中心 | `feed:69e220eb` |
+| 满满正能�?| `feed:2e500f14` |
+| 胖子2 | `feed:67a5e2b` |
+| 橘生淮南的飞书客�?| `feed:4e916ccc` |
+| 企业安全助手 | `feed:21aa3dc7` |
+| 用户272244的飞书助�?| `feed:7f8fe29d` |
+| 听M玛的话交�?2群C-GH | `feed:3e036307` |
+| 用户252223 | `feed:4351fd46` |
+| 高钉1 | `feed:6f88fd41` |
+| 泡沫之家 | `feed:4ec2f034` |
+| 格兰书院 | `feed:316a8a55` |
+| 混江�?| `feed:615c2216` |
+
+This verifies that the current shell can observe multiple Feishu conversations from the message list without opening each Feishu group tab individually.
+
+## Runtime WuKongIM Target Groups Available
+
+The local WuKongIM desktop data currently shows these group targets:
+
+| WuKongIM group | Target ID |
+| --- | --- |
+| 测试2 | `group_1773852048778` |
+| 测试1 | `group_1773852361803` |
+| test3 | `group_1773852904955` |
+| 测试12 | `group_1773853584786` |
+| 测试4 | `group_1773882807440` |
+| 测试5 | `group_1773882894286` |
+| �? | `group_1773890259396` |
+| �? | `group_1773890731451` |
+| �? | `group_1773890919708` |
+
+## Issue Found And Fixed During Testing
+
+### Capture State Was Reverted By Shell App Probes
+
+Symptom:
+
+- Calling `POST /capture/start` returned `running`.
+- A status read 3 seconds later showed `stopped` again.
+
+Root cause:
+
+- The shell HTTP API wrote `capture_state=running` to the shared status file.
+- The Feishu shell app kept an older in-memory snapshot with `capture_state=stopped`.
+- Its periodic WebView probe saved that older snapshot back to disk, overwriting the API's external control state.
+
+Fix:
+
+- Added a merge step before shell app runtime/probe status writes.
+- The shell app now reloads the persisted snapshot and preserves external `capture_state` changes before saving probe updates.
+- Added a regression test for this behavior.
+
+Verification:
+
+- Regression test passes.
+- Shell app full test suite passes.
+- Runtime check confirms `capture_state` stays `running` after 10 and 20 seconds.
+
+## Manual Multi-Group Forwarding Test Status
+
+Status: passed in assisted validation.
+
+Persisted route settings were found in the active desktop preference file:
+
+- `C:\Users\COLORFUL\AppData\Roaming\InfoEquity\InfoEquity\shared_preferences.json`
+
+Configured routes at 2026-05-09 20:43 CST:
+
+| Feishu source | Source ID | WuKongIM target | Target ID | Route enabled |
+| --- | --- | --- | --- | --- |
+| 满满正能�?| `feed:2e500f14` | test1、平权客服、LD | `063db9c564e64e7d839887a022b86189` | yes |
+| 泡沫之家 | `feed:4ec2f034` | test2 | `cd53b2cfedea4ab9be9fa6e6dcb57794` | yes |
+
+The global auto-forwarding switch was off during this test. A regression was found and fixed in the manual button path: `Forward Recent Events` reused the global setting and therefore skipped all events when auto-forwarding was disabled. The UI also omitted `skippedDisabled`, which made the result appear as all zeros.
+
+Fix applied:
+
+- Manual `Forward Recent Events` now sends with a temporary `enabled=true` copy of the settings.
+- The saved global setting remains unchanged, so auto-forwarding can stay off.
+- The result text now includes disabled skips: `停用跳过 N 条`.
+- Regression tests were added for manual forwarding while the auto-forwarding switch is off, and for displaying disabled skip counts.
+
+Runtime observation after the fix:
+
+- `InfoEquity.exe` was rebuilt and relaunched.
+- Feishu shell status remained healthy: online, logged in, capture running, hook healthy.
+- The shell recent-event buffer contained configured-source candidates:
+  - `满满正能量`: 3 events.
+  - `泡沫之家`: 2 events.
+- The visible WuKongIM message list showed target groups `test2` and `test1、平权客服、LD`.
+
+Database verification after the user's final `转发最近事件` operation:
+
+- Active visible app database checked:
+  - `C:\Users\COLORFUL\Desktop\WuKong\.dart_tool\sqflite_common_ffi\databases\wk_b0c09d2a42ba4bb8a573edb51a961e4e.db`
+- Five routed messages were inserted at 2026-05-09 20:43:29 CST.
+
+| Feishu source | WuKongIM target | Message seq | Message content |
+| --- | --- | --- | --- |
+| 满满正能�?| test1、平权客服、LD | 282 | `飞书群：满满正能�?/ 发送人：橘生淮�?/ [图片]` |
+| 满满正能�?| test1、平权客服、LD | 283 | `飞书群：满满正能�?/ 发送人：橘生淮�?/ [图片]` |
+| 满满正能�?| test1、平权客服、LD | 284 | `飞书群：满满正能�?/ 发送人：橘生淮�?/ [图片]` |
+| 泡沫之家 | test2 | 3 | `飞书群：泡沫之家 / 发送人：自定义机器�?/ [泡沫老师管理]` |
+| 泡沫之家 | test2 | 4 | `飞书群：泡沫之家 / 发送人：自定义机器�?/ [泡沫老师管理]` |
+
+## Auto-Forwarding Real-Time Test
+
+Status: passed with a follow-up duplicate-prevention fix.
+
+After enabling the V2 auto-forwarding switch, fresh Feishu feed-list messages were observed by the shell and forwarded without pressing `转发最近事件`.
+
+Runtime evidence:
+
+- Feishu shell stayed healthy: online, logged in, capture running, hook healthy.
+- V2 forwarding settings showed `enabled=true`.
+- The older legacy preference key `feishu_monitor_forwarding_enabled` stayed `false`; this is not the active switch for the V2 routed-forwarding flow.
+- Fresh configured-source events appeared in the shell feed buffer:
+  - `满满正能量` at about 20:53-20:54 CST.
+  - `泡沫之家` at about 20:53-20:55 CST.
+
+Database evidence in the active visible app database:
+
+| Feishu source | WuKongIM target | Message seq | Local time | Message content |
+| --- | --- | --- | --- | --- |
+| 满满正能�?| test1、平权客服、LD | 285-287 | 2026-05-09 20:53:51 | `飞书群：满满正能�?/ 发送人：橘生淮�?/ 上课上课是男是女` |
+| 满满正能�?| test1、平权客服、LD | 288-290 | 2026-05-09 20:54:23 | `飞书群：满满正能�?/ 发送人：橘生淮�?/ 究竟是男是女是男是女` |
+| 满满正能�?| test1、平权客服、LD | 291-293 | 2026-05-09 20:54:31 | `飞书群：满满正能�?/ 发送人：橘生淮�?/ 哦哦哦思思我口味` |
+| 泡沫之家 | test2 | 5-7 | 2026-05-09 20:53:59 | `飞书群：泡沫之家 / 发送人：橘生淮�?/ 究竟是男是女你是谁呢` |
+| 泡沫之家 | test2 | 8-10 | 2026-05-09 20:54:55 | `飞书群：泡沫之家 / 发送人：橘生淮�?/ 司机是男是女你说你是` |
+
+Follow-up issue found:
+
+- A single Feishu feed-card observation could be emitted with multiple transient DOM-derived message IDs.
+- This caused one visible Feishu list message to be forwarded three times.
+
+Fix applied:
+
+- Added a stable forwarding dedupe key for `feed_card_probe` events based on Feishu conversation scope, sender name, and normalized text.
+- Added a regression test: `forwardRoutedRecentEvents treats repeated feed card observations as one message`.
+- Re-ran the targeted Feishu monitor tests after the fix: 42 passed, 0 failed.
+- Re-ran static analysis for the Feishu monitor module: no issues found.
+
+Additional issue found after relaunch:
+
+- Auto-forwarding was originally driven by the Feishu Monitor Center page lifecycle.
+- If WuKongIM was restarted and the user did not open the monitor center page, routed forwarding settings stayed enabled but no unattended forwarding loop ran.
+
+Fix applied:
+
+- Added an application-level auto-forward runner.
+- The runner starts when the WuKongIM app is logged in and stops when logged out.
+- The runner polls the shell status and forwards configured recent events independently of whether the monitor center page is open.
+- Added regression tests:
+  - `runOnce forwards shell events when routed auto-forwarding is enabled`.
+  - `runOnce does not fetch shell status when auto-forwarding is disabled`.
+
+Additional issue found after application-level runner:
+
+- Restarting WuKongIM cleared the in-memory forwarded-event set.
+- Because the Feishu shell keeps a recent-event buffer, restart could re-forward older buffered events once.
+
+Fix applied:
+
+- Added a persisted dedupe store in SharedPreferences.
+- Forwarded event keys are stored under `feishu_monitor_forwarded_dedupe_keys_v1`.
+- The store keeps the most recent 500 keys to avoid unbounded growth.
+- Added regression test: `forwardRoutedRecentEvents persists dedupe keys across service restarts`.
+
+Final runtime evidence after these fixes:
+
+- WuKongIM was rebuilt and relaunched.
+- App-level forwarding ran without opening the monitor center page.
+- `泡沫之家 / test1` was forwarded to `test2` exactly once at 2026-05-09 21:11:53 CST.
+- After a second rebuild/relaunch with persisted dedupe enabled, no additional duplicate forward was inserted.
+- Persisted dedupe key count was 8, including `feed_card_probe:feed:4ec2f034:橘生淮南:test1`.
+
+Final assisted soak test evidence:
+
+- Both desktop processes were still alive and responsive:
+  - `feishu_monitor_shell_app.exe` PID `64596`.
+  - `InfoEquity.exe` PID `61080`.
+- The Feishu shell status stayed healthy:
+  - `shell_state=online`.
+  - `capture_state=running`.
+  - `login_state=logged_in`.
+  - `hook_state=healthy`.
+  - `page_kind=messenger`.
+  - `page_title=消息 - 飞书 (136)`.
+  - `recent_events=50`.
+- The shell feed-list buffer showed the latest configured-source events:
+  - `满满正能�?/ feed:2e500f14 / 橘生淮南 / test3`.
+  - `泡沫之家 / feed:4ec2f034 / 橘生淮南 / test4`.
+- The active rebuilt desktop database was:
+  - `C:\Users\COLORFUL\Desktop\WuKong\build\windows\x64\runner\Debug\.dart_tool\sqflite_common_ffi\databases\wk_b0c09d2a42ba4bb8a573edb51a961e4e.db`.
+- The older workspace database did not receive the latest rebuilt-app writes:
+  - `C:\Users\COLORFUL\Desktop\WuKong\.dart_tool\sqflite_common_ffi\databases\wk_b0c09d2a42ba4bb8a573edb51a961e4e.db`.
+
+Latest forwarding database evidence:
+
+| Feishu source | Source ID | WuKongIM target | Target ID | Message seq | Local time | Count | Message content |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 满满正能�?| `feed:2e500f14` | test1、平权客服、LD | `063db9c564e64e7d839887a022b86189` | 299 | 2026-05-09 21:18:45 | 1 | `飞书群：满满正能�?/ 发送人：橘生淮�?/ test3` |
+| 泡沫之家 | `feed:4ec2f034` | test2 | `cd53b2cfedea4ab9be9fa6e6dcb57794` | 15 | 2026-05-09 21:18:53 | 1 | `飞书群：泡沫之家 / 发送人：橘生淮�?/ test4` |
+
+Persisted dedupe evidence:
+
+- `feishu_monitor_forwarded_dedupe_keys_v1` contained 10 keys.
+- It included `feed_card_probe:feed:2e500f14:橘生淮南:test3`.
+- It included `feed_card_probe:feed:4ec2f034:橘生淮南:test4`.
+- The shell API still emitted multiple transient feed-card event IDs for the same visible Feishu feed-list item, but the app-level forwarding service used the stable dedupe key above and inserted only one WuKongIM message per visible Feishu feed-list message.
+
+Expected forwarding result behavior after the duplicate-prevention fix:
+
+- Matched configured source: sent to its target WuKongIM group.
+- Duplicate event: counted as duplicate skip.
+- Unconfigured source: counted as unmatched skip.
+- Disabled or empty-target route: counted as disabled skip.
+
+## Low-Latency WebShell Upgrade Test
+
+Status: passed with a measurement caveat.
+
+Upgrade verified:
+
+- Feishu WebShell now publishes authenticated `GET /events` Server-Sent Events.
+- The shell app installs a page-side `MutationObserver` and still keeps a 3-second fallback probe.
+- WuKongIM subscribes to shell events and also keeps a 3-second fallback poll.
+- The auto-forward runner catches fire-and-forget errors, reconnects the SSE stream, avoids duplicate subscriptions, and ignores late events from stopped subscriptions.
+- Persisted forwarding dedupe still prevents repeated feed-card observations from becoming duplicate WuKongIM messages.
+
+Automated verification after the low-latency upgrade:
+
+| Area | Command | Result |
+| --- | --- | --- |
+| Shell HTTP service | `D:\Apps\flutter\bin\flutter.bat test` in `tools\feishu_monitor_shell` | 17 passed |
+| Shell WebView app | `D:\Apps\flutter\bin\flutter.bat test` in `tools\feishu_monitor_shell_app` | 27 passed |
+| WuKongIM Feishu monitor focused tests | `D:\Apps\flutter\bin\flutter.bat test test\modules\feishu_monitor\feishu_monitor_auto_forward_runner_test.dart test\modules\feishu_monitor\feishu_monitor_center_page_test.dart test\modules\feishu_monitor\feishu_monitor_forwarding_service_test.dart test\modules\feishu_monitor\feishu_monitor_shell_client_test.dart` | 52 passed |
+| Shell analyze | `D:\Apps\flutter\bin\flutter.bat analyze` in `tools\feishu_monitor_shell` | No issues found |
+| Shell app analyze | `D:\Apps\flutter\bin\flutter.bat analyze` in `tools\feishu_monitor_shell_app` | No issues found |
+| WuKongIM Feishu monitor analyze | `D:\Apps\flutter\bin\flutter.bat analyze lib\app\app.dart lib\modules\feishu_monitor test\modules\feishu_monitor` | No issues found |
+
+Windows build verification after the low-latency upgrade:
+
+- WuKongIM debug build passed:
+  - `build\windows\x64\runner\Debug\InfoEquity.exe`
+- Feishu WebShell debug build passed:
+  - `tools\feishu_monitor_shell_app\build\windows\x64\runner\Debug\feishu_monitor_shell_app.exe`
+- The Feishu WebShell build still emits the existing `webview_windows` CMake development warning for `add_custom_command(TARGET): DEPENDS`; it does not block the build.
+
+Runtime state after relaunch:
+
+| Process | PID | Start time |
+| --- | ---: | --- |
+| `feishu_monitor_shell_app.exe` | 48548 | 2026-05-09 22:52:47 CST |
+| `InfoEquity.exe` | 61432 | 2026-05-09 22:52:50 CST |
+
+Shell status:
+
+| Field | Value |
+| --- | --- |
+| `shell_state` | `online` |
+| `capture_state` | `running` |
+| `login_state` | `logged_in` |
+| `hook_state` | `healthy` |
+| `page_kind` | `messenger` |
+| `recent_events` | 50 |
+| `observed_conversations` | 13 |
+| `last_error` | empty |
+
+SSE channel evidence:
+
+```text
+: connected
+
+event: snapshot_updated
+data: {"type":"snapshot_updated","reason":"fallback","updated_at":"2026-05-09T01:40:10.695138Z","recent_events":50,"observed_conversations":13,"error":""}
+
+event: snapshot_updated
+data: {"type":"snapshot_updated","reason":"runtime_reload","updated_at":"2026-05-09T14:56:53.324078Z","recent_events":50,"observed_conversations":13,"error":""}
+```
+
+Manual low-latency forwarding evidence:
+
+| Step | Evidence |
+| --- | --- |
+| User sent test message | `LL2258A` |
+| Feishu source observed by shell | `满满正能�?/ feed:2e500f14` |
+| Sender | `橘生淮南` |
+| Shell event candidates | three transient feed-card IDs: `event_feed:3ef574f5`, `event_feed:1479a4bb`, `event_feed:5e741098` |
+| Stable persisted dedupe key | `feed_card_probe:feed:2e500f14:橘生淮南:LL2258A` |
+| WuKongIM target | `test1、平权客服、LD / 063db9c564e64e7d839887a022b86189` |
+| Database row | `channel_id=063db9c564e64e7d839887a022b86189`, `message_seq=300`, `local_time=2026-05-09 23:00:16` |
+| Forwarded content | `飞书群：满满正能�?/ 发送人：橘生淮�?/ LL2258A` |
+
+Database note:
+
+- This runtime launch wrote `LL2258A` to the workspace database:
+  - `C:\Users\COLORFUL\Desktop\WuKong\.dart_tool\sqflite_common_ffi\databases\wk_b0c09d2a42ba4bb8a573edb51a961e4e.db`
+- The build-output database did not receive this latest row:
+  - `C:\Users\COLORFUL\Desktop\WuKong\build\windows\x64\runner\Debug\.dart_tool\sqflite_common_ffi\databases\wk_b0c09d2a42ba4bb8a573edb51a961e4e.db`
+- The difference is caused by the process working directory used when launching the debug executable. Future manual verification should first confirm which `.dart_tool\sqflite_common_ffi\databases` path the current launch is using.
+
+Latency note:
+
+- The event-first path is verified by the SSE stream and by the successful `LL2258A` automatic forward.
+- Exact millisecond-level delay was not claimed. The recorded fields come from different clocks and layers: shell `observed_at` can be refreshed by repeated probes, while the WuKongIM `message.timestamp` is the message timestamp stored by the IM layer. For operational reporting, use a live stopwatch or add explicit runner telemetry around `snapshot_updated -> runOnce -> sendText` if sub-second measurements become necessary.
+
+## Real Image Forwarding Joint Test
+
+Status: passed on 2026-05-10.
+
+Purpose:
+
+- Verify that a newly sent Feishu image from `满满正能量` forwards to the configured WuKongIM group as a real image message.
+- Verify that the feed-card `[图片]` placeholder is not forwarded as text.
+- Verify that the same image is not duplicated.
+- Verify that old `泡沫之家` image candidates do not leak into the `满满正能量` forwarding route.
+
+Fixes validated during this round:
+
+- Feed-card media placeholders without real image attachments are treated as pending media signals, not text messages.
+- Real image fingerprints are persisted and checked across route/event keys, preventing repeated forwarding of the same extracted image.
+- While a pending media feed card exists, DOM images from a different conversation are filtered out.
+- After the newest media feed card has already been extracted from the active conversation, the shell no longer chases older media feed cards.
+- Shell capture state now uses `lastUpdatedAt` when merging local and persisted state, preventing old snapshots from reverting `running` back to `stopped`.
+
+Focused automated verification after the fixes:
+
+| Area | Command | Result |
+| --- | --- | --- |
+| WuKongIM forwarding service | `flutter test test/modules/feishu_monitor/feishu_monitor_forwarding_service_test.dart` | 37 passed |
+| Feishu shell page probe | `flutter test test/feishu_page_probe_test.dart` in `tools/feishu_monitor_shell_app` | 37 passed |
+| Feishu shell runtime mapper | `flutter test test/runtime_snapshot_mapper_test.dart` in `tools/feishu_monitor_shell_app` | 23 passed |
+| Feishu shell app analyze | `flutter analyze lib test` in `tools/feishu_monitor_shell_app` | No issues found |
+| WuKongIM Feishu monitor analyze | `flutter analyze lib/modules/feishu_monitor test/modules/feishu_monitor` | No issues found |
+
+Windows rebuild and relaunch:
+
+- `feishu_monitor_shell_app.exe` rebuilt successfully.
+- `InfoEquity.exe` rebuilt successfully.
+- Both processes were restarted after the successful builds.
+- `POST /capture/start` was called after relaunch.
+
+Runtime state before the final image send:
+
+| Field | Value |
+| --- | --- |
+| `shell_state` | `online` |
+| `capture_state` | `running` |
+| `login_state` | `logged_in` |
+| `hook_state` | `healthy` |
+| `page_kind` | `messenger` |
+| Pending media feed key | empty |
+| Last media open result | `no_pending_media_feed` |
+| Last error | empty |
+
+Final user action:
+
+- User sent a new image in Feishu group `满满正能量`.
+- User confirmed with `已发新图`.
+
+Shell evidence after the send:
+
+| Field | Value |
+| --- | --- |
+| Feishu source | `满满正能量` |
+| Event type | `image` |
+| Capture source | `dom_probe` |
+| Image attachments | 1 |
+| Dedupe key | `feed:ae500f14:7638106296385834164` |
+| Observed at | `2026-05-10T03:54:09.882Z` |
+| Shell state during verification | `online/running/logged_in/healthy` |
+| Pending media feed key after verification | empty |
+
+Database evidence in the active rebuilt desktop database:
+
+- Database checked:
+  - `C:\Users\COLORFUL\Desktop\WuKong\build\windows\x64\runner\Debug\.dart_tool\sqflite_common_ffi\databases\wk_b0c09d2a42ba4bb8a573edb51a961e4e.db`
+- Baseline before the image test:
+  - latest `client_seq=1723`
+- New row after the image test:
+
+| Client seq | Status | Type | Target channel | Local time | Searchable word |
+| ---: | ---: | ---: | --- | --- | --- |
+| 1724 | 1 | 2 | `063db9c564e64e7d839887a022b86189` | 2026-05-10 11:53:01 | `[图片]` |
+
+Thirty-second stability check:
+
+- Repeated database reads from 2026-05-10 11:53:39 to 11:54:09 CST showed exactly one row where `client_seq > 1723`.
+- No extra image rows appeared.
+- No text placeholder row appeared.
+- No new row appeared for the old `泡沫之家` target `cd53b2cfedea4ab9be9fa6e6dcb57794`.
+- Shell state remained `online/running/logged_in/healthy`.
+
+Result:
+
+- Real image forwarding passed.
+- Duplicate image prevention passed.
+- Placeholder-text suppression passed.
+- Old-route leakage prevention passed.
+
+Operational note:
+
+- In this final image test, the shell captured the real image through the active Feishu conversation DOM. Feed-list placeholders alone still do not contain the image bytes; the shell must open or already be on the relevant conversation to extract real image data. The latest safeguards prevent the shell from chasing older unrelated media cards once the newest media has already been extracted.
+
+## Image Then Immediate Text Retest
+
+Status: passed on 2026-05-10, with a measured image delay.
+
+Purpose:
+
+- Verify the regression where a Feishu image followed immediately by text could open or extract an older unrelated media conversation.
+- Verify the configured `满满正能量` source still forwards both text and image to the same WuKongIM target.
+- Measure the practical local database delay between the text and image rows.
+
+Runtime before retest:
+
+| Field | Value |
+| --- | --- |
+| Feishu shell process start | 2026-05-10 12:15:24 CST |
+| WuKongIM process start | 2026-05-10 12:15:24 CST |
+| `shell_state` | `online` |
+| `capture_state` | `running` |
+| `login_state` | `logged_in` |
+| `hook_state` | `healthy` |
+| Baseline latest message | `client_seq=1727` |
+
+User action:
+
+- In Feishu group `满满正能量`, the user sent a new image and then immediately sent text `延迟复测1217`.
+- User confirmed with `已发`.
+
+Database evidence in the active rebuilt desktop database:
+
+- Database checked:
+  - `C:\Users\COLORFUL\Desktop\WuKong\build\windows\x64\runner\Debug\.dart_tool\sqflite_common_ffi\databases\wk_b0c09d2a42ba4bb8a573edb51a961e4e.db`
+
+Rows where `client_seq > 1727`:
+
+| Client seq | Status | Type | Target channel | Local time | Searchable word |
+| ---: | ---: | ---: | --- | --- | --- |
+| 1728 | 1 | 1 | `063db9c564e64e7d839887a022b86189` | 2026-05-10 12:18:14 | `飞书群：满满正能�?/ 发送人：橘生淮�?/ 延迟复测1217` |
+| 1729 | 1 | 2 | `063db9c564e64e7d839887a022b86189` | 2026-05-10 12:18:18 | `[图片]` |
+
+Image content evidence:
+
+- Row `1729` stored a real image payload, not only placeholder text.
+- Stored dimensions: `231x500`.
+- Stored local file:
+  - `C:\Users\COLORFUL\AppData\Local\Temp\feishu_monitor_images\0651d008379ab3e0b57a019953259254176f4396.webp`
+- Stored preview URL:
+  - `https://infoequity.cn/v1/file/preview/chat/2/063db9c564e64e7d839887a022b86189/1778386697864.webp`
+
+Result:
+
+- The text and image both forwarded to the `满满正能量` WuKongIM target `063db9c564e64e7d839887a022b86189`.
+- No new row was created for the old `泡沫之家` target `cd53b2cfedea4ab9be9fa6e6dcb57794` during this retest.
+- The image arrived in the local message table about 4 seconds after the text row.
+- The shell status remained `online/running/logged_in/healthy`.
+
+Latency note:
+
+- Text forwarding is fast because the feed card directly contains text.
+- Image forwarding has extra work: the shell must open or inspect the Feishu conversation DOM, extract the real image data, write the image file, upload/build the WuKongIM image payload, and then insert/send the image message.
+- The current practical result is seconds-level image forwarding, not millisecond-level forwarding.
+- The shell status `observed_at` is refreshed by later probes, so the reliable evidence for this retest is the WuKongIM message table timestamp and content rows above.
+
+## Current Conclusion
+
+## Network Image Capture Diagnostics
+
+Status: diagnostics probe passed, production no-open forwarding not enabled.
+
+Verification commands:
+
+- `flutter test test/feishu_network_capture_parser_test.dart test/feishu_network_capture_store_test.dart test/feishu_network_capture_bridge_test.dart test/feishu_network_capture_runtime_test.dart test/runtime_snapshot_mapper_test.dart`
+  - Result: passed, 45 tests.
+- `flutter analyze lib test`
+  - Result: no issues found.
+- `flutter build windows --debug`
+  - Result: passed; rebuilt `tools\feishu_monitor_shell_app\build\windows\x64\runner\Debug\feishu_monitor_shell_app.exe`.
+  - Non-blocking warning: vendored `webview_windows` CMake `add_custom_command(TARGET): DEPENDS` dev warning.
+
+Runtime evidence from the rebuilt Feishu shell:
+
+| Field | Value |
+| --- | --- |
+| Shell process | `feishu_monitor_shell_app` |
+| `network_capture_state` | `running` |
+| JSONL diagnostics file | `C:\Users\COLORFUL\AppData\Roaming\com.example\feishu_monitor_shell_app\feishu_monitor_shell\.runtime\feishu-network-capture\network.jsonl` |
+| Final `network_event_count` | `1411` |
+| Final `network_image_candidate_count` | `186` |
+| Final top feed card | `满满正能�?14:29 橘生淮南: [图片]` |
+| Final network image candidate | `blob:https://gcnus9vm4s8a.feishu.cn/d5126b26-174c-4012-9629-839839d09599` |
+| Candidate quality | `unknown` |
+| Candidate conversation mapping | empty |
+
+User action:
+
+- The user stayed on the Feishu message list page and sent a new image to `满满正能量`.
+- The shell was not manually navigated into the target conversation for this diagnostic check.
+
+Observed result:
+
+- The Feishu feed list updated to `满满正能�?14:29 橘生淮南: [图片]`.
+- The WebView2/CDP network bridge captured image responses in the same window, including repeated `image/webp` responses for the new `blob:` URL.
+- The CDP event stream did not expose a stable conversation id, conversation name, sender, or Feishu message id on the image response itself.
+- JSON response payloads in the same window were mostly heartbeat/list acknowledgements such as `mcs-bd.feishu.cn/list` and did not contain a usable `满满正能量`/message/image mapping.
+
+Conclusion:
+
+- No-open network diagnostics can prove that Feishu Web exposes image bytes/previews in the message-list session.
+- The captured no-open image resource is currently only an unmapped `blob:`/`image/webp` candidate with `quality=unknown`.
+- It is not safe yet to production-forward this network candidate directly, because routing it to the correct WuKongIM group would rely on timing correlation rather than a stable Feishu conversation/message identifier.
+- The current production-safe behavior should remain DOM fallback for real image forwarding, while the network path remains diagnostics-only.
+
+Recommended next implementation step:
+
+- Add a correlation layer that links a new feed-card media placeholder (`conversation_name`, display time, sender, `[图片]`) with nearby network image candidates by a short time window.
+- Only promote a network image candidate to forwarding if exactly one configured source feed card and exactly one network image candidate appear in the correlation window.
+- If there is ambiguity, keep using DOM fallback.
+
+## Current Conclusion
+
+The assisted end-to-end multi-group forwarding, unattended auto-forwarding, restart-resistant dedupe, low-latency shell event stream, real image forwarding, duplicate prevention, placeholder suppression, old-route leakage prevention, and final runtime tests passed.
+
+The automated tests, static analysis, Windows build, shell login state, shell capture state, saved two-route configuration, multi-conversation observation, manual forwarding, app-level auto-forwarding, SSE event streaming, persisted dedupe, and real WuKongIM target-group delivery are verified. Manual forwarding works even while the global auto-forwarding switch is off, and V2 auto-forwarding works through the routed settings switch.
+
+Recommended next operational test:
+
+- Leave both desktop programs running overnight on the Windows machine.
+- In the morning, send one new message in each configured Feishu source group and confirm each configured WuKongIM target receives exactly one forwarded message.
+- If the Feishu shell is logged out, rescan in the shell app and confirm forwarding resumes without changing the WuKongIM route settings.
+
+## Network Image Attribution Diagnostics
+
+Status: implemented and verified as diagnostics-only on 2026-05-10.
+
+What changed:
+
+- Added a document-created Feishu page hook that observes `URL.createObjectURL`, `img` source changes, background images, and DOM image insertions.
+- Added `FeishuNetworkImageAttribution` diagnostics with redacted status JSON.
+- Added bounded attribution storage and exact raw URL matching against existing CDP network image candidates.
+- Exposed these fields through `/status` under `probe_diagnostics`:
+  - `network_image_attribution_count`
+  - `network_recent_image_attributions`
+  - `network_last_image_attribution`
+  - `network_last_attributed_image_candidate`
+- Kept production no-open image forwarding disabled.
+
+Verification commands:
+
+- `flutter test test/feishu_network_capture_runtime_test.dart test/feishu_page_probe_test.dart test/feishu_network_capture_store_test.dart test/feishu_network_capture_bridge_test.dart test/feishu_network_capture_parser_test.dart test/runtime_snapshot_mapper_test.dart`
+  - Result: passed, 97 tests.
+- `flutter analyze lib test`
+  - Result: no issues found.
+- `flutter build windows --debug`
+  - Result: passed; rebuilt `tools\feishu_monitor_shell_app\build\windows\x64\runner\Debug\feishu_monitor_shell_app.exe`.
+  - Non-blocking warning: vendored `webview_windows` CMake `add_custom_command(TARGET): DEPENDS` dev warning.
+
+Runtime evidence from rebuilt shell:
+
+| Field | Value |
+| --- | --- |
+| Shell state | `online` |
+| Login state | `logged_in` |
+| Hook state | `healthy` |
+| `network_capture_state` | `running` |
+| `network_event_count` | `1111` |
+| `network_image_candidate_count` | `132` |
+| `network_image_attribution_count` | `19` |
+| Exact matched candidate URL | `blob:https://gcnus9vm4s8a.feishu.cn/7c62d8ff-df24-4a61-a7e2-295f28f16095` |
+| Attributed conversation | `����������` |
+| Attributed sender | `��������` |
+| Attributed display time | `14:29` |
+| Attributed message text | `[ͼƬ]` |
+| Stable feed id | `feed:b4121c59` |
+| Confidence | `medium`, `0.72` |
+| Stable for production auto-forward | `false` |
+
+Conclusion:
+
+- The previous missing ownership field is partially solved: the shell can now match the same blob URL across CDP network capture and DOM image usage, and can attach active-feed context such as group name, sender, time, and `[ͼƬ]`.
+- This is still diagnostics-only. The current evidence is `medium` confidence because the image node is attributed through the active feed card, not through a concrete message id or Feishu conversation id from the network payload.
+- Production no-open image forwarding should remain disabled until a live test proves high-confidence attribution in the message/feed DOM or another stable Feishu identifier appears.
+- DOM fallback remains the production-safe image forwarding path.
+
+## 2026-05-10 Strict No-DOM Update
+
+Status: implemented and verified. The production policy is now strict no-DOM.
+
+What changed:
+
+- Shell policy: strict no-DOM forwarding is enabled globally.
+- Automatic Feishu conversation opening for media placeholders: disabled.
+- Automatic latest-feed opening after feed-list changes: disabled.
+- DOM-derived image forwarding (`dom_probe`, `body_text_probe`): disabled.
+- DOM blob deferral no longer falls back to placeholder text.
+- Text forwarding from feed-card/message-list events: unchanged.
+- Non-DOM image forwarding remains supported when a future safe non-DOM source provides a preparable image.
+- Network image attribution remains diagnostics-only and is not used for production image forwarding.
+
+Verification:
+
+- Shell selected tests:
+  - `flutter test test/feishu_network_capture_runtime_test.dart test/feishu_page_probe_test.dart test/feishu_network_capture_store_test.dart test/feishu_network_capture_bridge_test.dart test/feishu_network_capture_parser_test.dart test/runtime_snapshot_mapper_test.dart`
+  - Result: passed, 100 tests.
+- Main forwarding tests:
+  - `flutter test test/modules/feishu_monitor/feishu_monitor_forwarding_service_test.dart test/modules/feishu_monitor/feishu_monitor_auto_forward_runner_test.dart`
+  - Result: passed, 53 tests.
+- Static analysis:
+  - Root `flutter analyze lib test`: no issues found.
+  - Shell app `flutter analyze lib test`: no issues found.
+- Windows shell build:
+  - First build attempt failed because the old running `feishu_monitor_shell_app (63748)` locked `WebView2Loader.dll`.
+  - After closing that old shell process, `flutter build windows --debug` passed and rebuilt `tools\feishu_monitor_shell_app\build\windows\x64\runner\Debug\feishu_monitor_shell_app.exe`.
+  - Non-blocking warning remains: vendored `webview_windows` CMake `add_custom_command(TARGET): DEPENDS` dev warning.
+
+Runtime status after rebuild:
+
+| Field | Value |
+| --- | --- |
+| Shell process | `feishu_monitor_shell_app (56016)` |
+| Shell state | `online` |
+| Login state | `logged_in` |
+| Capture state | `stopped` |
+| Runtime URL | `https://gcnus9vm4s8a.feishu.cn/next/messenger/` |
+| Page title | `Messages - Feishu` |
+| `last_media_open_result` | `{"attempted":false,"opened":false,"reason":"strict_no_dom_forwarding"}` |
+| `last_feed_open_result` | `{"attempted":false,"opened":false,"reason":"strict_no_dom_forwarding"}` |
+| Last probe reason | `fallback` |
+
+Manual follow-up:
+
+1. Keep the Feishu shell on the message list page.
+2. Start capture from the WuKongIM Feishu monitor center if it is currently stopped.
+3. Send text to a configured Feishu group and verify normal forwarding.
+4. Send an image to a configured Feishu group and verify the shell does not enter the group conversation.
+5. Confirm WuKongIM receives no wrong image and no DOM placeholder image/text fallback.
+6. Inspect `/status` for `strict_no_dom_forwarding` in both media-open diagnostics.

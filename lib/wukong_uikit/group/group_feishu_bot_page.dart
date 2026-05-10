@@ -43,8 +43,6 @@ class GroupFeishuBotPage extends StatefulWidget {
 }
 
 class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
-  final TextEditingController _appIdController = TextEditingController();
-  final TextEditingController _appSecretController = TextEditingController();
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _officialWebhookUrlController =
       TextEditingController();
@@ -67,8 +65,6 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
 
   @override
   void dispose() {
-    _appIdController.dispose();
-    _appSecretController.dispose();
     _displayNameController.dispose();
     _officialWebhookUrlController.dispose();
     _officialSecretController.dispose();
@@ -92,8 +88,6 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
         _webhookMode = GroupRobotWebhookModeX.fromApiValue(config?.webhookMode);
         _isLoading = false;
       });
-      _appIdController.text = config?.appId ?? '';
-      _appSecretController.text = config?.appSecret ?? '';
       _displayNameController.text = config?.displayName ?? '';
       _officialWebhookUrlController.text = config?.officialWebhookUrl ?? '';
       _officialSecretController.text = config?.officialSecret ?? '';
@@ -129,8 +123,6 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
         enabled: _enabled,
         regenerateWebhook: regenerateWebhook,
         regenerateSecret: regenerateSecret,
-        appId: _appIdController.text.trim(),
-        appSecret: _appSecretController.text.trim(),
         webhookMode: _webhookMode.apiValue,
         officialWebhookUrl: _webhookMode == GroupRobotWebhookMode.official
             ? officialWebhookUrl
@@ -168,8 +160,6 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
       _displayAvatar = saved.displayAvatar;
       _webhookMode = GroupRobotWebhookModeX.fromApiValue(saved.webhookMode);
     });
-    _appIdController.text = saved.appId;
-    _appSecretController.text = saved.appSecret;
     _displayNameController.text = saved.displayName;
     _officialWebhookUrlController.text = saved.officialWebhookUrl;
     _officialSecretController.text = saved.officialSecret;
@@ -262,8 +252,6 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
         _displayAvatar = '';
         _webhookMode = GroupRobotWebhookMode.imGenerated;
       });
-      _appIdController.clear();
-      _appSecretController.clear();
       _displayNameController.clear();
       _officialWebhookUrlController.clear();
       _officialSecretController.clear();
@@ -409,12 +397,6 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                             ),
                           ],
                         ],
-                      ],
-                    ),
-                    const WKSectionGap(10),
-                    WKSettingsGroup(
-                      children: [
-                        _buildOpenApiSection(generated: config != null),
                       ],
                     ),
                     const WKSectionGap(10),
@@ -690,63 +672,6 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                 height: 1.45,
                 color: WKColors.colorDark,
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOpenApiSection({required bool generated}) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 18, 15, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '飞书 OpenAPI 凭证',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: WKColors.colorDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            generated
-                ? '配置 App ID 与 App Secret 后，机器人会优先尝试将飞书图片、文件、语音、视频等消息转成群消息；未配置时会自动降级为文本摘要。'
-                : '如后续需要拉取飞书资源，可先填写应用的 App ID 与 App Secret，再保存机器人配置。',
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.5,
-              color: WKColors.color999,
-            ),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _appIdController,
-            enabled: !_isSaving,
-            autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: '应用标识',
-              border: OutlineInputBorder(),
-              hintText: 'cli_xxxxxxxxxxxxx',
-              filled: true,
-              fillColor: WKColors.homeBg,
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _appSecretController,
-            enabled: !_isSaving,
-            autocorrect: false,
-            obscureText: true,
-            decoration: const InputDecoration(
-              labelText: '应用密钥',
-              border: OutlineInputBorder(),
-              hintText: '填写飞书应用密钥',
-              filled: true,
-              fillColor: WKColors.homeBg,
             ),
           ),
         ],

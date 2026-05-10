@@ -170,7 +170,13 @@ bool _looksLikeRemotePath(String value) {
       normalized.startsWith('v1/') ||
       normalized.startsWith('/minio/') ||
       normalized.startsWith('minio/') ||
+      _looksLikeFileServicePath(path) ||
       _looksLikeMinioObjectPath(path);
+}
+
+bool _looksLikeFileServicePath(String path) {
+  return path.startsWith('file/preview/') ||
+      path.startsWith('file/download/');
 }
 
 bool _looksLikeMinioObjectPath(String path) {
@@ -191,6 +197,8 @@ String _toMinioDownloadPath(String value) {
   for (final prefix in <String>[
     'v1/file/preview/',
     'v1/file/download/',
+    'file/preview/',
+    'file/download/',
     'minio/',
   ]) {
     if (withoutLeadingSlash.startsWith(prefix)) {

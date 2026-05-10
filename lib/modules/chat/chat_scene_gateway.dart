@@ -16,6 +16,22 @@ import 'package:wukongimfluttersdk/wkim.dart';
 import '../../core/utils/storage_utils.dart';
 import 'message_forwarding.dart';
 
+typedef SdkSendWithOption =
+    FutureOr<void> Function(
+      WKMessageContent content,
+      WKChannel channel,
+      WKSendOptions options,
+    );
+
+Future<void> sendPersistentSdkMessage({
+  required WKMessageContent content,
+  required WKChannel channel,
+  SdkSendWithOption? sendWithOption,
+}) async {
+  final sender = sendWithOption ?? WKIM.shared.messageManager.sendWithOption;
+  await Future<void>.sync(() => sender(content, channel, WKSendOptions()));
+}
+
 WKMsg buildDirectOutgoingMessage({
   required WKMessageContent content,
   required WKChannel channel,
@@ -276,7 +292,7 @@ class ApiChatSceneGateway implements ChatSceneGateway {
     WKMessageContent content,
     WKChannel channel,
   ) async {
-    await WKIM.shared.messageManager.sendMessage(content, channel);
+    await sendPersistentSdkMessage(content: content, channel: channel);
   }
 
   static Future<void> _defaultDeleteLocalMessage(String clientMsgNo) {

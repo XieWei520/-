@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>飞书信息监控中心预览</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --line: #d9e0ea;
+      --line-strong: #c3cedc;
+      --ink: #17202e;
+      --muted: #667286;
+      --soft: #8d98a8;
+      --brand: #1769e0;
+      --brand-soft: #e8f1ff;
+      --green: #16a36a;
+      --green-soft: #e8f7f0;
+      --red: #d43b3b;
+      --red-soft: #fff0f0;
+      --amber: #b7791f;
+      --amber-soft: #fff6df;
+      --terminal: #12161f;
+      --terminal-line: #253041;
+      --terminal-green: #35d274;
+      --terminal-red: #ff6262;
+      --terminal-yellow: #f7c95f;
+      --shadow: 0 10px 28px rgba(23, 32, 46, 0.08);
+      --radius: 8px;
+      --font: "Microsoft YaHei", "Noto Sans SC", "PingFang SC", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font);
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .shell {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .title-block h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .title-block p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--ink);
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .btn.danger {
+      border-color: #f2c7c7;
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .btn:focus-visible,
+    .tab:focus-visible,
+    input:focus,
+    select:focus {
+      outline: 2px solid rgba(23, 105, 224, 0.25);
+      outline-offset: 2px;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .metric {
+      min-height: 78px;
+      padding: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 2px 8px rgba(23, 32, 46, 0.03);
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric .value {
+      margin-top: 8px;
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .metric .sub {
+      margin-top: 7px;
+      color: var(--soft);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .state {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .state::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .state.ok {
+      color: var(--green);
+    }
+
+    .state.warn {
+      color: var(--amber);
+    }
+
+    .state.bad {
+      color: var(--red);
+    }
+
+    .quick-panel {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .quick-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .target-input {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 360px;
+      padding: 7px 10px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .target-input span {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .target-input input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      min-width: 110px;
+    }
+
+    .quick-note {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      margin-bottom: 12px;
+      overflow-x: auto;
+    }
+
+    .tab {
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      height: 34px;
+      padding: 0 14px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .tab.active {
+      background: var(--brand-soft);
+      color: var(--brand);
+    }
+
+    .panel {
+      display: none;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .panel-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .filters {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .chip.active {
+      background: var(--brand-soft);
+      border-color: #bcd6ff;
+      color: var(--brand);
+    }
+
+    .terminal {
+      height: 520px;
+      padding: 12px 0;
+      background: var(--terminal);
+      color: #d8e0ee;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 13px;
+      overflow: hidden;
+    }
+
+    .log-line {
+      display: grid;
+      grid-template-columns: 86px 62px 88px minmax(0, 1fr);
+      gap: 10px;
+      padding: 5px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+      white-space: nowrap;
+    }
+
+    .log-line:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .log-line .time {
+      color: #8792a5;
+    }
+
+    .log-line .ok {
+      color: var(--terminal-green);
+    }
+
+    .log-line .err {
+      color: var(--terminal-red);
+    }
+
+    .log-line .warn {
+      color: var(--terminal-yellow);
+    }
+
+    .log-line .msg {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      background: var(--panel-soft);
+      font-weight: 800;
+    }
+
+    tbody tr:hover {
+      background: #fbfcff;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    .badge {
+      display: inline-flex;
+      min-height: 24px;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.ok {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .badge.warn {
+      color: var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .badge.bad {
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .link {
+      border: 0;
+      background: transparent;
+      color: var(--brand);
+      cursor: pointer;
+      padding: 0 6px 0 0;
+      font-size: 13px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .settings-box {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      background: var(--panel);
+    }
+
+    .settings-box h3 {
+      margin: 0 0 12px;
+      font-size: 15px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .form-row label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .form-row input,
+    .form-row select {
+      width: 100%;
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    .preview-box {
+      height: 112px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      background: linear-gradient(135deg, #fbfcff, #f1f5fa);
+      font-size: 13px;
+    }
+
+    .footer-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (max-width: 1040px) {
+      .status-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .quick-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .target-input {
+        min-width: 100%;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .shell {
+        padding: 12px;
+      }
+
+      .topbar,
+      .panel-head {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .top-actions,
+      .panel-tools {
+        justify-content: flex-start;
+      }
+
+      .status-grid,
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .quick-left {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .log-line {
+        grid-template-columns: 76px 54px minmax(0, 1fr);
+      }
+
+      .log-line .source {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="title-block">
+        <h1>飞书信息监控中心</h1>
+        <p>独立飞书壳程序在线，消息列表探针正在捕获多个飞书群的最新消息。</p>
+      </div>
+      <div class="top-actions">
+        <button class="btn">重新加载飞书</button>
+        <button class="btn danger">停止监控</button>
+        <button class="btn primary">启动监控</button>
+      </div>
+    </header>
+
+    <section class="status-grid" aria-label="运行状态总览">
+      <div class="metric">
+        <div class="label">壳程序</div>
+        <div class="value state ok">在线</div>
+        <div class="sub">127.0.0.1:18766</div>
+      </div>
+      <div class="metric">
+        <div class="label">飞书账号</div>
+        <div class="value state ok">已登录</div>
+        <div class="sub">消息页已打开</div>
+      </div>
+      <div class="metric">
+        <div class="label">监听状态</div>
+        <div class="value state ok">运行中</div>
+        <div class="sub">feed_card_probe</div>
+      </div>
+      <div class="metric">
+        <div class="label">今日捕获</div>
+        <div class="value">1,284</div>
+        <div class="sub">30 个最近候选</div>
+      </div>
+      <div class="metric">
+        <div class="label">今日成功</div>
+        <div class="value">1,231</div>
+        <div class="sub">最近 09:24</div>
+      </div>
+      <div class="metric">
+        <div class="label">今日失败</div>
+        <div class="value state bad">7</div>
+        <div class="sub">2 条等待重试</div>
+      </div>
+    </section>
+
+    <section class="quick-panel" aria-label="快捷转发">
+      <div class="quick-left">
+        <label class="target-input">
+          <span>目标悟空IM群号</span>
+          <input value="group_7589209404390542278" aria-label="目标悟空IM群号">
+        </label>
+        <button class="btn primary">转发最近事件</button>
+        <button class="btn">测试投递</button>
+      </div>
+      <div class="quick-note">上次转发：成功 30，跳过 1，失败 0</div>
+    </section>
+
+    <nav class="tabs" aria-label="监控中心标签页">
+      <button class="tab active" data-tab="logs">运行日志</button>
+      <button class="tab" data-tab="rules">转发规则</button>
+      <button class="tab" data-tab="groups">飞书群组</button>
+      <button class="tab" data-tab="images">图片处理</button>
+      <button class="tab" data-tab="settings">系统设置</button>
+    </nav>
+
+    <section id="logs" class="panel active">
+      <div class="panel-head">
+        <h2>运行日志</h2>
+        <div class="panel-tools">
+          <div class="filters">
+            <button class="chip active">全部</button>
+            <button class="chip">成功</button>
+            <button class="chip">错误</button>
+            <button class="chip">捕获</button>
+            <button class="chip">转发</button>
+          </div>
+          <button class="btn">清空日志</button>
+          <button class="btn primary">导出日志</button>
+        </div>
+      </div>
+      <div class="terminal" role="log" aria-label="实时运行日志">
+        <div class="log-line"><span class="time">10:17:23</span><span class="ok">成功</span><span class="source">捕获</span><span class="msg">[feed_card_probe] 账号安全中心 / 机器人：安全登录通知</span></div>
+        <div class="log-line"><span class="time">10:17:24</span><span class="ok">成功</span><span class="source">转发</span><span class="msg">已投递到悟空IM群 group_7589209404390542278，dedupe=feed:1f0b826d</span></div>
+        <div class="log-line"><span class="time">10:17:25</span><span class="ok">成功</span><span class="source">捕获</span><span class="msg">满满正能量 / 橘生淮南：[图片]</span></div>
+        <div class="log-line"><span class="time">10:17:26</span><span class="warn">跳过</span><span class="source">去重</span><span class="msg">重复事件 chat_1:msg_1 已在本轮运行中发送</span></div>
+        <div class="log-line"><span class="time">10:17:28</span><span class="ok">成功</span><span class="source">捕获</span><span class="msg">格兰裙 / 用户501739：通过 用户487029 分享的二维码加入此群</span></div>
+        <div class="log-line"><span class="time">10:17:31</span><span class="ok">成功</span><span class="source">图片</span><span class="msg">图片水印规则未启用，保持原始消息文本转发</span></div>
+        <div class="log-line"><span class="time">10:17:34</span><span class="err">错误</span><span class="source">投递</span><span class="msg">目标群临时不可达，事件进入下一轮重试</span></div>
+        <div class="log-line"><span class="time">10:17:40</span><span class="ok">成功</span><span class="source">捕获</span><span class="msg">听M玛的话交流12群C-GH / MM12机器人：1 今天盘中、多空来回拉锯强烈</span></div>
+        <div class="log-line"><span class="time">10:17:42</span><span class="ok">成功</span><span class="source">转发</span><span class="msg">本轮完成：成功 30，跳过 1，失败 0</span></div>
+      </div>
+      <div class="footer-line">
+        <span>自动滚动已开启</span>
+        <span>日志保留最近 1,000 条</span>
+      </div>
+    </section>
+
+    <section id="rules" class="panel">
+      <div class="panel-head">
+        <h2>转发规则</h2>
+        <div class="panel-tools">
+          <input class="btn" value="搜索规则名或群组" aria-label="搜索规则">
+          <button class="btn">批量导入</button>
+          <button class="btn">下载模板</button>
+          <button class="btn primary">新增规则</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>启用</th>
+              <th>规则名称</th>
+              <th>来源飞书群</th>
+              <th>目标悟空IM群</th>
+              <th>目标方式</th>
+              <th>今日成功</th>
+              <th>今日失败</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge ok">启用</span></td>
+              <td>格兰裙同步</td>
+              <td>格兰裙</td>
+              <td>格兰裙</td>
+              <td>本地 SDK</td>
+              <td>214</td>
+              <td>0</td>
+              <td><button class="link">编辑</button><button class="link">测试</button><button class="link">删除</button></td>
+            </tr>
+            <tr>
+              <td><span class="badge ok">启用</span></td>
+              <td>MM12群转发</td>
+              <td>听M玛的话交流12群C-GH</td>
+              <td>盘中观察群</td>
+              <td>Webhook</td>
+              <td>87</td>
+              <td>2</td>
+              <td><button class="link">编辑</button><button class="link">测试</button><button class="link">删除</button></td>
+            </tr>
+            <tr>
+              <td><span class="badge warn">暂停</span></td>
+              <td>客服消息</td>
+              <td>橘生淮南的飞书客服</td>
+              <td>客服值班群</td>
+              <td>服务端投递</td>
+              <td>0</td>
+              <td>0</td>
+              <td><button class="link">编辑</button><button class="link">启用</button><button class="link">删除</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer-line">
+        <span>共 3 条规则</span>
+        <span>下一阶段建议切换到服务端 Webhook 投递</span>
+      </div>
+    </section>
+
+    <section id="groups" class="panel">
+      <div class="panel-head">
+        <h2>飞书群组</h2>
+        <div class="panel-tools">
+          <input class="btn" value="搜索群名或群ID" aria-label="搜索群组">
+          <button class="btn primary">刷新列表</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>序号</th>
+              <th>聊天类型</th>
+              <th>群名称</th>
+              <th>飞书群 ID</th>
+              <th>成员数</th>
+              <th>最近消息</th>
+              <th>更新时间</th>
+              <th>转发状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td>机器人</td><td>账号安全中心</td><td>feed:1f0b826d</td><td>-</td><td>安全登录通知</td><td>09:24</td><td><span class="badge ok">已转发</span></td></tr>
+            <tr><td>2</td><td>群聊</td><td>满满正能量</td><td>feed:427c2a98</td><td>1</td><td>[图片]</td><td>昨天</td><td><span class="badge warn">未配置</span></td></tr>
+            <tr><td>3</td><td>群聊</td><td>格兰裙</td><td>feed:6ae3b4c3</td><td>194</td><td>通过二维码加入此群</td><td>昨天</td><td><span class="badge ok">已转发</span></td></tr>
+            <tr><td>4</td><td>群聊</td><td>胖子2</td><td>feed:61101d8c</td><td>26</td><td>[图片]</td><td>昨天</td><td><span class="badge warn">未配置</span></td></tr>
+            <tr><td>5</td><td>群聊</td><td>听M玛的话交流12群C-GH</td><td>feed:6020283b</td><td>41</td><td>今天盘中、多空来回拉锯强烈</td><td>04-27</td><td><span class="badge ok">已转发</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer-line">
+        <span>已发现 30 个最近会话</span>
+        <span>数据来自 shell recent_events 与 observed_conversations</span>
+      </div>
+    </section>
+
+    <section id="images" class="panel">
+      <div class="panel-head">
+        <h2>图片处理</h2>
+        <div class="panel-tools">
+          <button class="btn">重置默认</button>
+          <button class="btn primary">保存设置</button>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="settings-box">
+          <h3>文字转图片</h3>
+          <div class="form-row"><label>启用功能</label><select><option>关闭</option><option>开启</option></select></div>
+          <div class="form-row"><label>触发几率</label><input value="30%"></div>
+          <div class="form-row"><label>图片宽度</label><input value="800 px"></div>
+          <div class="form-row"><label>字体大小</label><input value="28 px"></div>
+          <div class="preview-box">文字转图片预览区域</div>
+        </div>
+        <div class="settings-box">
+          <h3>图片水印</h3>
+          <div class="form-row"><label>启用功能</label><select><option>关闭</option><option>开启</option></select></div>
+          <div class="form-row"><label>触发几率</label><input value="50%"></div>
+          <div class="form-row"><label>水印文字</label><input value="这是水印"></div>
+          <div class="form-row"><label>水印位置</label><select><option>随机位置</option><option>右下角</option><option>居中</option></select></div>
+          <div class="form-row"><label>透明度</label><input value="128"></div>
+          <div class="preview-box">图片水印预览区域</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="settings" class="panel">
+      <div class="panel-head">
+        <h2>系统设置</h2>
+        <div class="panel-tools">
+          <button class="btn primary">保存设置</button>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="settings-box">
+          <h3>本地壳程序</h3>
+          <div class="form-row"><label>Shell 地址</label><input value="http://127.0.0.1:18766"></div>
+          <div class="form-row"><label>Token</label><input value="wukong-feishu-shell-dev"></div>
+          <div class="form-row"><label>刷新间隔</label><input value="8 秒"></div>
+          <div class="form-row"><label>掉线提醒</label><select><option>开启</option><option>关闭</option></select></div>
+        </div>
+        <div class="settings-box">
+          <h3>转发策略</h3>
+          <div class="form-row"><label>自动转发</label><select><option>开启</option><option>关闭</option></select></div>
+          <div class="form-row"><label>去重窗口</label><input value="24 小时"></div>
+          <div class="form-row"><label>失败重试</label><input value="3 次"></div>
+          <div class="form-row"><label>投递通道</label><select><option>本地 SDK</option><option>服务端 Webhook</option></select></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const tabs = Array.from(document.querySelectorAll(".tab"));
+    const panels = Array.from(document.querySelectorAll(".panel"));
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((item) => item.classList.remove("active"));
+        panels.forEach((panel) => panel.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>
