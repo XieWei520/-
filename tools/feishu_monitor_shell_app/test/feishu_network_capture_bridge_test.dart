@@ -171,6 +171,54 @@ void main() {
     expect(received.single.bodySaveError, isEmpty);
   });
 
+  test('bridge parses string response body bool metadata', () async {
+    final bridge = FeishuNetworkCaptureBridge();
+    StreamSubscription<FeishuNetworkCaptureEvent>? subscription;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(bridge.channel, (call) async {
+          if (call.method == 'stop') {
+            return <String, Object>{'state': 'stopped'};
+          }
+          return null;
+        });
+    addTearDown(() async {
+      await subscription?.cancel();
+      await bridge.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(bridge.channel, null);
+    });
+
+    final received = <FeishuNetworkCaptureEvent>[];
+    subscription = bridge.events.listen(received.add);
+
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          bridge.channel.name,
+          bridge.channel.codec.encodeMethodCall(
+            const MethodCall('networkEvent', <String, Object>{
+              'id': 'evt_image',
+              'observed_at': '2026-05-10T06:00:00Z',
+              'source': 'httpResponse',
+              'url':
+                  'https://internal-api-lark-file.feishu.cn/static-resource/v1/image.webp?token=secret',
+              'method': 'GET',
+              'status_code': 200,
+              'mime_type': 'image/webp',
+              'payload_preview': '',
+              'body_base64_encoded': 'true',
+              'body_saved': '1',
+            }),
+          ),
+          (_) {},
+        );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(received, hasLength(1));
+    expect(received.single.bodyBase64Encoded, isTrue);
+    expect(received.single.bodySaved, isTrue);
+  });
+
   test('bridge exposes native unavailable errors', () async {
     final bridge = FeishuNetworkCaptureBridge();
     StreamSubscription<String>? subscription;

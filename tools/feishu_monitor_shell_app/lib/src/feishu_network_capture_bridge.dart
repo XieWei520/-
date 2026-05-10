@@ -93,7 +93,7 @@ FeishuNetworkCaptureEvent _eventFromMap(Map<Object?, Object?> map) {
     payloadPreview: _stringValue(map['payload_preview']),
     bodyLocalPath: _stringValue(map['body_local_path']),
     bodySha1: _stringValue(map['body_sha1']),
-    bodySize: _statusCode(map['body_size']),
+    bodySize: _intValue(map['body_size']),
     bodyMimeType: _stringValue(map['body_mime_type']),
     bodyBase64Encoded: _boolValue(map['body_base64_encoded']),
     bodySaved: _boolValue(map['body_saved']),
@@ -111,12 +111,14 @@ DateTime _observedAt(Object? value) {
       DateTime.now().toUtc();
 }
 
-int _statusCode(Object? value) {
+int _intValue(Object? value) {
   if (value is num) {
     return value.round();
   }
   return int.tryParse(_stringValue(value)) ?? 0;
 }
+
+int _statusCode(Object? value) => _intValue(value);
 
 bool _boolValue(Object? value) {
   if (value is bool) {
