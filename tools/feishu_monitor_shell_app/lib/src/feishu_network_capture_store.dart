@@ -33,6 +33,7 @@ class FeishuNetworkCaptureStore {
   String _lastError = '';
   int _eventCount = 0;
   int _candidateCount = 0;
+  int _savedImageCount = 0;
   int _attributionCount = 0;
   int _forwardableImageCount = 0;
   String _lastImageSkipReason = '';
@@ -58,6 +59,9 @@ class FeishuNetworkCaptureStore {
 
   void addCandidate(FeishuNetworkImageCandidate candidate) {
     _candidateCount += 1;
+    if (candidate.localPath.trim().isNotEmpty) {
+      _savedImageCount += 1;
+    }
     _candidates.add(candidate);
     _trim(_candidates, maxCandidates);
   }
@@ -100,9 +104,7 @@ class FeishuNetworkCaptureStore {
           .map((event) => event.toRedactedJson())
           .toList(growable: false),
       'network_image_candidate_count': _candidateCount,
-      'network_saved_image_count': _candidates
-          .where((candidate) => candidate.localPath.trim().isNotEmpty)
-          .length,
+      'network_saved_image_count': _savedImageCount,
       'network_last_image_candidate': _candidates.isEmpty
           ? null
           : _candidates.last.toStatusJson(),
@@ -156,11 +158,7 @@ class FeishuNetworkCaptureStore {
     if (decision != null) {
       return Map<String, Object?>.unmodifiable(decision);
     }
-    final reason = resolution.skipReason.trim();
-    if (reason.isEmpty) {
-      return const <String, Object?>{};
-    }
-    return <String, Object?>{'reason': reason};
+    return const <String, Object?>{};
   }
 }
 

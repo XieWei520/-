@@ -130,6 +130,19 @@ void main() {
     expect(lastCandidate['resource_key'], '<redacted>');
   });
 
+  test('store counts saved image candidates beyond recent buffer', () {
+    final store = FeishuNetworkCaptureStore(maxCandidates: 1);
+
+    store.addCandidate(_candidate(localPath: r'C:\tmp\alpha.webp'));
+    store.addCandidate(_candidate(localPath: r' C:\tmp\beta.webp '));
+
+    final summary = store.toDiagnosticsJson();
+
+    expect(summary['network_image_candidate_count'], 2);
+    expect(summary['network_saved_image_count'], 2);
+    expect(store.recentCandidates, hasLength(1));
+  });
+
   test('store accepts zero bounds while preserving total counts', () {
     final store = FeishuNetworkCaptureStore(maxEvents: 0, maxCandidates: 0);
 
@@ -430,6 +443,42 @@ void main() {
     expect(diagnosticsText, isNot(contains('token=secret')));
   });
 
+  test('store omits resolver decision fields when decision is null', () async {
+    final dir = await Directory.systemTemp.createTemp(
+      'feishu_network_capture_test_',
+    );
+    addTearDown(() async {
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+    });
+    final file = File('${dir.path}${Platform.pathSeparator}network.jsonl');
+    final store = FeishuNetworkCaptureStore(diagnosticsFile: file);
+
+    store.recordForwardableImageResolution(
+      const FeishuNetworkForwardableImageResolution(
+        events: <NormalizedMessageEvent>[],
+        skipReason: 'attribution_missing',
+        decision: null,
+      ),
+    );
+
+    final summary = store.toDiagnosticsJson();
+    expect(summary['network_last_image_skip_reason'], 'attribution_missing');
+    expect(
+      (summary['network_recent_image_resolver_decisions']! as List<Object?>)
+          .single,
+      isEmpty,
+    );
+
+    final lines = await file.readAsLines();
+    final resolverLine = jsonDecode(lines.single) as Map<String, Object?>;
+    expect(resolverLine, <String, Object?>{
+      'diagnostic_type': 'image_resolver',
+    });
+    expect(resolverLine, isNot(containsPair('reason', anything)));
+  });
+
   test('store redacts data image attribution payloads', () async {
     final dir = await Directory.systemTemp.createTemp(
       'feishu_network_capture_test_',
@@ -513,6 +562,7 @@ FeishuNetworkCaptureEvent _event(String id) {
 
 FeishuNetworkImageCandidate _candidate({
   String resourceUrl = 'https://a.test/image?token=secret',
+  String localPath = '',
 }) {
   return FeishuNetworkImageCandidate(
     conversationId: 'feed:2e500f14',
@@ -525,6 +575,7 @@ FeishuNetworkImageCandidate _candidate({
     height: 500,
     quality: FeishuNetworkImageQuality.preview,
     observedAt: DateTime.utc(2026, 5, 10, 6, 3),
+    localPath: localPath,
   );
 }
 
