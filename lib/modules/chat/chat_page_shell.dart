@@ -22,7 +22,6 @@ import '../../widgets/liquid_glass_panel.dart';
 import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_colors.dart';
 import '../../wukong_robot/models/robot.dart';
-import '../../wukong_robot/robot_service.dart';
 import '../../wukong_uikit/setting/setting_preferences.dart';
 import 'chat_call_navigation.dart';
 import 'chat_channel_hydration_service.dart';
@@ -35,6 +34,7 @@ import 'chat_frame_jank_monitor.dart';
 import 'chat_conversation_extra_gateway.dart';
 import 'chat_pinned_message_resolver.dart';
 import 'chat_pinned_message_state_service.dart';
+import 'chat_robot_menu_state_service.dart';
 import 'panes/chat_composer_pane.dart';
 import 'panes/chat_header_pane.dart';
 import 'panes/chat_overlay_coordinator.dart';
@@ -137,6 +137,8 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   ChatViewportRestoreAnchor? _restoreAnchor;
   final ChatConversationRestoreService _conversationRestoreService =
       ChatConversationRestoreService();
+  final ChatRobotMenuStateService _robotMenuStateService =
+      ChatRobotMenuStateService();
   CancelToken? _remoteFlameCancelToken;
   ChatConversationExtraGateway? _conversationExtraGateway;
   ProviderSubscription<String>? _draftTextSubscription;
@@ -254,26 +256,17 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   Future<void> _loadRobotMenus({bool forceRefresh = false}) async {
-    try {
-      final menus = await RobotService.instance.syncConversationMenus(
-        channelId: widget.channelId,
-        channelType: widget.channelType,
-        forceRefresh: forceRefresh,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _robotMenus = menus;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _robotMenus = const <RobotMenu>[];
-      });
+    final menus = await _robotMenuStateService.loadMenus(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+      forceRefresh: forceRefresh,
+    );
+    if (!mounted) {
+      return;
     }
+    setState(() {
+      _robotMenus = menus;
+    });
   }
 
   Future<void> _hydrateRemoteFlameSettings() async {
