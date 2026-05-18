@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/data/providers/runtime_capabilities_provider.dart';
+import 'package:wukong_im_app/modules/conversation/conversation_list_page.dart';
 import 'package:wukong_im_app/modules/auth/login_page.dart';
 import 'package:wukong_im_app/modules/conversation/main_page.dart';
 import 'package:wukong_im_app/modules/user/user_page.dart';
+import 'package:wukong_im_app/service/api/common_api.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
 
 void main() {
@@ -14,6 +17,9 @@ void main() {
         ProviderScope(
           overrides: [
             userPageVersionLoaderProvider.overrideWithValue(() async => null),
+            customerServiceConversationAccountsProvider.overrideWith(
+              (ref) async => const [],
+            ),
           ],
           child: MaterialApp(home: MainPage(autoInitializeIM: false)),
         ),
@@ -38,16 +44,27 @@ void main() {
     'LoginPage exposes Android-style background and underline field shell',
     (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(child: MaterialApp(home: LoginPage())),
+        ProviderScope(
+          overrides: [
+            runtimeCapabilitiesProvider.overrideWith(
+              (ref) async => const AppRuntimeCapabilities(
+                webLoginUrl: '',
+                webLoginReachable: false,
+                webLoginStatusMessage: 'disabled',
+              ),
+            ),
+          ],
+          child: const MaterialApp(home: LoginPage()),
+        ),
       );
 
       expect(find.byKey(const ValueKey('wk_login_background')), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('wk_login_phone_underline')),
+        find.byKey(const ValueKey('auth_login_phone_field')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey('wk_login_password_underline')),
+        find.byKey(const ValueKey('auth_login_password_field')),
         findsOneWidget,
       );
       expect(

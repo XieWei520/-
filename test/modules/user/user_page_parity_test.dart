@@ -491,9 +491,18 @@ void main() {
       pageFinder: find.byType(VipManagementPage),
       navigatorKey: navigatorKey,
       afterOpen: () {
-        expect(find.text('飞书信息监控中心'), findsOneWidget);
-        expect(find.text('钉钉信息监控中心'), findsNothing);
-        expect(find.text('小鹅通信息监控中心'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('management-center-feishu')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('management-center-dingtalk')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('management-center-xiaoe')),
+          findsOneWidget,
+        );
       },
     );
   });
