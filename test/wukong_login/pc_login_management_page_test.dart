@@ -180,14 +180,14 @@ void main() {
   ) async {
     await _pumpManagementPage(tester, updateMuteOfApp: (_) async {});
 
-    expect(find.textContaining('Locked'), findsNothing);
+    expect(find.textContaining('已锁定'), findsNothing);
 
     await tester.tap(
       find.byKey(const ValueKey<String>('pc-login-management-lock')),
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Locked'), findsWidgets);
+    expect(find.textContaining('已锁定'), findsWidgets);
   });
 
   testWidgets('pc login management page toggles mute_of_app and persists it', (
@@ -227,7 +227,7 @@ void main() {
       loadOnlineState: () async => const PcOnlineState(online: 1, muteOfApp: 1),
     );
 
-    expect(find.text('Muted'), findsWidgets);
+    expect(find.text('已静音'), findsWidgets);
     expect(
       (await SharedPreferences.getInstance()).getInt('u-1_mute_of_app'),
       1,
@@ -249,13 +249,13 @@ void main() {
     );
 
     expect(callCount, 1);
-    expect(find.text('Muted'), findsNothing);
+    expect(find.text('已静音'), findsNothing);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
 
     expect(callCount, 2);
-    expect(find.text('Muted'), findsWidgets);
+    expect(find.text('已静音'), findsWidgets);
     expect(
       (await SharedPreferences.getInstance()).getInt('u-1_mute_of_app'),
       1,

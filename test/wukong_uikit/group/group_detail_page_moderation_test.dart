@@ -35,6 +35,10 @@ void main() {
     );
 
     await _pumpGroupDetailPage(tester, adapter: adapter);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey<String>('group-blacklist-entry')),
+      500,
+    );
 
     expect(
       find.byKey(const ValueKey<String>('group-blacklist-entry')),
