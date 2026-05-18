@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/models/wk_custom_content.dart';
 import 'package:wukong_im_app/service/im/attachment_upload_pipeline.dart';
@@ -124,6 +126,94 @@ void main() {
         expect(content.name, 'report.final.PDF');
         expect(content.size, 4096);
         expect(content.suffix, 'pdf');
+      },
+    );
+
+    test(
+      'enqueue emits upload lifecycle events and drain waits for completion',
+      () async {
+        final states = <AttachmentUploadJobState>[];
+        final pipeline = AttachmentUploadPipeline(
+          chatFileUploader:
+              ({
+                required String filePath,
+                required String channelId,
+                required int channelType,
+              }) async {
+                await Future<void>.delayed(Duration.zero);
+                return 'https://cdn.example/a.png';
+              },
+          fileExists: (_) async => true,
+        );
+        final subscription = pipeline.events.listen((event) {
+          states.add(event.state);
+        });
+        addTearDown(subscription.cancel);
+
+        await pipeline.enqueue(
+          const AttachmentUploadJob(
+            clientMsgNo: 'c1',
+            channelId: 'chat-a',
+            channelType: 1,
+            localPath: 'C:/tmp/a.png',
+          ),
+        );
+        await pipeline.drain();
+
+        expect(states, <AttachmentUploadJobState>[
+          AttachmentUploadJobState.queued,
+          AttachmentUploadJobState.uploading,
+          AttachmentUploadJobState.uploaded,
+        ]);
+      },
+    );
+
+    test(
+      'cancel prevents a queued upload from reaching the uploader',
+      () async {
+        final uploadedPaths = <String>[];
+        final states = <AttachmentUploadJobState>[];
+        final gate = Completer<String>();
+        final pipeline = AttachmentUploadPipeline(
+          maxConcurrentUploads: 1,
+          chatFileUploader:
+              ({
+                required String filePath,
+                required String channelId,
+                required int channelType,
+              }) async {
+                uploadedPaths.add(filePath);
+                return gate.future;
+              },
+          fileExists: (_) async => true,
+        );
+        final subscription = pipeline.events.listen((event) {
+          states.add(event.state);
+        });
+        addTearDown(subscription.cancel);
+
+        await pipeline.enqueue(
+          const AttachmentUploadJob(
+            clientMsgNo: 'active',
+            channelId: 'chat-a',
+            channelType: 1,
+            localPath: 'C:/tmp/active.png',
+          ),
+        );
+        await pipeline.enqueue(
+          const AttachmentUploadJob(
+            clientMsgNo: 'queued',
+            channelId: 'chat-a',
+            channelType: 1,
+            localPath: 'C:/tmp/queued.png',
+          ),
+        );
+        await pipeline.cancel('queued');
+        gate.complete('https://cdn.example/active.png');
+        await pipeline.drain();
+
+        expect(uploadedPaths, <String>['C:/tmp/active.png']);
+        expect(states, contains(AttachmentUploadJobState.cancelled));
       },
     );
   });

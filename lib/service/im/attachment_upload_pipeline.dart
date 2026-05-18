@@ -76,19 +76,40 @@ class AttachmentUploadPipeline {
   final LocalAttachmentFileLength _fileLength;
   final AttachmentPipeline metadataNormalizer;
   final int maxConcurrentUploads;
+  final StreamController<AttachmentUploadEvent> _eventsController =
+      StreamController<AttachmentUploadEvent>.broadcast();
+  final List<AttachmentUploadJob> _queue = <AttachmentUploadJob>[];
+  final Set<String> _cancelledClientMsgNos = <String>{};
+  final Set<String> _inFlightClientMsgNos = <String>{};
+  Completer<void>? _drainCompleter;
 
   Stream<AttachmentUploadEvent> get events {
-    throw UnimplementedError('Skeleton only: expose upload event stream here.');
+    return _eventsController.stream;
   }
 
   Future<void> enqueue(AttachmentUploadJob job) {
-    throw UnimplementedError(
-      'Skeleton only: add durable attachment queueing here.',
-    );
+    _cancelledClientMsgNos.remove(job.clientMsgNo);
+    _queue.add(job);
+    _emit(job, AttachmentUploadJobState.queued);
+    _pumpQueue();
+    return Future<void>.value();
   }
 
   Future<void> cancel(String clientMsgNo) {
-    throw UnimplementedError('Skeleton only: cancel queued upload here.');
+    final normalizedClientMsgNo = clientMsgNo.trim();
+    if (normalizedClientMsgNo.isEmpty) {
+      return Future<void>.value();
+    }
+    _cancelledClientMsgNos.add(normalizedClientMsgNo);
+    final index = _queue.indexWhere(
+      (job) => job.clientMsgNo == normalizedClientMsgNo,
+    );
+    if (index >= 0) {
+      final job = _queue.removeAt(index);
+      _emit(job, AttachmentUploadJobState.cancelled);
+      _completeDrainIfIdle();
+    }
+    return Future<void>.value();
   }
 
   Future<bool> uploadMessageAttachments(WKMsg message) {
@@ -124,9 +145,76 @@ class AttachmentUploadPipeline {
   }
 
   Future<void> drain() {
-    throw UnimplementedError(
-      'Skeleton only: wait until in-flight uploads finish here.',
+    if (_queue.isEmpty && _inFlightClientMsgNos.isEmpty) {
+      return Future<void>.value();
+    }
+    return (_drainCompleter ??= Completer<void>()).future;
+  }
+
+  void _pumpQueue() {
+    final limit = maxConcurrentUploads <= 0 ? 1 : maxConcurrentUploads;
+    while (_inFlightClientMsgNos.length < limit && _queue.isNotEmpty) {
+      final job = _queue.removeAt(0);
+      if (_cancelledClientMsgNos.remove(job.clientMsgNo)) {
+        _emit(job, AttachmentUploadJobState.cancelled);
+        continue;
+      }
+      _inFlightClientMsgNos.add(job.clientMsgNo);
+      unawaited(_runQueuedJob(job));
+    }
+    _completeDrainIfIdle();
+  }
+
+  Future<void> _runQueuedJob(AttachmentUploadJob job) async {
+    _emit(job, AttachmentUploadJobState.uploading);
+    try {
+      if (!await _fileExists(job.localPath)) {
+        _emit(job, AttachmentUploadJobState.failed);
+        return;
+      }
+      final remoteUrl = await uploadLocalFile(
+        filePath: job.localPath,
+        channelId: job.channelId,
+        channelType: job.channelType,
+      );
+      if (remoteUrl.trim().isEmpty) {
+        _emit(job, AttachmentUploadJobState.failed);
+        return;
+      }
+      _emit(job, AttachmentUploadJobState.uploaded, remoteUrl: remoteUrl);
+    } catch (error) {
+      _emit(job, AttachmentUploadJobState.failed, error: error);
+    } finally {
+      _inFlightClientMsgNos.remove(job.clientMsgNo);
+      _pumpQueue();
+    }
+  }
+
+  void _emit(
+    AttachmentUploadJob job,
+    AttachmentUploadJobState state, {
+    String remoteUrl = '',
+    Object? error,
+  }) {
+    _eventsController.add(
+      AttachmentUploadEvent(
+        job: job,
+        state: state,
+        remoteUrl: remoteUrl,
+        error: error,
+      ),
     );
+  }
+
+  void _completeDrainIfIdle() {
+    if (_queue.isNotEmpty || _inFlightClientMsgNos.isNotEmpty) {
+      return;
+    }
+    final completer = _drainCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
+    _drainCompleter = null;
   }
 
   Future<bool> _uploadMessageAttachments(WKMsg message) async {
