@@ -10,6 +10,7 @@ class ChatOverlayCoordinator extends ConsumerWidget {
     super.key,
     required this.session,
     required this.child,
+    this.background,
     this.mediaPreview,
     this.commandPalette,
     this.selectionToolbar,
@@ -17,6 +18,7 @@ class ChatOverlayCoordinator extends ConsumerWidget {
 
   final ChatSession session;
   final Widget child;
+  final Widget? background;
   final Widget? mediaPreview;
   final Widget? commandPalette;
   final Widget? selectionToolbar;
@@ -28,6 +30,7 @@ class ChatOverlayCoordinator extends ConsumerWidget {
       key: const ValueKey<String>('chat-overlay-coordinator'),
       fit: StackFit.expand,
       children: <Widget>[
+        if (background != null) IgnorePointer(child: background!),
         child,
         if (scene.mode == ChatSceneMode.selecting && selectionToolbar != null)
           Positioned(left: 0, top: 0, right: 0, child: selectionToolbar!),

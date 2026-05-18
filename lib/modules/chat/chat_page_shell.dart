@@ -79,6 +79,7 @@ import 'chat_message_providers.dart';
 import 'chat_mentions_controller.dart';
 import 'chat_message_view_model.dart';
 import 'panes/chat_header_pane.dart';
+import 'panes/chat_overlay_coordinator.dart';
 import 'chat_scene_gateway.dart';
 import 'chat_scene_models.dart';
 import 'chat_scene_providers.dart';
@@ -1005,35 +1006,105 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                     ),
                 ],
         ),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            IgnorePointer(
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  if (useLiquidShell)
-                    const LiquidGlassStage(child: SizedBox.expand()),
-                  ChatBackgroundSurface(
-                    key: const ValueKey<String>('chat-background-surface'),
-                    option: selectedChatBackground,
-                    fallbackStyle: fallbackBackgroundStyle,
-                    fallbackColor: isMobileWarmStyle
-                        ? mobileWarmBackgroundColor
-                        : useLiquidShell
-                        ? liquidBackgroundColor
-                        : null,
-                  ),
-                ],
+        body: ChatOverlayCoordinator(
+          session: _chatSession,
+          background: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              if (useLiquidShell)
+                const LiquidGlassStage(child: SizedBox.expand()),
+              ChatBackgroundSurface(
+                key: const ValueKey<String>('chat-background-surface'),
+                option: selectedChatBackground,
+                fallbackStyle: fallbackBackgroundStyle,
+                fallbackColor: isMobileWarmStyle
+                    ? mobileWarmBackgroundColor
+                    : useLiquidShell
+                    ? liquidBackgroundColor
+                    : null,
               ),
-            ),
-            _ChatKeyboardInsetTranslation(
-              child: Column(
-                children: [
-                  if (scene.mode == ChatSceneMode.selecting)
-                    ChatSelectionToolbar(
-                      selectedCount: selection.selectedCount,
-                      onCancel: () {
+            ],
+          ),
+          child: _ChatKeyboardInsetTranslation(
+            child: Column(
+              children: [
+                if (scene.mode == ChatSceneMode.selecting)
+                  ChatSelectionToolbar(
+                    selectedCount: selection.selectedCount,
+                    onCancel: () {
+                      ref
+                          .read(
+                            chatSelectionControllerProvider(
+                              _chatSession,
+                            ).notifier,
+                          )
+                          .clear();
+                      ref
+                          .read(
+                            chatSceneControllerProvider(_chatSession).notifier,
+                          )
+                          .restoreNormal();
+                    },
+                    onForward: () async {
+                      final List<WKMsg> selectedMessages = selection
+                          .selectedIdentities
+                          .map(
+                            (identity) => ref
+                                .read(
+                                  chatViewportProvider(_chatSession).notifier,
+                                )
+                                .itemByIdentity(identity)
+                                ?.message,
+                          )
+                          .whereType<WKMsg>()
+                          .toList(growable: false);
+                      if (selectedMessages.isEmpty) {
+                        return;
+                      }
+                      ref
+                          .read(
+                            chatMessageActionControllerProvider(
+                              _chatSession,
+                            ).notifier,
+                          )
+                          .prepareForward(selectedMessages);
+                      final request = ref
+                          .read(
+                            chatMessageActionControllerProvider(_chatSession),
+                          )
+                          .forwardRequest;
+                      if (request == null || request.payloads.isEmpty) {
+                        return;
+                      }
+                      bool? didSubmit;
+                      try {
+                        didSubmit = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute<bool>(
+                            builder: (_) => ForwardMessagePage(
+                              payloads: request.payloads,
+                              channelId: _chatSession.channelId,
+                              channelType: _chatSession.channelType,
+                              gateway: ref.read(
+                                chatSceneGatewayProvider(_chatSession),
+                              ),
+                            ),
+                          ),
+                        );
+                      } finally {
+                        if (mounted) {
+                          ref
+                              .read(
+                                chatMessageActionControllerProvider(
+                                  _chatSession,
+                                ).notifier,
+                              )
+                              .clearTransientState();
+                        }
+                      }
+                      if (!mounted) {
+                        return;
+                      }
+                      if (didSubmit == true) {
                         ref
                             .read(
                               chatSelectionControllerProvider(
@@ -1048,132 +1119,56 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                               ).notifier,
                             )
                             .restoreNormal();
-                      },
-                      onForward: () async {
-                        final List<WKMsg> selectedMessages = selection
-                            .selectedIdentities
-                            .map(
-                              (identity) => ref
-                                  .read(
-                                    chatViewportProvider(_chatSession).notifier,
-                                  )
-                                  .itemByIdentity(identity)
-                                  ?.message,
-                            )
-                            .whereType<WKMsg>()
-                            .toList(growable: false);
-                        if (selectedMessages.isEmpty) {
-                          return;
-                        }
-                        ref
-                            .read(
-                              chatMessageActionControllerProvider(
-                                _chatSession,
-                              ).notifier,
-                            )
-                            .prepareForward(selectedMessages);
-                        final request = ref
-                            .read(
-                              chatMessageActionControllerProvider(_chatSession),
-                            )
-                            .forwardRequest;
-                        if (request == null || request.payloads.isEmpty) {
-                          return;
-                        }
-                        bool? didSubmit;
-                        try {
-                          didSubmit = await Navigator.of(context).push<bool>(
-                            MaterialPageRoute<bool>(
-                              builder: (_) => ForwardMessagePage(
-                                payloads: request.payloads,
-                                channelId: _chatSession.channelId,
-                                channelType: _chatSession.channelType,
-                                gateway: ref.read(
-                                  chatSceneGatewayProvider(_chatSession),
-                                ),
-                              ),
-                            ),
-                          );
-                        } finally {
-                          if (mounted) {
-                            ref
-                                .read(
-                                  chatMessageActionControllerProvider(
-                                    _chatSession,
-                                  ).notifier,
-                                )
-                                .clearTransientState();
-                          }
-                        }
-                        if (!mounted) {
-                          return;
-                        }
-                        if (didSubmit == true) {
-                          ref
-                              .read(
-                                chatSelectionControllerProvider(
-                                  _chatSession,
-                                ).notifier,
-                              )
-                              .clear();
-                          ref
-                              .read(
-                                chatSceneControllerProvider(
-                                  _chatSession,
-                                ).notifier,
-                              )
-                              .restoreNormal();
-                        }
-                      },
-                    ),
-                  if (scene.mode != ChatSceneMode.selecting &&
-                      activityState.isCalling)
-                    ChatCallingParticipantsBar(state: activityState),
-                  if (scene.mode != ChatSceneMode.selecting &&
-                      _pinnedMessages.isNotEmpty)
-                    ChatPinnedMessageBanner(
-                      data: ChatPinnedMessageBannerData(
-                        previewText: _pinnedMessages.first.previewText,
-                        count: _pinnedMessages.length,
-                      ),
-                      onTap: _openPinnedMessageSheet,
-                      onClearAll: _canClearPinnedMessages
-                          ? () => unawaited(_clearPinnedMessages())
-                          : null,
-                    ),
-                  Expanded(
-                    child: _ChatViewportPane(
-                      session: _chatSession,
-                      conversationChannel: _participantFallbackChannel(),
-                      canPinMessages: _canPinMessages,
-                      currentUserGroupRole: _readCurrentUserGroupRole(),
-                      flameRuntime: widget.flameRuntime,
-                      onBuild: widget.onViewportBuild,
-                      onPinnedMessageToggled: _handlePinnedMessageToggled,
-                      restoreAnchor: _restoreAnchor,
-                      webStyle: useWarmWorkbenchStyle,
-                      onPersistenceSnapshotChanged:
-                          _handleViewportPersistenceSnapshotChanged,
-                      onRestoreAnchorApplied: widget.onRestoreAnchorApplied,
-                    ),
+                      }
+                    },
                   ),
-                  _ChatComposerPane(
+                if (scene.mode != ChatSceneMode.selecting &&
+                    activityState.isCalling)
+                  ChatCallingParticipantsBar(state: activityState),
+                if (scene.mode != ChatSceneMode.selecting &&
+                    _pinnedMessages.isNotEmpty)
+                  ChatPinnedMessageBanner(
+                    data: ChatPinnedMessageBannerData(
+                      previewText: _pinnedMessages.first.previewText,
+                      count: _pinnedMessages.length,
+                    ),
+                    onTap: _openPinnedMessageSheet,
+                    onClearAll: _canClearPinnedMessages
+                        ? () => unawaited(_clearPinnedMessages())
+                        : null,
+                  ),
+                Expanded(
+                  child: _ChatViewportPane(
                     session: _chatSession,
-                    channel: _channel,
-                    robotMenus: _robotMenus,
-                    showCallActions: _showCallActions(),
-                    showGroupCallAction: _showGroupCallAction(),
+                    conversationChannel: _participantFallbackChannel(),
+                    canPinMessages: _canPinMessages,
+                    currentUserGroupRole: _readCurrentUserGroupRole(),
+                    flameRuntime: widget.flameRuntime,
+                    onBuild: widget.onViewportBuild,
+                    onPinnedMessageToggled: _handlePinnedMessageToggled,
+                    restoreAnchor: _restoreAnchor,
                     webStyle: useWarmWorkbenchStyle,
-                    onAudioCallTap: () =>
-                        unawaited(_handleCallActionTap(CallType.audio)),
-                    onVideoCallTap: () =>
-                        unawaited(_handleCallActionTap(CallType.video)),
-                    onGroupCallTap: () => unawaited(_openGroupCallPicker()),
+                    onPersistenceSnapshotChanged:
+                        _handleViewportPersistenceSnapshotChanged,
+                    onRestoreAnchorApplied: widget.onRestoreAnchorApplied,
                   ),
-                ],
-              ),
+                ),
+                _ChatComposerPane(
+                  session: _chatSession,
+                  channel: _channel,
+                  robotMenus: _robotMenus,
+                  showCallActions: _showCallActions(),
+                  showGroupCallAction: _showGroupCallAction(),
+                  webStyle: useWarmWorkbenchStyle,
+                  onAudioCallTap: () =>
+                      unawaited(_handleCallActionTap(CallType.audio)),
+                  onVideoCallTap: () =>
+                      unawaited(_handleCallActionTap(CallType.video)),
+                  onGroupCallTap: () => unawaited(_openGroupCallPicker()),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
