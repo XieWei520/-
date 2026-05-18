@@ -11,7 +11,7 @@ void main() {
     ).readAsStringSync();
 
     expect(source, contains('im_notification_bridge.dart'));
-    expect(source, contains('_notificationBridge.showMessageAlert'));
+    expect(source, contains('_notificationBridge.scheduleMessageAlert'));
     expect(bridgeSource, contains('android_message_alert_manager.dart'));
     expect(bridgeSource, contains('_shouldRequireRedDot'));
     expect(bridgeSource, contains('androidAlerts.showNewMessageAlert'));

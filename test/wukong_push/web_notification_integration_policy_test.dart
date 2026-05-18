@@ -12,7 +12,7 @@ void main() {
       ).readAsStringSync();
 
       expect(source, contains('im_notification_bridge.dart'));
-      expect(source, contains('_notificationBridge.showMessageAlert'));
+      expect(source, contains('_notificationBridge.scheduleMessageAlert'));
       expect(source, contains('lifecycleState: _appLifecycleState'));
       expect(bridgeSource, contains('web_notification_manager.dart'));
       expect(bridgeSource, contains('buildMessageAlertPlan'));

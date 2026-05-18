@@ -5,6 +5,7 @@ import 'package:wukong_im_app/wukong_push/notification/android_message_alert_man
 import 'package:wukong_im_app/wukong_push/notification/desktop_message_alert_manager.dart';
 import 'package:wukong_im_app/wukong_push/notification/desktop_message_alert_policy.dart';
 import 'package:wukong_im_app/wukong_push/notification/desktop_message_alert_presenter.dart';
+import 'package:wukong_im_app/wukong_push/notification/message_alert_plan.dart';
 import 'package:wukong_im_app/wukong_push/notification/web_notification_manager.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
@@ -13,34 +14,37 @@ import 'package:wukongimfluttersdk/type/const.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('dispatches eligible desktop message alerts through desktop manager', () async {
-    final desktopPresenter = _FakeDesktopPresenter();
-    final bridge = ImNotificationBridge(
-      androidAlerts: AndroidMessageAlertManager(
-        presenter: const _NoopAndroidPresenter(),
-        policy: DesktopMessageAlertPolicy(),
-        isWeb: () => false,
-        targetPlatform: () => TargetPlatform.android,
-      ),
-      desktopAlerts: DesktopMessageAlertManager(
-        presenter: desktopPresenter,
-        policy: DesktopMessageAlertPolicy(),
-        isWeb: () => false,
-        targetPlatform: () => TargetPlatform.windows,
-      ),
-      webNotifications: WebNotificationManager.instance,
-    );
+  test(
+    'dispatches eligible desktop message alerts through desktop manager',
+    () async {
+      final desktopPresenter = _FakeDesktopPresenter();
+      final bridge = ImNotificationBridge(
+        androidAlerts: AndroidMessageAlertManager(
+          presenter: const _NoopAndroidPresenter(),
+          policy: DesktopMessageAlertPolicy(),
+          isWeb: () => false,
+          targetPlatform: () => TargetPlatform.android,
+        ),
+        desktopAlerts: DesktopMessageAlertManager(
+          presenter: desktopPresenter,
+          policy: DesktopMessageAlertPolicy(),
+          isWeb: () => false,
+          targetPlatform: () => TargetPlatform.windows,
+        ),
+        webNotifications: WebNotificationManager.instance,
+      );
 
-    await bridge.showMessageAlert(
-      _textMessage(redDot: true),
-      currentUid: 'u_self',
-      lifecycleState: AppLifecycleState.hidden,
-    );
+      await bridge.showMessageAlert(
+        _textMessage(redDot: true),
+        currentUid: 'u_self',
+        lifecycleState: AppLifecycleState.hidden,
+      );
 
-    expect(desktopPresenter.notifications.single.title, 'u_alice');
-    expect(desktopPresenter.notifications.single.body, 'hello');
-    expect(desktopPresenter.messageSoundCount, 1);
-  });
+      expect(desktopPresenter.notifications.single.title, 'u_alice');
+      expect(desktopPresenter.notifications.single.body, 'hello');
+      expect(desktopPresenter.messageSoundCount, 1);
+    },
+  );
 
   test('android background alert does not require red dot', () async {
     final androidPresenter = _FakeAndroidPresenter();
@@ -125,6 +129,41 @@ void main() {
     expect(desktopPresenter.notifications, isEmpty);
     expect(desktopPresenter.messageSoundCount, 0);
   });
+
+  test('scheduleMessageAlert reports asynchronous dispatch errors', () async {
+    final reportedErrors = <Object>[];
+    final reportedStackTraces = <StackTrace>[];
+    final bridge = ImNotificationBridge(
+      androidAlerts: _ThrowingAndroidAlertManager(),
+      desktopAlerts: DesktopMessageAlertManager(
+        presenter: const _NoopDesktopPresenter(),
+        policy: DesktopMessageAlertPolicy(),
+        isWeb: () => false,
+        targetPlatform: () => TargetPlatform.windows,
+      ),
+      webNotifications: WebNotificationManager.instance,
+      onSchedulingError: (error, stackTrace) {
+        reportedErrors.add(error);
+        reportedStackTraces.add(stackTrace);
+      },
+    );
+
+    expect(
+      () => bridge.scheduleMessageAlert(
+        _textMessage(redDot: false),
+        currentUid: 'u_self',
+        lifecycleState: AppLifecycleState.hidden,
+        requireRedDot: false,
+      ),
+      returnsNormally,
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(reportedErrors, hasLength(1));
+    expect(reportedErrors.single, isA<StateError>());
+    expect(reportedErrors.single.toString(), contains('android async failure'));
+    expect(reportedStackTraces, hasLength(1));
+  });
 }
 
 WKMsg _textMessage({required bool redDot}) {
@@ -173,7 +212,27 @@ class _NoopAndroidPresenter implements AndroidMessageAlertPresenter {
   Future<void> playForegroundTick() async {}
 
   @override
-  Future<void> showNotification(AndroidMessageNotification notification) async {}
+  Future<void> showNotification(
+    AndroidMessageNotification notification,
+  ) async {}
+}
+
+class _ThrowingAndroidAlertManager extends AndroidMessageAlertManager {
+  _ThrowingAndroidAlertManager()
+    : super(
+        presenter: const _NoopAndroidPresenter(),
+        policy: DesktopMessageAlertPolicy(),
+        isWeb: () => false,
+        targetPlatform: () => TargetPlatform.android,
+      );
+
+  @override
+  Future<void> showNewMessageAlert({
+    required MessageAlertPlan plan,
+    required AppLifecycleState lifecycleState,
+  }) async {
+    throw StateError('android async failure');
+  }
 }
 
 class _FakeDesktopPresenter implements DesktopMessageAlertPresenter {
@@ -220,5 +279,7 @@ class _NoopDesktopPresenter implements DesktopMessageAlertPresenter {
   Future<void> playMessageSound() async {}
 
   @override
-  Future<void> showNotification(DesktopMessageNotification notification) async {}
+  Future<void> showNotification(
+    DesktopMessageNotification notification,
+  ) async {}
 }

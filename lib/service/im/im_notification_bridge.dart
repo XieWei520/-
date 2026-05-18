@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 
@@ -6,12 +8,17 @@ import '../../wukong_push/notification/desktop_message_alert_manager.dart';
 import '../../wukong_push/notification/message_alert_plan.dart';
 import '../../wukong_push/notification/web_notification_manager.dart';
 
+typedef ImNotificationSchedulingErrorReporter =
+    void Function(Object error, StackTrace stackTrace);
+
 class ImNotificationBridge {
   ImNotificationBridge({
     required this.androidAlerts,
     required this.desktopAlerts,
     required this.webNotifications,
-  });
+    ImNotificationSchedulingErrorReporter? onSchedulingError,
+  }) : _onSchedulingError =
+           onSchedulingError ?? _defaultSchedulingErrorReporter;
 
   factory ImNotificationBridge.platformDefaults() {
     return ImNotificationBridge(
@@ -24,6 +31,7 @@ class ImNotificationBridge {
   final AndroidMessageAlertManager androidAlerts;
   final DesktopMessageAlertManager desktopAlerts;
   final WebNotificationManager webNotifications;
+  final ImNotificationSchedulingErrorReporter _onSchedulingError;
 
   Future<void> initialize() async {
     // Web notification permission/audio unlock must still be triggered from a
@@ -43,6 +51,22 @@ class ImNotificationBridge {
         lifecycleState: lifecycleState,
       );
     }
+  }
+
+  void scheduleMessageAlert(
+    WKMsg message, {
+    required String currentUid,
+    required AppLifecycleState lifecycleState,
+    bool requireRedDot = true,
+  }) {
+    unawaited(
+      _guardedMessageAlert(
+        message,
+        currentUid: currentUid,
+        lifecycleState: lifecycleState,
+        requireRedDot: requireRedDot,
+      ),
+    );
   }
 
   Future<void> showMessageAlert(
@@ -135,4 +159,27 @@ class ImNotificationBridge {
     }
     return lifecycleState == AppLifecycleState.resumed;
   }
+
+  Future<void> _guardedMessageAlert(
+    WKMsg message, {
+    required String currentUid,
+    required AppLifecycleState lifecycleState,
+    required bool requireRedDot,
+  }) async {
+    try {
+      await showMessageAlert(
+        message,
+        currentUid: currentUid,
+        lifecycleState: lifecycleState,
+        requireRedDot: requireRedDot,
+      );
+    } catch (error, stackTrace) {
+      _onSchedulingError(error, stackTrace);
+    }
+  }
+}
+
+void _defaultSchedulingErrorReporter(Object error, StackTrace stackTrace) {
+  debugPrint('Message alert scheduling failed: $error');
+  debugPrint('$stackTrace');
 }

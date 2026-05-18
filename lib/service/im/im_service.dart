@@ -823,22 +823,11 @@ class IMService extends StateNotifier<IMServiceState>
           _sensitiveTipPersistenceService.insertSensitiveWordTipMessage(tip),
         );
       }
-      _scheduleMessageAlert(message, currentUid: currentUid);
-    }
-  }
-
-  void _scheduleMessageAlert(WKMsg message, {required String currentUid}) {
-    try {
-      unawaited(
-        _notificationBridge.showMessageAlert(
-          message,
-          currentUid: currentUid,
-          lifecycleState: _appLifecycleState,
-        ),
+      _notificationBridge.scheduleMessageAlert(
+        message,
+        currentUid: currentUid,
+        lifecycleState: _appLifecycleState,
       );
-    } catch (error, stackTrace) {
-      debugPrint('Message alert scheduling failed: $error');
-      debugPrint('$stackTrace');
     }
   }
 

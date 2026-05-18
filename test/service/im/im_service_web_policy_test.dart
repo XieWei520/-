@@ -53,7 +53,8 @@ void main() {
     final source = File('lib/service/im/im_service.dart').readAsStringSync();
 
     expect(source, contains('im_notification_bridge.dart'));
-    expect(source, contains('_notificationBridge.showMessageAlert'));
+    expect(source, contains('_notificationBridge.scheduleMessageAlert'));
+    expect(source, isNot(contains('_scheduleMessageAlert')));
     expect(source, isNot(contains('android_message_alert_manager.dart')));
     expect(source, isNot(contains('desktop_message_alert_manager.dart')));
     expect(source, isNot(contains('web_notification_manager.dart')));
