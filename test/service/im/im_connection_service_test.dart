@@ -176,4 +176,145 @@ void main() {
       );
     });
   });
+
+  group('ImConnectionService listener binding', () {
+    test('unbinds stale listener before binding a fresh status listener', () {
+      final sdk = _FakeImSdkConnectionPort();
+      final service = ImConnectionService(
+        sdk: sdk,
+        realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+        routeResolver: (_) async => '127.0.0.1:5100',
+        listenerKey: 'test_listener',
+      );
+      final forwarded = <int>[];
+
+      service.bindConnectionStatusListener(
+        onStatus: (status, reasonCode, extra) {
+          forwarded.add(status);
+        },
+      );
+
+      expect(sdk.unboundKeys, <String>['test_listener']);
+      expect(sdk.boundKeys, <String>['test_listener']);
+
+      sdk.emit(
+        status: WKConnectStatus.syncCompleted,
+        reasonCode: null,
+        extra: 'ready',
+      );
+
+      expect(forwarded, <int>[WKConnectStatus.syncCompleted]);
+      expect(
+        service.snapshot,
+        const ImConnectionSnapshot(
+          isInitialized: true,
+          isConnected: true,
+          status: WKConnectStatus.syncCompleted,
+        ),
+      );
+    });
+
+    test('updates snapshot before forwarding failed status', () {
+      final sdk = _FakeImSdkConnectionPort();
+      final service = ImConnectionService(
+        sdk: sdk,
+        realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+        routeResolver: (_) async => '127.0.0.1:5100',
+      );
+      ImConnectionSnapshot? observedSnapshot;
+
+      service.bindConnectionStatusListener(
+        onStatus: (status, reasonCode, extra) {
+          observedSnapshot = service.snapshot;
+        },
+      );
+
+      sdk.emit(status: WKConnectStatus.fail, reasonCode: 401, extra: null);
+
+      expect(
+        observedSnapshot,
+        const ImConnectionSnapshot(
+          isConnected: false,
+          status: WKConnectStatus.fail,
+          reasonCode: 401,
+          error: 'IM connection failed. reason=401',
+        ),
+      );
+    });
+
+    test('unbindConnectionStatusListener removes the owned listener key', () {
+      final sdk = _FakeImSdkConnectionPort();
+      final service = ImConnectionService(
+        sdk: sdk,
+        realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+        routeResolver: (_) async => '127.0.0.1:5100',
+        listenerKey: 'owned_listener',
+      );
+
+      service.unbindConnectionStatusListener();
+
+      expect(sdk.unboundKeys, <String>['owned_listener']);
+    });
+  });
+}
+
+class _FakeImSdkConnectionPort implements ImSdkConnectionPort {
+  final boundKeys = <String>[];
+  final unboundKeys = <String>[];
+  final _listeners = <String, ImConnectionStatusHandler>{};
+
+  @override
+  Future<bool> setup(ImConnectionCredentials credentials) async {
+    return true;
+  }
+
+  @override
+  void connect() {}
+
+  @override
+  void disconnect({required bool isLogout}) {}
+
+  @override
+  void bindStatusListener({
+    required String key,
+    required ImConnectionStatusHandler onStatus,
+  }) {
+    boundKeys.add(key);
+    _listeners[key] = onStatus;
+  }
+
+  @override
+  void unbindStatusListener(String key) {
+    unboundKeys.add(key);
+    _listeners.remove(key);
+  }
+
+  void emit({
+    required int status,
+    required int? reasonCode,
+    required String? extra,
+  }) {
+    for (final listener in List<ImConnectionStatusHandler>.from(
+      _listeners.values,
+    )) {
+      listener(status, reasonCode, extra);
+    }
+  }
+}
+
+class _FakeImRealtimeRuntimePort implements ImRealtimeRuntimePort {
+  const _FakeImRealtimeRuntimePort();
+
+  @override
+  bool get isRunning => false;
+
+  @override
+  Future<void> start({
+    required String apiToken,
+    required String deviceSessionId,
+    required int lastAckedSeq,
+  }) async {}
+
+  @override
+  Future<void> stop() async {}
 }

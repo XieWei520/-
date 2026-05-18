@@ -244,6 +244,50 @@ _RecoveredCallingKey? _parseRecoveredCallingKey(String key) {
   return _RecoveredCallingKey(channelId: channelId, channelType: channelType);
 }
 
+class _WkImSdkConnectionPort implements ImSdkConnectionPort {
+  const _WkImSdkConnectionPort();
+
+  @override
+  Future<bool> setup(ImConnectionCredentials credentials) async {
+    throw UnimplementedError(
+      'SDK setup remains owned by IMService until the connection init slice.',
+    );
+  }
+
+  @override
+  void connect() {
+    throw UnimplementedError(
+      'SDK connect remains owned by IMService until the connection init slice.',
+    );
+  }
+
+  @override
+  void disconnect({required bool isLogout}) {
+    throw UnimplementedError(
+      'SDK disconnect remains owned by IMService until the disconnect slice.',
+    );
+  }
+
+  @override
+  void bindStatusListener({
+    required String key,
+    required ImConnectionStatusHandler onStatus,
+  }) {
+    WKIM.shared.connectionManager.addOnConnectionStatus(key, (
+      status,
+      reasonCode,
+      info,
+    ) {
+      onStatus(status, reasonCode, info?.toString());
+    });
+  }
+
+  @override
+  void unbindStatusListener(String key) {
+    WKIM.shared.connectionManager.removeOnConnectionStatus(key);
+  }
+}
+
 @immutable
 class IMServiceState {
   final bool isInitializing;
@@ -294,6 +338,7 @@ class IMService extends StateNotifier<IMServiceState>
     void Function(ProviderOrFamily provider)? invalidateProvider,
     T Function<T>(ProviderListenable<T> provider)? readProvider,
     RealtimeRolloutTelemetry? realtimeRolloutTelemetry,
+    ImConnectionService? connectionService,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
        _ownsRealtimeRolloutTelemetry = realtimeRolloutTelemetry == null,
@@ -310,6 +355,14 @@ class IMService extends StateNotifier<IMServiceState>
           onDeviceInvalidated: _handleDeviceInvalidated,
           onFrame: _handleSessionFrame,
           telemetry: _realtimeRolloutTelemetry,
+        );
+    _connectionService =
+        connectionService ??
+        ImConnectionService(
+          sdk: const _WkImSdkConnectionPort(),
+          realtimeRuntime: const SkeletonImRealtimeRuntimePort(),
+          routeResolver: _resolveConnectAddr,
+          listenerKey: _connectionListenerKey,
         );
     CallCoordinator.instance.setGatewayDegradationReader(
       _sessionRuntime.isGatewayDegradedFor,
@@ -356,6 +409,7 @@ class IMService extends StateNotifier<IMServiceState>
   List<ProhibitWordEntry>? _cachedProhibitWords;
   late final RealtimeRolloutTelemetry _realtimeRolloutTelemetry;
   late final SessionRuntime _sessionRuntime;
+  late final ImConnectionService _connectionService;
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
@@ -573,52 +627,11 @@ class IMService extends StateNotifier<IMServiceState>
       return;
     }
 
-    WKIM.shared.connectionManager.removeOnConnectionStatus(
-      _connectionListenerKey,
+    _connectionService.bindConnectionStatusListener(
+      onStatus: _handleConnectionStatus,
     );
     WKIM.shared.cmdManager.removeCmdListener(_cmdListenerKey);
     WKIM.shared.messageManager.removeNewMsgListener(_newMsgListenerKey);
-    WKIM.shared.connectionManager.addOnConnectionStatus(
-      _connectionListenerKey,
-      (status, reasonCode, _) {
-        final isConnected =
-            status == WKConnectStatus.success ||
-            status == WKConnectStatus.syncCompleted;
-        if (isConnected) {
-          _lifecycleDisconnected = false;
-        }
-        state = state.copyWith(
-          connectionStatus: status,
-          reasonCode: reasonCode,
-          isConnected: isConnected,
-          isInitialized:
-              state.isInitialized || status == WKConnectStatus.syncCompleted,
-          error: _resolveConnectionError(status, reasonCode),
-          clearError:
-              status == WKConnectStatus.success ||
-              status == WKConnectStatus.syncCompleted,
-        );
-
-        if (status == WKConnectStatus.syncCompleted) {
-          final read = _readProvider;
-          if (read != null) {
-            unawaited(
-              MessageDeliveryReplayCoordinator(
-                read(messageDeliveryServiceProvider),
-              ).replayForConnectionStatus(status),
-            );
-          }
-          unawaited(_syncReminders(reason: 'sync_completed'));
-          unawaited(_syncSensitiveWords(reason: 'sync_completed'));
-          unawaited(_syncProhibitWords(reason: 'sync_completed'));
-          unawaited(_syncConversationExtras(reason: 'sync_completed'));
-          unawaited(_syncOfflineCommandMessages(reason: 'sync_completed'));
-          _completeInit(true);
-        } else if (status == WKConnectStatus.kicked) {
-          _completeInit(false);
-        }
-      },
-    );
 
     WKIM.shared.conversationManager.addOnSyncConversationListener((
       lastMsgSeqs,
@@ -710,6 +723,45 @@ class IMService extends StateNotifier<IMServiceState>
     WKIM.shared.cmdManager.addOnCmdListener(_cmdListenerKey, _handleCmd);
 
     _listenersBound = true;
+  }
+
+  void _handleConnectionStatus(int status, int? reasonCode, String? _) {
+    final isConnected =
+        status == WKConnectStatus.success ||
+        status == WKConnectStatus.syncCompleted;
+    if (isConnected) {
+      _lifecycleDisconnected = false;
+    }
+    state = state.copyWith(
+      connectionStatus: status,
+      reasonCode: reasonCode,
+      isConnected: isConnected,
+      isInitialized:
+          state.isInitialized || status == WKConnectStatus.syncCompleted,
+      error: _resolveConnectionError(status, reasonCode),
+      clearError:
+          status == WKConnectStatus.success ||
+          status == WKConnectStatus.syncCompleted,
+    );
+
+    if (status == WKConnectStatus.syncCompleted) {
+      final read = _readProvider;
+      if (read != null) {
+        unawaited(
+          MessageDeliveryReplayCoordinator(
+            read(messageDeliveryServiceProvider),
+          ).replayForConnectionStatus(status),
+        );
+      }
+      unawaited(_syncReminders(reason: 'sync_completed'));
+      unawaited(_syncSensitiveWords(reason: 'sync_completed'));
+      unawaited(_syncProhibitWords(reason: 'sync_completed'));
+      unawaited(_syncConversationExtras(reason: 'sync_completed'));
+      unawaited(_syncOfflineCommandMessages(reason: 'sync_completed'));
+      _completeInit(true);
+    } else if (status == WKConnectStatus.kicked) {
+      _completeInit(false);
+    }
   }
 
   void _handleCmd(WKCMD cmd) {
@@ -1776,9 +1828,7 @@ class IMService extends StateNotifier<IMServiceState>
     }
     WKIM.shared.messageManager.removeNewMsgListener(_newMsgListenerKey);
     WKIM.shared.cmdManager.removeCmdListener(_cmdListenerKey);
-    WKIM.shared.connectionManager.removeOnConnectionStatus(
-      _connectionListenerKey,
-    );
+    _connectionService.unbindConnectionStatusListener();
     super.dispose();
   }
 
