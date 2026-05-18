@@ -53,8 +53,8 @@ import 'im_word_sync_models.dart';
 import 'local_attachment_file.dart';
 import 'coordinators/attachment_pipeline.dart' as attachment_pipeline;
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
-import 'coordinators/connection_coordinator.dart' as connection_coordinator;
 import 'coordinators/message_sync_coordinator.dart' as message_sync_coordinator;
+import 'im_connection_service.dart';
 import 'message_delivery_service.dart';
 import 'message_outbox.dart';
 
@@ -95,17 +95,16 @@ bool shouldReuseInitializedImSession({
   required int connectionStatus,
   required bool sessionRuntimeRunning,
 }) {
-  return const connection_coordinator.ConnectionCoordinator()
-      .shouldReuseInitializedSession(
-        initializedUid: initializedUid,
-        initializedToken: initializedToken,
-        initializedDeviceSessionId: initializedDeviceSessionId,
-        uid: uid,
-        token: token,
-        deviceSessionId: deviceSessionId,
-        connectionStatus: connectionStatus,
-        sessionRuntimeRunning: sessionRuntimeRunning,
-      );
+  return ImConnectionService.shouldReuseInitializedSession(
+    initializedUid: initializedUid,
+    initializedToken: initializedToken,
+    initializedDeviceSessionId: initializedDeviceSessionId,
+    uid: uid,
+    token: token,
+    deviceSessionId: deviceSessionId,
+    connectionStatus: connectionStatus,
+    sessionRuntimeRunning: sessionRuntimeRunning,
+  );
 }
 
 @immutable
@@ -129,22 +128,21 @@ StoredImInitCredentials? resolveStoredImInitCredentials({
   String? imToken,
   String? deviceSessionId,
 }) {
-  final resolvedUid = uid?.trim() ?? '';
-  final resolvedApiToken = apiToken?.trim() ?? '';
-  final resolvedImToken = imToken?.trim() ?? '';
-  final resolvedDeviceSessionId = deviceSessionId?.trim() ?? '';
-  if (resolvedUid.isEmpty ||
-      resolvedApiToken.isEmpty ||
-      resolvedImToken.isEmpty ||
-      resolvedDeviceSessionId.isEmpty) {
+  final credentials = ImConnectionService.resolveStoredCredentials(
+    uid: uid,
+    apiToken: apiToken,
+    imToken: imToken,
+    deviceSessionId: deviceSessionId,
+  );
+  if (credentials == null) {
     return null;
   }
 
   return StoredImInitCredentials(
-    uid: resolvedUid,
-    apiToken: resolvedApiToken,
-    imToken: resolvedImToken,
-    deviceSessionId: resolvedDeviceSessionId,
+    uid: credentials.uid,
+    apiToken: credentials.apiToken,
+    imToken: credentials.imToken,
+    deviceSessionId: credentials.deviceSessionId,
   );
 }
 
@@ -154,17 +152,16 @@ Uri buildSessionGatewayUri({
   required int lastAckedSeq,
   String? controlProtocol,
 }) {
-  return const connection_coordinator.ConnectionCoordinator()
-      .buildSessionGatewayUri(
-        baseUrl: baseUrl,
-        deviceSessionId: deviceSessionId,
-        lastAckedSeq: lastAckedSeq,
-        controlProtocol: controlProtocol,
-      );
+  return ImConnectionService.buildSessionGatewayUri(
+    baseUrl: baseUrl,
+    deviceSessionId: deviceSessionId,
+    lastAckedSeq: lastAckedSeq,
+    controlProtocol: controlProtocol,
+  );
 }
 
 String selectImConnectAddr(ImRouteInfo route, {required String fallbackAddr}) {
-  return const connection_coordinator.ConnectionCoordinator().selectConnectAddr(
+  return ImConnectionService.selectConnectAddr(
     route,
     fallbackAddr: fallbackAddr,
   );
@@ -175,14 +172,15 @@ bool shouldUseImLocalPersistence({
   required bool isWeb,
   required bool sdkAppMode,
 }) {
-  return const connection_coordinator.ConnectionCoordinator()
-      .shouldUseLocalPersistence(isWeb: isWeb, sdkAppMode: sdkAppMode);
+  return ImConnectionService.shouldUseLocalPersistence(
+    isWeb: isWeb,
+    sdkAppMode: sdkAppMode,
+  );
 }
 
 @visibleForTesting
 bool shouldStartNativeSessionRuntime({required bool isWeb}) {
-  return const connection_coordinator.ConnectionCoordinator()
-      .shouldStartNativeSessionRuntime(isWeb: isWeb);
+  return ImConnectionService.shouldStartNativeSessionRuntime(isWeb: isWeb);
 }
 
 typedef SessionRuntimeInitStarter = Future<void> Function();
@@ -214,13 +212,11 @@ bool shouldDisconnectForBackgroundLifecycle({
   if (keepRealtimeForLocalNotifications) {
     return false;
   }
-  return const connection_coordinator.ConnectionCoordinator()
-      .shouldDisconnectForBackgroundLifecycle(
-        isWeb: isWeb,
-        hasActiveCallOrPendingSetup: hasActiveCallOrPendingSetup,
-        keepRealtimeForDesktopNotifications:
-            keepRealtimeForDesktopNotifications,
-      );
+  return ImConnectionService.shouldDisconnectForBackgroundLifecycle(
+    isWeb: isWeb,
+    hasActiveCallOrPendingSetup: hasActiveCallOrPendingSetup,
+    keepRealtimeForDesktopNotifications: keepRealtimeForDesktopNotifications,
+  );
 }
 
 class _RecoveredCallingKey {
@@ -367,8 +363,6 @@ class IMService extends StateNotifier<IMServiceState>
       <String, VoidCallback>{};
   final command_dispatcher.CommandDispatcher _commandDispatcher =
       const command_dispatcher.CommandDispatcher();
-  final connection_coordinator.ConnectionCoordinator _connectionCoordinator =
-      const connection_coordinator.ConnectionCoordinator();
   final message_sync_coordinator.MessageSyncCoordinator
   _messageSyncCoordinator =
       const message_sync_coordinator.MessageSyncCoordinator();
@@ -1600,24 +1594,7 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   String? _resolveConnectionError(int status, int? reasonCode) {
-    switch (status) {
-      case WKConnectStatus.success:
-      case WKConnectStatus.syncCompleted:
-      case WKConnectStatus.connecting:
-      case WKConnectStatus.syncMsg:
-        return null;
-      case WKConnectStatus.kicked:
-        return 'IM session was kicked out.';
-      case WKConnectStatus.noNetwork:
-        return 'Network unavailable.';
-      case WKConnectStatus.fail:
-        if (reasonCode != null && reasonCode != 0) {
-          return 'IM connection failed. reason=$reasonCode';
-        }
-        return null;
-      default:
-        return null;
-    }
+    return ImConnectionService.resolveConnectionError(status, reasonCode);
   }
 
   void _completeInit(bool value) {
@@ -1714,7 +1691,7 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   bool shouldKeepConnectionInBackground({bool? hasActiveCallOrPendingSetup}) {
-    return !_connectionCoordinator.shouldDisconnectForBackgroundLifecycle(
+    return ImConnectionService.shouldKeepConnectionInBackground(
       isWeb: kIsWeb,
       hasActiveCallOrPendingSetup:
           hasActiveCallOrPendingSetup ??
