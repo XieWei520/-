@@ -6,8 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wukongimfluttersdk/common/mode.dart';
-import 'package:wukongimfluttersdk/db/const.dart';
-import 'package:wukongimfluttersdk/db/message.dart';
 import 'package:wukongimfluttersdk/db/wk_db_helper.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/cmd.dart';
@@ -42,6 +40,7 @@ import 'im_word_sync_models.dart';
 import 'attachment_upload_pipeline.dart';
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
 import 'im_connection_service.dart';
+import 'im_masked_message_refresh_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_service_providers.dart';
 import 'im_sync_orchestrator.dart';
@@ -295,6 +294,7 @@ class IMService extends StateNotifier<IMServiceState>
     ImSyncOrchestrator? syncOrchestrator,
     ImWordSyncStore? wordSyncStore,
     ImWordRuntimeFilterService? wordRuntimeFilterService,
+    ImMaskedMessageRefreshService? maskedMessageRefreshService,
     AttachmentUploadPipeline? attachmentUploadPipeline,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
@@ -328,6 +328,12 @@ class IMService extends StateNotifier<IMServiceState>
     _wordRuntimeFilterService =
         wordRuntimeFilterService ??
         ImWordRuntimeFilterService(wordStore: _wordSyncStore);
+    _maskedMessageRefreshService =
+        maskedMessageRefreshService ??
+        ImMaskedMessageRefreshService(
+          wordRuntimeFilterService: _wordRuntimeFilterService,
+          ensureDatabaseReady: _ensureDatabaseReady,
+        );
     _syncOrchestrator =
         syncOrchestrator ??
         ImSyncOrchestrator(
@@ -375,6 +381,7 @@ class IMService extends StateNotifier<IMServiceState>
   late final ImSyncOrchestrator _syncOrchestrator;
   late final ImWordSyncStore _wordSyncStore;
   late final ImWordRuntimeFilterService _wordRuntimeFilterService;
+  late final ImMaskedMessageRefreshService _maskedMessageRefreshService;
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
@@ -712,7 +719,7 @@ class IMService extends StateNotifier<IMServiceState>
       unawaited(
         _syncOrchestrator.handleSyncCompleted(
           refreshMaskedMessagesAfterProhibitWordSync:
-              _refreshMaskedMessagesAfterProhibitWordSync,
+              _maskedMessageRefreshService.refreshAfterProhibitWordSync,
         ),
       );
       _completeInit(true);
@@ -1002,41 +1009,6 @@ class IMService extends StateNotifier<IMServiceState>
       return Map<String, dynamic>.from(raw);
     }
     return <String, dynamic>{};
-  }
-
-  String _readDynamicString(dynamic value) {
-    return value?.toString().trim() ?? '';
-  }
-
-  Future<void> _refreshMaskedMessagesAfterProhibitWordSync() async {
-    if (!await _ensureDatabaseReady()) {
-      return;
-    }
-    final db = WKDBHelper.shared.getDB();
-    if (db == null) {
-      return;
-    }
-
-    final rows = await db.query(
-      WKDBConst.tableMessage,
-      columns: const <String>['client_msg_no'],
-      where: 'type=? AND is_deleted=0',
-      whereArgs: const <Object>[WkMessageContentType.text],
-    );
-    for (final row in rows) {
-      final clientMsgNo = _readDynamicString(row['client_msg_no']);
-      if (clientMsgNo.isEmpty) {
-        continue;
-      }
-      final message = await MessageDB.shared.queryWithClientMsgNo(clientMsgNo);
-      if (message == null) {
-        continue;
-      }
-      final changed = applyProhibitWordsToMessage(message);
-      if (changed) {
-        WKIM.shared.messageManager.setRefreshMsg(message);
-      }
-    }
   }
 
   String? _resolveConnectionError(int status, int? reasonCode) {

@@ -95,4 +95,20 @@ void main() {
     expect(source, isNot(contains('snapshot.list.any(text.contains)')));
     expect(source, isNot(contains("replaceAll(target, '*' * target.length)")));
   });
+
+  test(
+    'IMService delegates masked message refresh after prohibit-word sync',
+    () {
+      final source = File('lib/service/im/im_service.dart').readAsStringSync();
+
+      expect(source, contains('im_masked_message_refresh_service.dart'));
+      expect(source, contains('_maskedMessageRefreshService'));
+      expect(
+        source,
+        contains('_maskedMessageRefreshService.refreshAfterProhibitWordSync'),
+      );
+      expect(source, isNot(contains('MessageDB.shared.queryWithClientMsgNo')));
+      expect(source, isNot(contains('WKDBConst.tableMessage')));
+    },
+  );
 }

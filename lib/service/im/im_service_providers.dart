@@ -12,6 +12,7 @@ import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'attachment_upload_pipeline.dart';
 import 'im_connection_service.dart';
+import 'im_masked_message_refresh_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_sync_orchestrator.dart';
 import 'im_word_runtime_filter_service.dart';
@@ -68,6 +69,13 @@ final imWordRuntimeFilterServiceProvider = Provider<ImWordRuntimeFilterService>(
   },
 );
 
+final imMaskedMessageRefreshServiceProvider =
+    Provider<ImMaskedMessageRefreshService>((ref) {
+      return ImMaskedMessageRefreshService(
+        wordRuntimeFilterService: ref.watch(imWordRuntimeFilterServiceProvider),
+      );
+    });
+
 final imConversationExtraStoreProvider = Provider<ImConversationExtraStore>((
   ref,
 ) {
@@ -117,6 +125,7 @@ class ImRuntimeServices {
     required this.delivery,
     required this.notifications,
     required this.wordRuntimeFilters,
+    required this.maskedMessageRefresh,
   });
 
   final ImConnectionService connection;
@@ -125,6 +134,7 @@ class ImRuntimeServices {
   final MessageDeliveryService delivery;
   final ImNotificationBridge notifications;
   final ImWordRuntimeFilterService wordRuntimeFilters;
+  final ImMaskedMessageRefreshService maskedMessageRefresh;
 }
 
 final imRuntimeServicesProvider = Provider<ImRuntimeServices>((ref) {
@@ -135,5 +145,6 @@ final imRuntimeServicesProvider = Provider<ImRuntimeServices>((ref) {
     delivery: ref.watch(messageDeliveryServiceProvider),
     notifications: ref.watch(imNotificationBridgeProvider),
     wordRuntimeFilters: ref.watch(imWordRuntimeFilterServiceProvider),
+    maskedMessageRefresh: ref.watch(imMaskedMessageRefreshServiceProvider),
   );
 });
