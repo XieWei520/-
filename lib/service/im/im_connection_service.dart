@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:wukongimfluttersdk/common/options.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
+import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../api/im_route_info.dart';
 import 'coordinators/connection_coordinator.dart';
@@ -195,6 +197,56 @@ abstract interface class ImRealtimeRuntimePort {
   });
 
   Future<void> stop();
+}
+
+class WkImSdkConnectionPort implements ImSdkConnectionPort {
+  const WkImSdkConnectionPort();
+
+  @override
+  Future<bool> setup(ImSdkSetupOptions setupOptions) async {
+    final options =
+        Options.newDefault(
+            setupOptions.credentials.uid,
+            setupOptions.credentials.imToken,
+            addr: setupOptions.fallbackAddr,
+          )
+          ..getAddr = (complete) {
+            setupOptions.resolveAddr().then(complete);
+          }
+          ..protoVersion = setupOptions.protoVersion
+          ..deviceFlag = setupOptions.deviceFlag
+          ..debug = setupOptions.debug;
+    return WKIM.shared.setup(options);
+  }
+
+  @override
+  void connect() {
+    WKIM.shared.connectionManager.connect();
+  }
+
+  @override
+  void disconnect({required bool isLogout}) {
+    WKIM.shared.connectionManager.disconnect(isLogout);
+  }
+
+  @override
+  void bindStatusListener({
+    required String key,
+    required ImConnectionStatusHandler onStatus,
+  }) {
+    WKIM.shared.connectionManager.addOnConnectionStatus(key, (
+      status,
+      reasonCode,
+      info,
+    ) {
+      onStatus(status, reasonCode, info?.toString());
+    });
+  }
+
+  @override
+  void unbindStatusListener(String key) {
+    WKIM.shared.connectionManager.removeOnConnectionStatus(key);
+  }
 }
 
 class ImConnectionService {

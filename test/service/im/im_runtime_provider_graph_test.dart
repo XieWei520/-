@@ -66,7 +66,7 @@ void main() {
   });
 
   test(
-    'imServiceProvider resolves through the extracted sync and attachment providers',
+    'imServiceProvider owns the connection service from the provider graph',
     () {
       final androidManager = AndroidMessageAlertManager(
         presenter: const _NoopAndroidMessageAlertPresenter(),
@@ -85,17 +85,26 @@ void main() {
         conversationDraftApi: ConversationDraftApi.instance,
       );
       final attachments = AttachmentUploadPipeline();
+      final sdk = _FakeImSdkConnectionPort();
       final container = ProviderContainer(
         overrides: <Override>[
           androidMessageAlertManagerProvider.overrideWithValue(androidManager),
           desktopMessageAlertManagerProvider.overrideWithValue(desktopManager),
+          imSdkConnectionPortProvider.overrideWithValue(sdk),
+          imRealtimeRuntimePortProvider.overrideWithValue(
+            const _NoopImRealtimeRuntimePort(),
+          ),
+          imConnectionRouteResolverProvider.overrideWithValue(
+            (_) async => 'wss://route.example/ws',
+          ),
           imSyncOrchestratorProvider.overrideWithValue(sync),
           attachmentUploadPipelineProvider.overrideWithValue(attachments),
         ],
       );
-      addTearDown(container.dispose);
 
       expect(container.read(imServiceProvider.notifier), isA<IMService>());
+      container.dispose();
+      expect(sdk.unboundKeys, <String>['im_connection_service_listener']);
     },
   );
 }
@@ -139,4 +148,45 @@ class _NoopDesktopMessageAlertPresenter
   Future<void> showNotification(
     DesktopMessageNotification notification,
   ) async {}
+}
+
+class _FakeImSdkConnectionPort implements ImSdkConnectionPort {
+  final List<String> unboundKeys = <String>[];
+
+  @override
+  Future<bool> setup(ImSdkSetupOptions options) async => true;
+
+  @override
+  void connect() {}
+
+  @override
+  void disconnect({required bool isLogout}) {}
+
+  @override
+  void bindStatusListener({
+    required String key,
+    required ImConnectionStatusHandler onStatus,
+  }) {}
+
+  @override
+  void unbindStatusListener(String key) {
+    unboundKeys.add(key);
+  }
+}
+
+class _NoopImRealtimeRuntimePort implements ImRealtimeRuntimePort {
+  const _NoopImRealtimeRuntimePort();
+
+  @override
+  bool get isRunning => false;
+
+  @override
+  Future<void> start({
+    required String apiToken,
+    required String deviceSessionId,
+    required int lastAckedSeq,
+  }) async {}
+
+  @override
+  Future<void> stop() async {}
 }

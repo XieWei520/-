@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wukongimfluttersdk/common/mode.dart';
-import 'package:wukongimfluttersdk/common/options.dart';
 import 'package:wukongimfluttersdk/db/const.dart';
 import 'package:wukongimfluttersdk/db/message.dart';
 import 'package:wukongimfluttersdk/db/wk_db_helper.dart';
@@ -75,6 +74,7 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
     notificationBridge: ref.read(imNotificationBridgeProvider),
     syncOrchestrator: ref.read(imSyncOrchestratorProvider),
     attachmentUploadPipeline: ref.read(attachmentUploadPipelineProvider),
+    connectionService: ref.read(imConnectionServiceProvider),
     realtimeRolloutTelemetry: ref.read(realtimeRolloutTelemetryProvider),
   );
 });
@@ -244,56 +244,6 @@ _RecoveredCallingKey? _parseRecoveredCallingKey(String key) {
   return _RecoveredCallingKey(channelId: channelId, channelType: channelType);
 }
 
-class _WkImSdkConnectionPort implements ImSdkConnectionPort {
-  const _WkImSdkConnectionPort();
-
-  @override
-  Future<bool> setup(ImSdkSetupOptions setupOptions) async {
-    final options =
-        Options.newDefault(
-            setupOptions.credentials.uid,
-            setupOptions.credentials.imToken,
-            addr: setupOptions.fallbackAddr,
-          )
-          ..getAddr = (complete) {
-            setupOptions.resolveAddr().then(complete);
-          }
-          ..protoVersion = setupOptions.protoVersion
-          ..deviceFlag = setupOptions.deviceFlag
-          ..debug = setupOptions.debug;
-    return WKIM.shared.setup(options);
-  }
-
-  @override
-  void connect() {
-    WKIM.shared.connectionManager.connect();
-  }
-
-  @override
-  void disconnect({required bool isLogout}) {
-    WKIM.shared.connectionManager.disconnect(isLogout);
-  }
-
-  @override
-  void bindStatusListener({
-    required String key,
-    required ImConnectionStatusHandler onStatus,
-  }) {
-    WKIM.shared.connectionManager.addOnConnectionStatus(key, (
-      status,
-      reasonCode,
-      info,
-    ) {
-      onStatus(status, reasonCode, info?.toString());
-    });
-  }
-
-  @override
-  void unbindStatusListener(String key) {
-    WKIM.shared.connectionManager.removeOnConnectionStatus(key);
-  }
-}
-
 @immutable
 class IMServiceState {
   final bool isInitializing;
@@ -368,7 +318,7 @@ class IMService extends StateNotifier<IMServiceState>
     _connectionService =
         connectionService ??
         ImConnectionService(
-          sdk: const _WkImSdkConnectionPort(),
+          sdk: const WkImSdkConnectionPort(),
           realtimeRuntime: const SkeletonImRealtimeRuntimePort(),
           routeResolver: _resolveConnectAddr,
           listenerKey: _connectionListenerKey,

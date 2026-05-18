@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/im_config.dart';
 import '../../wukong_push/notification/android_message_alert_manager.dart';
 import '../../wukong_push/notification/desktop_message_alert_manager.dart';
 import '../../wukong_push/notification/web_notification_manager.dart';
@@ -16,7 +17,7 @@ import 'im_sync_orchestrator.dart';
 import 'message_delivery_service.dart';
 
 final imSdkConnectionPortProvider = Provider<ImSdkConnectionPort>((ref) {
-  return const SkeletonImSdkConnectionPort();
+  return const WkImSdkConnectionPort();
 });
 
 final imRealtimeRuntimePortProvider = Provider<ImRealtimeRuntimePort>((ref) {
@@ -24,9 +25,11 @@ final imRealtimeRuntimePortProvider = Provider<ImRealtimeRuntimePort>((ref) {
 });
 
 final imConnectionRouteResolverProvider = Provider<ImRouteResolver>((ref) {
-  return (uid) {
-    throw UnimplementedError(
-      'Skeleton only: bind IMSyncApi.fetchUserConnectRoute here.',
+  return (uid) async {
+    final route = await IMSyncApi.instance.fetchUserConnectRoute(uid: uid);
+    return ImConnectionService.selectConnectAddr(
+      route,
+      fallbackAddr: IMConfig.connectAddr,
     );
   };
 });
