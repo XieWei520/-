@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -77,18 +75,7 @@ class ChatPageShellRefactorPreview extends ConsumerWidget {
         session: session,
         child: Column(
           children: <Widget>[
-            Expanded(
-              child: ChatViewportPane(
-                session: session,
-                onLoadOlder: () {
-                  unawaited(
-                    ref
-                        .read(chatViewportProvider(session).notifier)
-                        .loadOlder(),
-                  );
-                },
-              ),
-            ),
+            Expanded(child: ChatViewportPane(session: session)),
             ChatComposerPane(session: session, onSubmitText: onSubmitText),
           ],
         ),
