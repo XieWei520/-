@@ -23,6 +23,7 @@ import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_colors.dart';
 import '../../wukong_robot/models/robot.dart';
 import '../../wukong_uikit/setting/setting_preferences.dart';
+import 'chat_call_entry_coordinator.dart';
 import 'chat_call_navigation.dart';
 import 'chat_channel_hydration_service.dart';
 import 'chat_channel_identity.dart';
@@ -135,7 +136,7 @@ class ChatPageShell extends ConsumerStatefulWidget {
 
 class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   WKChannel? _channel;
-  bool _isOpeningCallPage = false;
+  ChatCallEntryCoordinator? _callEntryCoordinator;
   ChatViewportRestoreAnchor? _restoreAnchor;
   final ChatConversationRestoreService _conversationRestoreService =
       ChatConversationRestoreService();
@@ -756,47 +757,39 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   Future<void> _handleCallActionTap(CallType callType) async {
-    if (_isOpeningCallPage) {
-      return;
-    }
-    _isOpeningCallPage = true;
-    try {
-      final decision = await ref
-          .read(chatCallEntryServiceProvider)
-          .prepareOutgoingCall(
-            callType,
-            channelId: widget.channelId,
-            channelType: widget.channelType,
-          );
-      if (!mounted) {
-        return;
-      }
-      if (!decision.shouldStart) {
-        final feedbackMessage = decision.feedbackMessage?.trim() ?? '';
-        if (feedbackMessage.isNotEmpty) {
-          _showCallFeedback(feedbackMessage);
+    await _buildCallEntryCoordinator().runPersonalCall(
+      callType,
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+      handleDecision: (decision) async {
+        if (!mounted) {
+          return;
         }
-        return;
-      }
-      final decidedCallType = decision.callType ?? callType;
-      final callPage = ref.read(chatCallPageBuilderProvider)(
-        channelId: widget.channelId,
-        channelName: _resolveTitle(),
-        callType: decidedCallType,
-      );
-      final feedbackMessage = await Navigator.of(
-        context,
-      ).push<String>(MaterialPageRoute<String>(builder: (_) => callPage));
-      if (!mounted) {
-        return;
-      }
-      final normalizedFeedback = feedbackMessage?.trim() ?? '';
-      if (normalizedFeedback.isNotEmpty) {
-        _showCallFeedback(normalizedFeedback);
-      }
-    } finally {
-      _isOpeningCallPage = false;
-    }
+        if (!decision.shouldStart) {
+          final feedbackMessage = decision.feedbackMessage?.trim() ?? '';
+          if (feedbackMessage.isNotEmpty) {
+            _showCallFeedback(feedbackMessage);
+          }
+          return;
+        }
+        final decidedCallType = decision.callType ?? callType;
+        final callPage = ref.read(chatCallPageBuilderProvider)(
+          channelId: widget.channelId,
+          channelName: _resolveTitle(),
+          callType: decidedCallType,
+        );
+        final feedbackMessage = await Navigator.of(
+          context,
+        ).push<String>(MaterialPageRoute<String>(builder: (_) => callPage));
+        if (!mounted) {
+          return;
+        }
+        final normalizedFeedback = feedbackMessage?.trim() ?? '';
+        if (normalizedFeedback.isNotEmpty) {
+          _showCallFeedback(normalizedFeedback);
+        }
+      },
+    );
   }
 
   void _showCallFeedback(String message) {
@@ -811,11 +804,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   Future<void> _openGroupCallPicker() async {
-    if (_isOpeningCallPage) {
-      return;
-    }
-    _isOpeningCallPage = true;
-    try {
+    await _buildCallEntryCoordinator().runGroupCall(() async {
       await pushGroupCallPicker(
         context: context,
         ref: ref,
@@ -823,9 +812,13 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         channelType: widget.channelType,
         channelName: _resolveTitle(),
       );
-    } finally {
-      _isOpeningCallPage = false;
-    }
+    });
+  }
+
+  ChatCallEntryCoordinator _buildCallEntryCoordinator() {
+    return _callEntryCoordinator ??= ChatCallEntryCoordinator(
+      service: ref.read(chatCallEntryServiceProvider),
+    );
   }
 
   Future<void> _openChatInfo() async {
