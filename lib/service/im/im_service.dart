@@ -613,7 +613,7 @@ class IMService extends StateNotifier<IMServiceState>
             deviceUuid: deviceUuid,
           ),
         );
-        _runSyncFanOutPlan(ImSyncOrchestrator.planForConversationSync());
+        unawaited(_syncOrchestrator.handleConversationSyncCompleted());
       } catch (error, stackTrace) {
         debugPrint('Conversation sync failed: $error');
         debugPrint('$stackTrace');
@@ -709,32 +709,16 @@ class IMService extends StateNotifier<IMServiceState>
           ).replayForConnectionStatus(status),
         );
       }
-      _runSyncFanOutPlan(ImSyncOrchestrator.planForSyncCompleted());
+      unawaited(
+        _syncOrchestrator.handleSyncCompleted(
+          refreshMaskedMessagesAfterProhibitWordSync:
+              _refreshMaskedMessagesAfterProhibitWordSync,
+        ),
+      );
       _completeInit(true);
     } else if (status == WKConnectStatus.kicked) {
       _completeInit(false);
     }
-  }
-
-  void _runSyncFanOutPlan(ImSyncFanOutPlan plan) {
-    _syncOrchestrator.runFanOutPlan(
-      plan,
-      ImSyncTaskHandlers(
-        syncReminders: ({reason}) =>
-            _syncOrchestrator.syncReminders(reason: reason),
-        syncSensitiveWords: ({reason}) =>
-            _syncOrchestrator.syncSensitiveWords(reason: reason),
-        syncProhibitWords: ({reason}) => _syncOrchestrator.syncProhibitWords(
-          reason: reason,
-          refreshMaskedMessagesAfterProhibitWordSync:
-              _refreshMaskedMessagesAfterProhibitWordSync,
-        ),
-        syncConversationExtras: ({reason}) =>
-            _syncOrchestrator.syncConversationExtras(reason: reason),
-        syncOfflineCommandMessages: ({reason}) =>
-            _syncOrchestrator.syncOfflineCommandMessages(reason: reason),
-      ),
-    );
   }
 
   void _handleCmd(WKCMD cmd) {

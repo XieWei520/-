@@ -254,10 +254,71 @@ class ImSyncOrchestrator {
     );
   }
 
-  Future<void> handleSyncCompleted() {
-    throw UnimplementedError(
-      'Skeleton only: fan out sync-completed tasks here.',
+  Future<void> handleSyncCompleted({
+    ImRefreshMaskedMessagesTask? refreshMaskedMessagesAfterProhibitWordSync,
+    ImOfflineCommandDispatcher? dispatchOfflineCommand,
+  }) {
+    return _runFanOutPlanWithDefaultTasks(
+      planForSyncCompleted(),
+      refreshMaskedMessagesAfterProhibitWordSync:
+          refreshMaskedMessagesAfterProhibitWordSync,
+      dispatchOfflineCommand: dispatchOfflineCommand,
     );
+  }
+
+  Future<void> handleConversationSyncCompleted({
+    ImOfflineCommandDispatcher? dispatchOfflineCommand,
+  }) {
+    return _runFanOutPlanWithDefaultTasks(
+      planForConversationSync(),
+      dispatchOfflineCommand: dispatchOfflineCommand,
+    );
+  }
+
+  Future<void> _runFanOutPlanWithDefaultTasks(
+    ImSyncFanOutPlan plan, {
+    ImRefreshMaskedMessagesTask? refreshMaskedMessagesAfterProhibitWordSync,
+    ImOfflineCommandDispatcher? dispatchOfflineCommand,
+  }) async {
+    final tasks = <Future<void>>[];
+    runFanOutPlan(
+      plan,
+      ImSyncTaskHandlers(
+        syncReminders: ({reason}) {
+          final task = syncReminders(reason: reason);
+          tasks.add(task);
+          return task;
+        },
+        syncSensitiveWords: ({reason}) {
+          final task = syncSensitiveWords(reason: reason);
+          tasks.add(task);
+          return task;
+        },
+        syncProhibitWords: ({reason}) {
+          final task = syncProhibitWords(
+            reason: reason,
+            refreshMaskedMessagesAfterProhibitWordSync:
+                refreshMaskedMessagesAfterProhibitWordSync,
+          );
+          tasks.add(task);
+          return task;
+        },
+        syncConversationExtras: ({reason}) {
+          final task = syncConversationExtras(reason: reason);
+          tasks.add(task);
+          return task;
+        },
+        syncOfflineCommandMessages: ({reason}) {
+          final task = syncOfflineCommandMessages(
+            reason: reason,
+            dispatchOfflineCommand: dispatchOfflineCommand,
+          );
+          tasks.add(task);
+          return task;
+        },
+      ),
+    );
+    await Future.wait(tasks);
   }
 
   void runFanOutPlan(ImSyncFanOutPlan plan, ImSyncTaskHandlers handlers) {

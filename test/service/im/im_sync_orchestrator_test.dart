@@ -69,6 +69,153 @@ void main() {
       expect(calls, <String>['reminders:unit', 'conversation:unit']);
     });
 
+    test('handleSyncCompleted runs the full background sync fan-out', () async {
+      final adapter = _RouteQueuedPlainAdapter(
+        payloadsByPath: <String, List<Object>>{
+          '/v1/message/reminder/sync': <Object>[
+            <String, dynamic>{
+              'data': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'id': 8,
+                  'message_id': 'm1',
+                  'channel_id': 'g1',
+                  'channel_type': 2,
+                  'message_seq': 99,
+                  'reminder_type': 1,
+                  'is_locate': 1,
+                  'uid': 'u1',
+                  'text': '@you',
+                  'version': 6,
+                  'done': 0,
+                  'publisher': 'u2',
+                },
+              ],
+            },
+          ],
+          '/v1/message/sync/sensitivewords': <Object>[
+            <String, dynamic>{
+              'tips': 'contains sensitive words',
+              'version': 7,
+              'list': <String>['bad'],
+            },
+          ],
+          '/v1/message/prohibit_words/sync': <Object>[
+            <Map<String, dynamic>>[
+              <String, dynamic>{
+                'id': 101,
+                'content': 'bad',
+                'is_deleted': 0,
+                'version': 12,
+              },
+            ],
+          ],
+          '/v1/message/sync': <Object>[
+            <String, dynamic>{
+              'messages': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'message_seq': 31,
+                  'channel_id': 'group_01',
+                  'channel_type': 2,
+                  'payload': <String, dynamic>{'cmd': 'syncMessageExtra'},
+                },
+              ],
+            },
+            const <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+          ],
+          '/v1/message/syncack/31': <Object>[
+            const <String, dynamic>{'code': 0},
+          ],
+        },
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+      final reminderStore = _FakeReminderStore(version: 5);
+      final wordStore = _FakeWordSyncStore(
+        sensitiveSnapshot: const SensitiveWordsSnapshot(version: 3),
+        maxProhibitWordVersion: 9,
+      );
+      final conversationDraftApi = _FakeConversationDraftStore(
+        syncedExtras: const <RemoteConversationDraft>[
+          RemoteConversationDraft(
+            channelId: 'group_01',
+            channelType: 2,
+            draft: 'draft_text',
+            version: 12,
+          ),
+        ],
+      );
+      final conversationStore = _FakeConversationExtraStore(maxVersion: 4);
+      final dispatched = <Map<String, dynamic>>[];
+      final delayDurations = <Duration>[];
+      var refreshCount = 0;
+      final orchestrator = _orchestrator(
+        reminderStore: reminderStore,
+        reminderChannelIdsLoader: () async => <String>['g1'],
+        wordStore: wordStore,
+        conversationDraftApi: conversationDraftApi,
+        conversationExtraStore: conversationStore,
+        syncDelay: (duration) async {
+          delayDurations.add(duration);
+        },
+      );
+
+      await orchestrator.handleSyncCompleted(
+        refreshMaskedMessagesAfterProhibitWordSync: () async {
+          refreshCount++;
+        },
+        dispatchOfflineCommand: dispatched.add,
+      );
+
+      expect(
+        adapter.requests.map((request) => request.path),
+        containsAll(<String>[
+          '/v1/message/reminder/sync',
+          '/v1/message/sync/sensitivewords',
+          '/v1/message/prohibit_words/sync',
+          '/v1/message/sync',
+          '/v1/message/syncack/31',
+        ]),
+      );
+      expect(reminderStore.saved, hasLength(1));
+      expect(wordStore.savedSensitiveSnapshot?.version, 7);
+      expect(wordStore.savedProhibitWords, hasLength(1));
+      expect(refreshCount, 1);
+      expect(conversationDraftApi.syncExtraVersions, <int>[4]);
+      expect(conversationStore.savedExtras, hasLength(1));
+      expect(dispatched, hasLength(1));
+      expect(dispatched.single['cmd'], 'syncMessageExtra');
+      expect(delayDurations, <Duration>[const Duration(seconds: 1)]);
+    });
+
+    test(
+      'handleConversationSyncCompleted only schedules conversation extras and offline commands',
+      () async {
+        final adapter = _RouteQueuedPlainAdapter(
+          payloadsByPath: <String, List<Object>>{
+            '/v1/message/sync': <Object>[
+              const <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+            ],
+          },
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        final conversationDraftApi = _FakeConversationDraftStore(
+          syncedExtras: const <RemoteConversationDraft>[],
+        );
+        final conversationStore = _FakeConversationExtraStore(maxVersion: 4);
+        final orchestrator = _orchestrator(
+          conversationDraftApi: conversationDraftApi,
+          conversationExtraStore: conversationStore,
+        );
+
+        await orchestrator.handleConversationSyncCompleted();
+
+        expect(adapter.requests.map((request) => request.path), <String>[
+          '/v1/message/sync',
+        ]);
+        expect(conversationDraftApi.syncExtraVersions, <int>[4]);
+        expect(conversationStore.savedExtras, isEmpty);
+      },
+    );
+
     test(
       'runExclusiveSyncTask replays a pending trigger after current run',
       () async {
@@ -872,6 +1019,39 @@ class _QueuedPlainAdapter implements HttpClientAdapter {
     }
     return ResponseBody.fromString(
       jsonEncode(_payloads.removeAt(0)),
+      200,
+      headers: <String, List<String>>{
+        Headers.contentTypeHeader: <String>[Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _RouteQueuedPlainAdapter implements HttpClientAdapter {
+  _RouteQueuedPlainAdapter({required Map<String, List<Object>> payloadsByPath})
+    : _payloadsByPath = payloadsByPath.map(
+        (path, payloads) => MapEntry(path, List<Object>.from(payloads)),
+      );
+
+  final Map<String, List<Object>> _payloadsByPath;
+  final List<RequestOptions> requests = <RequestOptions>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests.add(options);
+    final payloads = _payloadsByPath[options.path];
+    if (payloads == null || payloads.isEmpty) {
+      throw StateError('No queued payload for ${options.path}');
+    }
+    return ResponseBody.fromString(
+      jsonEncode(payloads.removeAt(0)),
       200,
       headers: <String, List<String>>{
         Headers.contentTypeHeader: <String>[Headers.jsonContentType],
