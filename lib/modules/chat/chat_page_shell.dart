@@ -29,9 +29,6 @@ import '../../widgets/chat_background_surface.dart';
 import '../../widgets/liquid_glass_panel.dart';
 import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_colors.dart';
-import '../../widgets/wk_reference_assets.dart';
-import '../../widgets/wk_main_top_bar.dart';
-import '../../widgets/wk_web_ui_tokens.dart';
 import '../../wukong_robot/models/robot.dart';
 import '../../wukong_robot/robot_service.dart';
 import '../../wukong_uikit/setting/setting_preferences.dart';
@@ -52,7 +49,6 @@ import 'forward_message_page.dart';
 import 'message_content_preview.dart';
 import 'widgets/chat_pinned_message_banner.dart';
 import 'widgets/chat_pinned_message_sheet.dart';
-import 'widgets/chat_search_mode_bar.dart';
 import 'widgets/chat_selection_toolbar.dart';
 import '../conversation/conversation_activity_registry.dart';
 import '../video_call/widgets/chat_calling_participants_bar.dart';
@@ -648,9 +644,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   @override
   Widget build(BuildContext context) {
     final title = _resolveTitle();
-    final subtitle = _primarySubtitle();
-    final secondarySubtitle = _secondarySubtitle();
-    final tags = _buildTags();
     final headerVipLevel = _resolveHeaderVipLevel(
       ref.watch(
         friendListProvider.select(
@@ -659,9 +652,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       ),
     );
     final scene = ref.watch(chatSceneControllerProvider(_chatSession));
-    final searchMode = ref.watch(
-      chatSearchModeControllerProvider(_chatSession),
-    );
     final selection = ref.watch(chatSelectionControllerProvider(_chatSession));
     final activityState = _activityState;
     final selectedChatBackground =
@@ -679,7 +669,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     final showSearchAction =
         !isMobileWarmStyle || MediaQuery.sizeOf(context).width >= 420;
     final useLiquidShell = useWarmWorkbenchStyle;
-    final liquidTokens = LiquidGlassTokens.of(context);
     final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final liquidBackgroundColor = isDarkTheme
         ? LiquidGlassColors.darkBackground
@@ -687,46 +676,11 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     final mobileWarmBackgroundColor = isDarkTheme
         ? LiquidGlassColors.darkBackground
         : LiquidGlassColors.lightBackground;
-    final mobileWarmSurfaceColor = isDarkTheme
-        ? liquidTokens.surface
-        : const Color(0xFFFFFFFF);
-    final mobileWarmPrimaryColor = isDarkTheme
-        ? liquidTokens.text
-        : WKWebColors.textPrimary;
-    final mobileWarmSecondaryColor = isDarkTheme
-        ? liquidTokens.textSecondary
-        : WKColors.color999;
-    final mobileWarmActionColor = isDarkTheme
-        ? liquidTokens.text
-        : WKWebColors.action;
-    final mobileWarmBorderColor = isDarkTheme
-        ? liquidTokens.border
-        : WKWebColors.borderWarm;
     final shellBackgroundColor = isMobileWarmStyle
         ? mobileWarmBackgroundColor
         : useLiquidShell
         ? liquidBackgroundColor
         : WKColors.homeBg;
-    final appBarBackgroundColor = isMobileWarmStyle
-        ? mobileWarmSurfaceColor
-        : useLiquidShell
-        ? liquidTokens.surface
-        : WKColors.homeBg;
-    final headerPrimaryColor = isMobileWarmStyle
-        ? mobileWarmPrimaryColor
-        : useLiquidShell
-        ? liquidTokens.text
-        : WKColors.colorDark;
-    final headerSecondaryColor = isMobileWarmStyle
-        ? mobileWarmSecondaryColor
-        : useLiquidShell
-        ? liquidTokens.textSecondary
-        : WKColors.color999;
-    final headerActionTint = isMobileWarmStyle
-        ? mobileWarmActionColor
-        : useLiquidShell
-        ? liquidTokens.text
-        : WKColors.popupText;
 
     return PopScope<void>(
       onPopInvokedWithResult: (didPop, result) {
@@ -737,158 +691,33 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       child: Scaffold(
         backgroundColor: shellBackgroundColor,
         resizeToAvoidBottomInset: false,
-        appBar: AppBar(
-          toolbarHeight: isMobileWarmStyle
-              ? 74
-              : useLiquidShell
-              ? 68
-              : null,
-          leadingWidth: isMobileWarmStyle ? 48 : null,
-          backgroundColor: appBarBackgroundColor,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          shape: useLiquidShell
-              ? RoundedRectangleBorder(
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(20),
-                  ),
-                  side: BorderSide(color: liquidTokens.border),
-                )
-              : null,
-          shadowColor: Colors.transparent,
-          leading: IconButton(
-            key: const ValueKey<String>('chat-back-button'),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 48, height: 48),
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: WKReferenceAssets.image(
-              WKReferenceAssets.back,
-              width: 22,
-              height: 22,
-              tint: headerPrimaryColor,
-            ),
+        appBar: ChatHeaderPane(
+          session: _chatSession,
+          state: ChatHeaderPaneState(
+            title: title,
+            subtitle: _primarySubtitle(),
+            secondarySubtitle: _secondarySubtitle(),
+            avatarUrl: _channel?.avatar,
+            vipLevel: headerVipLevel,
+            tagWidgets: _buildTags(),
+            isGroup: widget.channelType == WKChannelType.group,
+            showSearchAction: showSearchAction,
           ),
-          titleSpacing: 0,
-          title: searchMode.isActive
-              ? ChatSearchModeBar(
-                  initialKeyword: searchMode.keyword,
-                  onChanged: (value) {
-                    ref
-                        .read(
-                          chatSearchModeControllerProvider(
-                            _chatSession,
-                          ).notifier,
-                        )
-                        .updateKeyword(value);
-                  },
-                  onSubmitted: (_) => _openChatSearch(),
-                  onClose: _closeSceneSearch,
-                )
-              : InkWell(
-                  onTap: widget.channelType == WKChannelType.customerService
-                      ? null
-                      : () {},
-                  child: ChatHeaderIdentityPane(
-                    title: title,
-                    subtitle: subtitle,
-                    secondarySubtitle: secondarySubtitle,
-                    avatarUrl: _channel?.avatar,
-                    isGroup: widget.channelType == WKChannelType.group,
-                    avatarSize: isMobileWarmStyle ? 48 : 40,
-                    primaryColor: headerPrimaryColor,
-                    secondaryColor: headerSecondaryColor,
-                    vipLevel: headerVipLevel,
-                    tags: tags,
-                  ),
-                ),
-          actions: searchMode.isActive
-              ? const <Widget>[]
-              : [
-                  if (showSearchAction)
-                    IconButton(
-                      key: const ValueKey<String>('chat-open-search'),
-                      onPressed: _openSceneSearch,
-                      icon: WKReferenceAssets.image(
-                        WKReferenceAssets.search,
-                        width: 20,
-                        height: 20,
-                        tint: headerActionTint,
-                      ),
-                    ),
-                  if (isMobileWarmStyle)
-                    isDarkTheme
-                        ? Padding(
-                            padding: const EdgeInsets.only(right: 16),
-                            child: SizedBox(
-                              width: 38,
-                              height: 38,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: mobileWarmSurfaceColor,
-                                  borderRadius: BorderRadius.circular(
-                                    WKWebRadius.control,
-                                  ),
-                                  border: Border.all(
-                                    color: mobileWarmBorderColor,
-                                    width: 1.2,
-                                  ),
-                                ),
-                                child: IconButton(
-                                  key: const ValueKey<String>('chat-open-more'),
-                                  tooltip: '\u66F4\u591A',
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints.tightFor(
-                                    width: 38,
-                                    height: 38,
-                                  ),
-                                  onPressed: _openChatInfo,
-                                  icon: WKReferenceAssets.image(
-                                    WKReferenceAssets.topMore,
-                                    width: 18,
-                                    height: 18,
-                                    tint: mobileWarmActionColor,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        : WKTopBarActionButton(
-                            key: const ValueKey<String>('chat-open-more'),
-                            tooltip: '\u66F4\u591A',
-                            onTap: _openChatInfo,
-                            padding: const EdgeInsets.only(right: 16),
-                            variant: WKTopBarActionButtonVariant.warmSquare,
-                            size: 38,
-                            child: WKReferenceAssets.image(
-                              WKReferenceAssets.topMore,
-                              width: 18,
-                              height: 18,
-                              tint: mobileWarmActionColor,
-                            ),
-                          )
-                  else if (useLiquidShell)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: LiquidGlassPillButton(
-                        key: const ValueKey<String>('chat-open-more'),
-                        label: '\u8be6\u60c5',
-                        icon: Icons.more_horiz_rounded,
-                        onPressed: _openChatInfo,
-                      ),
-                    )
-                  else
-                    IconButton(
-                      key: const ValueKey<String>('chat-open-more'),
-                      onPressed: _openChatInfo,
-                      icon: WKReferenceAssets.image(
-                        WKReferenceAssets.topMore,
-                        width: 20,
-                        height: 20,
-                        tint: WKColors.popupText,
-                      ),
-                    ),
-                ],
+          productionChrome: true,
+          isMobileWarmStyle: isMobileWarmStyle,
+          useLiquidShell: useLiquidShell,
+          enableIdentityTap:
+              widget.channelType != WKChannelType.customerService,
+          onBack: () => Navigator.of(context).maybePop(),
+          onOpenSearch: _openSceneSearch,
+          onSearchKeywordChanged: (value) {
+            ref
+                .read(chatSearchModeControllerProvider(_chatSession).notifier)
+                .updateKeyword(value);
+          },
+          onSearchSubmitted: (_) => _openChatSearch(),
+          onCloseSearch: _closeSceneSearch,
+          onOpenDetails: _openChatInfo,
         ),
         body: ChatOverlayCoordinator(
           session: _chatSession,
@@ -1192,7 +1021,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         ? channelCategory!
         : widgetCategory;
     if (normalized == 'system') {
-      tags.add(const _HeaderTag(label: _officialTag));
+      tags.add(const ChatHeaderTag(label: _officialTag));
     }
     if (isCustomerServiceCategory(normalized)) {
       tags.add(
@@ -1203,7 +1032,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       );
     }
     if ((_channel?.robot ?? 0) == 1) {
-      tags.add(const _HeaderTag(label: _robotTag));
+      tags.add(const ChatHeaderTag(label: _robotTag));
     }
     return tags;
   }
@@ -1506,31 +1335,4 @@ String? _androidFixedChatTitle(String channelId, int channelType) {
     return _fileHelperTitle;
   }
   return null;
-}
-
-class _HeaderTag extends StatelessWidget {
-  const _HeaderTag({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = LiquidGlassTokens.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tokens.border),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: tokens.text,
-        ),
-      ),
-    );
-  }
 }
