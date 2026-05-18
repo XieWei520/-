@@ -12,7 +12,7 @@ void main() {
       ).readAsStringSync();
 
       expect(source, contains('im_notification_bridge.dart'));
-      expect(source, contains('_notificationBridge.showMessageAlert'));
+      expect(source, contains('_resolvedNotificationBridge.showMessageAlert'));
       expect(source, contains('lifecycleState: _appLifecycleState'));
       expect(bridgeSource, contains('web_notification_manager.dart'));
       expect(bridgeSource, contains('buildMessageAlertPlan'));
@@ -46,24 +46,21 @@ void main() {
     },
   );
 
-  test(
-    'web notifications mirror the desktop alert policy',
-    () {
-      final source = File(
-        'lib/wukong_push/notification/web_notification_manager_web.dart',
-      ).readAsStringSync();
+  test('web notifications mirror the desktop alert policy', () {
+    final source = File(
+      'lib/wukong_push/notification/web_notification_manager_web.dart',
+    ).readAsStringSync();
 
-      expect(source, contains('DesktopMessageAlertPolicy'));
-      expect(source, contains('MessageAlertPlan'));
-      expect(source, contains('messageSoundAssetPath'));
-      expect(source, contains('await _playMessageSound();'));
-      expect(source, contains('silent: true'));
-      expect(source, contains('browserNotification.onclick'));
-      expect(source, contains('web.window.focus()'));
-      expect(source, isNot(contains('startTitleBlink();')));
-      expect(source, isNot(contains('silent: false')));
-    },
-  );
+    expect(source, contains('DesktopMessageAlertPolicy'));
+    expect(source, contains('MessageAlertPlan'));
+    expect(source, contains('messageSoundAssetPath'));
+    expect(source, contains('await _playMessageSound();'));
+    expect(source, contains('silent: true'));
+    expect(source, contains('browserNotification.onclick'));
+    expect(source, contains('web.window.focus()'));
+    expect(source, isNot(contains('startTitleBlink();')));
+    expect(source, isNot(contains('silent: false')));
+  });
 
   test('pubspec declares bundled notification audio assets', () {
     final source = File('pubspec.yaml').readAsStringSync();

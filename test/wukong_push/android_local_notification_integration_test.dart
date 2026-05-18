@@ -11,13 +11,10 @@ void main() {
     ).readAsStringSync();
 
     expect(source, contains('im_notification_bridge.dart'));
-    expect(source, contains('_notificationBridge.showMessageAlert'));
+    expect(source, contains('_resolvedNotificationBridge.showMessageAlert'));
     expect(bridgeSource, contains('android_message_alert_manager.dart'));
     expect(bridgeSource, contains('_shouldRequireRedDot'));
-    expect(
-      bridgeSource,
-      contains('androidAlerts.showNewMessageAlert'),
-    );
+    expect(bridgeSource, contains('androidAlerts.showNewMessageAlert'));
   });
 
   test('PushService does not enable FCM unless explicitly opted in', () {
@@ -42,17 +39,25 @@ void main() {
       'android/app/src/main/res/raw/keep.xml',
     ).readAsStringSync();
 
-    expect(keepXml, contains('@raw/${NotificationHelper.messageSoundResource}'));
+    expect(
+      keepXml,
+      contains('@raw/${NotificationHelper.messageSoundResource}'),
+    );
     expect(keepXml, contains('@mipmap/ic_launcher'));
   });
 
   test('Android release keeps local notification Gson metadata signatures', () {
     final buildGradle = File('android/app/build.gradle.kts').readAsStringSync();
-    final proguardRules = File('android/app/proguard-rules.pro').readAsStringSync();
+    final proguardRules = File(
+      'android/app/proguard-rules.pro',
+    ).readAsStringSync();
 
     expect(buildGradle, contains('proguard-rules.pro'));
     expect(proguardRules, contains('-keepattributes Signature'));
     expect(proguardRules, contains('com.google.gson.reflect.TypeToken'));
-    expect(proguardRules, contains('@com.google.gson.annotations.SerializedName'));
+    expect(
+      proguardRules,
+      contains('@com.google.gson.annotations.SerializedName'),
+    );
   });
 }

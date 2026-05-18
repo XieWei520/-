@@ -99,7 +99,7 @@ void main() {
 
   test('chat composer input explicitly keeps Chinese and emoji fallback', () {
     final source = File(
-      'lib/modules/chat/chat_page_shell.dart',
+      'lib/modules/chat/panes/chat_composer_pane.dart',
     ).readAsStringSync();
 
     expect(source, contains("key: const ValueKey<String>('chat-input-field')"));

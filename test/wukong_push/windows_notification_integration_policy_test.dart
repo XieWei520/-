@@ -12,13 +12,10 @@ void main() {
       ).readAsStringSync();
 
       expect(source, contains('im_notification_bridge.dart'));
-      expect(source, contains('_notificationBridge.showMessageAlert'));
+      expect(source, contains('_resolvedNotificationBridge.showMessageAlert'));
       expect(bridgeSource, contains('desktop_message_alert_manager.dart'));
       expect(bridgeSource, contains('message_alert_plan.dart'));
-      expect(
-        bridgeSource,
-        contains('desktopAlerts.showNewMessageAlert'),
-      );
+      expect(bridgeSource, contains('desktopAlerts.showNewMessageAlert'));
     },
   );
 
