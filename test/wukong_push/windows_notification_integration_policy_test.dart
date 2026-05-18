@@ -19,7 +19,7 @@ void main() {
     },
   );
 
-  test('Windows presenter uses local_notifier and bundled audio assets', () {
+  test('Windows presenter uses local_notifier and Flutter system sounds', () {
     final source = File(
       'lib/wukong_push/notification/desktop_message_alert_presenter_io.dart',
     ).readAsStringSync();
@@ -28,10 +28,14 @@ void main() {
       source,
       contains("import 'package:local_notifier/local_notifier.dart';"),
     );
+    expect(source, contains("import 'package:flutter/services.dart';"));
     expect(source, contains('identifier: notification.identifier'));
     expect(source, contains('silent: true'));
-    expect(source, contains('audio/im_tick.wav'));
-    expect(source, contains('audio/im_message.wav'));
+    expect(source, contains('SystemSound.play'));
+    expect(source, contains('SystemSoundType.click'));
+    expect(source, contains('SystemSoundType.alert'));
+    expect(source, isNot(contains("package:audioplayers/audioplayers.dart")));
+    expect(source, isNot(contains('AudioPlayer(')));
   });
 
   test('pubspec declares local_notifier dependency', () {

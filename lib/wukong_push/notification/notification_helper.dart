@@ -65,12 +65,33 @@ class NotificationHelper {
     );
   }
 
+  @visibleForTesting
+  static bool supportsLocalNotificationsForPlatform({
+    required bool isWeb,
+    required TargetPlatform platform,
+  }) {
+    if (isWeb) {
+      return false;
+    }
+    return platform == TargetPlatform.android ||
+        platform == TargetPlatform.iOS ||
+        platform == TargetPlatform.macOS;
+  }
+
+  bool get _supportsLocalNotifications => supportsLocalNotificationsForPlatform(
+    isWeb: kIsWeb,
+    platform: defaultTargetPlatform,
+  );
+
   /// Initialize notification plugin
   Future<void> initialize({
     void Function(String payload)? onNotificationTap,
   }) async {
     if (onNotificationTap != null) {
       _payloadHandler = onNotificationTap;
+    }
+    if (!_supportsLocalNotifications) {
+      return;
     }
     if (_isInitialized) return;
 
@@ -89,6 +110,7 @@ class NotificationHelper {
     const initSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
+      macOS: iosSettings,
     );
 
     await _plugin.initialize(
@@ -121,6 +143,9 @@ class NotificationHelper {
     bool badge = true,
     bool sound = true,
   }) async {
+    if (!_supportsLocalNotifications) {
+      return true;
+    }
     final iosPlugin = _plugin
         .resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin
@@ -189,6 +214,10 @@ class NotificationHelper {
     AudioAttributesUsage audioAttributesUsage =
         AudioAttributesUsage.notification,
   }) async {
+    if (!_supportsLocalNotifications) {
+      return;
+    }
+    await initialize();
     final androidDetails = AndroidNotificationDetails(
       channelId ?? 'default_channel',
       channelName ?? 'Default Channel',
@@ -214,6 +243,7 @@ class NotificationHelper {
     final details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
+      macOS: iosDetails,
     );
 
     try {
@@ -235,6 +265,10 @@ class NotificationHelper {
     required String groupKey,
     String? payload,
   }) async {
+    if (!_supportsLocalNotifications) {
+      return;
+    }
+    await initialize();
     final androidDetails = AndroidNotificationDetails(
       messageChannelId,
       messageChannelName,
@@ -254,14 +288,26 @@ class NotificationHelper {
     final details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
+      macOS: iosDetails,
     );
 
-    await _plugin.show(id, title, body, details, payload: payload);
+    try {
+      await _plugin.show(id, title, body, details, payload: payload);
+    } catch (error, stackTrace) {
+      debugPrint(
+        'NotificationHelper.showGroup failed for group $groupKey: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   /// Cancel a notification
   Future<void> cancel(int id) async {
+    if (!_supportsLocalNotifications) {
+      return;
+    }
     try {
+      await initialize();
       await _plugin.cancel(id);
     } catch (error, stackTrace) {
       debugPrint('NotificationHelper.cancel failed for id $id: $error');
@@ -271,7 +317,11 @@ class NotificationHelper {
 
   /// Cancel all notifications
   Future<void> cancelAll() async {
+    if (!_supportsLocalNotifications) {
+      return;
+    }
     try {
+      await initialize();
       await _plugin.cancelAll();
     } catch (error, stackTrace) {
       debugPrint('NotificationHelper.cancelAll failed: $error');
@@ -281,6 +331,10 @@ class NotificationHelper {
 
   /// Get pending notifications
   Future<List<PendingNotificationRequest>> getPendingNotifications() async {
+    if (!_supportsLocalNotifications) {
+      return const <PendingNotificationRequest>[];
+    }
+    await initialize();
     return _plugin.pendingNotificationRequests();
   }
 }
