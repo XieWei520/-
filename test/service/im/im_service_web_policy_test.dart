@@ -149,4 +149,18 @@ void main() {
     expect(source, isNot(contains('friendRequestListProvider')));
     expect(source, isNot(contains('CommandDispatcher _commandDispatcher')));
   });
+
+  test('IMService delegates realtime session events to a coordinator', () {
+    final source = File('lib/service/im/im_service.dart').readAsStringSync();
+
+    expect(source, contains('im_realtime_event_coordinator.dart'));
+    expect(source, contains('_realtimeEventCoordinator.handleSessionFrame'));
+    expect(
+      source,
+      contains('_realtimeEventCoordinator.applyRecoveredCallingStates'),
+    );
+    expect(source, isNot(contains('mapSessionControlEvent')));
+    expect(source, isNot(contains('ConversationUpdatedEvent')));
+    expect(source, isNot(contains('_parseRecoveredCallingKey')));
+  });
 }

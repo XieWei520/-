@@ -40,6 +40,7 @@ import 'im_connection_service.dart';
 import 'im_local_database_service.dart';
 import 'im_masked_message_refresh_service.dart';
 import 'im_notification_bridge.dart';
+import 'im_realtime_event_coordinator.dart';
 import 'im_sensitive_tip_persistence_service.dart';
 import 'im_service_providers.dart';
 import 'im_sync_orchestrator.dart';
@@ -216,31 +217,6 @@ bool shouldDisconnectForBackgroundLifecycle({
   );
 }
 
-class _RecoveredCallingKey {
-  const _RecoveredCallingKey({
-    required this.channelId,
-    required this.channelType,
-  });
-
-  final String channelId;
-  final int channelType;
-}
-
-_RecoveredCallingKey? _parseRecoveredCallingKey(String key) {
-  final separatorIndex = key.indexOf('_');
-  if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
-    return null;
-  }
-
-  final channelType = int.tryParse(key.substring(0, separatorIndex));
-  final channelId = key.substring(separatorIndex + 1).trim();
-  if (channelType == null || channelId.isEmpty) {
-    return null;
-  }
-
-  return _RecoveredCallingKey(channelId: channelId, channelType: channelType);
-}
-
 @immutable
 class IMServiceState {
   final bool isInitializing;
@@ -300,6 +276,7 @@ class IMService extends StateNotifier<IMServiceState>
     ImLocalDatabaseService? localDatabaseService,
     ImSensitiveTipPersistenceService? sensitiveTipPersistenceService,
     ImCommandEffectCoordinator? commandEffectCoordinator,
+    ImRealtimeEventCoordinator? realtimeEventCoordinator,
     AttachmentUploadPipeline? attachmentUploadPipeline,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
@@ -375,6 +352,12 @@ class IMService extends StateNotifier<IMServiceState>
           syncReminders: _syncOrchestrator.syncReminders,
           syncMessageExtras: _syncMessageExtras,
         );
+    _realtimeEventCoordinator =
+        realtimeEventCoordinator ??
+        ImRealtimeEventCoordinator(
+          applyConversationPatch: _applyConversationPatch,
+          handleCallSessionFrame: CallCoordinator.instance.handleSessionFrame,
+        );
     CallCoordinator.instance.setGatewayDegradationReader(
       _sessionRuntime.isGatewayDegradedFor,
     );
@@ -412,6 +395,7 @@ class IMService extends StateNotifier<IMServiceState>
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
   late final AttachmentUploadPipeline _attachmentUploadPipeline;
   late final ImCommandEffectCoordinator _commandEffectCoordinator;
+  late final ImRealtimeEventCoordinator _realtimeEventCoordinator;
 
   void registerVipExpiredHandler({
     required String key,
@@ -942,28 +926,16 @@ class IMService extends StateNotifier<IMServiceState>
     );
   }
 
-  Future<void> _handleSessionFrame(SessionEventFrame frame) async {
-    final controlEvent = mapSessionControlEvent(frame);
-    if (controlEvent is ConversationUpdatedEvent) {
-      _applyConversationUpdatedEvent(controlEvent);
-    }
-    await CallCoordinator.instance.handleSessionFrame(frame);
+  Future<void> _handleSessionFrame(SessionEventFrame frame) {
+    return _realtimeEventCoordinator.handleSessionFrame(frame);
   }
 
-  void _applyConversationUpdatedEvent(ConversationUpdatedEvent event) {
+  void _applyConversationPatch(ConversationPatch patch) {
     final read = _readProvider;
     if (read == null) {
       return;
     }
-    read(conversationProvider.notifier).applyPatch(
-      ConversationPatch.unreadAndDigest(
-        channelId: event.channelId,
-        channelType: event.channelType,
-        unreadCount: event.unreadCount,
-        lastMessageDigest: event.lastMessageDigest,
-        sortTimestamp: event.sortTimestamp,
-      ),
-    );
+    read(conversationProvider.notifier).applyPatch(patch);
   }
 
   @visibleForTesting
@@ -985,42 +957,7 @@ class IMService extends StateNotifier<IMServiceState>
   Set<String> applyRecoveredCallingStates(
     Iterable<WKChannelState> channelStates,
   ) {
-    final nextKeys = <String>{};
-    for (final channelState in channelStates) {
-      final channelId = channelState.channelID.trim();
-      if (channelId.isEmpty) {
-        continue;
-      }
-      final channelKey = ConversationActivityRegistry.conversationKey(
-        channelId,
-        channelState.channelType,
-      );
-      final isCalling = channelState.calling > 0;
-      ConversationActivityRegistry.instance.setCallingState(
-        channelId,
-        channelState.channelType,
-        isCalling,
-      );
-      if (isCalling) {
-        nextKeys.add(channelKey);
-      }
-    }
-
-    final previousCallingKeys = ConversationActivityRegistry.instance
-        .getActiveCallingConversationKeys();
-    for (final staleKey in previousCallingKeys.difference(nextKeys)) {
-      final target = _parseRecoveredCallingKey(staleKey);
-      if (target == null) {
-        continue;
-      }
-      ConversationActivityRegistry.instance.setCallingState(
-        target.channelId,
-        target.channelType,
-        false,
-      );
-    }
-
-    return Set<String>.from(nextKeys);
+    return _realtimeEventCoordinator.applyRecoveredCallingStates(channelStates);
   }
 
   @visibleForTesting
