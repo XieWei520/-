@@ -826,6 +826,38 @@ void main() {
         expect(recreated.state, isEmpty);
       },
     );
+
+    test(
+      'delete keeps conversation visible when remote delete fails',
+      () async {
+        final existing = _buildConversation(
+          channelId: 'g_remote_failed',
+          channelType: WKChannelType.group,
+          lastMsgSeq: 42,
+          lastMsgTimestamp: 1777185200,
+          clientMsgNo: 'client-42',
+        );
+        var draftRemoved = false;
+        final notifier = ConversationNotifier.forTest(
+          <WKUIConversationMsg>[existing],
+          deleteConversationAction: (channelId, channelType) async {
+            throw Exception('remote delete failed');
+          },
+          removeDraftAction: (channelId, channelType) async {
+            draftRemoved = true;
+          },
+        );
+
+        await expectLater(
+          notifier.deleteConversation('g_remote_failed', WKChannelType.group),
+          throwsA(isA<Exception>()),
+        );
+
+        expect(notifier.state, hasLength(1));
+        expect(notifier.state.single.channelID, 'g_remote_failed');
+        expect(draftRemoved, isFalse);
+      },
+    );
   });
 }
 

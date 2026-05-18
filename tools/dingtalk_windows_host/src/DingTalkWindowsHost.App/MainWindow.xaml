@@ -1,0 +1,190 @@
+<Window x:Class="DingTalkWindowsHost.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wfi="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
+        Title="DingTalk Windows Host"
+        Width="1360"
+        Height="920"
+        MinWidth="1120"
+        MinHeight="820"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="240" />
+            <ColumnDefinition Width="16" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Row="0"
+                Grid.Column="0"
+                Padding="16"
+                Background="#FFF4F4F4"
+                BorderBrush="#FFD8D8D8"
+                BorderThickness="1"
+                CornerRadius="8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock FontSize="20"
+                               FontWeight="SemiBold"
+                               Text="Host Controls" />
+                    <TextBlock Margin="0,8,0,16"
+                               Foreground="#FF555555"
+                               Text="Scaffold actions for the DingTalk host shell."
+                               TextWrapping="Wrap" />
+
+                    <Button Height="36"
+                            Margin="0,0,0,10"
+                            Command="{Binding StartCommand}"
+                            Content="Start" />
+                    <Button Height="36"
+                            Margin="0,0,0,10"
+                            Command="{Binding StopCommand}"
+                            Content="Stop" />
+                    <Button Height="36"
+                            Margin="0,0,0,10"
+                            Command="{Binding ReloadCommand}"
+                            Content="Reload" />
+                    <Button Height="36"
+                            Margin="0,0,0,18"
+                            Command="{Binding ReattachCommand}"
+                            Content="Reattach" />
+                    <Button Height="36"
+                            Margin="0,0,0,18"
+                            Command="{Binding LaunchDingTalkCommand}"
+                            Content="Launch DingTalk" />
+                    <Button Height="36"
+                            Margin="0,0,0,18"
+                            Command="{Binding RestoreDingTalkWindowCommand}"
+                            Content="Restore DingTalk Window" />
+
+                    <TextBlock FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Status" />
+                    <TextBlock Margin="0,8,0,0"
+                               Text="{Binding StatusText}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Margin="0,8,0,0"
+                               Text="{Binding LauncherStatusText}"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Margin="0,18,0,0"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Structured Sources" />
+                    <TextBlock Margin="0,8,0,0"
+                               FontFamily="Consolas"
+                               FontSize="11"
+                               Text="{Binding StructuredSourcesText}"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Margin="0,18,0,0"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Window Diagnostics" />
+                    <TextBlock Margin="0,8,0,0"
+                               FontFamily="Consolas"
+                               FontSize="11"
+                               Text="{Binding WindowDiagnosticsText}"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Margin="0,18,0,0"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Conversation Diagnostics" />
+                    <TextBlock Margin="0,8,0,0"
+                               FontFamily="Consolas"
+                               FontSize="11"
+                               Text="{Binding ConversationDiagnosticsText}"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Margin="0,18,0,0"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Latest Capture" />
+                    <TextBlock Margin="0,8,0,0"
+                               Text="{Binding LatestCaptureText}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Border Grid.Row="0"
+                Grid.Column="2"
+                Padding="16"
+                Background="#FFFFFFFF"
+                BorderBrush="#FFD8D8D8"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid>
+                <Border Width="{Binding HostedSurfaceWidth}"
+                        Height="{Binding HostedSurfaceHeight}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="#FF111111"
+                        BorderBrush="#FF444444"
+                        BorderThickness="1">
+                    <Grid>
+                        <wfi:WindowsFormsHost x:Name="HostSurface"
+                                              Width="{Binding HostedSurfaceWidth}"
+                                              Height="{Binding HostedSurfaceHeight}" />
+                        <Border Margin="16"
+                                Padding="10,6"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top"
+                                Background="#88000000"
+                                CornerRadius="4"
+                                IsHitTestVisible="False">
+                            <TextBlock MaxWidth="260"
+                                       Foreground="#FFFFFFFF"
+                                       Text="{Binding SurfaceStatusText}"
+                                       TextWrapping="Wrap" />
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Grid.Column="0"
+                Grid.ColumnSpan="3"
+                Margin="0,16,0,0"
+                Padding="12"
+                Background="#FFF4F4F4"
+                BorderBrush="#FFD8D8D8"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Shell State" />
+                    <TextBlock Margin="0,4,0,0"
+                               Text="{Binding ShellStateText}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Current HWND" />
+                    <TextBlock Margin="0,4,0,0"
+                               Text="{Binding CurrentHwndText}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <TextBlock FontWeight="SemiBold"
+                               Text="Last Event Time" />
+                    <TextBlock Margin="0,4,0,0"
+                               Text="{Binding LastEventTimeText}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

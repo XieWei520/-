@@ -4,7 +4,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 
-import '../../widgets/wk_colors.dart';
+import '../../widgets/liquid_glass_tokens.dart';
 import 'chat_media_action_service.dart';
 
 typedef ChatDroppedFilesCallback =
@@ -72,6 +72,16 @@ class _ChatDesktopDropTargetState extends State<ChatDesktopDropTarget> {
   }
 }
 
+@visibleForTesting
+class ChatDesktopDropOverlayForTesting extends StatelessWidget {
+  const ChatDesktopDropOverlayForTesting({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _ChatDesktopDropOverlay();
+  }
+}
+
 class _ChatDesktopDropOverlay extends StatelessWidget {
   const _ChatDesktopDropOverlay();
 
@@ -82,14 +92,15 @@ class _ChatDesktopDropOverlay extends StatelessWidget {
         child: DecoratedBox(
           key: const ValueKey<String>('chat-desktop-drop-overlay'),
           decoration: BoxDecoration(
-            color: WKColors.brand500.withValues(alpha: 0.08),
-            border: Border.all(color: WKColors.brand500, width: 2),
+            color: LiquidGlassColors.primary2.withValues(alpha: 0.08),
+            borderRadius: LiquidGlassRadii.xl,
+            border: Border.all(color: LiquidGlassColors.primary2, width: 2),
           ),
           child: const Center(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.all(Radius.circular(8)),
+                borderRadius: LiquidGlassRadii.xl,
                 boxShadow: [
                   BoxShadow(
                     color: Color(0x22000000),
@@ -105,14 +116,14 @@ class _ChatDesktopDropOverlay extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.upload_file_rounded,
-                      color: WKColors.brand500,
+                      color: LiquidGlassColors.primary2,
                       size: 24,
                     ),
                     SizedBox(width: 10),
                     Text(
-                      '\u677e\u5f00\u5373\u53ef\u53d1\u9001\u6587\u4ef6\u6216\u56fe\u7247',
+                      '\u91ca\u653e\u6587\u4ef6\u5373\u53ef\u53d1\u9001',
                       style: TextStyle(
-                        color: WKColors.brand500,
+                        color: LiquidGlassColors.primary2,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),

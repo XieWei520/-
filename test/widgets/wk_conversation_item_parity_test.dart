@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/core/theme/chat_micro_interactions.dart';
 import 'package:wukong_im_app/modules/customer_service/customer_service_badge.dart';
 import 'package:wukong_im_app/widgets/wk_emoji_text.dart';
 import 'package:wukong_im_app/widgets/wk_conversation_item.dart';
 import 'package:wukong_im_app/widgets/wk_colors.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
-import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 import 'package:wukong_im_app/wukong_base/emoji/android_emoji_catalog.dart';
 
 void main() {
@@ -321,15 +321,23 @@ void main() {
       find.byKey(const ValueKey<String>('wk-conversation-item-web-shell')),
     );
     final decoration = shell.decoration! as BoxDecoration;
-    expect(decoration.color, WKWebColors.actionSoft);
+    expect(decoration.color, const Color(0xFFEAF2FF));
     expect(
       tester
           .getSize(
             find.byKey(const ValueKey<String>('wk-conversation-item-hitbox')),
           )
           .height,
-      76,
+      68,
     );
+    expect(find.text('3'), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey<String>('wk-conversation-item-active-indicator'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(UnreadBadgeBounce), findsOneWidget);
   });
 
   testWidgets('conversation item exposes a visible Web ink surface', (

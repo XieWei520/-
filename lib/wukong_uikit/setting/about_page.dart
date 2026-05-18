@@ -175,34 +175,6 @@ class _AboutPageState extends State<AboutPage> {
               ],
             ),
           ),
-          GestureDetector(
-            onTap: () =>
-                _openUrl('https://beian.miit.gov.cn/#/home', '无法打开备案查询页面'),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Container(
-                key: const ValueKey<String>('about-legal-link'),
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.sizeOf(context).width - 20,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: WKColors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'ICP备案号 湘ICP备2026016828号 >',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: WKColors.color999),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 3),
           const Padding(
             padding: EdgeInsets.only(bottom: 50),
             child: Text(

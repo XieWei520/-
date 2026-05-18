@@ -190,10 +190,38 @@ bool shouldContinueRoomSetup({
       storeState.isActive;
 }
 
+bool shouldUseSessionOrchestratorForRoom(
+  CallRoom room, {
+  required bool useOrchestratorForDirectCalls,
+}) {
+  if (useOrchestratorForDirectCalls) {
+    return true;
+  }
+  if (room.participants.isNotEmpty) {
+    return true;
+  }
+  final channelType = room.channelType ?? WKChannelType.personal;
+  return channelType != WKChannelType.personal;
+}
+
 CallState resolveAcceptedIncomingUiState(CallState currentState) {
   return currentState == CallState.connected
       ? CallState.connected
-      : CallState.ringing;
+      : CallState.calling;
+}
+
+CallState resolveCallSessionUiState(CallLifecycleStatus status) {
+  return switch (status) {
+    CallLifecycleStatus.invited ||
+    CallLifecycleStatus.ringing => CallState.ringing,
+    CallLifecycleStatus.connecting ||
+    CallLifecycleStatus.reconnecting => CallState.calling,
+    CallLifecycleStatus.connected => CallState.connected,
+    CallLifecycleStatus.ending ||
+    CallLifecycleStatus.ended ||
+    CallLifecycleStatus.failed => CallState.ended,
+    CallLifecycleStatus.idle => CallState.idle,
+  };
 }
 
 class BufferedRemoteSignalQueue {
@@ -255,6 +283,8 @@ class SignalRecoveryLoop {
     required bool Function(RemoteSignalCallEvent event) applyRemoteSignal,
     required String Function() currentUidReader,
     this.degradedThreshold = const Duration(seconds: 4),
+    this.enableSafetyPolling = true,
+    this.safetyPollingInterval = const Duration(seconds: 1),
     List<Duration> backoffSchedule = const <Duration>[
       Duration(seconds: 1),
       Duration(seconds: 2),
@@ -275,6 +305,8 @@ class SignalRecoveryLoop {
   final String Function() _currentUidReader;
   final Future<void> Function(Duration delay) _delay;
   final Duration degradedThreshold;
+  final bool enableSafetyPolling;
+  final Duration safetyPollingInterval;
   final List<Duration> backoffSchedule;
 
   final Map<String, Set<String>> _seenSignals = <String, Set<String>>{};
@@ -293,7 +325,8 @@ class SignalRecoveryLoop {
         _callStore.state.isActive &&
         _callStore.state.roomId.isNotEmpty &&
         _currentUidReader().isNotEmpty &&
-        (_isGatewayDegradedFor?.call(degradedThreshold) ?? false);
+        (enableSafetyPolling ||
+            (_isGatewayDegradedFor?.call(degradedThreshold) ?? false));
   }
 
   void start() {
@@ -425,10 +458,7 @@ class SignalRecoveryLoop {
           }
         }
 
-        final delay = backoffSchedule[_attempt];
-        if (_attempt < backoffSchedule.length - 1) {
-          _attempt++;
-        }
+        final delay = _nextDelay();
         await _delay(delay);
       }
     } finally {
@@ -448,6 +478,19 @@ class SignalRecoveryLoop {
     }
     _seenSignals.remove(roomId);
     _trackedRoomId = null;
+  }
+
+  Duration _nextDelay() {
+    final isDegraded = _isGatewayDegradedFor?.call(degradedThreshold) ?? false;
+    if (!isDegraded && enableSafetyPolling) {
+      _attempt = 0;
+      return safetyPollingInterval;
+    }
+    final delay = backoffSchedule[_attempt];
+    if (_attempt < backoffSchedule.length - 1) {
+      _attempt++;
+    }
+    return delay;
   }
 
   String _eventKey({
@@ -559,17 +602,10 @@ class VideoCallService with WidgetsBindingObserver {
   }
 
   bool _shouldUseSessionOrchestratorForRoom(CallRoom room) {
-    if (_useOrchestratorForDirectCalls) {
-      return true;
-    }
-    if (room.participants.isNotEmpty) {
-      return true;
-    }
-    if ((room.channelId ?? '').trim().isNotEmpty) {
-      return true;
-    }
-    return (room.channelType ?? WKChannelType.personal) !=
-        WKChannelType.personal;
+    return shouldUseSessionOrchestratorForRoom(
+      room,
+      useOrchestratorForDirectCalls: _useOrchestratorForDirectCalls,
+    );
   }
 
   void setGatewayDegradationReader(bool Function(Duration threshold) reader) {
@@ -1038,19 +1074,21 @@ class VideoCallService with WidgetsBindingObserver {
       return;
     }
 
+    final uiState = resolveCallSessionUiState(state.status);
+    if (uiState != CallState.idle) {
+      _emitState(uiState);
+    }
     switch (state.status) {
-      case CallLifecycleStatus.invited:
-      case CallLifecycleStatus.ringing:
-        _emitState(CallState.ringing);
-      case CallLifecycleStatus.connecting:
-      case CallLifecycleStatus.reconnecting:
-        _emitState(CallState.calling);
       case CallLifecycleStatus.connected:
         _emitState(CallState.connected);
         fireAndForgetCall(
           _markConnectedHistory,
           debugLabel: 'mark connected history from call state',
         );
+      case CallLifecycleStatus.invited:
+      case CallLifecycleStatus.ringing:
+      case CallLifecycleStatus.connecting:
+      case CallLifecycleStatus.reconnecting:
       case CallLifecycleStatus.ending:
       case CallLifecycleStatus.ended:
       case CallLifecycleStatus.failed:
@@ -1081,6 +1119,9 @@ class VideoCallService with WidgetsBindingObserver {
       'sdp': answer.sdp,
       'type': answer.type,
     });
+    _callStore.apply(CallEvent.localConnected(roomId: signal.roomId));
+    _signalRecoveryLoop.notifyStateChanged();
+    await _markServerConnected(signal.roomId);
     _emitState(CallState.connected);
     await _markConnectedHistory();
     await _drainBufferedSignals(signal.roomId);
@@ -1098,7 +1139,22 @@ class VideoCallService with WidgetsBindingObserver {
       ),
     );
     _hasRemoteDescription = true;
+    _callStore.apply(CallEvent.localConnected(roomId: signal.roomId));
+    _signalRecoveryLoop.notifyStateChanged();
+    _emitState(CallState.connected);
+    await _markConnectedHistory();
     await _drainBufferedSignals(signal.roomId);
+  }
+
+  Future<void> _markServerConnected(String roomId) async {
+    try {
+      await _callApi.updateStatus(
+        roomId: roomId,
+        status: CallRoomStatus.connected,
+      );
+    } catch (error) {
+      debugPrint('Call connected status update failed: $error');
+    }
   }
 
   Future<void> _handleRemoteCandidate(RemoteSignalCallEvent signal) async {
@@ -1525,21 +1581,9 @@ class VideoCallService with WidgetsBindingObserver {
   }
 
   void _emitSessionState(CallSessionState state) {
-    switch (state.status) {
-      case CallLifecycleStatus.invited:
-      case CallLifecycleStatus.ringing:
-        _emitState(CallState.ringing);
-      case CallLifecycleStatus.connecting:
-      case CallLifecycleStatus.reconnecting:
-        _emitState(CallState.calling);
-      case CallLifecycleStatus.connected:
-        _emitState(CallState.connected);
-      case CallLifecycleStatus.ending:
-      case CallLifecycleStatus.ended:
-      case CallLifecycleStatus.failed:
-        _emitState(CallState.ended);
-      case CallLifecycleStatus.idle:
-        break;
+    final uiState = resolveCallSessionUiState(state.status);
+    if (uiState != CallState.idle) {
+      _emitState(uiState);
     }
   }
 

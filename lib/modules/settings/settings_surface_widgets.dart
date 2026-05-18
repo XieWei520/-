@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'settings_strings.dart';
+import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
-import '../../widgets/wk_theme.dart';
 
 class SettingsScaffold extends StatelessWidget {
   final String title;
@@ -71,26 +71,17 @@ class SettingsHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     return Container(
       padding: const EdgeInsets.all(WKSpace.lg),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [WKColors.brand50, WKColors.surface],
-        ),
-        borderRadius: BorderRadius.circular(WKRadius.xl),
-        border: Border.all(color: WKColors.outline),
-        boxShadow: WKShadows.card,
-      ),
       child: Row(
         children: [
           Container(
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              gradient: WKTheme.brandGradient,
-              borderRadius: BorderRadius.circular(WKRadius.lg),
+              gradient: tokens.primaryGradient,
+              borderRadius: LiquidGlassRadii.lg,
             ),
             child: Icon(icon, color: WKColors.white),
           ),
@@ -99,9 +90,20 @@ class SettingsHero extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: tokens.text,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+                Text(
+                  subtitle,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: tokens.textSecondary),
+                ),
               ],
             ),
           ),
@@ -123,12 +125,13 @@ class SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: WKColors.surface,
-        borderRadius: BorderRadius.circular(WKRadius.xl),
-        border: Border.all(color: WKColors.outline),
-        boxShadow: WKShadows.soft,
+        color: tokens.surface,
+        borderRadius: LiquidGlassRadii.xl,
+        border: Border.all(color: tokens.border),
+        boxShadow: LiquidGlassShadows.md,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,12 +143,18 @@ class SettingsSection extends StatelessWidget {
               WKSpace.lg,
               WKSpace.sm,
             ),
-            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: tokens.text,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
           for (var index = 0; index < children.length; index++) ...[
             children[index],
             if (index != children.length - 1)
-              const Divider(indent: 72, endIndent: 16),
+              Divider(indent: 72, endIndent: 16, color: tokens.border),
           ],
         ],
       ),
@@ -171,16 +180,17 @@ class SettingsInfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = isError ? WKColors.danger : WKColors.brand500;
+    final tokens = LiquidGlassTokens.of(context);
+    final accentColor = isError ? WKColors.danger : LiquidGlassColors.primary;
     final accentBackground = isError
         ? WKColors.danger.withValues(alpha: 0.08)
-        : WKColors.brand50;
+        : LiquidGlassColors.primary.withValues(alpha: 0.08);
     return Container(
       decoration: BoxDecoration(
-        color: WKColors.surface,
-        borderRadius: BorderRadius.circular(WKRadius.xl),
-        border: Border.all(color: WKColors.outline),
-        boxShadow: WKShadows.soft,
+        color: tokens.surface,
+        borderRadius: LiquidGlassRadii.xl,
+        border: Border.all(color: tokens.border),
+        boxShadow: LiquidGlassShadows.md,
       ),
       padding: const EdgeInsets.all(WKSpace.lg),
       child: Row(
@@ -191,7 +201,7 @@ class SettingsInfoCard extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               color: accentBackground,
-              borderRadius: BorderRadius.circular(WKRadius.lg),
+              borderRadius: LiquidGlassRadii.lg,
             ),
             alignment: Alignment.center,
             child: Icon(icon, color: accentColor),
@@ -201,13 +211,19 @@ class SettingsInfoCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: tokens.text,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: WKSpace.xs),
                 Text(
                   subtitle,
                   style: Theme.of(
                     context,
-                  ).textTheme.bodyMedium?.copyWith(color: WKColors.color999),
+                  ).textTheme.bodyMedium?.copyWith(color: tokens.textSecondary),
                 ),
               ],
             ),
@@ -240,12 +256,13 @@ class SettingsSearchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: WKColors.surface,
-        borderRadius: BorderRadius.circular(WKRadius.xl),
-        border: Border.all(color: WKColors.outline),
-        boxShadow: WKShadows.soft,
+        color: tokens.surface,
+        borderRadius: LiquidGlassRadii.xl,
+        border: Border.all(color: tokens.border),
+        boxShadow: LiquidGlassShadows.md,
       ),
       padding: const EdgeInsets.symmetric(
         horizontal: WKSpace.md,
@@ -261,17 +278,18 @@ class SettingsSearchCard extends StatelessWidget {
             decoration: InputDecoration(
               border: InputBorder.none,
               hintText: hintText,
-              prefixIcon: const Icon(
+              hintStyle: TextStyle(color: tokens.textTertiary),
+              prefixIcon: Icon(
                 Icons.search_rounded,
-                color: WKColors.color999,
+                color: tokens.textSecondary,
               ),
               suffixIcon: onClear != null && value.text.trim().isNotEmpty
                   ? IconButton(
                       key: const ValueKey<String>('settings-search-clear'),
                       onPressed: onClear,
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.close_rounded,
-                        color: WKColors.color999,
+                        color: tokens.textSecondary,
                       ),
                     )
                   : null,
@@ -301,10 +319,11 @@ class SwitchSettingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     return SwitchListTile(
       secondary: _LeadingIcon(icon: icon),
-      title: Text(title),
-      subtitle: Text(subtitle),
+      title: Text(title, style: TextStyle(color: tokens.text)),
+      subtitle: Text(subtitle, style: TextStyle(color: tokens.textSecondary)),
       value: value,
       onChanged: onChanged,
     );
@@ -327,11 +346,12 @@ class ActionSettingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     return ListTile(
       leading: _LeadingIcon(icon: icon),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right_rounded),
+      title: Text(title, style: TextStyle(color: tokens.text)),
+      subtitle: Text(subtitle, style: TextStyle(color: tokens.textSecondary)),
+      trailing: Icon(Icons.chevron_right_rounded, color: tokens.textTertiary),
       onTap: onTap,
     );
   }
@@ -344,14 +364,16 @@ class _LeadingIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     return Container(
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: WKColors.surfaceSoft,
-        borderRadius: BorderRadius.circular(WKRadius.md),
+        color: LiquidGlassColors.muted,
+        borderRadius: LiquidGlassRadii.md,
+        border: Border.all(color: tokens.border),
       ),
-      child: Icon(icon),
+      child: Icon(icon, color: LiquidGlassColors.primary),
     );
   }
 }

@@ -1,9 +1,11 @@
 package monitor
 
 import (
+	"errors"
 	"time"
 
 	"github.com/TangSengDaoDao/TangSengDaoDaoServerLib/config"
+	"github.com/go-sql-driver/mysql"
 	"github.com/gocraft/dbr/v2"
 )
 
@@ -94,7 +96,8 @@ func (d *DB) insertRoute(m *routeModel) error {
 	_, err := d.session.InsertInto("monitor_route").
 		Columns(
 			"route_id", "uid", "platform", "connector_type", "route_type",
-			"source_name", "destination_name", "destination_no", "agent_id", "status",
+			"source_name", "destination_type", "destination_id", "destination_name", "destination_no",
+			"sender_display_name", "sender_display_avatar", "agent_id", "status",
 			"include_text", "include_links", "include_images", "include_files",
 		).
 		Record(m).Exec()
@@ -140,12 +143,121 @@ func (d *DB) updateRouteStatus(uid, routeID, status string, pausedAt dbr.NullTim
 	return err
 }
 
+func (d *DB) updateRoute(m *routeModel) error {
+	setMap := map[string]interface{}{
+		"platform":             m.Platform,
+		"connector_type":       m.ConnectorType,
+		"route_type":           m.RouteType,
+		"source_name":          m.SourceName,
+		"destination_type":     m.DestinationType,
+		"destination_id":       m.DestinationID,
+		"destination_name":     m.DestinationName,
+		"destination_no":       m.DestinationNo,
+		"sender_display_name":  m.SenderDisplayName,
+		"sender_display_avatar": m.SenderDisplayAvatar,
+		"include_text":         m.IncludeText,
+		"include_links":        m.IncludeLinks,
+		"include_images":       m.IncludeImages,
+		"include_files":        m.IncludeFiles,
+	}
+	_, err := d.session.Update("monitor_route").SetMap(setMap).
+		Where("uid=? and route_id=?", m.UID, m.RouteID).Exec()
+	return err
+}
+
+func (d *DB) deleteRoute(uid, routeID string) error {
+	_, err := d.session.DeleteFrom("monitor_route").
+		Where("uid=? and route_id=?", uid, routeID).Exec()
+	return err
+}
+
 func (d *DB) incrementRouteForwarded(routeID string, forwardedAt time.Time) error {
 	_, err := d.session.Update("monitor_route").SetMap(map[string]interface{}{
 		"today_forwarded_count": dbr.Expr("today_forwarded_count + 1"),
 		"last_forwarded_at":     formatDBTime(forwardedAt),
 	}).Where("route_id=?", routeID).Exec()
 	return err
+}
+
+func (d *DB) insertCredential(m *credentialModel) error {
+	_, err := d.session.InsertInto("monitor_credential").
+		Columns(
+			"credential_id", "uid", "platform", "kind", "display_name",
+			"app_id_ciphertext", "app_id_masked", "app_secret_ciphertext",
+			"webhook_url_ciphertext", "webhook_url_masked", "secret_ciphertext",
+			"status", "last_error",
+		).
+		Values(
+			m.CredentialID, m.UID, m.Platform, m.Kind, m.DisplayName,
+			m.AppIDCiphertext, m.AppIDMasked, m.AppSecretCiphertext,
+			m.WebhookURLCiphertext, m.WebhookURLMasked, m.SecretCiphertext,
+			m.Status, m.LastError,
+		).Exec()
+	return err
+}
+
+func (d *DB) queryCredentials(uid, platform string, limit uint64) ([]*credentialModel, error) {
+	var list []*credentialModel
+	builder := d.session.Select("*").From("monitor_credential").
+		Where("uid=? and revoked_at is null", uid)
+	if platform != "" {
+		builder = builder.Where("platform=?", platform)
+	}
+	_, err := builder.OrderDir("updated_at", false).Limit(limit).Load(&list)
+	return list, err
+}
+
+func (d *DB) queryCredentialByID(uid, credentialID string) (*credentialModel, error) {
+	var model *credentialModel
+	_, err := d.session.Select("*").From("monitor_credential").
+		Where("uid=? and credential_id=? and revoked_at is null", uid, credentialID).
+		Limit(1).
+		Load(&model)
+	return model, err
+}
+
+func (d *DB) updateCredentialCheck(uid, credentialID, status, lastError string, checkedAt time.Time) error {
+	_, err := d.session.Update("monitor_credential").SetMap(map[string]interface{}{
+		"status":          status,
+		"last_checked_at": formatDBTime(checkedAt),
+		"last_error":      lastError,
+	}).Where("uid=? and credential_id=? and revoked_at is null", uid, credentialID).Exec()
+	return err
+}
+
+func (d *DB) insertDestination(m *destinationModel) error {
+	_, err := d.session.InsertInto("monitor_destination").
+		Columns(
+			"destination_id", "uid", "platform", "destination_type", "display_name",
+			"credential_id", "chat_id", "webhook_url_ciphertext", "webhook_url_masked",
+			"secret_ciphertext", "status", "last_error",
+		).
+		Values(
+			m.DestinationID, m.UID, m.Platform, m.DestinationType, m.DisplayName,
+			m.CredentialID, m.ChatID, m.WebhookURLCiphertext, m.WebhookURLMasked,
+			m.SecretCiphertext, m.Status, m.LastError,
+		).Exec()
+	return err
+}
+
+func (d *DB) queryDestinations(uid, platform string, limit uint64) ([]*destinationModel, error) {
+	var list []*destinationModel
+	builder := d.session.Select("*").From("monitor_destination").
+		Where("uid=? and revoked_at is null", uid)
+	if platform != "" {
+		builder = builder.Where("platform=?", platform)
+	}
+	_, err := builder.OrderDir("updated_at", false).Limit(limit).Load(&list)
+	return list, err
+}
+
+func (d *DB) queryDestinationByID(uid, destinationID string) (*destinationModel, error) {
+	var model *destinationModel
+	_, err := d.session.Select("*").From("monitor_destination").
+		Where("uid=? and destination_id=? and revoked_at is null", uid, destinationID).
+		Limit(1).
+		Load(&model)
+	return model, err
 }
 
 func (d *DB) upsertBrowserStatus(m *browserStatusModel) error {
@@ -194,14 +306,27 @@ func (d *DB) insertObservedMessage(m *observedMessageModel) error {
 		Columns(
 			"message_id", "uid", "route_id", "agent_id", "source_platform",
 			"source_chat_name", "source_message_id", "message_type", "content",
+			"metadata", "attachments",
 			"source_created_at", "observed_at", "duplicate_of_message_id", "forward_status",
 		).
 		Values(
 			m.MessageID, m.UID, m.RouteID, m.AgentID, m.SourcePlatform,
 			m.SourceChatName, m.SourceMessageID, m.MessageType, m.Content,
+			m.Metadata, m.AttachmentsJSON,
 			nullTimeValue(m.SourceCreatedAt), formatDBTime(m.ObservedAt.Time), m.DuplicateOfMessageID, m.ForwardStatus,
 		).Exec()
 	return err
+}
+
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) {
+		return mysqlErr.Number == 1062
+	}
+	return false
 }
 
 func (d *DB) queryObservedMessageByRouteSource(routeID, sourceMessageID string) (*observedMessageModel, error) {
@@ -211,6 +336,13 @@ func (d *DB) queryObservedMessageByRouteSource(routeID, sourceMessageID string) 
 		Limit(1).
 		Load(&model)
 	return model, err
+}
+
+func (d *DB) updateObservedMessageAttachments(messageID, attachmentsJSON string) error {
+	_, err := d.session.Update("monitor_observed_message").SetMap(map[string]interface{}{
+		"attachments": attachmentsJSON,
+	}).Where("message_id=?", messageID).Exec()
+	return err
 }
 
 func (d *DB) markObservedMessageForwarded(messageID string, forwardedAt time.Time) error {

@@ -17,16 +17,16 @@ class ChatBubbleTheme {
   /// Outgoing bubble: right-bottom corner is tight (4dp), rest is 16dp.
   static const BorderRadius outgoingRadius = BorderRadius.only(
     topLeft: Radius.circular(16),
-    topRight: Radius.circular(4),
+    topRight: Radius.circular(16),
     bottomLeft: Radius.circular(16),
-    bottomRight: Radius.circular(16),
+    bottomRight: Radius.circular(4),
   );
 
   /// Incoming bubble: left-bottom corner is tight (4dp), rest is 16dp.
   static const BorderRadius incomingRadius = BorderRadius.only(
-    topLeft: Radius.circular(4),
+    topLeft: Radius.circular(16),
     topRight: Radius.circular(16),
-    bottomLeft: Radius.circular(16),
+    bottomLeft: Radius.circular(4),
     bottomRight: Radius.circular(16),
   );
 
@@ -41,59 +41,54 @@ class ChatBubbleTheme {
   static const LinearGradient outgoingGradientLight = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [
-      Color(0xFFFDE4DC), // light peach
-      Color(0xFFFDDED6), // chatOutgoing
-      Color(0xFFF8C9BD), // slightly deeper
-    ],
-    stops: [0.0, 0.5, 1.0],
+    colors: [Color(0xFF2F80ED), Color(0xFF2563D9)],
   );
 
   /// Dark-mode outgoing bubble gradient (muted warm tones).
   static const LinearGradient outgoingGradientDark = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [
-      Color(0xFF3D2823), // dark warm brown
-      Color(0xFF352220), // deeper
-    ],
+    colors: [Color(0xFF2563D9), Color(0xFF1D4ED8)],
   );
 
   // ── Incoming bubble colors ──────────────────────────────────────
 
-  static const Color incomingBgLight = WKColors.surface;
-  static const Color incomingBgDark = Color(0xFF1E1E1E);
+  static const Color incomingBgLight = Colors.white;
+  static const Color incomingBgDark = Color(0xFF171D27);
+  static const Color incomingBorderLight = Color(0xFFE4E8EF);
+  static const Color incomingBorderDark = Color(0xFF2B3442);
 
   // ── Shadows ─────────────────────────────────────────────────────
 
   /// Subtle shadow for incoming bubbles (light mode).
   static const List<BoxShadow> incomingShadowLight = [
-    BoxShadow(
-      color: Color(0x0D000000),
-      blurRadius: 8,
-      offset: Offset(0, 2),
-    ),
+    BoxShadow(color: Color(0x0A111827), blurRadius: 5, offset: Offset(0, 1)),
   ];
 
   /// Very subtle shadow for incoming bubbles (dark mode).
   static const List<BoxShadow> incomingShadowDark = [
-    BoxShadow(
-      color: Color(0x1A000000),
-      blurRadius: 6,
-      offset: Offset(0, 1),
-    ),
+    BoxShadow(color: Color(0x1A000000), blurRadius: 5, offset: Offset(0, 1)),
+  ];
+
+  /// Barely visible elevation for outgoing bubbles.
+  static const List<BoxShadow> outgoingShadowLight = [
+    BoxShadow(color: Color(0x142563D9), blurRadius: 5, offset: Offset(0, 1)),
+  ];
+
+  static const List<BoxShadow> outgoingShadowDark = [
+    BoxShadow(color: Color(0x26000000), blurRadius: 5, offset: Offset(0, 1)),
   ];
 
   // ── Text colors ─────────────────────────────────────────────────
 
-  static const Color outgoingTextLight = Color(0xFF2D1A14);
-  static const Color outgoingTextDark = Color(0xFFE8D5CF);
-  static const Color incomingTextLight = WKColors.textPrimary;
-  static const Color incomingTextDark = Color(0xFFE0E0E0);
+  static const Color outgoingTextLight = Colors.white;
+  static const Color outgoingTextDark = Colors.white;
+  static const Color incomingTextLight = Color(0xFF111827);
+  static const Color incomingTextDark = Color(0xFFE5EAF2);
 
   // ── Read receipts ───────────────────────────────────────────────
 
-  static const Color readTickColor = Color(0xFF2196F3);
+  static const Color readTickColor = Color(0xFF60A5FA);
   static const Color unreadTickColor = WKColors.textTertiary;
 
   // ── Image overlay in dark mode ──────────────────────────────────
@@ -109,6 +104,7 @@ class ChatBubbleTheme {
     return BoxDecoration(
       gradient: isDark ? outgoingGradientDark : outgoingGradientLight,
       borderRadius: outgoingRadius,
+      boxShadow: isDark ? outgoingShadowDark : outgoingShadowLight,
     );
   }
 
@@ -119,7 +115,9 @@ class ChatBubbleTheme {
       color: isDark ? incomingBgDark : incomingBgLight,
       borderRadius: incomingRadius,
       boxShadow: isDark ? incomingShadowDark : incomingShadowLight,
-      border: isDark ? null : Border.all(color: const Color(0x0A000000)),
+      border: Border.all(
+        color: isDark ? incomingBorderDark : incomingBorderLight,
+      ),
     );
   }
 

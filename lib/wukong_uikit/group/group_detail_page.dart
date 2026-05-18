@@ -2938,20 +2938,10 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
     try {
       final existingUids = _members.map((member) => member.uid).toSet();
       final friends = await FriendApi.instance.getFriends();
-      final candidates = friends
-          .where(
-            (friend) =>
-                !friend.isSystemAccount && !existingUids.contains(friend.uid),
-          )
-          .map(
-            (friend) => SelectableGroupMember(
-              uid: friend.uid,
-              title: (friend.remark ?? friend.name ?? friend.uid).trim(),
-              subtitle: friend.uid,
-              avatar: friend.avatar,
-            ),
-          )
-          .toList();
+      final candidates = await _buildAddMemberCandidates(
+        friends,
+        existingUids: existingUids,
+      );
 
       if (!mounted) {
         return;
@@ -3001,6 +2991,40 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
     } catch (e) {
       _showMessage('加载可添加好友失败：$e');
     }
+  }
+
+  Future<List<SelectableGroupMember>> _buildAddMemberCandidates(
+    List<Friend> friends, {
+    required Set<String> existingUids,
+  }) async {
+    final candidates = <SelectableGroupMember>[];
+    for (final friend in friends) {
+      if (friend.isSystemAccount || existingUids.contains(friend.uid)) {
+        continue;
+      }
+
+      var title = _firstNonEmptyText(friend.remark, friend.name);
+      var avatar = friend.avatar;
+      if (title == null || title == friend.uid) {
+        try {
+          final user = await UserApi.instance.getUserInfo(friend.uid);
+          title = _firstNonEmptyText(user.remark, user.name, user.username);
+          avatar = _firstNonEmptyText(avatar, user.avatar);
+        } catch (_) {
+          // Keep the friend sync payload as the source of truth when lookup fails.
+        }
+      }
+
+      candidates.add(
+        SelectableGroupMember(
+          uid: friend.uid,
+          title: (title ?? friend.uid).trim(),
+          subtitle: friend.uid,
+          avatar: avatar,
+        ),
+      );
+    }
+    return candidates;
   }
 
   Future<void> _setGroupManagers() async {

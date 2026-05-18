@@ -34,7 +34,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(store.state.roomId, 'room_02');
-      expect(store.state.status, CallLifecycleStatus.invited);
+      expect(store.state.status, CallLifecycleStatus.ringing);
       expect(states, hasLength(1));
     },
   );

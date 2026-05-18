@@ -2,6 +2,8 @@ import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_panel.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 import 'package:wukong_im_app/widgets/wk_tab_shell.dart';
 import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 
@@ -187,6 +189,161 @@ void main() {
     );
   });
 
+  testWidgets('desktop Web shell fills wide viewport in liquid stage', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 1440,
+          height: 800,
+          child: WKTabShell(
+            currentIndex: 0,
+            items: items,
+            pages: const <Widget>[
+              ColoredBox(
+                key: ValueKey<String>('desktop-liquid-page'),
+                color: Colors.red,
+              ),
+              SizedBox(),
+              SizedBox(),
+            ],
+            onTap: (_) {},
+            forceDesktopRailForTesting: true,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(LiquidGlassStage), findsOneWidget);
+    expect(
+      tester.getSize(
+        find.byKey(const ValueKey<String>('wk_tab_shell_web_liquid_shell')),
+      ),
+      const Size(1440, 760),
+    );
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey<String>('wk_tab_shell_web_rail')),
+          )
+          .dx,
+      0,
+    );
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey<String>('wk_tab_shell_web_rail')),
+          )
+          .dy,
+      LiquidGlassSizes.appFrameViewportInset,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey<String>('wk_tab_shell_web_rail')))
+          .width,
+      LiquidGlassSizes.navRailWidth,
+    );
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey<String>('wk_tab_shell_web_page_host')),
+          )
+          .width,
+      1440 - LiquidGlassSizes.navRailWidth - 1,
+    );
+
+    final shadowBox = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey<String>('liquid-glass-panel-shadow')),
+    );
+    final shadowDecoration = shadowBox.decoration as BoxDecoration;
+    expect(shadowDecoration.borderRadius, LiquidGlassRadii.lg);
+    expect(shadowDecoration.boxShadow, LiquidGlassShadows.md);
+
+    final frameClip = tester.widget<ClipRRect>(
+      find
+          .ancestor(
+            of: find.byKey(
+              const ValueKey<String>('wk_tab_shell_web_liquid_shell'),
+            ),
+            matching: find.byType(ClipRRect),
+          )
+          .first,
+    );
+    expect(frameClip.borderRadius, LiquidGlassRadii.lg);
+
+    final frameDecoration = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey<String>('liquid-glass-panel-decoration')),
+    );
+    final decoration = frameDecoration.decoration as BoxDecoration;
+    expect(decoration.borderRadius, LiquidGlassRadii.lg);
+    expect(decoration.border, Border.all(color: LiquidGlassColors.border));
+  });
+
+  testWidgets('desktop Web rail uses dark liquid shell colors', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: SizedBox(
+          width: 1200,
+          height: 800,
+          child: WKTabShell(
+            currentIndex: 0,
+            items: items,
+            pages: const <Widget>[
+              Text('chat page'),
+              Text('contacts page'),
+              Text('mine page'),
+            ],
+            onTap: (_) {},
+            forceDesktopRailForTesting: true,
+          ),
+        ),
+      ),
+    );
+
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    expect(scaffold.backgroundColor, LiquidGlassColors.darkBackground);
+
+    final rail = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('wk_tab_shell_web_rail')),
+    );
+    expect(rail.color, LiquidGlassColors.darkSurface);
+
+    final divider = tester.widget<VerticalDivider>(
+      find.byType(VerticalDivider),
+    );
+    expect(divider.color, LiquidGlassColors.darkBorder);
+
+    final selectedItemContainer = tester.widget<Container>(
+      find.descendant(
+        of: find.byTooltip('Chat'),
+        matching: find.byWidgetPredicate((widget) {
+          return widget is Container &&
+              widget.alignment == Alignment.center &&
+              widget.decoration is BoxDecoration &&
+              (widget.decoration! as BoxDecoration).borderRadius ==
+                  BorderRadius.circular(WKWebRadius.control);
+        }),
+      ),
+    );
+    final decoration = selectedItemContainer.decoration! as BoxDecoration;
+    expect(
+      decoration.color,
+      LiquidGlassColors.darkPrimary.withValues(alpha: 0.16),
+    );
+
+    final selectedIcon = tester.widget<Icon>(
+      find.descendant(of: find.byTooltip('Chat'), matching: find.byType(Icon)),
+    );
+    expect(selectedIcon.color, LiquidGlassColors.darkPrimary);
+  });
+
   testWidgets('desktop rail constrains pages to the remaining host width', (
     tester,
   ) async {
@@ -224,7 +381,15 @@ void main() {
             find.byKey(const ValueKey<String>('desktop-constrained-page')),
           )
           .width,
-      1200 - WKWebSizes.railWidth - 1,
+      1200 - LiquidGlassSizes.navRailWidth - 1,
+    );
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey<String>('desktop-constrained-page')),
+          )
+          .height,
+      760,
     );
   });
 

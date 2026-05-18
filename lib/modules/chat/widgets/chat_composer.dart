@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/platform_utils.dart';
+import '../../../widgets/liquid_glass_tokens.dart';
 import '../../../widgets/wk_colors.dart';
-import '../../../widgets/wk_web_ui_tokens.dart';
 
 class ChatComposer extends StatelessWidget {
   const ChatComposer({
@@ -27,28 +27,36 @@ class ChatComposer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMobileWarmStyle = PlatformUtils.isMobile && !webStyle;
+    final tokens = LiquidGlassTokens.of(context);
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final restrainedSurface = Theme.of(context).brightness == Brightness.dark
+        ? tokens.surface
+        : const Color(0xFFF8FAFC);
+    final restrainedBorder = Theme.of(context).brightness == Brightness.dark
+        ? tokens.border
+        : const Color(0xFFE2E8F0);
 
     return RepaintBoundary(
       child: DecoratedBox(
         key: const ValueKey<String>('chat-composer-shell'),
         decoration: BoxDecoration(
-          color: webStyle ? WKWebColors.surface : Colors.white,
+          color: webStyle || isMobileWarmStyle
+              ? restrainedSurface
+              : Colors.white,
           border: Border(
             top: BorderSide(
-              color: webStyle
-                  ? WKWebColors.borderWarm
-                  : isMobileWarmStyle
-                  ? WKWebColors.borderWarm
+              color: webStyle || isMobileWarmStyle
+                  ? restrainedBorder
                   : WKColors.layoutColorSelected,
               width: 1,
             ),
           ),
-          boxShadow: webStyle
+          boxShadow: webStyle || isMobileWarmStyle
               ? const <BoxShadow>[
                   BoxShadow(
-                    color: WKWebColors.shadow,
-                    blurRadius: 14,
-                    offset: Offset(0, -4),
+                    color: Color(0x0A111827),
+                    blurRadius: 8,
+                    offset: Offset(0, -1),
                   ),
                 ]
               : null,
@@ -77,7 +85,9 @@ class ChatComposer extends StatelessWidget {
               ),
             ],
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
+              duration: disableAnimations
+                  ? Duration.zero
+                  : const Duration(milliseconds: 200),
               child: panel,
             ),
           ],

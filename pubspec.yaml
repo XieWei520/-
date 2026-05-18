@@ -12,9 +12,9 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # IM SDK - use local WuKongIMFlutterSDK source
+  # IM SDK - vendored with this app so builds do not depend on a sibling folder.
   wukongimfluttersdk:
-    path: ../TangSengDaoDao/WuKongIMFlutterSDK-master
+    path: packages/wukongimfluttersdk
 
   # Networking
   dio: ^5.4.0

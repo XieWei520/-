@@ -83,6 +83,25 @@ void main() {
       expect(buildMessageAlertPlan(internal, currentUid: 'me'), isNull);
       expect(buildMessageAlertPlan(noRedDot, currentUid: 'me'), isNull);
     });
+
+    test('can alert for background incoming messages without red-dot', () {
+      final message = _textMessage(
+        fromUid: 'alice',
+        channelId: 'alice',
+        text: 'background hello',
+        redDot: false,
+      )..setFrom(WKChannel('alice', WKChannelType.personal)..channelName = 'Alice');
+
+      final plan = buildMessageAlertPlan(
+        message,
+        currentUid: 'me',
+        requireRedDot: false,
+      );
+
+      expect(plan, isNotNull);
+      expect(plan!.title, 'Alice');
+      expect(plan.body, 'background hello');
+    });
   });
 }
 

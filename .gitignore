@@ -64,6 +64,8 @@ app.*.map.json
 /.tmp*
 /tmp/
 /dist/
+/test-results/
+/.remote_launch_policy/
 /tmp-*
 /tmp_*
 /patch.diff

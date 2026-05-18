@@ -137,6 +137,13 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "6.1.0"
+  local_monitor_shell_core:
+    dependency: "direct main"
+    description:
+      path: "../local_monitor_shell_core"
+      relative: true
+    source: path
+    version: "0.1.0"
   logging:
     dependency: transitive
     description:

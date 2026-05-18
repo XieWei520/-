@@ -16,6 +16,8 @@ import '../../modules/vip/vip_guard.dart';
 import '../../service/api/friend_api.dart';
 import '../../service/api/group_api.dart';
 import '../../service/api/user_api.dart';
+import '../../widgets/liquid_glass_panel.dart';
+import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_avatar.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_reference_assets.dart';
@@ -530,19 +532,20 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
     required String value,
     bool allowCopy = false,
   }) {
+    final tokens = LiquidGlassTokens.of(context);
     final row = Padding(
       padding: const EdgeInsets.only(top: 5),
       child: Row(
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: WKColors.colorDark),
+            style: TextStyle(fontSize: 12, color: tokens.textSecondary),
           ),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 12, color: WKColors.colorDark),
+              style: TextStyle(fontSize: 12, color: tokens.text),
             ),
           ),
         ],
@@ -562,6 +565,7 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
   }
 
   Widget _buildHeader() {
+    final tokens = LiquidGlassTokens.of(context);
     final sexAsset = _sexAsset(_user?.sex);
     final isVipUser = (_user?.vipLevel ?? 0) == 1;
     final isCustomerServiceUser = _user?.isCustomerService == true;
@@ -607,10 +611,10 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
                                 _displayName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
-                                  color: WKColors.colorDark,
+                                  color: tokens.text,
                                 ),
                               ),
                             ),
@@ -760,11 +764,19 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
 
   Widget _buildBody() {
     return ListView(
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.fromLTRB(15, 15, 15, 0),
       children: [
-        _buildHeader(),
-        _buildInfoGroup(),
-        _buildBlacklistGroup(),
+        LiquidGlassPanel(
+          key: const ValueKey<String>('user-detail-liquid-panel'),
+          shadow: LiquidGlassShadows.md,
+          child: Column(
+            children: [
+              _buildHeader(),
+              _buildInfoGroup(),
+              _buildBlacklistGroup(),
+            ],
+          ),
+        ),
         _buildBottomButton(),
         const SizedBox(height: 30),
       ],
@@ -802,22 +814,40 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
         skipInitialLoad: _user != null,
       );
     }
-    return WKSubPageScaffold(
-      title: '个人名片',
-      body: Stack(
-        children: [
-          if (_isLoading)
-            const Center(child: CircularProgressIndicator())
-          else
-            _buildBody(),
-          if (_isUpdating)
-            const Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-        ],
+    final tokens = LiquidGlassTokens.of(context);
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        backgroundColor: tokens.surface,
+        foregroundColor: tokens.text,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          '个人名片',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: tokens.text,
+          ),
+        ),
+      ),
+      body: LiquidGlassStage(
+        key: const ValueKey<String>('user-detail-liquid-shell'),
+        child: Stack(
+          children: [
+            if (_isLoading)
+              const Center(child: CircularProgressIndicator())
+            else
+              _buildBody(),
+            if (_isUpdating)
+              const Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+          ],
+        ),
       ),
     );
   }

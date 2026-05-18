@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../wukong_base/emoji/android_emoji_catalog.dart';
+import '../../../widgets/liquid_glass_tokens.dart';
 import '../chat_gif_panel_service.dart';
 import '../expression/chat_expression_models.dart';
 import 'chat_emoji_panel.dart';
@@ -36,6 +37,7 @@ class ChatExpressionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     final activeCategory = snapshot.categories.firstWhere(
       (item) => item.id == activeCategoryId,
       orElse: () => snapshot.categories.first,
@@ -46,9 +48,15 @@ class ChatExpressionPanel extends StatelessWidget {
       width: double.infinity,
       constraints: const BoxConstraints(maxHeight: 280),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      decoration: BoxDecoration(
+        color: tokens.surfaceSolid,
+        borderRadius: LiquidGlassRadii.lg,
+        border: Border.all(color: tokens.border),
+        boxShadow: LiquidGlassShadows.md,
+      ),
       child: Column(
         children: [
-          Expanded(child: _buildBody(activeCategory)),
+          Expanded(child: _buildBody(context, activeCategory)),
           const SizedBox(height: 10),
           SizedBox(
             height: 38,
@@ -71,11 +79,14 @@ class ChatExpressionPanel extends StatelessWidget {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: category.id == activeCategory.id
-                            ? const Color(0xFF1F67E8)
-                            : const Color(0xFFE4E9F1),
+                            ? LiquidGlassColors.primary2
+                            : tokens.border,
                       ),
                     ),
-                    child: Text(category.label),
+                    child: Text(
+                      category.label,
+                      style: TextStyle(color: tokens.text),
+                    ),
                   ),
                 );
               },
@@ -86,7 +97,8 @@ class ChatExpressionPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildBody(ChatExpressionCategory category) {
+  Widget _buildBody(BuildContext context, ChatExpressionCategory category) {
+    final tokens = LiquidGlassTokens.of(context);
     if (category.id == 'recent') {
       return GridView.builder(
         key: const ValueKey<String>('chat-expression-recent-grid'),
@@ -105,7 +117,12 @@ class ChatExpressionPanel extends StatelessWidget {
             onTap: () => onRecentSelected(recent),
             child: recent.previewKey.isNotEmpty
                 ? Image.asset(recent.previewKey, fit: BoxFit.contain)
-                : Center(child: Text(recent.displayText)),
+                : Center(
+                    child: Text(
+                      recent.displayText,
+                      style: TextStyle(color: tokens.text),
+                    ),
+                  ),
           );
         },
       );
@@ -117,9 +134,14 @@ class ChatExpressionPanel extends StatelessWidget {
           TextField(
             key: const ValueKey<String>('chat-expression-gif-search-field'),
             onChanged: onGifQueryChanged,
-            decoration: const InputDecoration(
+            style: TextStyle(color: tokens.text),
+            decoration: InputDecoration(
               hintText: '搜索动图',
-              prefixIcon: Icon(Icons.search_rounded),
+              hintStyle: TextStyle(color: tokens.textSecondary),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: tokens.textSecondary,
+              ),
             ),
           ),
           const SizedBox(height: 8),
@@ -127,6 +149,7 @@ class ChatExpressionPanel extends StatelessWidget {
             Text(
               gifErrorText!,
               key: const ValueKey<String>('chat-expression-gif-error'),
+              style: TextStyle(color: tokens.textSecondary),
             ),
           if (gifResults.isNotEmpty)
             Expanded(
@@ -143,9 +166,11 @@ class ChatExpressionPanel extends StatelessWidget {
                   return InkWell(
                     key: ValueKey<String>('chat-expression-gif-item-$index'),
                     onTap: () => onGifSelected(result),
-                    child: const DecoratedBox(
-                      decoration: BoxDecoration(color: Color(0xFFF3F6FA)),
-                      child: Center(child: Text('动图')),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(color: tokens.surface),
+                      child: Center(
+                        child: Text('动图', style: TextStyle(color: tokens.text)),
+                      ),
                     ),
                   );
                 },
@@ -196,7 +221,7 @@ class ChatExpressionPanel extends StatelessWidget {
           child: IconButton(
             key: const ValueKey<String>('chat-expression-backspace'),
             onPressed: onBackspaceTap,
-            icon: const Icon(Icons.backspace_outlined),
+            icon: Icon(Icons.backspace_outlined, color: tokens.text),
           ),
         ),
       ],

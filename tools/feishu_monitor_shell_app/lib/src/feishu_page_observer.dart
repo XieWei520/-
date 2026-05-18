@@ -1,15 +1,28 @@
+import 'feishu_browser_image_body_cache.dart';
 import 'feishu_network_capture.dart';
 
 const String feishuPageKeepAliveScript = r'''
 (() => {
   const keepAliveKey = '__wukongFeishuMonitorKeepAlive';
   const existingKeepAlive = window[keepAliveKey];
-  if (existingKeepAlive && existingKeepAlive.installed) {
+  if (
+    existingKeepAlive &&
+    existingKeepAlive.installed &&
+    existingKeepAlive.version === 2 &&
+    existingKeepAlive.interval_ms === 5000
+  ) {
     return existingKeepAlive;
+  }
+  if (existingKeepAlive && existingKeepAlive.timer) {
+    try {
+      clearInterval(existingKeepAlive.timer);
+    } catch (_) {}
   }
   const state = {
     installed: true,
+    version: 2,
     installed_at: new Date().toISOString(),
+    interval_ms: 5000,
     tick_count: 0,
     last_tick_at: ''
   };
@@ -25,19 +38,32 @@ const String feishuPageKeepAliveScript = r'''
     if (typeof document.hasFocus === 'function') {
       document.hasFocus = () => true;
     }
+    Object.defineProperty(navigator, 'onLine', {
+      configurable: true,
+      get: () => true
+    });
   } catch (_) {}
   const tick = () => {
     state.tick_count += 1;
     state.last_tick_at = new Date().toISOString();
-    for (const eventName of ['visibilitychange', 'focus', 'online']) {
+    for (const eventName of [
+      'visibilitychange',
+      'focus',
+      'focusin',
+      'pageshow',
+      'online',
+      'resume'
+    ]) {
       try {
-        window.dispatchEvent(new Event(eventName));
+        const event = new Event(eventName);
+        window.dispatchEvent(event);
         document.dispatchEvent(new Event(eventName));
+        document.body?.dispatchEvent(new Event(eventName));
       } catch (_) {}
     }
   };
   tick();
-  state.timer = setInterval(tick, 15000);
+  state.timer = setInterval(tick, state.interval_ms);
   state.disconnect = () => {
     try {
       clearInterval(state.timer);
@@ -288,7 +314,7 @@ const String feishuNetworkImageAttributionScript = r'''
 
   const parseFeedText = (text) => {
     const clean = cap(text, 500);
-    const timeMatch = clean.match(/(?:^|\s)(\d{1,2}:\d{2})(?:\s|$)/);
+    const timeMatch = clean.match(/(?:^|\s)(\d{1,2}:\d{2}|昨天|前天|\d{1,2}月\d{1,2}日|周[一二三四五六日天]|星期[一二三四五六日天])(?:\s|$)/);
     const colonIndex = clean.indexOf(':', timeMatch ? timeMatch.index + timeMatch[0].length : 0);
     const displayTime = timeMatch ? timeMatch[1] : '';
     let conversationName = '';
@@ -462,17 +488,21 @@ class FeishuPageObserverMessage {
     required this.reason,
     required this.observedAt,
     this.imageAttribution,
+    this.browserImageBody,
   });
 
   final String type;
   final String reason;
   final DateTime? observedAt;
   final FeishuNetworkImageAttribution? imageAttribution;
+  final FeishuBrowserImageBody? browserImageBody;
 
   bool get isFeedChanged => type == 'feishu_monitor_feed_changed';
   bool get isMediaResolved => type == 'feishu_monitor_media_resolved';
   bool get isObserverInstalled => type == 'feishu_monitor_observer_installed';
   bool get isImageAttribution => imageAttribution != null;
+  bool get isBrowserImageBody => browserImageBody != null;
+  bool get isStorageProbe => type == 'feishu_monitor_storage_probe';
 
   factory FeishuPageObserverMessage.fromJson(Map<String, dynamic> json) {
     final type = (json['type'] ?? '').toString();
@@ -482,6 +512,9 @@ class FeishuPageObserverMessage {
       observedAt: DateTime.tryParse((json['observed_at'] ?? '').toString()),
       imageAttribution: type == 'feishu_monitor_image_attribution'
           ? FeishuNetworkImageAttribution.fromJson(json)
+          : null,
+      browserImageBody: type == 'feishu_monitor_browser_image_body'
+          ? FeishuBrowserImageBody.fromJson(json)
           : null,
     );
   }

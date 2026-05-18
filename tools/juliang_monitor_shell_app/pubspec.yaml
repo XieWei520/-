@@ -1,0 +1,24 @@
+name: juliang_monitor_shell_app
+description: "Strict incognito Juliang aggregate monitor shell skeleton."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  local_monitor_shell_core:
+    path: ../local_monitor_shell_core
+  path_provider: ^2.1.2
+  webview_windows:
+    path: ../vendor/webview_windows_wukong
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

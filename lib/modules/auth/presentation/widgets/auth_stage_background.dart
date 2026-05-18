@@ -14,12 +14,11 @@ class AuthStageBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AuthExperiencePalette.of(context);
     return RepaintBoundary(
       child: DecoratedBox(
         key: backgroundKey,
-        decoration: const BoxDecoration(
-          color: AuthExperienceTokens.stageBackgroundBottom,
-        ),
+        decoration: BoxDecoration(color: palette.stageBackgroundBottom),
       ),
     );
   }

@@ -3,23 +3,77 @@ import 'package:flutter/material.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_sub_page_scaffold.dart';
+import '../dingtalk_monitor/dingtalk_monitor_center_page.dart';
 import '../feishu_monitor/feishu_monitor_center_page.dart';
+import '../juliang_monitor/juliang_monitor_center_page.dart';
+import '../mengxia_monitor/mengxia_monitor_center_page.dart';
+import '../robot_config/feishu_robot_credentials_page.dart';
+import '../xiaoe_monitor/xiaoe_monitor_center_page.dart';
 
 class VipManagementPage extends StatelessWidget {
-  const VipManagementPage({super.key});
+  const VipManagementPage({
+    super.key,
+    this.feishuCenterBuilder,
+    this.dingTalkCenterBuilder,
+    this.mengxiaCenterBuilder,
+    this.juliangCenterBuilder,
+    this.xiaoeCenterBuilder,
+    this.robotConfigBuilder,
+  });
+
+  final WidgetBuilder? feishuCenterBuilder;
+  final WidgetBuilder? dingTalkCenterBuilder;
+  final WidgetBuilder? mengxiaCenterBuilder;
+  final WidgetBuilder? juliangCenterBuilder;
+  final WidgetBuilder? xiaoeCenterBuilder;
+  final WidgetBuilder? robotConfigBuilder;
 
   void _openFeishuCenter(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FeishuMonitorCenterPage(),
+        builder: feishuCenterBuilder ?? (_) => FeishuMonitorCenterPage(),
       ),
     );
   }
 
-  void _showComingSoon(BuildContext context, String title) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$title 即将上线')));
+  void _openDingTalkCenter(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: dingTalkCenterBuilder ?? (_) => DingTalkMonitorCenterPage(),
+      ),
+    );
+  }
+
+  void _openMengxiaCenter(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: mengxiaCenterBuilder ?? (_) => MengxiaMonitorCenterPage(),
+      ),
+    );
+  }
+
+  void _openJuliangCenter(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: juliangCenterBuilder ?? (_) => JuliangMonitorCenterPage(),
+      ),
+    );
+  }
+
+  void _openXiaoeCenter(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: xiaoeCenterBuilder ?? (_) => XiaoeMonitorCenterPage(),
+      ),
+    );
+  }
+
+  void _openRobotConfig(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: robotConfigBuilder ?? (_) => FeishuRobotCredentialsPage(),
+      ),
+    );
   }
 
   @override
@@ -32,10 +86,20 @@ class VipManagementPage extends StatelessWidget {
           const _ManagementHeader(),
           const SizedBox(height: WKSpace.md),
           _ManagementCenterCard(
+            key: const ValueKey('management-center-robot-config'),
+            title: '机器人配置',
+            description: '统一配置飞书开放平台 App ID 与 App Secret，本机保存后供群机器人接入使用。',
+            status: '本机配置',
+            icon: Icons.smart_toy_outlined,
+            enabled: true,
+            onTap: () => _openRobotConfig(context),
+          ),
+          const SizedBox(height: WKSpace.sm),
+          _ManagementCenterCard(
             key: const ValueKey('management-center-feishu'),
             title: '飞书信息监控中心',
             description: '查看独立飞书监控壳程序状态，并从悟空 IM 内发起基础控制。',
-            status: '第一阶段',
+            status: '正常',
             icon: Icons.forum_rounded,
             enabled: true,
             onTap: () => _openFeishuCenter(context),
@@ -44,21 +108,42 @@ class VipManagementPage extends StatelessWidget {
           _ManagementCenterCard(
             key: const ValueKey('management-center-dingtalk'),
             title: '钉钉信息监控中心',
-            description: '后续统一接入到消息监控中心的多平台管理模型。',
-            status: '即将上线',
+            description: '连接本机 Windows 原生 DingTalk Host，配置来源到悟空 IM 群的自动转发规则。',
+            status: '正常',
             icon: Icons.notifications_active_rounded,
-            enabled: false,
-            onTap: () => _showComingSoon(context, '钉钉信息监控中心'),
+            enabled: true,
+            onTap: () => _openDingTalkCenter(context),
+          ),
+          const SizedBox(height: WKSpace.sm),
+          _ManagementCenterCard(
+            key: const ValueKey('management-center-mengxia'),
+            title: '萌侠信息转发中心',
+            description: '人工登录萌侠无痕窗口后，实时监控已选择来源会话并转发到悟空 IM 目标群。',
+            status: '正常',
+            icon: Icons.hub_rounded,
+            enabled: true,
+            onTap: () => _openMengxiaCenter(context),
+          ),
+          const SizedBox(height: WKSpace.sm),
+          _ManagementCenterCard(
+            key: const ValueKey('management-center-juliang'),
+            title: '聚合信息转发中心',
+            description: '每次启动无痕登录聚合面板，实时监控已配置来源会话并转发文本到悟空 IM 目标群。',
+            status: '正常',
+            icon: Icons.alt_route_rounded,
+            enabled: true,
+            onTap: () => _openJuliangCenter(context),
           ),
           const SizedBox(height: WKSpace.sm),
           _ManagementCenterCard(
             key: const ValueKey('management-center-xiaoe'),
-            title: '小鹅通信息监控中心',
-            description: '课程、订单、通知类消息后续会并入统一监控控制台。',
-            status: '即将上线',
+            title: '小鹅通信息转发中心',
+            description:
+                '从小鹅通 muti_index 打开后手动停留在圈子、课程互动或直播评论页，实时转发文本、图片和 20 MB 内文件。',
+            status: '正常',
             icon: Icons.school_rounded,
-            enabled: false,
-            onTap: () => _showComingSoon(context, '小鹅通信息监控中心'),
+            enabled: true,
+            onTap: () => _openXiaoeCenter(context),
           ),
         ],
       ),
@@ -93,7 +178,7 @@ class _ManagementHeader extends StatelessWidget {
           ),
           SizedBox(height: WKSpace.xs),
           Text(
-            '按平台管理消息监控与自动转发。飞书监控已切换到新的壳程序 + 控制台架构，当前先接入本地状态与基础控制。',
+            '按平台管理消息监控与自动转发。飞书、钉钉和萌侠均通过独立本地监控程序接入，悟空 IM 只负责规则配置和最终群转发。',
             style: TextStyle(
               fontFamily: WKFontFamily.primary,
               fontSize: 14,

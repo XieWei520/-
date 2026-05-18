@@ -39,7 +39,11 @@ final chatSceneControllerProvider = StateNotifierProvider.autoDispose
 
 typedef ChatOutgoingMessageSender = FutureOr<void> Function(WKMsg message);
 typedef ChatSdkMessageSender =
-    FutureOr<void> Function(WKMessageContent content, WKChannel channel);
+    FutureOr<void> Function(
+      WKMessageContent content,
+      WKChannel channel,
+      WKSendOptions options,
+    );
 
 final chatUseDirectWebMessageSendProvider = Provider.autoDispose<bool>((ref) {
   return WKIM.shared.runMode == Model.web;
@@ -52,18 +56,20 @@ final chatOutgoingMessageSenderProvider =
 
 final chatSdkMessageSenderProvider = Provider.autoDispose<ChatSdkMessageSender>(
   (ref) {
-    return (content, channel) =>
-        WKIM.shared.messageManager.sendMessage(content, channel);
+    return (content, channel, options) =>
+        WKIM.shared.messageManager.sendWithOption(content, channel, options);
   },
 );
 
 final chatSceneGatewayProvider = Provider.autoDispose
     .family<ChatSceneGateway, ChatSession>((ref, session) {
       return ApiChatSceneGateway(
-        sendMessage: (content, channel) async {
+        sendMessageWithOptions: (content, channel, options) async {
           if (!ref.read(chatUseDirectWebMessageSendProvider)) {
             await Future<void>.sync(
-              () => ref.read(chatSdkMessageSenderProvider)(content, channel),
+              () => ref
+                  .read(chatSdkMessageSenderProvider)
+                  (content, channel, options ?? WKSendOptions()),
             );
             return;
           }
@@ -73,6 +79,7 @@ final chatSceneGatewayProvider = Provider.autoDispose
             content: content,
             channel: channel,
             currentUid: currentUid,
+            expireSeconds: options?.expire,
           );
           await _sendDirectWebMessage(
             ref: ref,

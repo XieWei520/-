@@ -1,0 +1,54 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DingTalkWindowsHost.Contracts", "src\DingTalkWindowsHost.Contracts\DingTalkWindowsHost.Contracts.csproj", "{8A393E8D-CB56-4B13-9867-450374F2E7F0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DingTalkWindowsHost.App", "src\DingTalkWindowsHost.App\DingTalkWindowsHost.App.csproj", "{10F7A2C8-90F6-45DB-B8FD-3E52289C711A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DingTalkWindowsHost.Automation", "src\DingTalkWindowsHost.Automation\DingTalkWindowsHost.Automation.csproj", "{2B6B2AA8-48E2-4A18-B76B-9761BA2334B4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DingTalkWindowsHost.Storage", "src\DingTalkWindowsHost.Storage\DingTalkWindowsHost.Storage.csproj", "{3013B9E8-D578-484D-A55E-1570AFEB8708}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DingTalkWindowsHost.Api", "src\DingTalkWindowsHost.Api\DingTalkWindowsHost.Api.csproj", "{0632717B-EBE6-4525-801F-7CC0D1F5AA93}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DingTalkWindowsHost.Tests", "tests\DingTalkWindowsHost.Tests\DingTalkWindowsHost.Tests.csproj", "{A5C82D27-2F10-462C-A1EE-5E6E85F3E2CC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8A393E8D-CB56-4B13-9867-450374F2E7F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A393E8D-CB56-4B13-9867-450374F2E7F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A393E8D-CB56-4B13-9867-450374F2E7F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A393E8D-CB56-4B13-9867-450374F2E7F0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{10F7A2C8-90F6-45DB-B8FD-3E52289C711A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{10F7A2C8-90F6-45DB-B8FD-3E52289C711A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{10F7A2C8-90F6-45DB-B8FD-3E52289C711A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{10F7A2C8-90F6-45DB-B8FD-3E52289C711A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2B6B2AA8-48E2-4A18-B76B-9761BA2334B4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2B6B2AA8-48E2-4A18-B76B-9761BA2334B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2B6B2AA8-48E2-4A18-B76B-9761BA2334B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2B6B2AA8-48E2-4A18-B76B-9761BA2334B4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3013B9E8-D578-484D-A55E-1570AFEB8708}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3013B9E8-D578-484D-A55E-1570AFEB8708}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3013B9E8-D578-484D-A55E-1570AFEB8708}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3013B9E8-D578-484D-A55E-1570AFEB8708}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0632717B-EBE6-4525-801F-7CC0D1F5AA93}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0632717B-EBE6-4525-801F-7CC0D1F5AA93}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0632717B-EBE6-4525-801F-7CC0D1F5AA93}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0632717B-EBE6-4525-801F-7CC0D1F5AA93}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A5C82D27-2F10-462C-A1EE-5E6E85F3E2CC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5C82D27-2F10-462C-A1EE-5E6E85F3E2CC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5C82D27-2F10-462C-A1EE-5E6E85F3E2CC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5C82D27-2F10-462C-A1EE-5E6E85F3E2CC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {503E987E-EC8B-460E-8C16-5A2B1EF78975}
+	EndGlobalSection
+EndGlobal

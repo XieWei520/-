@@ -235,13 +235,12 @@ class WKSettingsCell extends StatelessWidget {
                     ),
                   ),
                   if (resolvedTrailing != null)
-                    Flexible(
-                      fit: FlexFit.loose,
+                    SizedBox(
+                      width: maxTrailingWidth,
                       child: ConstrainedBox(
                         constraints: BoxConstraints(maxWidth: maxTrailingWidth),
                         child: Align(
                           alignment: Alignment.centerRight,
-                          widthFactor: 1,
                           child: resolvedTrailing,
                         ),
                       ),

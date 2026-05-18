@@ -96,29 +96,27 @@ class _AuthFormFieldState extends State<AuthFormField> {
     _focusNode.requestFocus();
   }
 
-  InputDecoration _buildDecoration() {
+  InputDecoration _buildDecoration(AuthExperiencePalette palette) {
     final hasError = (widget.errorText ?? '').trim().isNotEmpty;
     final enabledBorderColor = hasError
-        ? AuthExperienceTokens.fieldBorderError
-        : AuthExperienceTokens.inputBorder;
+        ? palette.fieldBorderError
+        : palette.inputBorder;
     final focusedBorderColor = hasError
-        ? AuthExperienceTokens.fieldBorderError
-        : AuthExperienceTokens.inputBorderFocus;
+        ? palette.fieldBorderError
+        : palette.inputBorderFocus;
 
     return InputDecoration(
       filled: true,
-      fillColor: widget.enabled
-          ? AuthExperienceTokens.inputFill
-          : AuthExperienceTokens.inputFillDisabled,
-      hintStyle: const TextStyle(
+      fillColor: widget.enabled ? palette.inputFill : palette.inputFillDisabled,
+      hintStyle: TextStyle(
         fontFamily: WKFontFamily.primary,
         fontSize: 14,
-        color: AuthExperienceTokens.inputHint,
+        color: palette.inputHint,
       ),
-      errorStyle: const TextStyle(
+      errorStyle: TextStyle(
         fontFamily: WKFontFamily.primary,
         fontSize: 12,
-        color: AuthExperienceTokens.errorText,
+        color: palette.errorText,
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(20),
@@ -130,30 +128,25 @@ class _AuthFormFieldState extends State<AuthFormField> {
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(color: AuthExperienceTokens.inputBorder),
+        borderSide: BorderSide(color: palette.inputBorder),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(
-          color: AuthExperienceTokens.fieldBorderError,
-        ),
+        borderSide: BorderSide(color: palette.fieldBorderError),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(20),
-        borderSide: const BorderSide(
-          color: AuthExperienceTokens.fieldBorderError,
-        ),
+        borderSide: BorderSide(color: palette.fieldBorderError),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = AuthExperiencePalette.of(context);
     final hasError = (widget.errorText ?? '').trim().isNotEmpty;
     final supportingText = hasError ? widget.errorText : widget.helperText;
-    final supportingColor = hasError
-        ? AuthExperienceTokens.errorText
-        : AuthExperienceTokens.helperText;
+    final supportingColor = hasError ? palette.errorText : palette.helperText;
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -174,14 +167,14 @@ class _AuthFormFieldState extends State<AuthFormField> {
               onChanged: widget.onChanged,
               onSubmitted: widget.onSubmitted,
               autofillHints: widget.autofillHints,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: WKFontFamily.primary,
                 fontSize: 14,
-                color: AuthExperienceTokens.inputText,
+                color: palette.inputText,
                 fontWeight: FontWeight.w600,
               ),
-              cursorColor: AuthExperienceTokens.inputText,
-              decoration: _buildDecoration().copyWith(
+              cursorColor: palette.inputText,
+              decoration: _buildDecoration(palette).copyWith(
                 hintText: widget.hintText,
                 isDense: true,
                 contentPadding: widget.contentPadding,

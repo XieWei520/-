@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// Notification helper
@@ -8,7 +9,10 @@ class NotificationHelper {
 
   static const String messageChannelId = 'wk_new_msg_notification';
   static const String messageChannelName = 'New message notifications';
-  static const String messageAlertChannelId = 'wk_new_msg_alert_notification';
+  static const String legacyMessageAlertChannelId =
+      'wk_new_msg_alert_notification';
+  static const String messageAlertChannelId =
+      'wk_new_msg_alert_notification_v2';
   static const String messageAlertChannelName = 'New message alerts';
   static const String messageAlertChannelDescription =
       'Message alerts with sound and heads-up notification cards.';
@@ -212,7 +216,15 @@ class NotificationHelper {
       iOS: iosDetails,
     );
 
-    await _plugin.show(id, title, body, details, payload: payload);
+    try {
+      await _plugin.show(id, title, body, details, payload: payload);
+    } catch (error, stackTrace) {
+      debugPrint(
+        'NotificationHelper.show failed for channel '
+        '${androidDetails.channelId}: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   /// Show group notification
@@ -249,12 +261,22 @@ class NotificationHelper {
 
   /// Cancel a notification
   Future<void> cancel(int id) async {
-    await _plugin.cancel(id);
+    try {
+      await _plugin.cancel(id);
+    } catch (error, stackTrace) {
+      debugPrint('NotificationHelper.cancel failed for id $id: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   /// Cancel all notifications
   Future<void> cancelAll() async {
-    await _plugin.cancelAll();
+    try {
+      await _plugin.cancelAll();
+    } catch (error, stackTrace) {
+      debugPrint('NotificationHelper.cancelAll failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   /// Get pending notifications

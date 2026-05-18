@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>DingTalkWindowsHost.Api</AssemblyName>
+    <RootNamespace>DingTalkWindowsHost.Api</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DingTalkWindowsHost.Contracts\DingTalkWindowsHost.Contracts.csproj" />
+    <ProjectReference Include="..\DingTalkWindowsHost.Storage\DingTalkWindowsHost.Storage.csproj" />
+  </ItemGroup>
+</Project>

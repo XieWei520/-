@@ -9,6 +9,7 @@ import 'package:wukong_im_app/modules/chat/chat_scene_gateway.dart';
 import 'package:wukong_im_app/modules/chat/message_forwarding.dart';
 import 'package:wukong_im_app/wukong_base/msg/reaction_manager.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
+import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/model/wk_image_content.dart';
 import 'package:wukongimfluttersdk/model/wk_message_content.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
@@ -65,6 +66,43 @@ void main() {
   );
 
   test(
+    'chatSceneGatewayProvider sends normal SDK messages with 30 day retention',
+    () async {
+      final sentMessages = <_SdkSendCall>[];
+      const session = ChatSession(
+        channelId: 'u_provider_sdk',
+        channelType: WKChannelType.personal,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          chatUseDirectWebMessageSendProvider.overrideWithValue(false),
+          chatSdkMessageSenderProvider.overrideWithValue((
+            content,
+            channel,
+            options,
+          ) {
+            sentMessages.add(_SdkSendCall(content, channel, options.expire));
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final gateway = container.read(chatSceneGatewayProvider(session));
+
+      await gateway.sendMessageContent(
+        WKTextContent('provider sdk send'),
+        channelId: session.channelId,
+        channelType: session.channelType,
+      );
+
+      expect(sentMessages, hasLength(1));
+      expect(sentMessages.single.content, isA<WKTextContent>());
+      expect(sentMessages.single.channel.channelID, session.channelId);
+      expect(sentMessages.single.expire, defaultChatMessageRetentionSeconds);
+    },
+  );
+
+  test(
     'chatSceneGatewayProvider publishes direct web sends into chat and conversation state',
     () async {
       final sentMessages = <WKMsg>[];
@@ -101,6 +139,11 @@ void main() {
 
       expect(sentMessages, hasLength(1));
       expect(sentMessages.single.content, contains('provider web send'));
+      expect(sentMessages.single.expireTime, defaultChatMessageRetentionSeconds);
+      expect(
+        sentMessages.single.expireTimestamp,
+        sentMessages.single.timestamp + defaultChatMessageRetentionSeconds,
+      );
       final chatMessages = container.read(messageListProvider(session));
       expect(chatMessages, hasLength(1));
       expect(chatMessages.single.status, WKSendMsgResult.sendSuccess);
@@ -130,7 +173,11 @@ void main() {
           chatOutgoingMessageSenderProvider.overrideWithValue((message) {
             sentMessages.add(message);
           }),
-          chatSdkMessageSenderProvider.overrideWithValue((content, channel) {
+          chatSdkMessageSenderProvider.overrideWithValue((
+            content,
+            channel,
+            options,
+          ) {
             throw StateError('sdk sender should not be used for web media');
           }),
           conversationProvider.overrideWith(
@@ -277,6 +324,7 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
     required String channelId,
     required int channelType,
     String? channelName,
+    int? expireSeconds,
   }) async {}
 
   @override
@@ -291,4 +339,12 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
   Stream<ReactionUpdate> watchReactionUpdates() {
     return const Stream<ReactionUpdate>.empty();
   }
+}
+
+class _SdkSendCall {
+  const _SdkSendCall(this.content, this.channel, this.expire);
+
+  final WKMessageContent content;
+  final WKChannel channel;
+  final int? expire;
 }

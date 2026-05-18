@@ -94,6 +94,9 @@ void main() {
     final messageBackupSection = sections.firstWhere(
       (section) => section.id == 'settings.message_backup',
     );
+    final modulesSection = sections.firstWhere(
+      (section) => section.id == 'settings.modules',
+    );
 
     expect(appearanceSection.cells.map((cell) => cell.id).toList(), <String>[
       'settings.dark_mode',
@@ -108,6 +111,11 @@ void main() {
     expect(messageBackupSection.cells.map((cell) => cell.id).toList(), <String>[
       'settings.message_backup',
       'settings.message_recovery',
+    ]);
+    expect(modulesSection.cells.map((cell) => cell.id).toList(), <String>[
+      'settings.app_modules',
+      'settings.third_party',
+      'settings.error_logs',
     ]);
 
     cacheSection.cells[1].onTap();

@@ -361,10 +361,24 @@ class _GroupDingTalkBotPageState extends State<GroupDingTalkBotPage> {
                 ListView(
                   padding: EdgeInsets.zero,
                   children: [
+                    WKSettingsGroup(children: [_buildSummarySection()]),
+                    const WKSectionGap(10),
                     WKSettingsGroup(
                       children: [
-                        _buildSummarySection(),
-                        const Divider(height: 1, indent: 15, endIndent: 15),
+                        GroupRobotIdentitySection(
+                          providerName: '钉钉',
+                          displayNameController: _displayNameController,
+                          displayAvatar: _displayAvatar,
+                          isBusy: _isSaving,
+                          onDisplayNameChanged: _scheduleDisplayIdentitySave,
+                          onUploadAvatar: _uploadDisplayAvatar,
+                          onClearAvatar: () => unawaited(_clearDisplayAvatar()),
+                        ),
+                      ],
+                    ),
+                    const WKSectionGap(10),
+                    WKSettingsGroup(
+                      children: [
                         GroupRobotWebhookModeSection(
                           providerName: '钉钉',
                           mode: _webhookMode,
@@ -383,34 +397,18 @@ class _GroupDingTalkBotPageState extends State<GroupDingTalkBotPage> {
                             _buildCreateSection()
                           else ...[
                             _buildCredentialSection(
-                              title: '回调地址',
+                              title: 'Webhook',
                               value: config.webhookUrl,
-                              subtitle: '将此地址配置到兼容钉钉机器人消息格式的第三方系统中。',
-                              copyLabel: '回调地址',
+                              copyLabel: 'Webhook',
                             ),
                             const Divider(height: 1, indent: 15, endIndent: 15),
                             _buildCredentialSection(
                               title: '加签密钥',
                               value: config.secret,
-                              subtitle: '第三方系统发消息时，需按钉钉规则生成签名。',
                               copyLabel: '加签密钥',
                             ),
                           ],
                         ],
-                      ],
-                    ),
-                    const WKSectionGap(10),
-                    WKSettingsGroup(
-                      children: [
-                        GroupRobotIdentitySection(
-                          providerName: '钉钉',
-                          displayNameController: _displayNameController,
-                          displayAvatar: _displayAvatar,
-                          isBusy: _isSaving,
-                          onDisplayNameChanged: _scheduleDisplayIdentitySave,
-                          onUploadAvatar: _uploadDisplayAvatar,
-                          onClearAvatar: () => unawaited(_clearDisplayAvatar()),
-                        ),
                       ],
                     ),
                     if (config != null ||
@@ -431,20 +429,20 @@ class _GroupDingTalkBotPageState extends State<GroupDingTalkBotPage> {
                           ),
                           WKSettingsCell(
                             key: const ValueKey('group-robot-save-config-cell'),
-                            title: '保存当前配置',
+                            title: '保存配置',
                             onTap: _isSaving ? null : _saveConfig,
                           ),
                           if (_webhookMode ==
                                   GroupRobotWebhookMode.imGenerated &&
                               config != null) ...[
                             WKSettingsCell(
-                              title: '重新生成加签密钥',
+                              title: '重置加签密钥',
                               onTap: _isSaving
                                   ? null
                                   : () => _saveConfig(regenerateSecret: true),
                             ),
                             WKSettingsCell(
-                              title: '重新生成 Webhook',
+                              title: '重置 Webhook',
                               onTap: _isSaving
                                   ? null
                                   : () => _saveConfig(regenerateWebhook: true),
@@ -498,83 +496,150 @@ class _GroupDingTalkBotPageState extends State<GroupDingTalkBotPage> {
     final resolvedGroupName = widget.groupName.trim().isEmpty
         ? widget.groupNo
         : widget.groupName.trim();
-    final statusText = config == null
-        ? '尚未生成钉钉机器人配置'
-        : (config.enabled ? '已启用钉钉机器人' : '钉钉机器人已停用');
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 18, 15, 18),
+      padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            resolvedGroupName,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: WKColors.colorDark,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      resolvedGroupName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: WKColors.colorDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '群号：${widget.groupNo}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: WKColors.color999,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusChip(
+                label: config == null ? '未生成' : '已生成',
+                color: config == null ? WKColors.color999 : WKColors.brand500,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _StatusChip(
+                label: config == null
+                    ? '未启用'
+                    : (config.enabled ? '已启用' : '已停用'),
+                color: config == null
+                    ? WKColors.color999
+                    : (config.enabled
+                          ? const Color(0xFF1C9C5E)
+                          : WKColors.danger),
+              ),
+              _StatusChip(label: _webhookMode.label, color: WKColors.info),
+              if (config?.secretSet == true)
+                _StatusChip(label: '已加签', color: const Color(0xFF148A8A)),
+              if ((config?.lastPushAt ?? 0) > 0)
+                _StatusChip(
+                  label: '最近 ${_formatTimestamp(config!.lastPushAt)}',
+                  color: WKColors.color999,
+                ),
+            ],
+          ),
+          if ((config?.lastError ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '最近错误：${config!.lastError}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: WKColors.danger,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            statusText,
-            style: const TextStyle(fontSize: 13, color: WKColors.color999),
-          ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildCreateSection() {
-    return WKSettingsCell(
-      title: '生成钉钉机器人',
-      onTap: _isSaving ? null : _saveConfig,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(15, 12, 15, 14),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: _isSaving ? null : _saveConfig,
+          icon: const Icon(Icons.auto_fix_high_outlined),
+          label: const Text('生成 Webhook'),
+        ),
+      ),
     );
   }
 
   Widget _buildCredentialSection({
     required String title,
     required String value,
-    required String subtitle,
     required String copyLabel,
   }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 16, 15, 16),
+      padding: const EdgeInsets.fromLTRB(15, 12, 15, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: WKColors.colorDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            value.isEmpty ? '-' : value,
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1.45,
-              color: WKColors.colorDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              fontSize: 12,
-              height: 1.45,
-              color: WKColors.color999,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: WKColors.colorDark,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _isSaving ? null : () => _copyText(copyLabel, value),
+                icon: const Icon(Icons.copy_outlined, size: 16),
+                label: const Text('复制'),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: _isSaving ? null : () => _copyText(copyLabel, value),
-              child: Text('复制$copyLabel'),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: WKColors.homeBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE8EBF1)),
+            ),
+            child: SelectableText(
+              value.isEmpty ? '-' : value,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                height: 1.45,
+                color: WKColors.colorDark,
+              ),
             ),
           ),
         ],
@@ -587,18 +652,19 @@ class _GroupDingTalkBotPageState extends State<GroupDingTalkBotPage> {
     required GroupRobotWebhookMode mode,
   }) {
     if (mode == GroupRobotWebhookMode.official) {
-      return '1. 官方模式下，系统将以你填写的钉钉官方 Webhook 为主。\n'
-          '2. 请确保 URL 包含 oapi.dingtalk.com 或 api.dingtalk.com。\n'
-          '3. 当前版本中，官方 Webhook 消息不会回流同步到 IM 群聊。';
+      return '官方模式：填写钉钉官方 Webhook；消息不会回流同步到 IM 群聊。';
     }
 
-    final buffer = StringBuffer()
-      ..writeln('1. 生成 Webhook 与加签密钥后，第三方系统即可按钉钉机器人消息格式推送到当前群聊。')
-      ..writeln('2. 当前版本支持 text、markdown、link、actionCard、feedCard 五种消息类型。');
-    if (generated) {
-      buffer.writeln('3. 重新生成 Webhook 或加签密钥后，旧配置会立即失效，需要同步更新第三方平台。');
-    }
-    return buffer.toString().trimRight();
+    return generated
+        ? '复制 Webhook 与加签密钥到第三方平台；重置后旧配置立即失效。'
+        : '生成 Webhook 后即可接入第三方平台。';
+  }
+
+  String _formatTimestamp(int value) {
+    final dateTime = DateTime.fromMillisecondsSinceEpoch(value * 1000);
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${dateTime.year}-${two(dateTime.month)}-${two(dateTime.day)} '
+        '${two(dateTime.hour)}:${two(dateTime.minute)}';
   }
 
   void _showMessage(String message) {
@@ -608,5 +674,27 @@ class _GroupDingTalkBotPageState extends State<GroupDingTalkBotPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _StatusChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:feishu_monitor_shell/feishu_monitor_shell.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:feishu_monitor_shell_app/main.dart';
@@ -9,10 +11,277 @@ void main() {
     expect(defaultFeishuRuntimeUrl, 'https://www.feishu.cn/messenger/');
   });
 
+  test('webview environment disables background throttling', () {
+    final args = feishuShellWebviewAdditionalArguments();
+
+    expect(args, contains('--disable-background-timer-throttling'));
+    expect(args, contains('--disable-renderer-backgrounding'));
+    expect(args, contains('--disable-backgrounding-occluded-windows'));
+    expect(args, contains('CalculateNativeWinOcclusion'));
+    expect(args, contains('IntensiveWakeUpThrottling'));
+  });
+
+  test('configured media keepalive waits for stale feed and cooldown', () {
+    final now = DateTime.utc(2026, 5, 11, 7, 30);
+
+    expect(
+      shouldOpenConfiguredMediaFeedKeepAlive(
+        sameFeedSignatureCount: 4,
+        hasConfiguredMediaSources: true,
+        pendingMediaNeedsExtraction: false,
+        now: now,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldOpenConfiguredMediaFeedKeepAlive(
+        sameFeedSignatureCount: 5,
+        hasConfiguredMediaSources: true,
+        pendingMediaNeedsExtraction: false,
+        now: now,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldOpenConfiguredMediaFeedKeepAlive(
+        sameFeedSignatureCount: 40,
+        hasConfiguredMediaSources: true,
+        pendingMediaNeedsExtraction: true,
+        now: now,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldOpenConfiguredMediaFeedKeepAlive(
+        sameFeedSignatureCount: 40,
+        hasConfiguredMediaSources: true,
+        pendingMediaNeedsExtraction: false,
+        now: now,
+        lastOpenedAt: now.subtract(const Duration(seconds: 30)),
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'configured media keepalive cursor rotates through configured sources',
+    () {
+      expect(
+        nextConfiguredMediaFeedKeepAliveCursor(currentIndex: 0, sourceCount: 2),
+        1,
+      );
+      expect(
+        nextConfiguredMediaFeedKeepAliveCursor(currentIndex: 1, sourceCount: 2),
+        0,
+      );
+      expect(
+        nextConfiguredMediaFeedKeepAliveCursor(currentIndex: 4, sourceCount: 0),
+        0,
+      );
+    },
+  );
+
+  test('media preview signature includes pending feed key', () {
+    expect(
+      mediaPreviewExtractionSignature(
+        domImageSignature: 'dom:image:stable',
+        pendingMediaFeedKey: 'feed:new-image',
+      ),
+      'dom:image:stable\npending:feed:new-image',
+    );
+  });
+
+  test(
+    'media preview extraction signature changes when pending feed key changes',
+    () {
+      final previous = mediaPreviewExtractionSignature(
+        domImageSignature: 'dom:image:stable',
+        pendingMediaFeedKey: 'feed:old-image',
+      );
+      final next = mediaPreviewExtractionSignature(
+        domImageSignature: 'dom:image:stable',
+        pendingMediaFeedKey: 'feed:new-image',
+      );
+
+      expect(next, isNot(previous));
+    },
+  );
+
+  test('media preview diagnostics prefer current Dart extraction signature', () {
+    final diagnostics = mediaPreviewExtractionDiagnostics(
+      <String, dynamic>{
+        'opened': true,
+        'signature': 'stale-js-signature',
+      },
+      extractionSignature: 'dom:image:stable\npending:feed:new-image',
+      pendingMediaFeedKey: 'feed:new-image',
+    );
+
+    expect(diagnostics['opened'], isTrue);
+    expect(
+      diagnostics['signature'],
+      'dom:image:stable\npending:feed:new-image',
+    );
+    expect(diagnostics['pending_key'], 'feed:new-image');
+  });
+
   test('shell app visible copy stays readable Chinese', () {
+    expect(feishuShellAppTitle, '飞书消息监控助手');
     expect(feishuShellRefreshTooltip, '刷新');
-    expect(feishuShellReadyMessage, contains('本地壳程序已启动'));
-    expect(feishuShellReadyMessage, contains('WuKongIM'));
+  });
+
+  test('windows native window title uses unicode escapes', () {
+    final mainCpp = File('windows/runner/main.cpp').readAsStringSync();
+
+    expect(
+      mainCpp,
+      contains(r'L"\u98DE\u4E66\u6D88\u606F\u76D1\u63A7\u52A9\u624B"'),
+    );
+  });
+
+  test('shell support directory stays stable after visible title rename', () {
+    final renamedSupportDirectory = Directory(
+      'C:\\app_support\\com.example\\飞书消息监控助手',
+    );
+
+    final stableDirectory = feishuShellStableSupportDirectoryFor(
+      renamedSupportDirectory,
+    );
+
+    expect(
+      stableDirectory.path,
+      'C:\\app_support\\com.example\\feishu_monitor_shell_app',
+    );
+    expect(
+      feishuShellSnapshotFileFor(stableDirectory).path,
+      'C:\\app_support\\com.example\\feishu_monitor_shell_app'
+      '\\feishu_monitor_shell\\status.json',
+    );
+  });
+
+  test('worker runtime options parse worker id and port from arguments', () {
+    final options = parseFeishuShellWorkerOptions(<String>[
+      '--worker-id=worker-3',
+      '--port=18768',
+      '--profile-suffix=worker-3',
+    ]);
+
+    expect(options.workerId, 'worker-3');
+    expect(options.port, 18768);
+    expect(options.profileSuffix, 'worker-3');
+    expect(options.titleSuffix, 'worker-3');
+  });
+
+  test('shell snapshot status json includes worker id', () {
+    final snapshot = ShellSnapshot.initial().copyWith(workerId: 'worker-3');
+
+    expect(snapshot.toJson()['worker_id'], 'worker-3');
+    expect(
+      ShellSnapshot.fromJsonString('{"worker_id":"worker-4"}').workerId,
+      'worker-4',
+    );
+  });
+
+  test('worker runtime options reject unsafe port and profile suffix', () {
+    final options = parseFeishuShellWorkerOptions(<String>[
+      '--worker-id=worker:3',
+      '--port=70000',
+      r'--profile-suffix=..\worker-3',
+    ]);
+
+    expect(options.workerId, 'worker-1');
+    expect(options.port, 18766);
+    expect(options.profileSuffix, isEmpty);
+    expect(options.titleSuffix, 'worker-1');
+  });
+
+  test('main entrypoint parses Flutter app arguments for worker options', () {
+    final mainDart = File('lib/main.dart').readAsStringSync();
+
+    expect(mainDart, contains('Future<void> main(List<String> args)'));
+    expect(mainDart, contains('parseFeishuShellWorkerOptions(args)'));
+    expect(mainDart, isNot(contains('Platform.executableArguments')));
+  });
+
+  test('worker support directory is isolated by profile suffix', () {
+    final base = Directory(r'C:\tmp\app_support');
+    final defaultDir = feishuShellStableSupportDirectoryFor(base);
+    final workerDir = feishuShellStableSupportDirectoryFor(
+      base,
+      profileSuffix: 'worker-3',
+    );
+
+    expect(defaultDir.path, isNot(workerDir.path));
+    expect(workerDir.path, contains('feishu_monitor_shell_app_worker-3'));
+  });
+
+  test(
+    'worker support directory does not migrate default status file',
+    () async {
+      final temp = await Directory.systemTemp.createTemp(
+        'feishu_shell_worker_support_test_',
+      );
+      try {
+        final renamedSupportDirectory = Directory(
+          '${temp.path}${Platform.pathSeparator}com.example'
+          '${Platform.pathSeparator}飞书消息监控助手',
+        );
+        final defaultStatus = feishuShellSnapshotFileFor(
+          renamedSupportDirectory,
+        );
+        await defaultStatus.parent.create(recursive: true);
+        await defaultStatus.writeAsString('{"capture_state":"running"}');
+
+        final prepared = await prepareFeishuShellSupportDirectory(
+          renamedSupportDirectory,
+          profileSuffix: 'worker-3',
+        );
+        final workerStatus = feishuShellSnapshotFileFor(prepared);
+
+        expect(prepared.path, contains('feishu_monitor_shell_app_worker-3'));
+        expect(await workerStatus.exists(), isFalse);
+      } finally {
+        if (await temp.exists()) {
+          await temp.delete(recursive: true);
+        }
+      }
+    },
+  );
+
+  test('renamed shell support directory migrates newer status file', () async {
+    final temp = await Directory.systemTemp.createTemp(
+      'feishu_shell_support_test_',
+    );
+    try {
+      final renamedSupportDirectory = Directory(
+        '${temp.path}${Platform.pathSeparator}com.example'
+        '${Platform.pathSeparator}飞书消息监控助手',
+      );
+      final stableDirectory = feishuShellStableSupportDirectoryFor(
+        renamedSupportDirectory,
+      );
+      final sourceStatus = feishuShellSnapshotFileFor(renamedSupportDirectory);
+      final targetStatus = feishuShellSnapshotFileFor(stableDirectory);
+      await sourceStatus.parent.create(recursive: true);
+      await targetStatus.parent.create(recursive: true);
+      await sourceStatus.writeAsString('{"capture_state":"running"}');
+      await targetStatus.writeAsString('{"capture_state":"stopped"}');
+      await targetStatus.setLastModified(
+        DateTime.now().subtract(const Duration(hours: 1)),
+      );
+      await sourceStatus.setLastModified(DateTime.now());
+
+      final prepared = await prepareFeishuShellSupportDirectory(
+        renamedSupportDirectory,
+      );
+
+      expect(prepared.path, stableDirectory.path);
+      expect(await targetStatus.readAsString(), '{"capture_state":"running"}');
+    } finally {
+      if (await temp.exists()) {
+        await temp.delete(recursive: true);
+      }
+    }
   });
 
   test('deriveLoginState treats messenger url as logged in', () {
@@ -419,6 +688,441 @@ void main() {
       expect(
         updated.recentEvents.single.imageAttachments.single.localPath,
         r'C:\tmp\alpha.webp',
+      );
+    },
+  );
+
+  test(
+    'applyStorageProbeDiagnostic records and caps storage probe summaries',
+    () {
+      var snapshot = ShellSnapshot.initial();
+
+      for (var index = 0; index < 22; index += 1) {
+        snapshot = applyStorageProbeDiagnostic(snapshot, <String, Object?>{
+          'kind': 'indexeddb',
+          'observed_at':
+              '2026-05-10T12:00:${index.toString().padLeft(2, '0')}Z',
+          'has_image_hint': index == 21,
+          'samples': <Map<String, Object?>>[
+            <String, Object?>{
+              'database_name': 'feishu-db',
+              'store_name': 'messages',
+              'tokens': <String>['image_key'],
+            },
+          ],
+        });
+      }
+
+      expect(snapshot.probeDiagnostics['storage_probe_count'], 22);
+      expect(snapshot.probeDiagnostics['storage_last_probe'], isA<Map>());
+      expect(
+        (snapshot.probeDiagnostics['storage_last_probe']!
+            as Map)['has_image_hint'],
+        isTrue,
+      );
+      final recent =
+          snapshot.probeDiagnostics['storage_recent_probes']! as List<Object?>;
+      expect(recent, hasLength(20));
+      expect((recent.first! as Map)['observed_at'], '2026-05-10T12:00:02Z');
+      expect((recent.last! as Map)['observed_at'], '2026-05-10T12:00:21Z');
+    },
+  );
+
+  test(
+    'applyPageProbe preserves storage probe diagnostics across page probes',
+    () {
+      final withStorage = applyStorageProbeDiagnostic(
+        ShellSnapshot.initial(),
+        const <String, Object?>{
+          'kind': 'indexeddb',
+          'observed_at': '2026-05-10T12:00:00Z',
+          'has_image_hint': true,
+        },
+      );
+
+      final updated = applyPageProbe(
+        withStorage,
+        FeishuPageProbe(
+          runtimeUrl: 'https://www.feishu.cn/messenger/',
+          pageTitle: 'Feishu',
+          bodyText: 'messages',
+          pageKind: 'messenger',
+          observedAt: DateTime.utc(2026, 5, 10, 12, 1),
+          probeDiagnostics: const <String, dynamic>{
+            'selector_hits': <Object>[],
+          },
+          observedConversations: const <ObservedConversation>[],
+          observedMessages: const <ObservedMessageCandidate>[],
+        ),
+      );
+
+      expect(updated.probeDiagnostics['storage_probe_count'], 1);
+      expect(updated.probeDiagnostics['storage_last_probe'], isA<Map>());
+      expect(updated.probeDiagnostics['selector_hits'], isEmpty);
+    },
+  );
+
+  test(
+    'applyPageProbe preserves configured media sources across page probes',
+    () {
+      final initial = ShellSnapshot.initial().copyWith(
+        probeDiagnostics: const <String, dynamic>{
+          'configured_media_source_count': 1,
+          'configured_media_sources': <Map<String, String>>[
+            <String, String>{
+              'conversation_id': 'feed:alpha',
+              'conversation_name': 'Alpha Group',
+            },
+          ],
+        },
+      );
+
+      final updated = applyPageProbe(
+        initial,
+        FeishuPageProbe(
+          runtimeUrl: 'https://www.feishu.cn/messenger/',
+          pageTitle: 'Feishu',
+          bodyText: 'messages',
+          pageKind: 'messenger',
+          observedAt: DateTime.utc(2026, 5, 10, 12),
+          probeDiagnostics: const <String, dynamic>{
+            'selector_hits': <Object>[],
+          },
+          observedConversations: const <ObservedConversation>[],
+          observedMessages: const <ObservedMessageCandidate>[],
+        ),
+      );
+
+      expect(updated.probeDiagnostics['configured_media_source_count'], 1);
+      expect(
+        updated.probeDiagnostics['configured_media_sources'],
+        <Map<String, String>>[
+          <String, String>{
+            'conversation_id': 'feed:alpha',
+            'conversation_name': 'Alpha Group',
+          },
+        ],
+      );
+    },
+  );
+
+  test(
+    'applyPageProbe drops configured-name dom text when feed id differs',
+    () {
+      final initial = ShellSnapshot.initial().copyWith(
+        probeDiagnostics: const <String, dynamic>{
+          'configured_media_source_count': 1,
+          'configured_media_sources': <Map<String, String>>[
+            <String, String>{
+              'conversation_id': 'feed:2e500f14',
+              'conversation_name': 'Alpha Group',
+            },
+          ],
+        },
+      );
+
+      final updated = applyPageProbe(
+        initial,
+        FeishuPageProbe(
+          runtimeUrl: 'https://www.feishu.cn/messenger/',
+          pageTitle: 'Feishu',
+          bodyText: 'messages',
+          pageKind: 'messenger',
+          observedAt: DateTime.utc(2026, 5, 12, 4, 30),
+          observedConversations: const <ObservedConversation>[],
+          observedMessages: const <ObservedMessageCandidate>[
+            ObservedMessageCandidate(
+              id: 'dom:text_good',
+              conversationId: 'feed:ae500f14',
+              conversationName: 'Alpha Group',
+              senderName: 'Alice',
+              messageType: 'text',
+              text: 'joint-test-1212-A',
+              observedAt: '2026-05-12T04:30:00Z',
+              captureSource: 'dom_probe',
+            ),
+            ObservedMessageCandidate(
+              id: 'dom:placeholder',
+              conversationId: 'feed:ae500f14',
+              conversationName: 'Alpha Group',
+              senderName: 'Alice',
+              messageType: 'image',
+              text: '[Image]',
+              observedAt: '2026-05-12T04:30:01Z',
+              captureSource: 'dom_probe',
+            ),
+            ObservedMessageCandidate(
+              id: 'dom:timestamp',
+              conversationId: 'feed:ae500f14',
+              conversationName: 'Alpha Group',
+              senderName: 'Alice',
+              messageType: 'text',
+              text: '12:30',
+              observedAt: '2026-05-12T04:30:02Z',
+              captureSource: 'dom_probe',
+            ),
+            ObservedMessageCandidate(
+              id: 'dom:sender',
+              conversationId: 'feed:ae500f14',
+              conversationName: 'Alpha Group',
+              senderName: 'Alice',
+              messageType: 'text',
+              text: 'Alice',
+              observedAt: '2026-05-12T04:30:03Z',
+              captureSource: 'dom_probe',
+            ),
+          ],
+        ),
+      );
+
+      expect(updated.recentEvents, isEmpty);
+    },
+  );
+
+  test(
+    'applyPageProbe keeps configured dom text when feed id is missing',
+    () {
+      final initial = ShellSnapshot.initial().copyWith(
+        probeDiagnostics: const <String, dynamic>{
+          'configured_media_source_count': 1,
+          'configured_media_sources': <Map<String, String>>[
+            <String, String>{
+              'conversation_id': 'feed:2e500f14',
+              'conversation_name': 'Alpha Group',
+            },
+          ],
+        },
+      );
+
+      final updated = applyPageProbe(
+        initial,
+        FeishuPageProbe(
+          runtimeUrl: 'https://www.feishu.cn/messenger/',
+          pageTitle: 'Feishu',
+          bodyText: 'messages',
+          pageKind: 'messenger',
+          observedAt: DateTime.utc(2026, 5, 12, 4, 30),
+          observedConversations: const <ObservedConversation>[],
+          observedMessages: const <ObservedMessageCandidate>[
+            ObservedMessageCandidate(
+              id: 'dom:text_good',
+              conversationId: '',
+              conversationName: 'Alpha Group',
+              senderName: 'Alice',
+              messageType: 'text',
+              text: 'joint-test-1212-A',
+              observedAt: '2026-05-12T04:30:00Z',
+              captureSource: 'dom_probe',
+            ),
+          ],
+        ),
+      );
+
+      expect(updated.recentEvents, hasLength(1));
+      expect(updated.recentEvents.single.captureSource, 'dom_probe');
+      expect(updated.recentEvents.single.conversationId, isEmpty);
+      expect(updated.recentEvents.single.text, 'joint-test-1212-A');
+    },
+  );
+
+  test(
+    'applyPageProbe keeps only newest configured dom text body',
+    () {
+      final initial = ShellSnapshot.initial().copyWith(
+        probeDiagnostics: const <String, dynamic>{
+          'configured_media_sources': <Map<String, String>>[
+            <String, String>{
+              'conversation_id': 'feed:2e500f14',
+              'conversation_name': 'Alpha Group',
+            },
+          ],
+        },
+      );
+
+      final updated = applyPageProbe(
+        initial,
+        FeishuPageProbe(
+          runtimeUrl: 'https://www.feishu.cn/messenger/',
+          pageTitle: 'Feishu',
+          bodyText: 'messages',
+          pageKind: 'messenger',
+          observedAt: DateTime.utc(2026, 5, 12, 4, 40),
+          observedConversations: const <ObservedConversation>[],
+          observedMessages: const <ObservedMessageCandidate>[
+            ObservedMessageCandidate(
+              id: '7638792752016149694',
+              conversationId: 'feed:2e500f14',
+              conversationName: 'Alpha Group',
+              senderName: '',
+              messageType: 'text',
+              text: 'Alice\nold dom text',
+              observedAt: '2026-05-12T04:40:00Z',
+              captureSource: 'dom_probe',
+            ),
+            ObservedMessageCandidate(
+              id: '7638827938972093634',
+              conversationId: 'feed:2e500f14',
+              conversationName: 'Alpha Group',
+              senderName: '',
+              messageType: 'text',
+              text: 'Alice\nnew dom text',
+              observedAt: '2026-05-12T04:40:00Z',
+              captureSource: 'dom_probe',
+            ),
+          ],
+        ),
+      );
+
+      expect(updated.recentEvents, hasLength(1));
+      expect(updated.recentEvents.single.messageId, '7638827938972093634');
+      expect(updated.recentEvents.single.text, 'new dom text');
+    },
+  );
+
+  test('shell diagnostics merge preserves media queue diagnostics', () {
+    final withQueue = applyRuntimeSignal(
+      ShellSnapshot.initial().copyWith(
+        probeDiagnostics: const <String, dynamic>{
+          'media_queue_depth': 2,
+          'media_queue_active_item': 'id:feed:alpha\nfeed:feed_card_alpha',
+          'media_queue_forward_placeholder': false,
+          'selector_hits': <Object>[],
+        },
+      ),
+      runtimeUrl: 'https://www.feishu.cn/messenger/',
+      pageTitle: 'Feishu',
+      webviewAvailable: true,
+      isLoading: false,
+    );
+
+    final mergedDiagnostics = persistentShellDiagnosticsForProbe(
+      withQueue.probeDiagnostics,
+      const <String, dynamic>{'selector_hits': <Object>[]},
+    );
+
+    expect(mergedDiagnostics['media_queue_depth'], 2);
+    expect(
+      mergedDiagnostics['media_queue_active_item'],
+      'id:feed:alpha\nfeed:feed_card_alpha',
+    );
+    expect(mergedDiagnostics['media_queue_forward_placeholder'], isFalse);
+  });
+
+  test('shell diagnostics merge prefers fresh media queue diagnostics', () {
+    final mergedDiagnostics = persistentShellDiagnosticsForProbe(
+      const <String, dynamic>{
+        'media_queue_depth': 1,
+        'media_queue_active_item': 'id:feed:alpha\nfeed:fresh_card',
+        'media_queue_forward_placeholder': false,
+      },
+      const <String, dynamic>{
+        'media_queue_depth': 0,
+        'media_queue_active_item': null,
+        'media_queue_forward_placeholder': false,
+        'selector_hits': <Object>[],
+      },
+    );
+
+    expect(mergedDiagnostics['media_queue_depth'], 1);
+    expect(
+      mergedDiagnostics['media_queue_active_item'],
+      'id:feed:alpha\nfeed:fresh_card',
+    );
+    expect(mergedDiagnostics['selector_hits'], isEmpty);
+  });
+
+  test(
+    'applyPageProbe exposes media queue diagnostics for pending image feed',
+    () {
+      final probe = FeishuPageProbe.fromScriptResult(<String, dynamic>{
+        'page_kind': 'messenger',
+        'observed_at': '2026-05-11T12:00:00Z',
+        'probe_diagnostics': <String, dynamic>{
+          'configured_media_sources': <Map<String, String>>[
+            <String, String>{
+              'conversation_id': 'feed:alpha',
+              'conversation_name': 'Alpha Group',
+            },
+          ],
+          'top_feed_card_summaries': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'feed_card_alpha_image',
+              'text': 'Alpha Group 12:00 Alice: [Image]',
+              'image_count': 0,
+            },
+          ],
+        },
+      });
+
+      final updated = applyPageProbe(ShellSnapshot.initial(), probe);
+
+      expect(updated.probeDiagnostics['media_queue_depth'], 1);
+      expect(
+        updated.probeDiagnostics['media_queue_forward_placeholder'],
+        isFalse,
+      );
+      expect(
+        updated.probeDiagnostics['media_queue_active_item'],
+        allOf(isA<String>(), contains('feed:')),
+      );
+    },
+  );
+
+  test('applyPageProbe does not queue non-configured image feed', () {
+    final probe = FeishuPageProbe.fromScriptResult(<String, dynamic>{
+      'page_kind': 'messenger',
+      'observed_at': '2026-05-11T12:00:00Z',
+      'probe_diagnostics': <String, dynamic>{
+        'configured_media_sources': <Map<String, String>>[
+          <String, String>{
+            'conversation_id': 'feed:alpha',
+            'conversation_name': 'Alpha Group',
+          },
+        ],
+        'top_feed_card_summaries': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'feed_card_beta_image',
+            'text': 'Beta Group 12:00 Bob: [Image]',
+            'image_count': 0,
+          },
+        ],
+      },
+    });
+
+    final updated = applyPageProbe(ShellSnapshot.initial(), probe);
+
+    expect(updated.probeDiagnostics['media_queue_depth'], 0);
+    expect(updated.probeDiagnostics['media_queue_active_item'], isNull);
+    expect(
+      updated.probeDiagnostics['media_queue_forward_placeholder'],
+      isFalse,
+    );
+  });
+
+  test(
+    'applyPageProbe does not queue image feed without configured sources',
+    () {
+      final probe = FeishuPageProbe.fromScriptResult(<String, dynamic>{
+        'page_kind': 'messenger',
+        'observed_at': '2026-05-11T12:00:00Z',
+        'probe_diagnostics': <String, dynamic>{
+          'top_feed_card_summaries': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'feed_card_alpha_image',
+              'text': 'Alpha Group 12:00 Alice: [Image]',
+              'image_count': 0,
+            },
+          ],
+        },
+      });
+
+      final updated = applyPageProbe(ShellSnapshot.initial(), probe);
+
+      expect(updated.probeDiagnostics['media_queue_depth'], 0);
+      expect(updated.probeDiagnostics['media_queue_active_item'], isNull);
+      expect(
+        updated.probeDiagnostics['media_queue_forward_placeholder'],
+        isFalse,
       );
     },
   );
@@ -941,6 +1645,291 @@ void main() {
     );
     expect(updated.recentEvents.every((event) => event.text == '[图片]'), isTrue);
   });
+
+  test(
+    'applyPageProbe does not refresh extracted image placeholder observed time',
+    () {
+      final withForwardedImage = ShellSnapshot.initial().copyWith(
+        recentEvents: const <NormalizedMessageEvent>[
+          NormalizedMessageEvent(
+            eventId: 'event_feed_placeholder',
+            dedupeKey: 'feed:alpha:feed:placeholder',
+            accountId: '',
+            conversationId: 'feed:alpha',
+            conversationName: 'Alpha Group',
+            conversationType: 'unknown',
+            messageId: 'feed:placeholder',
+            senderId: '',
+            senderName: 'Alice',
+            messageType: 'text',
+            text: '[图片]',
+            sentAt: '',
+            observedAt: '2026-05-09T12:00:00Z',
+            captureSource: 'feed_card_probe',
+          ),
+          NormalizedMessageEvent(
+            eventId: 'event_network_image',
+            dedupeKey: 'feed:alpha:network_image:7638506295401663709:sha1',
+            accountId: '',
+            conversationId: 'feed:alpha',
+            conversationName: 'Alpha Group',
+            conversationType: 'unknown',
+            messageId: 'network_image:7638506295401663709:sha1',
+            senderId: '',
+            senderName: 'Alice',
+            messageType: 'image',
+            text: '[Image]',
+            sentAt: '',
+            observedAt: '2026-05-09T12:00:02Z',
+            captureSource: 'network_original_image',
+            imageAttachments: <MessageImageAttachment>[
+              MessageImageAttachment(
+                sourceUrl: 'blob:https://example.feishu.cn/image',
+                localPath: r'C:\tmp\image.jpg',
+                width: 640,
+                height: 480,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final updated = applyPageProbe(
+        withForwardedImage,
+        FeishuPageProbe.fromScriptResult(<String, dynamic>{
+          'page_kind': 'messenger',
+          'observed_at': '2026-05-09T12:03:00Z',
+          'feed_cards': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'feed_card_image',
+              'text': 'Alpha Group 12:00 Alice: [图片]',
+            },
+          ],
+        }),
+      );
+
+      final placeholders = updated.recentEvents
+          .where((event) => event.messageId == 'feed:placeholder')
+          .toList(growable: false);
+      expect(placeholders, hasLength(1));
+      expect(placeholders.single.observedAt, '2026-05-09T12:00:00Z');
+    },
+  );
+
+  test('pending media feed is resolved when network image already exists', () {
+    final probe = FeishuPageProbe.fromScriptResult(<String, dynamic>{
+      'page_kind': 'messenger',
+      'observed_at': '2026-05-09T12:03:00Z',
+      'feed_cards': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'feed_card_image',
+          'text': 'Alpha Group 12:00 Alice: [Image]',
+        },
+      ],
+    });
+    final pendingFeedId = probePendingMediaFeedCardKey(
+      probe,
+    ).replaceAll(RegExp(r'[^A-Za-z0-9_.-]+'), '_').trim();
+    final networkMessageId = 'network_image:$pendingFeedId:sha1';
+    final snapshot = ShellSnapshot.initial().copyWith(
+      recentEvents: <NormalizedMessageEvent>[
+        NormalizedMessageEvent(
+          eventId: 'event_network_image',
+          dedupeKey: 'feed:alpha:$networkMessageId',
+          accountId: '',
+          conversationId: 'feed:alpha',
+          conversationName: 'Alpha Group',
+          conversationType: 'unknown',
+          messageId: networkMessageId,
+          senderId: '',
+          senderName: 'Alice',
+          messageType: 'image',
+          text: '[Image]',
+          sentAt: '',
+          observedAt: '2026-05-09T12:00:02Z',
+          captureSource: 'network_original_image',
+          imageAttachments: <MessageImageAttachment>[
+            MessageImageAttachment(
+              sourceUrl: 'blob:https://example.feishu.cn/image',
+              localPath: r'C:\tmp\image.jpg',
+              width: 640,
+              height: 480,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    expect(probeHasPendingMediaFeedCard(probe), isTrue);
+    expect(
+      pendingMediaFeedNeedsOriginalExtraction(
+        probe: probe,
+        recentEvents: snapshot.recentEvents,
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'pending media feed still needs extraction when network image is older',
+    () {
+      final snapshot = ShellSnapshot.initial().copyWith(
+        recentEvents: const <NormalizedMessageEvent>[
+          NormalizedMessageEvent(
+            eventId: 'event_old_network_image',
+            dedupeKey: 'feed:alpha:network_image:old:sha1',
+            accountId: '',
+            conversationId: 'feed:alpha',
+            conversationName: 'Alpha Group',
+            conversationType: 'unknown',
+            messageId: 'network_image:old:sha1',
+            senderId: '',
+            senderName: 'Alice',
+            messageType: 'image',
+            text: '[Image]',
+            sentAt: '',
+            observedAt: '2026-05-09T12:00:02Z',
+            captureSource: 'network_original_image',
+            imageAttachments: <MessageImageAttachment>[
+              MessageImageAttachment(
+                sourceUrl: 'blob:https://example.feishu.cn/old-image',
+                localPath: r'C:\tmp\old-image.jpg',
+                width: 640,
+                height: 480,
+              ),
+            ],
+          ),
+        ],
+      );
+      final probe = FeishuPageProbe.fromScriptResult(<String, dynamic>{
+        'page_kind': 'messenger',
+        'observed_at': '2026-05-09T12:03:00Z',
+        'feed_cards': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'feed_card_new_image',
+            'text': 'Alpha Group 12:03 Alice: [图片]',
+          },
+        ],
+      });
+
+      expect(probeHasPendingMediaFeedCard(probe), isTrue);
+      expect(
+        pendingMediaFeedNeedsOriginalExtraction(
+          probe: probe,
+          recentEvents: snapshot.recentEvents,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'pending media feed still needs extraction when newer network image lacks current feed id',
+    () {
+      final snapshot = ShellSnapshot.initial().copyWith(
+        recentEvents: const <NormalizedMessageEvent>[
+          NormalizedMessageEvent(
+            eventId: 'event_other_network_image',
+            dedupeKey: 'feed:alpha:network_image:feed_old_card:sha1',
+            accountId: '',
+            conversationId: 'feed:alpha',
+            conversationName: 'Alpha Group',
+            conversationType: 'unknown',
+            messageId: 'network_image:feed_old_card:sha1',
+            senderId: '',
+            senderName: 'Alice',
+            messageType: 'image',
+            text: '[Image]',
+            sentAt: '',
+            observedAt: '2026-05-09T12:03:02Z',
+            captureSource: 'network_original_image',
+            imageAttachments: <MessageImageAttachment>[
+              MessageImageAttachment(
+                sourceUrl: 'blob:https://example.feishu.cn/other-image',
+                localPath: r'C:\tmp\other-image.jpg',
+                width: 640,
+                height: 480,
+              ),
+            ],
+          ),
+        ],
+      );
+      final probe = FeishuPageProbe.fromScriptResult(<String, dynamic>{
+        'page_kind': 'messenger',
+        'observed_at': '2026-05-09T12:03:00Z',
+        'feed_cards': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'feed_card_new_image',
+            'text': 'Alpha Group 12:03 Alice: [Image]',
+          },
+        ],
+      });
+
+      expect(probeHasPendingMediaFeedCard(probe), isTrue);
+      expect(
+        pendingMediaFeedNeedsOriginalExtraction(
+          probe: probe,
+          recentEvents: snapshot.recentEvents,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'applyPageProbe keeps newer feed image placeholder with older network image',
+    () {
+      final snapshot = ShellSnapshot.initial().copyWith(
+        recentEvents: const <NormalizedMessageEvent>[
+          NormalizedMessageEvent(
+            eventId: 'event_old_network_image',
+            dedupeKey: 'feed:alpha:network_image:old:sha1',
+            accountId: '',
+            conversationId: 'feed:alpha',
+            conversationName: 'Alpha Group',
+            conversationType: 'unknown',
+            messageId: 'network_image:old:sha1',
+            senderId: '',
+            senderName: 'Alice',
+            messageType: 'image',
+            text: '[Image]',
+            sentAt: '',
+            observedAt: '2026-05-09T12:00:02Z',
+            captureSource: 'network_original_image',
+            imageAttachments: <MessageImageAttachment>[
+              MessageImageAttachment(
+                sourceUrl: 'blob:https://example.feishu.cn/old-image',
+                localPath: r'C:\tmp\old-image.jpg',
+                width: 640,
+                height: 480,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final updated = applyPageProbe(
+        snapshot,
+        FeishuPageProbe.fromScriptResult(<String, dynamic>{
+          'page_kind': 'messenger',
+          'observed_at': '2026-05-09T12:03:00Z',
+          'feed_cards': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 'feed_card_new_image',
+              'text': 'Alpha Group 12:03 Alice: [图片]',
+            },
+          ],
+        }),
+      );
+
+      expect(
+        updated.recentEvents
+            .where((event) => event.captureSource == 'feed_card_probe')
+            .map((event) => event.text),
+        contains('[图片]'),
+      );
+    },
+  );
 
   test('applyPageProbe dedupes body text probe events by stable content', () {
     const bodyText = '下载飞书客户端 消息 知识问答 听M玛的话交流12群C-GH 账号安全中心 09:24 安全登录通知';

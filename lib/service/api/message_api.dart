@@ -355,6 +355,20 @@ class MessageApi {
     }
   }
 
+  Future<void> deleteConversation({
+    required String channelId,
+    required int channelType,
+  }) async {
+    final encodedChannelId = Uri.encodeComponent(channelId.trim());
+    if (encodedChannelId.isEmpty) {
+      return;
+    }
+    final response = await _client.delete(
+      '${ApiConfig.conversations}/$encodedChannelId/$channelType',
+    );
+    _ensureSuccess(response, fallback: 'delete conversation failed');
+  }
+
   Future<void> markVoiceRead({
     required String messageId,
     required int messageSeq,

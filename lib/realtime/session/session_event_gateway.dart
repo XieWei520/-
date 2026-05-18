@@ -72,6 +72,8 @@ class SessionEventGateway {
     await socket.close();
   }
 
+  Future<void> closeActiveSocket() => close();
+
   static SessionSocket _defaultConnect(
     Uri uri, {
     Map<String, String>? headers,

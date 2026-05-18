@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'liquid_glass_panel.dart';
+import 'liquid_glass_tokens.dart';
 import 'wk_colors.dart';
 import 'wk_design_tokens.dart';
 import 'wk_reference_assets.dart';
@@ -96,43 +98,75 @@ class WKTabShell extends StatelessWidget {
   }
 
   Widget _buildDesktopRailShell(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       key: key ?? const ValueKey<String>('wk_tab_shell'),
-      backgroundColor: WKWebColors.pageWarm,
-      body: Row(
-        children: [
-          Container(
-            key: const ValueKey<String>('wk_tab_shell_web_rail'),
-            width: WKWebSizes.railWidth,
-            color: WKWebColors.surface,
-            padding: const EdgeInsets.symmetric(vertical: WKSpace.md),
-            child: Column(
-              children: [
-                const _WKWebBrandMark(),
-                const SizedBox(height: WKSpace.lg),
-                for (var index = 0; index < items.length; index++)
-                  _WKWebRailItem(
-                    data: items[index],
-                    selected: currentIndex == index,
-                    onTap: () => onTap(index),
-                  ),
-              ],
-            ),
-          ),
-          const VerticalDivider(
-            width: 1,
-            thickness: 1,
-            color: WKWebColors.borderWarm,
-          ),
-          Expanded(
-            key: const ValueKey<String>('wk_tab_shell_web_page_host'),
-            child: IndexedStack(
-              index: currentIndex,
-              sizing: StackFit.expand,
-              children: pages,
-            ),
-          ),
-        ],
+      backgroundColor: dark
+          ? LiquidGlassColors.darkBackground
+          : LiquidGlassColors.lightBackground,
+      body: LiquidGlassStage(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final viewportWidth = constraints.maxWidth.isFinite
+                ? constraints.maxWidth
+                : MediaQuery.sizeOf(context).width;
+            final viewportHeight = constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : MediaQuery.sizeOf(context).height;
+            final shellWidth = viewportWidth;
+            final shellHeight = math.max(
+              0.0,
+              viewportHeight - LiquidGlassSizes.appFrameViewportInset * 2,
+            );
+
+            return Center(
+              child: LiquidGlassAppFrame(
+                frameKey: const ValueKey<String>(
+                  'wk_tab_shell_web_liquid_shell',
+                ),
+                width: shellWidth,
+                height: shellHeight,
+                child: Row(
+                  children: [
+                    Container(
+                      key: const ValueKey<String>('wk_tab_shell_web_rail'),
+                      width: LiquidGlassSizes.navRailWidth,
+                      color: tokens.surface,
+                      padding: const EdgeInsets.symmetric(vertical: WKSpace.md),
+                      child: Column(
+                        children: [
+                          const _WKWebBrandMark(),
+                          const SizedBox(height: WKSpace.lg),
+                          for (var index = 0; index < items.length; index++)
+                            _WKWebRailItem(
+                              data: items[index],
+                              selected: currentIndex == index,
+                              onTap: () => onTap(index),
+                            ),
+                        ],
+                      ),
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: tokens.border,
+                    ),
+                    Expanded(
+                      key: const ValueKey<String>('wk_tab_shell_web_page_host'),
+                      child: IndexedStack(
+                        index: currentIndex,
+                        sizing: StackFit.expand,
+                        children: pages,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -318,7 +352,12 @@ class _WKWebRailItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = selected ? WKWebColors.action : WKWebColors.textSecondary;
+    final tokens = LiquidGlassTokens.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final primary = dark
+        ? LiquidGlassColors.darkPrimary
+        : LiquidGlassColors.primary;
+    final iconColor = selected ? primary : tokens.textSecondary;
     final asset = selected ? data.selectedIcon : data.normalIcon;
 
     return Padding(
@@ -339,7 +378,9 @@ class _WKWebRailItem extends StatelessWidget {
                 height: 50,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: selected ? WKWebColors.actionSoft : Colors.transparent,
+                  color: selected
+                      ? primary.withValues(alpha: dark ? 0.16 : 0.10)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(WKWebRadius.control),
                 ),
                 child: Stack(

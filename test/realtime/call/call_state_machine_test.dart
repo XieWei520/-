@@ -67,6 +67,32 @@ void main() {
     expect(ended.roomId, 'room_02');
   });
 
+  test('remote answer connects an outgoing direct call', () {
+    final machine = CallStateMachine();
+
+    final dialing = machine.reduce(
+      const CallSessionState.idle(),
+      const CallEvent.localDial(
+        roomId: 'room_answer_01',
+        peerUid: 'u_peer',
+        peerName: 'Peer',
+        callType: CallType.audio,
+      ),
+    );
+    final connected = machine.reduce(
+      dialing,
+      const CallEvent.remoteSignal(
+        roomId: 'room_answer_01',
+        fromUid: 'u_peer',
+        signalType: CallSignalType.answer,
+        payload: <String, dynamic>{'sdp': 'answer'},
+      ),
+    );
+
+    expect(connected.status, CallLifecycleStatus.connected);
+    expect(connected.roomId, 'room_answer_01');
+  });
+
   test('incoming invite exposes ringing public state', () {
     final machine = CallStateMachine();
 

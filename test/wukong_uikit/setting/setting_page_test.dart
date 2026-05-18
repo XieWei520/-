@@ -11,8 +11,12 @@ import 'package:wukong_im_app/modules/settings/cache_clean_service.dart';
 import 'package:wukong_im_app/modules/settings/settings_strings.dart';
 import 'package:wukong_im_app/modules/settings/settings_surface_widgets.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_panel.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
+import 'package:wukong_im_app/widgets/wk_colors.dart';
 import 'package:wukong_im_app/widgets/wk_sub_page_scaffold.dart';
 import 'package:wukong_im_app/wukong_uikit/setting/setting_page.dart';
+import 'package:wukong_im_app/wukong_uikit/setting/setting_preferences.dart';
 
 void main() {
   late HttpClientAdapter originalAdapter;
@@ -139,9 +143,103 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SettingsScaffold), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('settings-liquid-shell')),
+      findsOneWidget,
+    );
     expect(find.byType(SettingsHero), findsAtLeastNWidgets(1));
-    expect(find.byType(SettingsSection), findsAtLeastNWidgets(1));
+    expect(find.byType(LiquidGlassPanel), findsAtLeastNWidgets(1));
     expect(find.byType(WKSubPageScaffold), findsNothing);
+  });
+
+  testWidgets('setting page hero uses liquid-glass panel styling only', (
+    tester,
+  ) async {
+    final cacheService = _FakeCacheCleanService(
+      onGetTotalCacheBytes: () async => 0,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          locale: const Locale('en', 'US'),
+          supportedLocales: const <Locale>[
+            Locale('zh', 'CN'),
+            Locale('en', 'US'),
+          ],
+          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: SettingPage(cacheCleanService: cacheService),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final heroFinder = find.byType(SettingsHero).first;
+    final heroContainer = tester.widget<Container>(
+      find.descendant(of: heroFinder, matching: find.byType(Container)).first,
+    );
+    expect(heroContainer.decoration, isNull);
+
+    final panelFinder = find.ancestor(
+      of: heroFinder,
+      matching: find.byType(LiquidGlassPanel),
+    );
+    final panel = tester.widget<LiquidGlassPanel>(panelFinder.first);
+    expect(panel.shadow, LiquidGlassShadows.md);
+    expect(panel.borderRadius, LiquidGlassRadii.xl);
+
+    final title = tester.widget<Text>(find.text('General Settings'));
+    expect(title.style?.color, LiquidGlassColors.text);
+    expect(title.style?.color, isNot(WKColors.colorDark));
+  });
+
+  testWidgets('setting page renders tokenized dark mode switch visual', (
+    tester,
+  ) async {
+    final cacheService = _FakeCacheCleanService(
+      onGetTotalCacheBytes: () async => 0,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          locale: const Locale('en', 'US'),
+          supportedLocales: const <Locale>[
+            Locale('zh', 'CN'),
+            Locale('en', 'US'),
+          ],
+          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: SettingPage(cacheCleanService: cacheService),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final switchFinder = find.byKey(
+      const ValueKey<String>('settings-liquid-switch-dark-mode'),
+    );
+    expect(switchFinder, findsOneWidget);
+
+    final switchBox = tester.widget<DecoratedBox>(switchFinder);
+    final decoration = switchBox.decoration as BoxDecoration;
+    final expectedTrackColor = WKSettingPreferences.isDarkModeEnabled()
+        ? LiquidGlassColors.primary.withValues(alpha: 0.16)
+        : LiquidGlassColors.primary.withValues(alpha: 0.08);
+    expect(decoration.color, expectedTrackColor);
+    expect(decoration.borderRadius, LiquidGlassRadii.pill);
+    expect(decoration.border, isA<Border>());
   });
 
   test('settings strings include migrated shell copy for all target pages', () {
@@ -345,6 +443,18 @@ void main() {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              const SettingsSection(
+                title: 'Module group',
+                children: [
+                  ActionSettingTile(
+                    icon: Icons.widgets_outlined,
+                    title: 'App Modules',
+                    subtitle: 'Manage visible modules.',
+                    onTap: _noopSettingAction,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               const SettingsInfoCard(
                 icon: Icons.info_outline,
                 title: 'Sync status',
@@ -366,6 +476,7 @@ void main() {
       ),
     );
 
+    expect(find.text('Module group'), findsOneWidget);
     expect(find.text('Sync status'), findsOneWidget);
     expect(find.text('All modules are synced.'), findsOneWidget);
     expect(find.byIcon(Icons.search_rounded), findsOneWidget);
@@ -373,6 +484,83 @@ void main() {
       find.byKey(const ValueKey<String>('settings-search-clear')),
       findsOneWidget,
     );
+
+    final sectionContainer = tester.widget<Container>(
+      find
+          .descendant(
+            of: find.byType(SettingsSection),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    final sectionDecoration = sectionContainer.decoration as BoxDecoration;
+    expect(sectionDecoration.color, LiquidGlassColors.surface);
+    expect(sectionDecoration.borderRadius, LiquidGlassRadii.xl);
+    expect(sectionDecoration.border, isA<Border>());
+    expect(sectionDecoration.boxShadow, LiquidGlassShadows.md);
+    final sectionTitle = tester.widget<Text>(find.text('Module group'));
+    expect(sectionTitle.style?.color, LiquidGlassColors.text);
+    final actionTitle = tester.widget<Text>(find.text('App Modules'));
+    expect(actionTitle.style?.color, LiquidGlassColors.text);
+    final actionSubtitle = tester.widget<Text>(
+      find.text('Manage visible modules.'),
+    );
+    expect(actionSubtitle.style?.color, LiquidGlassColors.textSecondary);
+    final leadingIconContainer = tester.widget<Container>(
+      find
+          .ancestor(
+            of: find.byIcon(Icons.widgets_outlined),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    final leadingIconDecoration =
+        leadingIconContainer.decoration as BoxDecoration;
+    expect(leadingIconDecoration.color, LiquidGlassColors.muted);
+    expect(leadingIconDecoration.borderRadius, LiquidGlassRadii.md);
+    expect(leadingIconDecoration.border, isA<Border>());
+    final leadingIcon = tester.widget<Icon>(
+      find.byIcon(Icons.widgets_outlined),
+    );
+    expect(leadingIcon.color, LiquidGlassColors.primary);
+    final trailingIcon = tester.widget<Icon>(
+      find.byIcon(Icons.chevron_right_rounded),
+    );
+    expect(trailingIcon.color, LiquidGlassColors.textTertiary);
+
+    final infoContainer = tester.widget<Container>(
+      find
+          .descendant(
+            of: find.byType(SettingsInfoCard),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    final infoDecoration = infoContainer.decoration as BoxDecoration;
+    expect(infoDecoration.color, LiquidGlassColors.surface);
+    expect(infoDecoration.borderRadius, LiquidGlassRadii.xl);
+    expect(infoDecoration.border, isA<Border>());
+    expect(infoDecoration.boxShadow, LiquidGlassShadows.md);
+    final infoTitle = tester.widget<Text>(find.text('Sync status'));
+    expect(infoTitle.style?.color, LiquidGlassColors.text);
+    final infoSubtitle = tester.widget<Text>(
+      find.text('All modules are synced.'),
+    );
+    expect(infoSubtitle.style?.color, LiquidGlassColors.textSecondary);
+
+    final searchContainer = tester.widget<Container>(
+      find
+          .descendant(
+            of: find.byType(SettingsSearchCard),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    final searchDecoration = searchContainer.decoration as BoxDecoration;
+    expect(searchDecoration.color, LiquidGlassColors.surface);
+    expect(searchDecoration.borderRadius, LiquidGlassRadii.xl);
+    expect(searchDecoration.border, isA<Border>());
+    expect(searchDecoration.boxShadow, LiquidGlassShadows.md);
 
     await tester.enterText(find.byType(TextField), 'keyword');
     expect(changedValue, 'keyword');
@@ -385,6 +573,8 @@ void main() {
     expect(controller.text, isEmpty);
   });
 }
+
+void _noopSettingAction() {}
 
 class _FakeCacheCleanService extends CacheCleanService {
   _FakeCacheCleanService({required this.onGetTotalCacheBytes})

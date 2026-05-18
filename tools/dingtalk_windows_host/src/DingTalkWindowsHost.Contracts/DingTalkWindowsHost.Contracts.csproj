@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>DingTalkWindowsHost.Contracts</AssemblyName>
+    <RootNamespace>DingTalkWindowsHost.Contracts</RootNamespace>
+  </PropertyGroup>
+</Project>

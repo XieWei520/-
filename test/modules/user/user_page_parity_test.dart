@@ -16,7 +16,7 @@ import 'package:wukong_im_app/modules/user/user_page.dart';
 import 'package:wukong_im_app/modules/vip/vip_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_management_page.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
-import 'package:wukong_im_app/widgets/wk_colors.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
 import 'package:wukong_im_app/wk_endpoint/core/slot_entry.dart';
 import 'package:wukong_im_app/wk_endpoint/core/slot_registry.dart';
@@ -259,15 +259,18 @@ void main() {
       ];
       expect(renderedTitles, expectedTitles);
 
-      expect(_hasBottomGap(tester, 'personal_center_currency'), isFalse);
-      expect(_hasBottomGap(tester, 'personal_center_new_msg_notice'), isTrue);
-      expect(_hasBottomGap(tester, 'personal_center_favorites'), isTrue);
-      expect(_hasBottomGap(tester, 'personal_center_privacy'), isFalse);
+      expect(_hasGroupedGapAfter(tester, 'personal_center_currency'), isFalse);
       expect(
-        _hasBottomGap(tester, 'personal_center_account_security'),
+        _hasGroupedGapAfter(tester, 'personal_center_new_msg_notice'),
+        isTrue,
+      );
+      expect(_hasGroupedGapAfter(tester, 'personal_center_favorites'), isTrue);
+      expect(_hasGroupedGapAfter(tester, 'personal_center_privacy'), isFalse);
+      expect(
+        _hasGroupedGapAfter(tester, 'personal_center_account_security'),
         isFalse,
       );
-      expect(_hasBottomGap(tester, 'personal_center_web_login'), isTrue);
+      expect(_hasGroupedGapAfter(tester, 'personal_center_web_login'), isTrue);
 
       await _tapMenuAndExpectPage(
         tester,
@@ -489,7 +492,7 @@ void main() {
       navigatorKey: navigatorKey,
       afterOpen: () {
         expect(find.text('飞书信息监控中心'), findsOneWidget);
-        expect(find.text('钉钉信息监控中心'), findsOneWidget);
+        expect(find.text('钉钉信息监控中心'), findsNothing);
         expect(find.text('小鹅通信息监控中心'), findsOneWidget);
       },
     );
@@ -709,10 +712,62 @@ void main() {
 
     final card = tester.widget<Container>(cardFinder);
     final decoration = card.decoration as BoxDecoration;
-    expect(decoration.color, WKWebColors.surfaceSoft);
+    expect(decoration.color, WKWebColors.surface);
     expect(decoration.borderRadius, BorderRadius.circular(WKWebRadius.panel));
     expect((decoration.border as Border).top.color, WKWebColors.borderWarm);
   });
+
+  testWidgets(
+    'user page aligns profile card and menu groups to one shape system',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1280, 900);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: UserPage())),
+      );
+      await tester.pump();
+
+      final profileFinder = find.byKey(
+        const ValueKey<String>('user-profile-card'),
+      );
+      final firstGroupFinder = find.byKey(
+        const ValueKey<String>('user-menu-group-personal_center_currency'),
+      );
+      final firstRowFinder = find.byKey(
+        const ValueKey<String>('user_menu_personal_center_currency'),
+      );
+
+      final profileDecoration =
+          tester.widget<Container>(profileFinder).decoration as BoxDecoration;
+      expect(
+        profileDecoration.borderRadius,
+        BorderRadius.circular(WKWebRadius.panel),
+      );
+
+      final groupMaterial = tester.widget<Material>(firstGroupFinder);
+      final groupShape = groupMaterial.shape as RoundedRectangleBorder?;
+      expect(
+        groupShape?.borderRadius,
+        BorderRadius.circular(WKWebRadius.panel),
+      );
+
+      expect(
+        tester.getSize(firstRowFinder).height,
+        LiquidGlassSizes.listRowHeight,
+      );
+      expect(
+        tester.getTopLeft(firstGroupFinder).dx,
+        tester.getTopLeft(profileFinder).dx,
+      );
+      expect(
+        tester.getSize(firstGroupFinder).width,
+        tester.getSize(profileFinder).width,
+      );
+    },
+  );
 }
 
 String _readUserMenuTitle(WidgetTester tester, String sid) {
@@ -725,19 +780,32 @@ String _readUserMenuTitle(WidgetTester tester, String sid) {
   return tester.widget<Text>(textFinder).data ?? '';
 }
 
-bool _hasBottomGap(WidgetTester tester, String sid) {
+bool _hasGroupedGapAfter(WidgetTester tester, String sid) {
   final rowFinder = find.byKey(ValueKey<String>('user_menu_$sid'));
-  final gapFinder = find.descendant(
-    of: rowFinder,
-    matching: find.byWidgetPredicate(
-      (widget) =>
-          widget is Container &&
-          widget.constraints?.minHeight == 15 &&
-          widget.constraints?.maxHeight == 15 &&
-          widget.color == WKColors.homeBg,
-    ),
-  );
-  return gapFinder.evaluate().isNotEmpty;
+  final nextRowFinder = _nextUserMenuRowFinder(sid);
+  if (nextRowFinder == null || nextRowFinder.evaluate().isEmpty) {
+    return true;
+  }
+  final rowBottom = tester.getBottomLeft(rowFinder).dy;
+  final nextRowTop = tester.getTopLeft(nextRowFinder).dy;
+  return nextRowTop - rowBottom >= LiquidGlassSizes.sectionGap;
+}
+
+Finder? _nextUserMenuRowFinder(String sid) {
+  const order = <String>[
+    'personal_center_currency',
+    'personal_center_new_msg_notice',
+    'personal_center_favorites',
+    'personal_center_privacy',
+    'personal_center_account_security',
+    'personal_center_web_login',
+    'vip_management',
+  ];
+  final index = order.indexOf(sid);
+  if (index < 0 || index == order.length - 1) {
+    return null;
+  }
+  return find.byKey(ValueKey<String>('user_menu_${order[index + 1]}'));
 }
 
 Future<void> _tapMenuAndExpectPage(

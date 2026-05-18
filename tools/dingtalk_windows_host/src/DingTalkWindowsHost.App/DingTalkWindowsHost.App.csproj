@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>DingTalkWindowsHost.App</AssemblyName>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>DingTalkWindowsHost.App</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DingTalkWindowsHost.Api\DingTalkWindowsHost.Api.csproj" />
+    <ProjectReference Include="..\DingTalkWindowsHost.Automation\DingTalkWindowsHost.Automation.csproj" />
+    <ProjectReference Include="..\DingTalkWindowsHost.Contracts\DingTalkWindowsHost.Contracts.csproj" />
+    <ProjectReference Include="..\DingTalkWindowsHost.Storage\DingTalkWindowsHost.Storage.csproj" />
+  </ItemGroup>
+</Project>

@@ -6,6 +6,7 @@ class WKFontFamily {
 
   static const String primary = 'WKRMedium';
   static const String title = primary;
+  static const String chinese = 'WKNotoSansSC';
 }
 
 class WKSpace {

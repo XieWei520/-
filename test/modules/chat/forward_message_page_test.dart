@@ -143,6 +143,7 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
     required String channelId,
     required int channelType,
     String? channelName,
+    int? expireSeconds,
   }) {
     throw UnimplementedError();
   }

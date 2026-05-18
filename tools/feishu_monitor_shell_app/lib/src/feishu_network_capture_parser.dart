@@ -28,6 +28,10 @@ const _imageUrlHints = <String>[
 List<FeishuNetworkImageCandidate> parseFeishuNetworkImageCandidates(
   FeishuNetworkCaptureEvent event,
 ) {
+  if (_isDiagnosticOnlySource(event.source)) {
+    return const <FeishuNetworkImageCandidate>[];
+  }
+
   final directImage = _candidateFromDirectImageResponse(event);
   final decoded = _tryDecodeJson(event.payloadPreview);
   if (decoded == null) {
@@ -47,6 +51,16 @@ List<FeishuNetworkImageCandidate> parseFeishuNetworkImageCandidates(
     candidates.add(directImage);
   }
   return candidates.toList(growable: false);
+}
+
+bool _isDiagnosticOnlySource(FeishuNetworkEventSource source) {
+  return source == FeishuNetworkEventSource.httpRequest ||
+      source == FeishuNetworkEventSource.dataReceived ||
+      source == FeishuNetworkEventSource.eventSourceMessage ||
+      source == FeishuNetworkEventSource.webSocketCreated ||
+      source == FeishuNetworkEventSource.webSocketFrame ||
+      source == FeishuNetworkEventSource.webSocketFrameSent ||
+      source == FeishuNetworkEventSource.webSocketClosed;
 }
 
 Object? _tryDecodeJson(String payload) {
@@ -121,11 +135,7 @@ FeishuNetworkImageCandidate? _candidateFromMap(
       'chat_name',
       'title',
     ]),
-    messageId: _firstString(map, const <String>[
-      'message_id',
-      'msg_id',
-      'id',
-    ]),
+    messageId: _firstString(map, const <String>['message_id', 'msg_id', 'id']),
     senderName: _firstString(map, const <String>[
       'sender_name',
       'from_name',
@@ -182,6 +192,14 @@ FeishuNetworkImageCandidate? _candidateFromDirectImageResponse(
     bodyMimeType: event.bodyMimeType.trim().isEmpty
         ? event.mimeType
         : event.bodyMimeType.trim(),
+    requestResourceType: event.resourceType,
+    requestDocumentUrl: event.documentUrl,
+    requestInitiatorType: event.initiatorType,
+    requestInitiatorUrl: event.initiatorUrl,
+    requestInitiatorStackUrl: event.initiatorStackUrl,
+    requestInitiatorLineNumber: event.initiatorLineNumber,
+    requestInitiatorColumnNumber: event.initiatorColumnNumber,
+    requestFrameId: event.frameId,
   );
 }
 

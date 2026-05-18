@@ -8,10 +8,18 @@ import 'package:go_router/go_router.dart';
 import '../core/config/app_config.dart';
 import 'app_display_preferences.dart';
 import '../data/providers/auth_provider.dart';
+import '../modules/dingtalk_monitor/dingtalk_monitor_auto_forward_runner.dart';
 import '../modules/feishu_monitor/feishu_monitor_auto_forward_runner.dart';
+import '../modules/feishu_monitor/feishu_monitor_shell_client.dart';
 import '../modules/home/home_badge_snapshot.dart';
 import '../modules/home/home_surface_kernel.dart';
+import '../modules/juliang_monitor/juliang_monitor_auto_forward_runner.dart';
+import '../modules/local_monitor/local_monitor_auto_forward_coordinator.dart';
+import '../modules/launch_policy/launch_policy_controller.dart';
+import '../modules/launch_policy/launch_policy_dialogs.dart';
+import '../modules/mengxia_monitor/mengxia_monitor_auto_forward_runner.dart';
 import '../modules/video_call/call_coordinator.dart';
+import '../modules/xiaoe_monitor/xiaoe_monitor_auto_forward_runner.dart';
 import '../core/theme/wk_dark_theme.dart';
 import '../widgets/wk_theme.dart';
 import '../wukong_push/android_keep_alive_service.dart';
@@ -39,10 +47,13 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
   late final BrowserNotificationClickBridge _browserNotificationClickBridge;
   late final NotificationPermissionPromptBridge
   _notificationPermissionPromptBridge;
-  late final FeishuMonitorAutoForwardRunner _feishuAutoForwardRunner;
+  late final LocalMonitorAutoForwardCoordinator
+  _localMonitorAutoForwardCoordinator;
+  late final LaunchPolicyController _launchPolicyController;
   GoRouter? _boundRouter;
   bool _callCoordinatorRunning = false;
   bool _flushPendingScheduled = false;
+  bool _launchPolicyCheckScheduled = false;
 
   @override
   void initState() {
@@ -60,7 +71,10 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
     _notificationPermissionPromptBridge =
         NotificationPermissionPromptBridge.instance;
     _notificationPermissionPromptBridge.ensureRegistered();
-    _feishuAutoForwardRunner = FeishuMonitorAutoForwardRunner();
+    _localMonitorAutoForwardCoordinator = LocalMonitorAutoForwardCoordinator(
+      runners: createLocalMonitorAutoForwardRunners(),
+    );
+    _launchPolicyController = LaunchPolicyController();
     _pushRouteBridge = AppPushRouteBridge(
       messageEvents: PushService.instance.messageEvents,
       isLoggedIn: () => ref.read(authProvider).isLoggedIn,
@@ -78,7 +92,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
         _deviceBadgeSyncBridge.reset();
       }
       _syncCallCoordinator(next.isLoggedIn);
-      _syncFeishuAutoForwarding(next.isLoggedIn);
+      _syncLocalMonitorAutoForwarding(next.isLoggedIn);
       _scheduleFlushPending();
     });
     _badgeSubscription = ref.listenManual<HomeBadgeSnapshot>(
@@ -88,8 +102,9 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       },
     );
     unawaited(_deviceBadgeSyncBridge.sync(ref.read(homeBadgeSnapshotProvider)));
-    _syncFeishuAutoForwarding(ref.read(authProvider).isLoggedIn);
+    _syncLocalMonitorAutoForwarding(ref.read(authProvider).isLoggedIn);
     _scheduleFlushPending();
+    _scheduleLaunchPolicyCheck();
   }
 
   void _bindRouterSideEffects(GoRouter router) {
@@ -125,12 +140,8 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
     }
   }
 
-  void _syncFeishuAutoForwarding(bool isLoggedIn) {
-    if (isLoggedIn) {
-      _feishuAutoForwardRunner.start();
-    } else {
-      _feishuAutoForwardRunner.stop();
-    }
+  void _syncLocalMonitorAutoForwarding(bool isLoggedIn) {
+    _localMonitorAutoForwardCoordinator.syncLoggedIn(isLoggedIn);
   }
 
   @override
@@ -143,7 +154,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       CallCoordinator.instance.stop();
       _callCoordinatorRunning = false;
     }
-    _feishuAutoForwardRunner.dispose();
+    _localMonitorAutoForwardCoordinator.dispose();
     super.dispose();
   }
 
@@ -158,6 +169,37 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
         return;
       }
       _pushRouteBridge.flushPending();
+    });
+  }
+
+  void _scheduleLaunchPolicyCheck() {
+    if (_launchPolicyCheckScheduled) {
+      return;
+    }
+    _launchPolicyCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        return;
+      }
+      final decision = await _launchPolicyController.checkLaunchPolicy();
+      if (!mounted) {
+        return;
+      }
+      switch (decision.type) {
+        case LaunchPolicyDecisionType.forceUpgrade:
+          final policy = decision.versionPolicy;
+          if (policy != null) {
+            await showForcedUpgradeDialog(context, policy: policy);
+          }
+        case LaunchPolicyDecisionType.showNotice:
+          final notice = decision.startupNotice;
+          if (notice != null) {
+            await showStartupNoticeDialog(context, notice: notice);
+            await _launchPolicyController.markNoticeShown(notice);
+          }
+        case LaunchPolicyDecisionType.none:
+          break;
+      }
     });
   }
 
@@ -200,3 +242,16 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
 }
 
 typedef WuKongIMApp = WuKongApp;
+
+List<LocalMonitorAutoForwardRunnerController>
+createLocalMonitorAutoForwardRunners() {
+  return <LocalMonitorAutoForwardRunnerController>[
+    FeishuMonitorAutoForwardRunner(
+      clientGroup: FeishuMonitorShellClientGroup.recommendedForRouteCount(120),
+    ),
+    DingTalkMonitorAutoForwardRunner(),
+    MengxiaMonitorAutoForwardRunner(),
+    JuliangMonitorAutoForwardRunner(),
+    XiaoeMonitorAutoForwardRunner(),
+  ];
+}

@@ -58,15 +58,9 @@ void main() {
       addTearDown(container.dispose);
 
       final friendSub = container.listen(friendListProvider, (_, _) {});
-      final requestSub = container.listen(
-        friendRequestListProvider,
-        (_, _) {},
-      );
+      final requestSub = container.listen(friendRequestListProvider, (_, _) {});
       final groupSub = container.listen(myGroupListProvider, (_, _) {});
-      final conversationSub = container.listen(
-        conversationProvider,
-        (_, _) {},
-      );
+      final conversationSub = container.listen(conversationProvider, (_, _) {});
       addTearDown(friendSub.close);
       addTearDown(requestSub.close);
       addTearDown(groupSub.close);
@@ -195,6 +189,43 @@ void main() {
     },
   );
 
+  test(
+    'restored session refreshes stored uid from current user response',
+    () async {
+      await StorageUtils.setUid('u_stale');
+      await StorageUtils.setToken('http_token_restore');
+      await StorageUtils.setImToken('im_token_restore');
+      await StorageUtils.setDeviceSessionId('device_session_restore');
+
+      final container = ProviderContainer(
+        overrides: [
+          authCurrentUserLoaderProvider.overrideWithValue(
+            () async => UserInfo(
+              uid: 'u_remote',
+              token: 'http_token_restore',
+              name: 'Remote User',
+            ),
+          ),
+          authDraftSyncProvider.overrideWithValue(() async {}),
+          authLogoutRequestProvider.overrideWithValue(() async {}),
+          authAutoLoginDisablerProvider.overrideWithValue(() async {}),
+          deviceIdentityAuthorityProvider.overrideWithValue(
+            _buildTestDeviceIdentityAuthority(),
+          ),
+          imServiceProvider.overrideWith((ref) => _NoopIMService()),
+          authProvider.overrideWith((ref) => _NoopBindAuthNotifier(ref)),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await _waitForAuthRestore(container);
+
+      expect(container.read(authProvider).isLoggedIn, isTrue);
+      expect(container.read(authProvider).userInfo?.uid, 'u_remote');
+      expect(StorageUtils.getUid(), 'u_remote');
+    },
+  );
+
   test('vip_expired downgrades current logged-in VIP user', () async {
     final imService = _NoopIMService();
     final container = ProviderContainer(
@@ -315,6 +346,9 @@ class _NoopBindAuthNotifier extends AuthNotifier {
     required String uid,
     required String token,
   }) async {}
+
+  @override
+  Future<void> registerPushAfterLogin() async {}
 }
 
 DeviceIdentityAuthority _buildTestDeviceIdentityAuthority() {

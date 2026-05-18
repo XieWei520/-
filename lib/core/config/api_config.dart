@@ -81,6 +81,7 @@ class ApiConfig {
   static const String userChatPwd = '$v1/user/chatpwd';
   static const String apps = '$v1/apps';
   static const String openApiAuthCode = '$v1/openapi/authcode';
+  static const String launchPolicy = '$v1/app/launch-policy';
 
   static String userDestroy(String code) => '$v1/user/destroy/$code';
 

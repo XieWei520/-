@@ -9,6 +9,7 @@ import '../../widgets/wk_avatar.dart';
 import '../../widgets/wk_branded_icon.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
+import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_main_top_bar.dart';
 import '../../widgets/wk_reference_assets.dart';
 import '../../widgets/wk_web_ui_tokens.dart';
@@ -273,35 +274,35 @@ class _UserPageState extends ConsumerState<UserPage> {
       children: [
         const WKMainTopBar(title: Text('我的')),
         Expanded(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              _ProfileHeader(
-                name: displayName,
-                showVipBadge: isVipUser,
-                showCustomerServiceBadge: isCustomerServiceUser,
-                avatarUrl: userInfo?.avatar,
-                onAvatarTap: () => _pushPage(const MyInfoPage()),
-                onQrTap: () => _pushPage(
-                  UserQrPage(
-                    uid: userInfo?.uid,
-                    username: displayName,
-                    avatarUrl: userInfo?.avatar,
-                  ),
-                ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: LiquidGlassSizes.pageContentMaxWidth,
               ),
-              for (final entry in visibleMenuEntries)
-                _UserMenuItem(
-                  key: ValueKey('user_menu_${entry.sid}'),
-                  sid: entry.sid,
-                  iconAsset: entry.iconAsset,
-                  title: entry.title,
-                  showNewVersionBadge: entry.showNewVersionBadge,
-                  showBottomGap: entry.showBottomGap,
-                  onTap: entry.onTap,
+              child: ListView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LiquidGlassSizes.pageContentPadding,
                 ),
-              const SizedBox(height: 30),
-            ],
+                children: [
+                  _ProfileHeader(
+                    name: displayName,
+                    showVipBadge: isVipUser,
+                    showCustomerServiceBadge: isCustomerServiceUser,
+                    avatarUrl: userInfo?.avatar,
+                    onAvatarTap: () => _pushPage(const MyInfoPage()),
+                    onQrTap: () => _pushPage(
+                      UserQrPage(
+                        uid: userInfo?.uid,
+                        username: displayName,
+                        avatarUrl: userInfo?.avatar,
+                      ),
+                    ),
+                  ),
+                  _UserMenuSection(entries: visibleMenuEntries),
+                  const SizedBox(height: 30),
+                ],
+              ),
+            ),
           ),
         ),
       ],
@@ -318,9 +319,11 @@ class _UserPageState extends ConsumerState<UserPage> {
         backgroundColor: WKWebColors.pageWarm,
         body: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 920),
+            constraints: const BoxConstraints(
+              maxWidth: LiquidGlassSizes.pageContentMaxWidth,
+            ),
             child: WKWebPanel(
-              margin: const EdgeInsets.all(WKSpace.md),
+              margin: const EdgeInsets.all(LiquidGlassSizes.pageContentPadding),
               child: body,
             ),
           ),
@@ -406,27 +409,27 @@ class _ProfileHeader extends StatelessWidget {
             : MediaQuery.sizeOf(context).width;
         final contentHorizontalPadding = headerWidth < 280
             ? WKSpace.md
-            : WKSpace.xl;
-        final avatarSize = headerWidth < 320 ? 76.0 : 88.0;
-        final accentHeight = headerWidth < 320 ? 68.0 : 78.0;
+            : WKSpace.lg;
+        final avatarSize = headerWidth < 320 ? 68.0 : 76.0;
+        final accentHeight = headerWidth < 320 ? 58.0 : 64.0;
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(
-            WKSpace.md,
-            WKSpace.md,
-            WKSpace.md,
-            WKSpace.lg,
+            0,
+            8,
+            0,
+            LiquidGlassSizes.sectionGap,
           ),
           child: Container(
             key: const ValueKey<String>('user-profile-card'),
             width: double.infinity,
-            constraints: const BoxConstraints(minHeight: 224),
+            constraints: const BoxConstraints(minHeight: 190),
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: WKWebColors.surfaceSoft,
+              color: WKWebColors.surface,
               borderRadius: BorderRadius.circular(WKWebRadius.panel),
               border: Border.all(color: WKWebColors.borderWarm),
-              boxShadow: WKShadows.soft,
+              boxShadow: LiquidGlassShadows.sm,
             ),
             child: Stack(
               children: [
@@ -488,8 +491,9 @@ class _ProfileHeader extends StatelessWidget {
                         onTap: onAvatarTap,
                         child: Container(
                           padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                             color: WKWebColors.surface,
+                            border: Border.all(color: WKWebColors.borderWarm),
                             shape: BoxShape.circle,
                           ),
                           child: WKAvatar(
@@ -558,12 +562,83 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
+class _UserMenuSection extends StatelessWidget {
+  const _UserMenuSection({required this.entries});
+
+  final List<UserPageMenuEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = <List<UserPageMenuEntry>>[];
+    var currentGroup = <UserPageMenuEntry>[];
+    for (final entry in entries) {
+      currentGroup.add(entry);
+      if (entry.showBottomGap) {
+        groups.add(currentGroup);
+        currentGroup = <UserPageMenuEntry>[];
+      }
+    }
+    if (currentGroup.isNotEmpty) {
+      groups.add(currentGroup);
+    }
+
+    return Column(
+      children: [
+        for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) ...[
+          _UserMenuGroup(entries: groups[groupIndex]),
+          if (groupIndex != groups.length - 1)
+            const SizedBox(height: LiquidGlassSizes.sectionGap),
+        ],
+      ],
+    );
+  }
+}
+
+class _UserMenuGroup extends StatelessWidget {
+  const _UserMenuGroup({required this.entries});
+
+  final List<UserPageMenuEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: ValueKey<String>('user-menu-group-${entries.first.sid}'),
+      color: WKWebColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(WKWebRadius.panel),
+        side: const BorderSide(color: WKWebColors.borderWarm),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var index = 0; index < entries.length; index++) ...[
+            _UserMenuItem(
+              key: ValueKey('user_menu_${entries[index].sid}'),
+              sid: entries[index].sid,
+              iconAsset: entries[index].iconAsset,
+              title: entries[index].title,
+              showNewVersionBadge: entries[index].showNewVersionBadge,
+              onTap: entries[index].onTap,
+            ),
+            if (index != entries.length - 1)
+              const Divider(
+                height: 1,
+                thickness: 1,
+                indent: 68,
+                color: WKWebColors.borderWarm,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _UserMenuItem extends StatelessWidget {
   final String sid;
   final String iconAsset;
   final String title;
   final bool showNewVersionBadge;
-  final bool showBottomGap;
   final VoidCallback onTap;
 
   const _UserMenuItem({
@@ -573,61 +648,57 @@ class _UserMenuItem extends StatelessWidget {
     required this.title,
     required this.onTap,
     this.showNewVersionBadge = false,
-    this.showBottomGap = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Material(
-          color: WKColors.surface,
-          child: InkWell(
-            onTap: onTap,
-            highlightColor: WKColors.screenBgSelected,
-            splashColor: WKColors.screenBgSelected,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-              child: Row(
-                children: [
-                  buildUserMenuLeadingIcon(sid: sid, iconAsset: iconAsset),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontFamily: WKFontFamily.primary,
-                        fontSize: 16,
-                        color: WKColors.colorDark,
-                      ),
-                    ),
+    return InkWell(
+      onTap: onTap,
+      highlightColor: WKWebColors.action.withValues(alpha: 0.05),
+      splashColor: WKWebColors.action.withValues(alpha: 0.07),
+      child: SizedBox(
+        height: LiquidGlassSizes.listRowHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              buildUserMenuLeadingIcon(sid: sid, iconAsset: iconAsset),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: WKFontFamily.primary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: WKWebColors.textPrimary,
                   ),
-                  SizedBox(
+                ),
+              ),
+              SizedBox(
+                width: 30,
+                height: 30,
+                child: Opacity(
+                  opacity: showNewVersionBadge ? 1 : 0,
+                  child: WKReferenceAssets.image(
+                    WKReferenceAssets.newVersion,
                     width: 30,
                     height: 30,
-                    child: Opacity(
-                      opacity: showNewVersionBadge ? 1 : 0,
-                      child: WKReferenceAssets.image(
-                        WKReferenceAssets.newVersion,
-                        width: 30,
-                        height: 30,
-                      ),
-                    ),
                   ),
-                  WKReferenceAssets.image(
-                    WKReferenceAssets.arrowRight,
-                    width: 14,
-                    height: 14,
-                  ),
-                ],
+                ),
               ),
-            ),
+              WKReferenceAssets.image(
+                WKReferenceAssets.arrowRight,
+                width: 14,
+                height: 14,
+                tint: WKWebColors.textTertiary,
+              ),
+            ],
           ),
         ),
-        if (showBottomGap) Container(height: 15, color: WKColors.homeBg),
-      ],
+      ),
     );
   }
 }

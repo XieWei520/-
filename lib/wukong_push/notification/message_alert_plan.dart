@@ -29,8 +29,13 @@ class MessageAlertPlan {
 MessageAlertPlan? buildMessageAlertPlan(
   WKMsg message, {
   required String currentUid,
+  bool requireRedDot = true,
 }) {
-  if (!shouldTriggerMessageAlert(message, currentUid: currentUid)) {
+  if (!shouldTriggerMessageAlert(
+    message,
+    currentUid: currentUid,
+    requireRedDot: requireRedDot,
+  )) {
     return null;
   }
 
@@ -91,12 +96,16 @@ String buildMessageAlertPayload({
   });
 }
 
-bool shouldTriggerMessageAlert(WKMsg message, {required String currentUid}) {
+bool shouldTriggerMessageAlert(
+  WKMsg message, {
+  required String currentUid,
+  bool requireRedDot = true,
+}) {
   if (message.isDeleted != 0 ||
       message.contentType == WkMessageContentType.insideMsg) {
     return false;
   }
-  if (!message.header.redDot) {
+  if (requireRedDot && !message.header.redDot) {
     return false;
   }
 

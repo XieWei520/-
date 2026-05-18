@@ -315,6 +315,50 @@ void main() {
   );
 
   testWidgets(
+    'call page ended cleanup pops only the call route and keeps chat visible',
+    (tester) async {
+      await pumpChat(
+        tester,
+        channelId: 'u_double_pop_guard',
+        channelType: WKChannelType.personal,
+        channelName: 'Double Pop Guard',
+        overrides: [
+          chatCallEntryServiceProvider.overrideWithValue(
+            _FakeChatCallEntryService((
+              callType, {
+              required channelId,
+              required channelType,
+            }) async {
+              return ChatCallEntryDecision.start(callType);
+            }),
+          ),
+          chatCallPageBuilderProvider.overrideWithValue(({
+            required String channelId,
+            String? channelName,
+            required CallType callType,
+          }) {
+            return const _DoublePopCallPage();
+          }),
+        ],
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('chat-call-audio-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey<String>('double-pop-call-page')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('chat-call-audio-button')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
     'call page returned error is trimmed, replaces current snackbar, and keeps chat visible',
     (tester) async {
       final requestedTypes = <CallType>[];
@@ -444,6 +488,35 @@ class _AutoPopCallPageState extends State<_AutoPopCallPage> {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: SizedBox(key: ValueKey<String>('auto-pop-call-page')),
+    );
+  }
+}
+
+class _DoublePopCallPage extends StatefulWidget {
+  const _DoublePopCallPage();
+
+  @override
+  State<_DoublePopCallPage> createState() => _DoublePopCallPageState();
+}
+
+class _DoublePopCallPageState extends State<_DoublePopCallPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final navigator = Navigator.of(context);
+      navigator.maybePop();
+      navigator.pop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: SizedBox(key: ValueKey<String>('double-pop-call-page')),
     );
   }
 }

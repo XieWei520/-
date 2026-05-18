@@ -36,36 +36,32 @@ void main() {
     });
 
     test(
-      'captures connection reuse and lifecycle decisions outside IMService',
+      'reuses active IM sessions without requiring realtime to be healthy',
       () {
         const coordinator = ConnectionCoordinator();
 
-        expect(
-          coordinator.shouldReuseInitializedSession(
-            initializedUid: 'u1',
-            initializedToken: 'im',
-            initializedDeviceSessionId: 'device',
-            uid: 'u1',
-            token: 'im',
-            deviceSessionId: 'device',
-            connectionStatus: WKConnectStatus.syncCompleted,
-            sessionRuntimeRunning: true,
-          ),
-          isTrue,
-        );
-        expect(
-          coordinator.shouldReuseInitializedSession(
-            initializedUid: 'u1',
-            initializedToken: 'im',
-            initializedDeviceSessionId: 'device',
-            uid: 'u1',
-            token: 'im',
-            deviceSessionId: 'device',
-            connectionStatus: WKConnectStatus.syncCompleted,
-            sessionRuntimeRunning: false,
-          ),
-          isFalse,
-        );
+        for (final status in <int>[
+          WKConnectStatus.connecting,
+          WKConnectStatus.success,
+          WKConnectStatus.syncMsg,
+          WKConnectStatus.syncCompleted,
+        ]) {
+          expect(
+            coordinator.shouldReuseInitializedSession(
+              initializedUid: 'u1',
+              initializedToken: 'im',
+              initializedDeviceSessionId: 'device',
+              uid: 'u1',
+              token: 'im',
+              deviceSessionId: 'device',
+              connectionStatus: status,
+              sessionRuntimeRunning: false,
+            ),
+            isTrue,
+            reason: 'status=$status should not force an IM reconnect',
+          );
+        }
+
         expect(
           coordinator.shouldDisconnectForBackgroundLifecycle(
             isWeb: false,

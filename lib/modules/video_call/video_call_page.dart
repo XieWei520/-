@@ -58,6 +58,17 @@ bool shouldShowLocalCameraPlaceholder({
   return isCameraOff || !localVideoAvailable;
 }
 
+bool shouldCloseCallPageForState(CallState state) {
+  return state == CallState.ended;
+}
+
+bool shouldRequestCallRouteClose({
+  required CallState state,
+  required bool closeAlreadyRequested,
+}) {
+  return shouldCloseCallPageForState(state) && !closeAlreadyRequested;
+}
+
 class VideoCallPage extends StatefulWidget {
   final String channelId;
   final String? channelName;
@@ -92,6 +103,7 @@ class _VideoCallPageState extends State<VideoCallPage> {
   bool _isSpeakerOn = true;
   bool _incomingAccepted = false;
   bool _shouldReleaseCallOnDispose = true;
+  bool _closeRequested = false;
 
   @override
   void initState() {
@@ -215,6 +227,12 @@ class _VideoCallPageState extends State<VideoCallPage> {
       return;
     }
     setState(() => _callState = state);
+    if (shouldRequestCallRouteClose(
+      state: state,
+      closeAlreadyRequested: _closeRequested,
+    )) {
+      _requestCloseCallRoute();
+    }
   }
 
   Future<void> _endCall() async {
@@ -232,9 +250,23 @@ class _VideoCallPageState extends State<VideoCallPage> {
         );
       }
     }
-    if (mounted) {
-      Navigator.of(context).pop();
+    if (mounted && !_closeRequested) {
+      _requestCloseCallRoute();
     }
+  }
+
+  void _requestCloseCallRoute() {
+    if (_closeRequested) {
+      return;
+    }
+    _closeRequested = true;
+    _shouldReleaseCallOnDispose = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? false)) {
+        return;
+      }
+      Navigator.of(context).maybePop();
+    });
   }
 
   void _toggleMute() {

@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 
 import '../../data/models/chat_session.dart';
+import '../../widgets/liquid_glass_panel.dart';
+import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_conversation_item.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_web_ui_tokens.dart';
@@ -168,14 +170,20 @@ class WebConversationWorkspaceScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final workspaceWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final listWidth = _resolveConversationListWidth(workspaceWidth);
+        final stageWidth = workspaceWidth;
+        final stageHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : MediaQuery.sizeOf(context).height;
+        final listWidth = _resolveConversationListWidth(stageWidth);
         final rightContextWidth = _resolveRightContextWidth(
-          workspaceWidth,
+          stageWidth,
           listWidth,
         );
         final canUseRightContext =
@@ -184,10 +192,9 @@ class WebConversationWorkspaceScaffold extends StatelessWidget {
             rightContextWidth != null;
         final showExpandedRightContext =
             canUseRightContext && workbenchExpanded;
-
-        return Container(
+        final workspace = Container(
           key: const ValueKey<String>('web-conversation-workspace'),
-          color: WKWebColors.pageWarm,
+          color: Colors.transparent,
           child: Row(
             children: [
               SizedBox(
@@ -195,11 +202,7 @@ class WebConversationWorkspaceScaffold extends StatelessWidget {
                 width: listWidth,
                 child: listPane,
               ),
-              const VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: WKWebColors.borderWarm,
-              ),
+              VerticalDivider(width: 1, thickness: 1, color: tokens.border),
               Expanded(
                 child: Stack(
                   children: [
@@ -248,32 +251,58 @@ class WebConversationWorkspaceScaffold extends StatelessWidget {
             ],
           ),
         );
+
+        if (LiquidGlassAppFrameScope.isFramed(context)) {
+          return Center(
+            child: SizedBox(
+              width: stageWidth,
+              height: stageHeight,
+              child: workspace,
+            ),
+          );
+        }
+
+        return LiquidGlassStage(
+          child: Center(
+            child: LiquidGlassAppFrame(
+              frameKey: const ValueKey<String>(
+                'web-conversation-workspace-liquid-shell',
+              ),
+              width: stageWidth,
+              height: math.max(
+                0.0,
+                stageHeight - LiquidGlassSizes.appFrameViewportInset * 2,
+              ),
+              child: workspace,
+            ),
+          ),
+        );
       },
     );
   }
 
   double _resolveConversationListWidth(double workspaceWidth) {
     if (!workspaceWidth.isFinite || workspaceWidth <= 0) {
-      return WKWebSizes.conversationListWidth;
+      return LiquidGlassSizes.conversationListWidth;
     }
-    final scaledWidth = workspaceWidth * 0.36;
-    final maxWidth =
-        workspaceWidth <=
-            WKWebSizes.conversationListMinWidth + WKWebSizes.chatPaneMinWidth
-        ? workspaceWidth * 0.42
-        : WKWebSizes.conversationListWidth;
-    final boundedMax = maxWidth.clamp(
-      WKWebSizes.conversationListMinWidth,
-      WKWebSizes.conversationListWidth,
-    );
-    return scaledWidth
-        .clamp(WKWebSizes.conversationListMinWidth, boundedMax)
+    final maxListWidth =
+        workspaceWidth -
+        _resolveChatPaneMinWidth(workspaceWidth) -
+        _workbenchDividerWidth;
+    if (maxListWidth >= LiquidGlassSizes.conversationListWidth) {
+      return LiquidGlassSizes.conversationListWidth;
+    }
+    return maxListWidth
+        .clamp(
+          LiquidGlassSizes.conversationListMinWidth,
+          LiquidGlassSizes.conversationListWidth,
+        )
         .toDouble();
   }
 
   double? _resolveRightContextWidth(double workspaceWidth, double listWidth) {
     if (!workspaceWidth.isFinite) {
-      return WKWebSizes.chatRightContextWidth;
+      return LiquidGlassSizes.detailsDrawerWidth;
     }
     final availableRightContextWidth =
         workspaceWidth -
@@ -285,8 +314,8 @@ class WebConversationWorkspaceScaffold extends StatelessWidget {
       return null;
     }
     return math
-        .min(WKWebSizes.chatRightContextWidth, availableRightContextWidth)
-        .clamp(_workbenchMinWidth, WKWebSizes.chatRightContextWidth)
+        .min(LiquidGlassSizes.detailsDrawerWidth, availableRightContextWidth)
+        .clamp(_workbenchMinWidth, LiquidGlassSizes.detailsDrawerWidth)
         .toDouble();
   }
 
@@ -324,8 +353,14 @@ class _ConversationWorkbenchToggleRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final primary = dark
+        ? LiquidGlassColors.darkPrimary
+        : LiquidGlassColors.primary;
+
     return Container(
-      color: WKWebColors.surface,
+      color: tokens.surfaceSolid,
       padding: const EdgeInsets.only(top: WKSpace.md),
       child: Align(
         alignment: Alignment.topCenter,
@@ -339,10 +374,10 @@ class _ConversationWorkbenchToggleRail extends StatelessWidget {
                   ? Icons.keyboard_double_arrow_right_rounded
                   : Icons.keyboard_double_arrow_left_rounded,
             ),
-            color: WKWebColors.action,
+            color: primary,
             style: IconButton.styleFrom(
-              backgroundColor: WKWebColors.actionSoft,
-              hoverColor: WKWebColors.borderWarm,
+              backgroundColor: primary.withValues(alpha: 0.10),
+              hoverColor: primary.withValues(alpha: 0.14),
               fixedSize: const Size(32, 32),
               minimumSize: const Size(32, 32),
               padding: EdgeInsets.zero,
@@ -362,14 +397,18 @@ class _EmptyConversationPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+
     return Center(
-      child: WKWebPanel(
+      child: LiquidGlassPanel(
         padding: const EdgeInsets.all(WKSpace.xl),
+        borderRadius: LiquidGlassRadii.lg,
+        shadow: LiquidGlassShadows.md,
         child: Text(
           '选择一个会话开始聊天',
           style: Theme.of(
             context,
-          ).textTheme.titleMedium?.copyWith(color: WKWebColors.textSecondary),
+          ).textTheme.titleMedium?.copyWith(color: tokens.textSecondary),
         ),
       ),
     );
@@ -411,9 +450,15 @@ class ConversationWorkbenchPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final primary = dark
+        ? LiquidGlassColors.darkPrimary
+        : LiquidGlassColors.primary;
+
     return Container(
       key: const ValueKey<String>('conversation-workbench-panel'),
-      color: WKWebColors.surface,
+      color: tokens.surfaceSolid,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -421,13 +466,13 @@ class ConversationWorkbenchPanel extends StatelessWidget {
             height: 64,
             alignment: Alignment.centerLeft,
             padding: const EdgeInsets.symmetric(horizontal: WKSpace.md),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: WKWebColors.borderWarm)),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: tokens.border)),
             ),
             child: Text(
               '会话工作台',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: WKWebColors.textPrimary,
+                color: tokens.text,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -450,16 +495,16 @@ class ConversationWorkbenchPanel extends StatelessWidget {
                           height: 36,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: WKWebColors.actionSoft,
+                            color: primary.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(
                               WKWebRadius.avatar,
                             ),
                           ),
                           child: Text(
                             _avatarText,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: WKFontFamily.title,
-                              color: WKWebColors.action,
+                              color: primary,
                               fontSize: 14,
                               fontWeight: FontWeight.w900,
                             ),
@@ -474,9 +519,9 @@ class ConversationWorkbenchPanel extends StatelessWidget {
                                 _displayName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontFamily: WKFontFamily.primary,
-                                  color: WKWebColors.textPrimary,
+                                  color: tokens.text,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -484,9 +529,9 @@ class ConversationWorkbenchPanel extends StatelessWidget {
                               const SizedBox(height: 2),
                               Text(
                                 selection == null ? '暂无选中会话' : '当前会话',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontFamily: WKFontFamily.primary,
-                                  color: WKWebColors.textSecondary,
+                                  color: tokens.textSecondary,
                                   fontSize: 12,
                                 ),
                               ),
@@ -562,6 +607,8 @@ class _WorkbenchSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: WKSpace.lg),
       child: Column(
@@ -569,9 +616,9 @@ class _WorkbenchSection extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: WKFontFamily.primary,
-              color: WKWebColors.textPrimary,
+              color: tokens.text,
               fontSize: 14,
               fontWeight: FontWeight.w800,
             ),
@@ -591,22 +638,24 @@ class _WorkbenchPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+
     return Container(
       constraints: const BoxConstraints(minHeight: 32),
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: WKSpace.sm),
       decoration: BoxDecoration(
-        color: WKWebColors.surfaceSoft,
+        color: tokens.surface,
         borderRadius: BorderRadius.circular(WKRadius.pill),
-        border: Border.all(color: WKWebColors.borderWarm),
+        border: Border.all(color: tokens.border),
       ),
       child: Text(
         text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: WKFontFamily.primary,
-          color: WKWebColors.textSecondary,
+          color: tokens.textSecondary,
           fontSize: 12,
         ),
       ),
@@ -621,20 +670,22 @@ class _WorkbenchFileEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+
     return Container(
       constraints: const BoxConstraints(minHeight: 46),
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: WKSpace.sm),
       decoration: BoxDecoration(
-        color: WKWebColors.surfaceSoft,
+        color: tokens.surface,
         borderRadius: BorderRadius.circular(WKWebRadius.control),
-        border: Border.all(color: WKWebColors.borderWarm),
+        border: Border.all(color: tokens.border),
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: WKFontFamily.primary,
-          color: WKWebColors.textSecondary,
+          color: tokens.textSecondary,
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
@@ -650,19 +701,24 @@ class _WorkbenchActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final primary = dark
+        ? LiquidGlassColors.darkPrimary
+        : LiquidGlassColors.primary;
+
     return Container(
       height: 34,
       padding: const EdgeInsets.symmetric(horizontal: WKSpace.sm),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: WKWebColors.actionSoft,
+        color: primary.withValues(alpha: dark ? 0.16 : 0.10),
         borderRadius: BorderRadius.circular(WKWebRadius.control),
       ),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: WKFontFamily.primary,
-          color: WKWebColors.action,
+          color: primary,
           fontSize: 12,
           fontWeight: FontWeight.w800,
         ),

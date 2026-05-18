@@ -41,6 +41,8 @@ class AuthLoginPage extends ConsumerStatefulWidget {
 
 class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
   static const AppLogger _logger = AppLogger('auth/login-page');
+  static const String _icpFilingNumber = '\u6e58ICP\u59072026016828\u53f7';
+  static final Uri _icpFilingUri = Uri.parse('https://beian.miit.gov.cn/');
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -133,6 +135,7 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
       secondaryAction: _buildSecondaryActionSection(
         canModifyApiUrl: canModifyApiUrl,
       ),
+      footer: _buildIcpFooter(),
     );
   }
 
@@ -382,6 +385,28 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
           _buildApiBaseUrlSurface(),
         ],
       ],
+    );
+  }
+
+  Widget _buildIcpFooter() {
+    return Center(
+      child: TextButton(
+        key: const ValueKey<String>('auth_login_icp_link'),
+        onPressed: () => unawaited(_openIcpFilingPage()),
+        style: TextButton.styleFrom(
+          minimumSize: Size.zero,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          foregroundColor: AuthExperienceTokens.brandMuted,
+          textStyle: const TextStyle(
+            fontFamily: WKFontFamily.chinese,
+            fontFamilyFallback: WKTypography.nativeFontFamilyFallback,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        child: const Text(_icpFilingNumber),
+      ),
     );
   }
 
@@ -658,6 +683,22 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
     setState(() {
       _statusTone = AuthStatusBannerTone.error;
       _statusMessage = errorText;
+      _statusDetail = null;
+    });
+  }
+
+  Future<void> _openIcpFilingPage() async {
+    final opened = await launchUrl(
+      _icpFilingUri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!mounted || opened) {
+      return;
+    }
+    setState(() {
+      _statusTone = AuthStatusBannerTone.error;
+      _statusMessage =
+          '\u65e0\u6cd5\u6253\u5f00\u5907\u6848\u67e5\u8be2\u9875\u9762';
       _statusDetail = null;
     });
   }

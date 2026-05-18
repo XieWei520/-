@@ -85,6 +85,7 @@ class SessionRuntime {
   int _recoveryGeneration = 0;
   bool _recoveryScheduled = false;
   bool _desiredRunning = false;
+  bool _opening = false;
   Future<void> _frameProcessing = Future<void>.value();
 
   bool isRunning = false;
@@ -100,6 +101,9 @@ class SessionRuntime {
   }
 
   Future<void> start(Uri uri, {Map<String, String>? headers}) async {
+    if (_shouldReuseStart(uri, headers)) {
+      return;
+    }
     _bindSessionId(uri);
     _desiredRunning = true;
     _recoveryGeneration += 1;
@@ -109,7 +113,7 @@ class SessionRuntime {
     _resumeHeaders = headers == null ? null : Map<String, String>.from(headers);
     await _teardownConnection();
     _gatewayDegradedSince = null;
-    await _openConnection();
+    await _openConnectionTracked();
   }
 
   Future<void> stop() async {
@@ -147,6 +151,7 @@ class SessionRuntime {
     final subscription = _subscription;
     _subscription = null;
     await subscription?.cancel();
+    await gateway.closeActiveSocket();
   }
 
   Future<void> handleFrame(SessionEventFrame frame) async {
@@ -209,6 +214,9 @@ class SessionRuntime {
       for (final frame in replay) {
         if (frame.userSeq <= cursor) {
           continue;
+        }
+        if (cursor == 0 && frame.userSeq > 1) {
+          cursor = frame.userSeq - 1;
         }
         if (frame.userSeq != cursor + 1) {
           throw StateError(
@@ -287,7 +295,7 @@ class SessionRuntime {
         if (!_desiredRunning || generation != _recoveryGeneration) {
           return;
         }
-        await _openConnection();
+        await _openConnectionTracked();
         _retryAttempt = 0;
         _gatewayDegradedSince = null;
       } catch (_) {
@@ -315,6 +323,55 @@ class SessionRuntime {
       'last_acked_seq': '${gateway.lastAckedSeq}',
     };
     return template.replace(queryParameters: query);
+  }
+
+  bool _shouldReuseStart(Uri uri, Map<String, String>? headers) {
+    final activeUri = _resumeUriTemplate;
+    if (!_desiredRunning || activeUri == null) {
+      return false;
+    }
+    if (!_sameResumeTarget(activeUri, uri) ||
+        !_sameStringMap(_resumeHeaders, headers)) {
+      return false;
+    }
+    return _opening || isRunning || _recoveryScheduled || isGatewayDegraded;
+  }
+
+  Future<void> _openConnectionTracked() async {
+    _opening = true;
+    try {
+      await _openConnection();
+    } finally {
+      _opening = false;
+    }
+  }
+
+  bool _sameResumeTarget(Uri left, Uri right) {
+    return left.scheme == right.scheme &&
+        left.host == right.host &&
+        left.port == right.port &&
+        left.path == right.path &&
+        _sameStringMap(_resumeQuery(left), _resumeQuery(right));
+  }
+
+  Map<String, String> _resumeQuery(Uri uri) {
+    final query = Map<String, String>.from(uri.queryParameters);
+    query.remove('last_acked_seq');
+    return query;
+  }
+
+  bool _sameStringMap(Map<String, String>? left, Map<String, String>? right) {
+    final normalizedLeft = left ?? const <String, String>{};
+    final normalizedRight = right ?? const <String, String>{};
+    if (normalizedLeft.length != normalizedRight.length) {
+      return false;
+    }
+    for (final entry in normalizedLeft.entries) {
+      if (normalizedRight[entry.key] != entry.value) {
+        return false;
+      }
+    }
+    return true;
   }
 
   void _setRunning(bool running) {

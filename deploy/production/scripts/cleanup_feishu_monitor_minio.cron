@@ -1,0 +1,1 @@
+17 * * * * /opt/wukongim-prod/scripts/cleanup_feishu_monitor_minio.sh >> /opt/wukongim-prod/logs/cleanup_feishu_monitor_minio.log 2>&1

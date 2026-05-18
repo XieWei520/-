@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_agreement_block.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_action_button.dart';
@@ -10,7 +11,9 @@ import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_page_scaffo
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_status_banner.dart';
 
 void main() {
-  test('auth control tokens meet accessible contrast thresholds', () {
+  test('auth control tokens meet rendered accessible contrast thresholds', () {
+    expect(AuthExperienceTokens.brandAccent, const Color(0xFF4F46E5));
+    expect(AuthExperienceTokens.stageBackgroundBottom, const Color(0xFFF0F4F8));
     expect(
       _contrastRatio(Colors.white, AuthExperienceTokens.brandAccent),
       greaterThanOrEqualTo(4.5),
@@ -22,11 +25,12 @@ void main() {
       ),
       greaterThanOrEqualTo(4.5),
     );
+    final renderedInputBorder = _compositeOver(
+      AuthExperienceTokens.inputBorder,
+      AuthExperienceTokens.inputFill,
+    );
     expect(
-      _contrastRatio(
-        AuthExperienceTokens.inputBorder,
-        AuthExperienceTokens.inputFill,
-      ),
+      _contrastRatio(renderedInputBorder, AuthExperienceTokens.inputFill),
       greaterThanOrEqualTo(3.0),
     );
     expect(
@@ -62,10 +66,18 @@ void main() {
     final stageFinder = find.byKey(const ValueKey<String>('auth-stage-shell'));
     final brandFinder = find.byKey(const ValueKey<String>('auth-brand-panel'));
     final formFinder = find.byKey(const ValueKey<String>('auth-form-panel'));
+    final networkVisualFinder = find.byKey(
+      const ValueKey<String>('auth-brand-network-visual'),
+    );
 
     expect(stageFinder, findsOneWidget);
     expect(brandFinder, findsOneWidget);
     expect(formFinder, findsOneWidget);
+    expect(networkVisualFinder, findsOneWidget);
+
+    final stage = tester.widget<Container>(stageFinder);
+    final stageDecoration = stage.decoration! as BoxDecoration;
+    expect(stageDecoration.borderRadius, BorderRadius.circular(20));
 
     final brandWidth = tester.getSize(brandFinder).width;
     final formWidth = tester.getSize(formFinder).width;
@@ -111,6 +123,52 @@ void main() {
       expect(find.text('Device sessions'), findsOneWidget);
     },
   );
+
+  testWidgets('AuthPageScaffold resolves dark stage and panel surfaces', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1024, 800));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: const AuthPageScaffold(
+          title: 'Sign in',
+          subtitle: 'Continue securely.',
+          body: SizedBox(height: 120, child: Placeholder()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final background = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey<String>('auth-stage-background')),
+    );
+    final backgroundDecoration = background.decoration as BoxDecoration;
+    expect(
+      backgroundDecoration.color,
+      AuthExperiencePalette.dark.stageBackgroundBottom,
+    );
+
+    final stage = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('auth-stage-shell')),
+    );
+    final stageDecoration = stage.decoration! as BoxDecoration;
+    expect(
+      stageDecoration.border,
+      Border.all(color: AuthExperiencePalette.dark.stageShellBorder),
+    );
+
+    final formPanel = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('auth-page-panel')),
+    );
+    final formDecoration = formPanel.decoration! as BoxDecoration;
+    expect(formDecoration.color, AuthExperiencePalette.dark.panelBackground);
+
+    final title = tester.widget<Text>(find.text('Sign in'));
+    expect(title.style?.color, AuthExperiencePalette.dark.panelInk);
+  });
 
   testWidgets(
     'AuthPageScaffold falls back to stacked layout on short-wide viewports',
@@ -295,6 +353,87 @@ void main() {
     );
   });
 
+  testWidgets('AuthActionButton resolves dark palette control colors', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: Column(
+            children: [
+              AuthActionButton(
+                key: const ValueKey<String>('dark-primary-action'),
+                label: 'Continue',
+                onPressed: () {},
+              ),
+              const AuthActionButton(
+                key: ValueKey<String>('dark-disabled-primary-action'),
+                label: 'Disabled',
+                onPressed: null,
+              ),
+              AuthActionButton.secondary(
+                key: const ValueKey<String>('dark-secondary-action'),
+                label: 'Cancel',
+                onPressed: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final primaryButton = tester.widget<ElevatedButton>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('dark-primary-action')),
+        matching: find.byType(ElevatedButton),
+      ),
+    );
+    final primaryStyle = primaryButton.style!;
+    expect(
+      primaryStyle.backgroundColor?.resolve(<WidgetState>{}),
+      AuthExperiencePalette.dark.brandAccent,
+    );
+    expect(
+      primaryStyle.foregroundColor?.resolve(<WidgetState>{}),
+      Colors.white,
+    );
+
+    final disabledPrimaryButton = tester.widget<ElevatedButton>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('dark-disabled-primary-action')),
+        matching: find.byType(ElevatedButton),
+      ),
+    );
+    expect(
+      disabledPrimaryButton.style?.backgroundColor?.resolve(<WidgetState>{
+        WidgetState.disabled,
+      }),
+      AuthExperiencePalette.dark.brandMuted,
+    );
+
+    final secondaryButton = tester.widget<OutlinedButton>(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('dark-secondary-action')),
+        matching: find.byType(OutlinedButton),
+      ),
+    );
+    final secondaryStyle = secondaryButton.style!;
+    expect(
+      secondaryStyle.backgroundColor?.resolve(<WidgetState>{}),
+      AuthExperiencePalette.dark.stageShellTop.withValues(alpha: 0.88),
+    );
+    expect(
+      secondaryStyle.foregroundColor?.resolve(<WidgetState>{}),
+      AuthExperiencePalette.dark.brandAccentStrong,
+    );
+    expect(
+      secondaryStyle.side?.resolve(<WidgetState>{})?.color,
+      AuthExperiencePalette.dark.stageShellBorder,
+    );
+  });
+
   testWidgets('AuthAgreementBlock renders links as focusable controls', (
     tester,
   ) async {
@@ -446,6 +585,81 @@ void main() {
     expect(focusNode.hasFocus, isTrue);
   });
 
+  testWidgets('AuthFormField preserves light palette control colors', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AuthFormField(
+            fieldKey: ValueKey<String>('light-auth-field'),
+            hintText: 'Phone',
+            helperText: 'Use your phone number',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(
+      find.byKey(const ValueKey<String>('light-auth-field')),
+    );
+    final decoration = field.decoration!;
+    expect(decoration.fillColor, AuthExperienceTokens.inputFill);
+    expect(field.style?.color, AuthExperienceTokens.inputText);
+    expect(field.cursorColor, AuthExperienceTokens.inputText);
+    expect(decoration.hintStyle?.color, AuthExperienceTokens.inputHint);
+    expect(
+      (decoration.enabledBorder! as OutlineInputBorder).borderSide.color,
+      AuthExperienceTokens.inputBorder,
+    );
+    expect(
+      (decoration.focusedBorder! as OutlineInputBorder).borderSide.color,
+      AuthExperienceTokens.inputBorderFocus,
+    );
+
+    final helper = tester.widget<Text>(find.text('Use your phone number'));
+    expect(helper.style?.color, AuthExperienceTokens.helperText);
+  });
+
+  testWidgets('AuthFormField resolves dark palette control colors', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: const Scaffold(
+          body: AuthFormField(
+            fieldKey: ValueKey<String>('dark-auth-field'),
+            hintText: 'Phone',
+            helperText: 'Use your phone number',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(
+      find.byKey(const ValueKey<String>('dark-auth-field')),
+    );
+    final decoration = field.decoration!;
+    expect(decoration.fillColor, AuthExperiencePalette.dark.inputFill);
+    expect(field.style?.color, AuthExperiencePalette.dark.inputText);
+    expect(field.cursorColor, AuthExperiencePalette.dark.inputText);
+    expect(decoration.hintStyle?.color, AuthExperiencePalette.dark.inputHint);
+    expect(
+      (decoration.enabledBorder! as OutlineInputBorder).borderSide.color,
+      AuthExperiencePalette.dark.inputBorder,
+    );
+    expect(
+      (decoration.focusedBorder! as OutlineInputBorder).borderSide.color,
+      AuthExperiencePalette.dark.inputBorderFocus,
+    );
+
+    final helper = tester.widget<Text>(find.text('Use your phone number'));
+    expect(helper.style?.color, AuthExperiencePalette.dark.helperText);
+  });
+
   testWidgets('AuthFormField trailing actions remain tappable', (tester) async {
     var trailingTapCount = 0;
 
@@ -556,6 +770,28 @@ double _contrastRatio(Color foreground, Color background) {
       ? backgroundLuminance
       : foregroundLuminance;
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+Color _compositeOver(Color foreground, Color background) {
+  final foregroundAlpha = foreground.a;
+  final backgroundAlpha = background.a * (1 - foregroundAlpha);
+  final compositeAlpha = foregroundAlpha + backgroundAlpha;
+
+  double compositeChannel(double foregroundChannel, double backgroundChannel) {
+    if (compositeAlpha == 0) {
+      return 0;
+    }
+    return (foregroundChannel * foregroundAlpha +
+            backgroundChannel * backgroundAlpha) /
+        compositeAlpha;
+  }
+
+  return Color.from(
+    alpha: compositeAlpha,
+    red: compositeChannel(foreground.r, background.r),
+    green: compositeChannel(foreground.g, background.g),
+    blue: compositeChannel(foreground.b, background.b),
+  );
 }
 
 void _noop() {}

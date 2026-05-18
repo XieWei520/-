@@ -8,6 +8,11 @@ upstream tsdd_api {
     keepalive 64;
 }
 
+upstream admin_nginx {
+    server admin-nginx:80;
+    keepalive 16;
+}
+
 upstream callgateway_api {
     server callgateway:8091;
     keepalive 32;
@@ -108,6 +113,38 @@ server {
         return 404;
     }
 
+    location = /admin {
+        return 308 /admin/;
+    }
+
+    location ^~ /admin/ {
+        rewrite ^/admin/?(.*)$ /$1 break;
+        proxy_pass http://admin_nginx;
+        proxy_http_version 1.1;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Prefix /admin;
+        proxy_redirect off;
+        proxy_set_header Accept-Encoding "";
+        sub_filter_once off;
+        sub_filter_types text/css application/javascript;
+        sub_filter 'href="/logo.png"' 'href="/admin/logo.png"';
+        sub_filter 'src="/static/' 'src="/admin/static/';
+        sub_filter 'href="/static/' 'href="/admin/static/';
+        sub_filter '"/static/' '"/admin/static/';
+        sub_filter '"static/' '"admin/static/';
+        sub_filter 'url(/static/' 'url(/admin/static/';
+        sub_filter 'const SY=function(e){return"/"+e}' 'const SY=function(e){return"/admin/"+e}';
+        sub_filter 'SY=function(e){return"/"+e}' 'SY=function(e){return e[0]==="/"?e:"/admin/"+e}';
+        sub_filter 'history:v4()' 'history:v4("/admin/")';
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+    }
+
     location = /ws {
         limit_req zone=ws_limit burst=30 nodelay;
         proxy_pass http://wukongim_ws/;
@@ -129,6 +166,18 @@ server {
         proxy_send_timeout 3600s;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location ^~ /api/ {
+        rewrite ^/api/?(.*)$ /$1 break;
+        proxy_pass http://tsdd_api;
+        proxy_http_version 1.1;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

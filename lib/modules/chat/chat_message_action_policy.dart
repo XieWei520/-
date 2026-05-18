@@ -16,6 +16,14 @@ enum ChatSceneAction {
   react,
 }
 
+class ChatGroupRole {
+  ChatGroupRole._();
+
+  static const int normal = 0;
+  static const int owner = 1;
+  static const int admin = 2;
+}
+
 @immutable
 class ChatMessageActionDescriptor {
   const ChatMessageActionDescriptor({
@@ -87,6 +95,25 @@ const ChatMessageActionDescriptor _reactAction = ChatMessageActionDescriptor(
   order: 8,
 );
 
+bool canRecallChatMessage({
+  required bool isSelf,
+  required int channelType,
+  required int currentUserGroupRole,
+  int senderGroupRole = ChatGroupRole.normal,
+}) {
+  if (isSelf) {
+    return true;
+  }
+  if (channelType != ChannelType.group) {
+    return false;
+  }
+  if (currentUserGroupRole == ChatGroupRole.owner) {
+    return true;
+  }
+  return currentUserGroupRole == ChatGroupRole.admin &&
+      senderGroupRole == ChatGroupRole.normal;
+}
+
 List<ChatMessageActionDescriptor> buildChatMessageActionDescriptors({
   required WKMsg message,
   required bool isSelf,
@@ -100,7 +127,7 @@ List<ChatMessageActionDescriptor> buildChatMessageActionDescriptors({
     includeCopy: message.contentType == MessageContentType.text,
     includeEdit: isSelf && message.contentType == MessageContentType.text,
     includeDelete: false,
-    includeRecall: isSelf && canRecall,
+    includeRecall: canRecall,
     includePin: canPin && _supportsPinnedToggle(message),
     isPinned: (message.wkMsgExtra?.isPinned ?? 0) == 1,
   );
@@ -120,7 +147,7 @@ List<ChatMessageActionDescriptor> buildLegacyLongPressActionDescriptors({
     includeCopy: messageType == 'text',
     includeEdit: isFromMe && messageType == 'text',
     includeDelete: false,
-    includeRecall: isFromMe && canRecall,
+    includeRecall: canRecall,
     includePin: canPin,
     isPinned: isPinned,
   );

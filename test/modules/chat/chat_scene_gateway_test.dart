@@ -35,6 +35,8 @@ void main() {
       expect(message.status, WKSendMsgResult.sendLoading);
       expect(message.timestamp, 1777184600);
       expect(message.orderSeq, 1777184600000);
+      expect(message.expireTime, 0);
+      expect(message.expireTimestamp, 0);
       expect(message.messageContent, same(content));
       expect(message.getChannelInfo(), same(channel));
       final payload = jsonDecode(message.content) as Map<String, dynamic>;
@@ -42,6 +44,26 @@ void main() {
       expect(payload['type'], WkMessageContentType.text);
     },
   );
+
+  test('buildDirectOutgoingMessage records requested message expiration', () {
+    final now = DateTime.fromMillisecondsSinceEpoch(1777184600000);
+    final channel = WKChannel('u_target', WKChannelType.personal);
+    final content = WKTextContent('expires on web');
+
+    final message = buildDirectOutgoingMessage(
+      content: content,
+      channel: channel,
+      currentUid: 'u_me',
+      expireSeconds: defaultChatMessageRetentionSeconds,
+      now: now,
+    );
+
+    expect(message.expireTime, defaultChatMessageRetentionSeconds);
+    expect(
+      message.expireTimestamp,
+      1777184600 + defaultChatMessageRetentionSeconds,
+    );
+  });
 
   test('addFavorite forwards favorite metadata to collection api', () async {
     final collectionApi = _FakeCollectionApi();
@@ -129,12 +151,33 @@ void main() {
     expect(completed, isTrue);
   });
 
+  test('sendPersistentSdkMessage forwards explicit expire option', () async {
+    final channel = WKChannel('g-expiring', WKChannelType.group);
+    final content = WKTextContent('expires later');
+    WKSendOptions? capturedOptions;
+
+    await sendPersistentSdkMessage(
+      content: content,
+      channel: channel,
+      options: WKSendOptions()..expire = 21600,
+      sendWithOption: (sentContent, sentChannel, options) {
+        expect(sentContent, same(content));
+        expect(sentChannel, same(channel));
+        capturedOptions = options;
+      },
+    );
+
+    expect(capturedOptions?.expire, 21600);
+  });
+
   test('sendForwardPayloads uses the injected sender', () async {
     final sent = <String>[];
+    final expires = <int?>[];
     final gateway = ApiChatSceneGateway(
-      sendMessage: (content, channel) {
+      sendMessageWithOptions: (content, channel, options) {
         final text = content as WKTextContent;
         sent.add('${channel.channelType}:${channel.channelID}:${text.content}');
+        expires.add(options?.expire);
       },
     );
 
@@ -155,18 +198,21 @@ void main() {
     );
 
     expect(sent, <String>['1:u-destination:forward me']);
+    expect(expires, <int?>[defaultChatMessageRetentionSeconds]);
   });
 
   test(
-    'sendMessageContent uses the injected sender for active chat sends',
+    'sendMessageContent uses 30 day retention for active chat sends by default',
     () async {
       final sent = <String>[];
+      final expires = <int?>[];
       final gateway = ApiChatSceneGateway(
-        sendMessage: (content, channel) {
+        sendMessageWithOptions: (content, channel, options) {
           final text = content as WKTextContent;
           sent.add(
             '${channel.channelType}:${channel.channelID}:${text.content}',
           );
+          expires.add(options?.expire);
         },
       );
 
@@ -177,32 +223,54 @@ void main() {
       );
 
       expect(sent, <String>['2:g-active:send now']);
+      expect(expires, <int?>[defaultChatMessageRetentionSeconds]);
     },
   );
 
-  test('sendMessageContent waits for injected sender futures to complete', () async {
-    final completer = Completer<void>();
+  test('sendMessageContent passes requested expire option to sender', () async {
+    WKSendOptions? capturedOptions;
     final gateway = ApiChatSceneGateway(
-      sendMessage: (content, channel) => completer.future,
+      sendMessageWithOptions: (content, channel, options) {
+        capturedOptions = options;
+      },
     );
 
-    var completed = false;
-    final sendFuture = gateway
-        .sendMessageContent(
-          WKTextContent('send after persistence'),
-          channelId: 'g-active',
-          channelType: WKChannelType.group,
-        )
-        .then((_) => completed = true);
+    await gateway.sendMessageContent(
+      WKTextContent('send with expiry'),
+      channelId: 'g-active',
+      channelType: WKChannelType.group,
+      expireSeconds: 21600,
+    );
 
-    await Future<void>.delayed(Duration.zero);
-    expect(completed, isFalse);
-
-    completer.complete();
-    await sendFuture;
-
-    expect(completed, isTrue);
+    expect(capturedOptions?.expire, 21600);
   });
+
+  test(
+    'sendMessageContent waits for injected sender futures to complete',
+    () async {
+      final completer = Completer<void>();
+      final gateway = ApiChatSceneGateway(
+        sendMessage: (content, channel) => completer.future,
+      );
+
+      var completed = false;
+      final sendFuture = gateway
+          .sendMessageContent(
+            WKTextContent('send after persistence'),
+            channelId: 'g-active',
+            channelType: WKChannelType.group,
+          )
+          .then((_) => completed = true);
+
+      await Future<void>.delayed(Duration.zero);
+      expect(completed, isFalse);
+
+      completer.complete();
+      await sendFuture;
+
+      expect(completed, isTrue);
+    },
+  );
 
   test(
     'sendForwardPayloads waits for injected sender futures to complete',

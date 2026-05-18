@@ -1132,8 +1132,19 @@ class IMService extends StateNotifier<IMServiceState>
     required String currentUid,
   }) {
     try {
-      final plan = buildMessageAlertPlan(message, currentUid: currentUid);
+      final plan = buildMessageAlertPlan(
+        message,
+        currentUid: currentUid,
+        requireRedDot: _appLifecycleState == AppLifecycleState.resumed,
+      );
       if (plan == null) {
+        debugPrint(
+          'Android message alert skipped by plan: '
+          'lifecycle=$_appLifecycleState, redDot=${message.header.redDot}, '
+          'from=${message.fromUID}, channel=${message.channelType}:'
+          '${message.channelID}, type=${message.contentType}, '
+          'deleted=${message.isDeleted}',
+        );
         return;
       }
       unawaited(

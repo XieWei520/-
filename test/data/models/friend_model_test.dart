@@ -27,6 +27,19 @@ void main() {
       expect(friend.isCustomerService, isTrue);
       expect(friend.toJson()['category'], 'customer_service');
     });
+
+    test('parses display name aliases from friend sync payload', () {
+      final friend = Friend.fromJson({
+        'uid': 'u_friend',
+        'channel_name': 'Friendly Alice',
+        'channel_remark': 'Alice Remark',
+        'channel_avatar': 'https://example.com/alice.png',
+      });
+
+      expect(friend.name, 'Friendly Alice');
+      expect(friend.remark, 'Alice Remark');
+      expect(friend.avatar, 'https://example.com/alice.png');
+    });
   });
 
   group('FriendRequest model', () {

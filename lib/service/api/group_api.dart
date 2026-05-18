@@ -146,12 +146,14 @@ class GroupApi {
         'chat_pwd_on': group.chatPwdOn ?? 0,
         'flame': group.flame ?? 0,
         'flame_second': group.flameSecond ?? 0,
+        'role': group.role ?? 0,
       }
       ..localExtra = <String, dynamic>{
         'allow_member_pinned_message': group.allowMemberPinnedMessage ?? 0,
         'chat_pwd_on': group.chatPwdOn ?? 0,
         'flame': group.flame ?? 0,
         'flame_second': group.flameSecond ?? 0,
+        'role': group.role ?? 0,
       };
     WKIM.shared.channelManager.addOrUpdateChannel(channel);
   }

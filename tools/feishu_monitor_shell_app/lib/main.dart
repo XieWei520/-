@@ -7,9 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:webview_windows/webview_windows.dart';
 
+import 'src/feishu_browser_image_body_cache.dart';
 import 'src/feishu_network_capture.dart';
 import 'src/feishu_network_capture_bridge.dart';
 import 'src/feishu_network_capture_parser.dart';
+import 'src/feishu_network_capture_probe.dart';
+import 'src/feishu_network_capture_retention.dart';
 import 'src/feishu_network_forwardable_image_resolver.dart';
 import 'src/feishu_network_capture_store.dart';
 import 'src/feishu_page_observer.dart';
@@ -17,35 +20,197 @@ import 'src/feishu_page_probe.dart';
 import 'src/probe_scheduler.dart';
 import 'src/runtime_snapshot_mapper.dart';
 
-const String defaultFeishuRuntimeUrl = 'https://www.feishu.cn/messenger/';
-const Duration feishuMediaFeedOpenRetryDelay = Duration(seconds: 20);
-const bool feishuStrictNoDomForwardingEnabled = true;
-const String feishuStrictNoDomForwardingReason = 'strict_no_dom_forwarding';
-const String feishuShellRefreshTooltip = '刷新';
-const String feishuShellReadyMessage =
-    '本地壳程序已启动，WuKongIM 可通过 localhost 控制接口读取当前登录运行态。';
+export 'src/feishu_network_capture_retention.dart';
 
-Map<String, dynamic> feishuStrictNoDomOpenResult() {
+const String defaultFeishuRuntimeUrl = 'https://www.feishu.cn/messenger/';
+const List<String> feishuShellWebviewBackgroundRealtimeFlags = <String>[
+  '--disable-background-timer-throttling',
+  '--disable-renderer-backgrounding',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-features=CalculateNativeWinOcclusion,IntensiveWakeUpThrottling',
+];
+const Duration feishuMediaFeedOpenRetryDelay = Duration(seconds: 20);
+const Duration feishuConfiguredMediaFeedKeepAliveCooldown = Duration(
+  seconds: 60,
+);
+const int feishuConfiguredMediaFeedKeepAliveStaleProbeCount = 5;
+const bool feishuMediaConversationOpenEnabled = true;
+const bool feishuLatestFeedAutoOpenEnabled = false;
+const String feishuMediaConversationOpenReason =
+    'pending_media_feed_open_enabled';
+const String feishuLatestFeedAutoOpenDisabledReason =
+    'latest_feed_auto_open_disabled';
+const String feishuShellAppTitle = '飞书消息监控助手';
+const String feishuShellStableSupportDirectoryName = 'feishu_monitor_shell_app';
+const String feishuShellRefreshTooltip = '刷新';
+
+class FeishuShellWorkerOptions {
+  const FeishuShellWorkerOptions({
+    required this.workerId,
+    required this.port,
+    required this.profileSuffix,
+    required this.titleSuffix,
+  });
+
+  final String workerId;
+  final int port;
+  final String profileSuffix;
+  final String titleSuffix;
+
+  static const FeishuShellWorkerOptions defaults = FeishuShellWorkerOptions(
+    workerId: 'worker-1',
+    port: 18766,
+    profileSuffix: '',
+    titleSuffix: '',
+  );
+}
+
+FeishuShellWorkerOptions parseFeishuShellWorkerOptions(List<String> args) {
+  var workerId = FeishuShellWorkerOptions.defaults.workerId;
+  var port = FeishuShellWorkerOptions.defaults.port;
+  var profileSuffix = '';
+  var titleSuffix = '';
+
+  for (final arg in args) {
+    final index = arg.indexOf('=');
+    if (!arg.startsWith('--') || index <= 2) {
+      continue;
+    }
+    final key = arg.substring(2, index).trim();
+    final value = arg.substring(index + 1).trim();
+    if (value.isEmpty) {
+      continue;
+    }
+    switch (key) {
+      case 'worker-id':
+        if (_isSafeFeishuShellWorkerToken(value)) {
+          workerId = value;
+          titleSuffix = value;
+        }
+      case 'port':
+        final parsedPort = int.tryParse(value);
+        if (parsedPort != null && _isValidFeishuShellWorkerPort(parsedPort)) {
+          port = parsedPort;
+        }
+      case 'profile-suffix':
+        if (_isSafeFeishuShellWorkerToken(value)) {
+          profileSuffix = value;
+        }
+    }
+  }
+
+  return FeishuShellWorkerOptions(
+    workerId: workerId,
+    port: port,
+    profileSuffix: profileSuffix,
+    titleSuffix: titleSuffix.isEmpty ? workerId : titleSuffix,
+  );
+}
+
+bool _isSafeFeishuShellWorkerToken(String value) {
+  return RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value.trim());
+}
+
+bool _isValidFeishuShellWorkerPort(int value) {
+  return value >= 1024 && value <= 65535;
+}
+
+Map<String, dynamic> feishuLatestFeedAutoOpenDisabledResult() {
   return <String, dynamic>{
     'attempted': false,
     'opened': false,
-    'reason': feishuStrictNoDomForwardingReason,
+    'reason': feishuLatestFeedAutoOpenDisabledReason,
   };
 }
 
-Future<void> main() async {
+String mediaPreviewExtractionSignature({
+  required String domImageSignature,
+  required String pendingMediaFeedKey,
+}) {
+  final normalizedDomSignature = domImageSignature.trim();
+  if (normalizedDomSignature.isEmpty) {
+    return '';
+  }
+  final normalizedPendingKey = pendingMediaFeedKey.trim();
+  if (normalizedPendingKey.isEmpty) {
+    return normalizedDomSignature;
+  }
+  return '$normalizedDomSignature\npending:$normalizedPendingKey';
+}
+
+Map<String, dynamic> mediaPreviewExtractionDiagnostics(
+  Map<String, dynamic> result, {
+  required String extractionSignature,
+  required String pendingMediaFeedKey,
+}) {
+  return <String, dynamic>{
+    ...result,
+    'signature': extractionSignature,
+    'pending_key': pendingMediaFeedKey.trim(),
+  };
+}
+
+String feishuShellWebviewAdditionalArguments() {
+  return feishuShellWebviewBackgroundRealtimeFlags.join(' ');
+}
+
+bool shouldOpenConfiguredMediaFeedKeepAlive({
+  required int sameFeedSignatureCount,
+  required bool hasConfiguredMediaSources,
+  required bool pendingMediaNeedsExtraction,
+  required DateTime now,
+  DateTime? lastOpenedAt,
+  int staleProbeCount = feishuConfiguredMediaFeedKeepAliveStaleProbeCount,
+  Duration cooldown = feishuConfiguredMediaFeedKeepAliveCooldown,
+}) {
+  if (!hasConfiguredMediaSources ||
+      pendingMediaNeedsExtraction ||
+      sameFeedSignatureCount < staleProbeCount) {
+    return false;
+  }
+  if (lastOpenedAt == null) {
+    return true;
+  }
+  return now.toUtc().difference(lastOpenedAt.toUtc()) >= cooldown;
+}
+
+int nextConfiguredMediaFeedKeepAliveCursor({
+  required int currentIndex,
+  required int sourceCount,
+}) {
+  if (sourceCount <= 0) {
+    return 0;
+  }
+  final normalizedIndex = currentIndex < 0 ? 0 : currentIndex;
+  return (normalizedIndex + 1) % sourceCount;
+}
+
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  final supportDirectory = await getApplicationSupportDirectory();
-  final snapshotFile = File(
-    '${supportDirectory.path}${Platform.pathSeparator}feishu_monitor_shell${Platform.pathSeparator}status.json',
+  final options = parseFeishuShellWorkerOptions(args);
+  await WebviewController.initializeEnvironment(
+    additionalArguments: feishuShellWebviewAdditionalArguments(),
   );
+  final supportDirectory = await prepareFeishuShellSupportDirectory(
+    await getApplicationSupportDirectory(),
+    profileSuffix: options.profileSuffix,
+  );
+  final snapshotFile = feishuShellSnapshotFileFor(supportDirectory);
   final diagnosticsFile = networkCaptureDiagnosticsFileFor(supportDirectory);
+  await cleanupFeishuNetworkCaptureRuntime(
+    diagnosticsFile: diagnosticsFile,
+    now: DateTime.now().toUtc(),
+  );
   final store = ShellStore(snapshotFile);
+  final initializedSnapshot = (await store.load()).copyWith(
+    workerId: options.workerId,
+  );
+  await store.save(initializedSnapshot);
   final events = ShellEventBus();
   final server = ShellServer(
     store: store,
     host: InternetAddress.loopbackIPv4,
-    port: 18766,
+    port: options.port,
     token: 'wukong-feishu-shell-dev',
     events: events,
   );
@@ -55,8 +220,68 @@ Future<void> main() async {
       store: store,
       events: events,
       networkDiagnosticsFile: diagnosticsFile,
+      workerOptions: options,
     ),
   );
+}
+
+Directory feishuShellStableSupportDirectoryFor(
+  Directory supportDirectory, {
+  String profileSuffix = '',
+}) {
+  final parent = supportDirectory.parent;
+  final suffix = profileSuffix.trim().isEmpty ? '' : '_${profileSuffix.trim()}';
+  return Directory(
+    '${parent.path}${Platform.pathSeparator}'
+    '$feishuShellStableSupportDirectoryName$suffix',
+  );
+}
+
+File feishuShellSnapshotFileFor(Directory supportDirectory) {
+  return File(
+    '${supportDirectory.path}${Platform.pathSeparator}feishu_monitor_shell'
+    '${Platform.pathSeparator}status.json',
+  );
+}
+
+Future<Directory> prepareFeishuShellSupportDirectory(
+  Directory supportDirectory, {
+  String profileSuffix = '',
+}) async {
+  final stableDirectory = feishuShellStableSupportDirectoryFor(
+    supportDirectory,
+    profileSuffix: profileSuffix,
+  );
+  if (profileSuffix.trim().isEmpty) {
+    await _migrateRenamedShellStatusFile(
+      fromSupportDirectory: supportDirectory,
+      toSupportDirectory: stableDirectory,
+    );
+  }
+  return stableDirectory;
+}
+
+Future<void> _migrateRenamedShellStatusFile({
+  required Directory fromSupportDirectory,
+  required Directory toSupportDirectory,
+}) async {
+  if (fromSupportDirectory.path == toSupportDirectory.path) {
+    return;
+  }
+  final source = feishuShellSnapshotFileFor(fromSupportDirectory);
+  if (!await source.exists()) {
+    return;
+  }
+  final target = feishuShellSnapshotFileFor(toSupportDirectory);
+  if (await target.exists()) {
+    final sourceModified = await source.lastModified();
+    final targetModified = await target.lastModified();
+    if (!sourceModified.isAfter(targetModified)) {
+      return;
+    }
+  }
+  await target.parent.create(recursive: true);
+  await source.copy(target.path);
 }
 
 File networkCaptureDiagnosticsFileFor(Directory supportDirectory) {
@@ -79,6 +304,7 @@ List<String> feishuShellPageObserverScripts() {
     feishuPageKeepAliveScript,
     feishuPageObserverScript,
     feishuNetworkImageAttributionScript,
+    feishuStorageProbeScript,
   ];
 }
 
@@ -88,16 +314,20 @@ class FeishuMonitorShellApp extends StatelessWidget {
     required this.store,
     required this.events,
     required this.networkDiagnosticsFile,
+    required this.workerOptions,
   });
 
   final ShellStore store;
   final ShellEventBus events;
   final File networkDiagnosticsFile;
+  final FeishuShellWorkerOptions workerOptions;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Feishu Monitor Shell',
+      title: workerOptions.titleSuffix.isEmpty
+          ? feishuShellAppTitle
+          : '$feishuShellAppTitle ${workerOptions.titleSuffix}',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFF65835)),
         useMaterial3: true,
@@ -129,9 +359,8 @@ class FeishuMonitorShellHome extends StatefulWidget {
 
 class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
   late final WebviewController _controller;
-  ShellSnapshot? _snapshot;
   bool _webviewReady = false;
-  String _pageTitle = 'Feishu Monitor Shell';
+  String _pageTitle = feishuShellAppTitle;
   String _runtimeUrl = defaultFeishuRuntimeUrl;
   bool _loading = true;
   String _error = '';
@@ -148,10 +377,22 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
   StreamSubscription<String>? _networkCaptureUnavailableSubscription;
   late final ProbeScheduler _probeScheduler;
   Timer? _probeTimer;
+  Timer? _networkCaptureRuntimeCleanupTimer;
   String _lastOpenedMediaFeedKey = '';
   DateTime? _lastOpenedMediaFeedAt;
   Map<String, dynamic> _lastMediaOpenResult = const <String, dynamic>{};
+  Map<String, dynamic> _lastMediaPreviewOpenResult = const <String, dynamic>{};
+  Map<String, dynamic> _lastMediaPreviewOriginalResult =
+      const <String, dynamic>{};
+  Map<String, dynamic> _lastMediaPreviewCloseResult = const <String, dynamic>{};
+  String _lastOpenedDomImageSignature = '';
   Map<String, dynamic> _lastFeedOpenResult = const <String, dynamic>{};
+  Map<String, dynamic> _lastActiveConfiguredFeedJumpResult =
+      const <String, dynamic>{};
+  DateTime? _lastConfiguredMediaFeedKeepAliveAt;
+  Map<String, dynamic> _lastConfiguredMediaFeedKeepAliveResult =
+      const <String, dynamic>{};
+  int _configuredMediaFeedKeepAliveCursor = 0;
   String _lastFeedContentSignature = '';
   int _sameFeedContentSignatureCount = 0;
   bool _disposed = false;
@@ -172,6 +413,11 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     _networkCaptureUnavailableSubscription = _networkCaptureBridge
         .unavailableErrors
         .listen(_handleNetworkCaptureUnavailable);
+    _networkCaptureRuntimeCleanupTimer = Timer.periodic(
+      const Duration(hours: 1),
+      (_) => unawaited(_cleanupNetworkCaptureRuntime()),
+    );
+    unawaited(_cleanupNetworkCaptureRuntime());
     unawaited(
       _networkCaptureBridge.start().catchError((Object error) {
         _handleNetworkCaptureUnavailable(error.toString());
@@ -192,6 +438,7 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     unawaited(_networkCaptureUnavailableSubscription?.cancel());
     unawaited(_networkCaptureBridge.dispose());
     _probeTimer?.cancel();
+    _networkCaptureRuntimeCleanupTimer?.cancel();
     unawaited(_controller.dispose());
     super.dispose();
   }
@@ -270,21 +517,15 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
       if (_disposed) {
         return;
       }
-      final current = await widget.store.load();
-      if (_disposed) {
-        return;
-      }
-      _snapshot = applyRuntimeSignal(
-        current,
-        runtimeUrl: _runtimeUrl,
-        pageTitle: _pageTitle,
-        webviewAvailable: true,
-        isLoading: false,
-      );
-      if (_disposed) {
-        return;
-      }
-      await widget.store.save(_snapshot!);
+      await widget.store.update((current) {
+        return applyRuntimeSignal(
+          current,
+          runtimeUrl: _runtimeUrl,
+          pageTitle: _pageTitle,
+          webviewAvailable: true,
+          isLoading: false,
+        );
+      });
       if (_disposed) {
         return;
       }
@@ -307,20 +548,14 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
       if (_disposed) {
         return;
       }
-      final current = await widget.store.load();
-      if (_disposed) {
-        return;
-      }
-      _snapshot = current.copyWith(
-        shellMode: 'desktop_shell',
-        webviewAvailable: false,
-        lastError: error.toString(),
-        lastUpdatedAt: DateTime.now().toUtc(),
-      );
-      if (_disposed) {
-        return;
-      }
-      await widget.store.save(_snapshot!);
+      await widget.store.update((current) {
+        return current.copyWith(
+          shellMode: 'desktop_shell',
+          webviewAvailable: false,
+          lastError: error.toString(),
+          lastUpdatedAt: DateTime.now().toUtc(),
+        );
+      });
       if (!_disposed && mounted) {
         setState(() {
           _error = error.toString();
@@ -345,6 +580,17 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
       }
       return;
     }
+    if (observerMessage.isBrowserImageBody) {
+      final body = observerMessage.browserImageBody;
+      if (body != null) {
+        unawaited(_handleBrowserImageBody(body));
+      }
+      return;
+    }
+    if (observerMessage.isStorageProbe) {
+      unawaited(_persistStorageProbeDiagnostic(json));
+      return;
+    }
     if (observerMessage.isObserverInstalled) {
       unawaited(_persistRuntimeState());
       return;
@@ -362,10 +608,67 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
       return;
     }
     _networkCaptureStore.addEvent(event);
-    for (final candidate in parseFeishuNetworkImageCandidates(event)) {
+    final enrichedEvent = _networkCaptureStore
+        .enrichEventWithRequestDiagnostics(event);
+    final probe = probeFeishuNetworkCaptureEvent(enrichedEvent);
+    if (probe != null) {
+      _networkCaptureStore.addProbe(probe);
+    }
+    for (final candidate in parseFeishuNetworkImageCandidates(enrichedEvent)) {
       _networkCaptureStore.addCandidate(candidate);
     }
     _probeScheduler.request('network_capture');
+  }
+
+  Future<void> _handleBrowserImageBody(FeishuBrowserImageBody body) async {
+    if (_disposed) {
+      return;
+    }
+    try {
+      final saved = await saveFeishuBrowserImageBody(
+        body,
+        cacheDirectory: _browserImageBodyCacheDirectory(),
+      );
+      if (_disposed) {
+        return;
+      }
+      final candidate = saved.candidate;
+      final attribution = saved.attribution;
+      if (candidate != null && attribution != null) {
+        _networkCaptureStore.addCandidate(candidate);
+        _networkCaptureStore.addAttribution(attribution);
+        _probeScheduler.request('browser_image_body');
+      } else if (saved.error.trim().isNotEmpty) {
+        _networkCaptureStore.addProbe(<String, Object?>{
+          'kind': 'browser_image_body',
+          'source': 'webview_message',
+          'error': saved.error,
+          'observed_at': body.observedAt.toUtc().toIso8601String(),
+          'source_kind': body.sourceUrl.startsWith('blob:') ? 'blob' : 'url',
+          'mime_type': body.mimeType,
+          'body_size': body.bodySize,
+        });
+      }
+      unawaited(_persistNetworkCaptureDiagnostics());
+    } catch (error) {
+      if (_disposed) {
+        return;
+      }
+      _networkCaptureStore.addProbe(<String, Object?>{
+        'kind': 'browser_image_body',
+        'source': 'webview_message',
+        'error': error.toString(),
+        'observed_at': body.observedAt.toUtc().toIso8601String(),
+      });
+      unawaited(_persistNetworkCaptureDiagnostics());
+    }
+  }
+
+  Directory _browserImageBodyCacheDirectory() {
+    return Directory(
+      '${widget.networkDiagnosticsFile.parent.path}'
+      '${Platform.pathSeparator}network_images',
+    );
   }
 
   void _handleNetworkCaptureUnavailable(String error) {
@@ -376,33 +679,57 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     unawaited(_persistNetworkCaptureDiagnostics());
   }
 
+  Future<void> _persistStorageProbeDiagnostic(
+    Map<String, dynamic> probe,
+  ) async {
+    if (_disposed) {
+      return;
+    }
+    try {
+      await widget.store.update((current) {
+        return applyStorageProbeDiagnostic(
+          current,
+          probe.map((key, value) => MapEntry(key.toString(), value)),
+        );
+      });
+    } catch (_) {
+      // Storage diagnostics are best-effort and must not crash shell.
+    }
+  }
+
   Future<void> _persistNetworkCaptureDiagnostics() async {
     if (_disposed) {
       return;
     }
     try {
-      final persisted = await widget.store.load();
+      await widget.store.update((current) {
+        return current.copyWith(
+          probeDiagnostics: <String, dynamic>{
+            ...current.probeDiagnostics,
+            ..._networkCaptureStore.toDiagnosticsJson(),
+          },
+          lastUpdatedAt: DateTime.now().toUtc(),
+        );
+      });
       if (_disposed) {
         return;
       }
-      final current = mergeExternalControlState(
-        localSnapshot: _snapshot ?? persisted,
-        persistedSnapshot: persisted,
-      );
-      final next = current.copyWith(
-        probeDiagnostics: <String, dynamic>{
-          ...current.probeDiagnostics,
-          ..._networkCaptureStore.toDiagnosticsJson(),
-        },
-        lastUpdatedAt: DateTime.now().toUtc(),
-      );
-      if (_disposed) {
-        return;
-      }
-      _snapshot = next;
-      await widget.store.save(next);
     } catch (_) {
       // Network capture diagnostics are best-effort and must not crash shell.
+    }
+  }
+
+  Future<void> _cleanupNetworkCaptureRuntime() async {
+    if (_disposed) {
+      return;
+    }
+    try {
+      await cleanupFeishuNetworkCaptureRuntime(
+        diagnosticsFile: widget.networkDiagnosticsFile,
+        now: DateTime.now().toUtc(),
+      );
+    } catch (_) {
+      // Runtime cleanup is best-effort and must not interrupt forwarding.
     }
   }
 
@@ -432,20 +759,15 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
   }
 
   Future<void> _persistRuntimeState() async {
-    final persisted = await widget.store.load();
-    final current = mergeExternalControlState(
-      localSnapshot: _snapshot ?? persisted,
-      persistedSnapshot: persisted,
-    );
-    final next = applyRuntimeSignal(
-      current,
-      runtimeUrl: _runtimeUrl,
-      pageTitle: _pageTitle,
-      webviewAvailable: _webviewReady,
-      isLoading: _loading,
-    );
-    _snapshot = next;
-    await widget.store.save(next);
+    await widget.store.update((current) {
+      return applyRuntimeSignal(
+        current,
+        runtimeUrl: _runtimeUrl,
+        pageTitle: _pageTitle,
+        webviewAvailable: _webviewReady,
+        isLoading: _loading,
+      );
+    });
   }
 
   Future<void> _installPageObserver() async {
@@ -479,60 +801,63 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
         );
         return;
       }
-      final probe = FeishuPageProbe.fromScriptResult(
+      final probeJson = await _probeJsonWithPersistentDiagnostics(
         Map<String, dynamic>.from(
           result.map((key, value) => MapEntry(key.toString(), value)),
         ),
       );
+      final probe = FeishuPageProbe.fromScriptResult(probeJson);
       if (probe.runtimeUrl.trim().isNotEmpty) {
         _runtimeUrl = probe.runtimeUrl;
       }
       if (probe.pageTitle.trim().isNotEmpty) {
         _pageTitle = probe.pageTitle;
       }
-      final persisted = await widget.store.load();
-      final current = mergeExternalControlState(
-        localSnapshot: _snapshot ?? persisted,
-        persistedSnapshot: persisted,
-      );
       final feedChanged = _isFeedContentChanged(probe);
-      _recordStrictNoDomOpenResults();
-      if (!feishuStrictNoDomForwardingEnabled) {
+      _recordLatestFeedAutoOpenDisabledResult();
+      if (feishuMediaConversationOpenEnabled) {
+        await _jumpActiveConfiguredMediaFeedToNewestIfNeeded(probe);
         await _openPendingMediaFeedIfNeeded(probe);
-        if (!probeHasPendingMediaFeedCard(probe) && feedChanged) {
+        await _openConfiguredMediaFeedKeepAliveIfNeeded(probe);
+        await _openLatestMediaPreviewIfNeeded(probe);
+        if (feishuLatestFeedAutoOpenEnabled &&
+            !probeHasPendingMediaFeedCard(probe) &&
+            feedChanged) {
           await _openLatestFeedIfNeeded();
         }
       }
-      var probedSnapshot = applyPageProbe(current, probe);
-      final enrichment = applyNetworkImageEnrichment(
-        probedSnapshot,
-        candidates: _networkCaptureStore.recentCandidates,
-        attributions: _networkCaptureStore.recentAttributions,
-        recordedNetworkImageDedupeKeys: _recordedNetworkImageDedupeKeys,
-        resolve: _networkImageResolver.resolve,
-      );
-      probedSnapshot = enrichment.snapshot;
-      final recordableResolution = enrichment.recordableResolution;
-      if (recordableResolution != null) {
+      FeishuNetworkForwardableImageResolution? recordableResolution;
+      final next = await widget.store.update((current) {
+        var probedSnapshot = applyPageProbe(current, probe);
+        final enrichment = applyNetworkImageEnrichment(
+          probedSnapshot,
+          candidates: _networkCaptureStore.recentCandidates,
+          attributions: _networkCaptureStore.recentAttributions,
+          recordedNetworkImageDedupeKeys: _recordedNetworkImageDedupeKeys,
+          resolve: _networkImageResolver.resolve,
+        );
+        probedSnapshot = enrichment.snapshot;
+        recordableResolution = enrichment.recordableResolution;
+        return _withShellDiagnostics(
+          probedSnapshot,
+          probe,
+          reason: reason,
+          runtimeUrl: _runtimeUrl,
+          pageTitle: _pageTitle,
+          webviewAvailable: _webviewReady,
+          isLoading: _loading,
+        ).copyWith(lastError: _probeDebugMessage(probe));
+      });
+      final resolutionToRecord = recordableResolution;
+      if (resolutionToRecord != null) {
         try {
           _networkCaptureStore.recordForwardableImageResolution(
-            recordableResolution,
+            resolutionToRecord,
           );
         } catch (_) {
           // Network image diagnostics are best-effort and must not fail probe.
         }
       }
-      final next = _withShellDiagnostics(
-        probedSnapshot,
-        probe,
-        reason: reason,
-        runtimeUrl: _runtimeUrl,
-        pageTitle: _pageTitle,
-        webviewAvailable: _webviewReady,
-        isLoading: _loading,
-      ).copyWith(lastError: _probeDebugMessage(probe));
-      _snapshot = next;
-      await widget.store.save(next);
       widget.events.publish(
         ShellEvent(
           type: ShellEventType.snapshotUpdated,
@@ -546,17 +871,12 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
         setState(() {});
       }
     } catch (error) {
-      final persisted = await widget.store.load();
-      final current = mergeExternalControlState(
-        localSnapshot: _snapshot ?? persisted,
-        persistedSnapshot: persisted,
-      );
-      final next = current.copyWith(
-        lastError: error.toString(),
-        lastUpdatedAt: DateTime.now().toUtc(),
-      );
-      _snapshot = next;
-      await widget.store.save(next);
+      final next = await widget.store.update((current) {
+        return current.copyWith(
+          lastError: error.toString(),
+          lastUpdatedAt: DateTime.now().toUtc(),
+        );
+      });
       widget.events.publish(
         ShellEvent(
           type: ShellEventType.shellError,
@@ -581,34 +901,29 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     required String resultPreview,
   }) async {
     final now = DateTime.now().toUtc();
-    final persisted = await widget.store.load();
-    final current = mergeExternalControlState(
-      localSnapshot: _snapshot ?? persisted,
-      persistedSnapshot: persisted,
-    );
-    final withRuntime = applyRuntimeSignal(
-      current,
-      runtimeUrl: _runtimeUrl,
-      pageTitle: _pageTitle,
-      webviewAvailable: _webviewReady,
-      isLoading: _loading,
-    );
-    final next = withRuntime.copyWith(
-      probeDiagnostics: <String, dynamic>{
-        ...withRuntime.probeDiagnostics,
-        'last_probe_at': now.toIso8601String(),
-        'last_probe_reason': reason,
-        'last_probe_success': false,
-        'last_probe_result_type': resultType,
-        'last_probe_result_preview': resultPreview,
-        'shell_probe_reason': reason,
-        'shell_probe_observed_at': '',
-      },
-      lastError: 'probe returned non-map result: $resultType',
-      lastUpdatedAt: now,
-    );
-    _snapshot = next;
-    await widget.store.save(next);
+    final next = await widget.store.update((current) {
+      final withRuntime = applyRuntimeSignal(
+        current,
+        runtimeUrl: _runtimeUrl,
+        pageTitle: _pageTitle,
+        webviewAvailable: _webviewReady,
+        isLoading: _loading,
+      );
+      return withRuntime.copyWith(
+        probeDiagnostics: <String, dynamic>{
+          ...withRuntime.probeDiagnostics,
+          'last_probe_at': now.toIso8601String(),
+          'last_probe_reason': reason,
+          'last_probe_success': false,
+          'last_probe_result_type': resultType,
+          'last_probe_result_preview': resultPreview,
+          'shell_probe_reason': reason,
+          'shell_probe_observed_at': '',
+        },
+        lastError: 'probe returned non-map result: $resultType',
+        lastUpdatedAt: now,
+      );
+    });
     widget.events.publish(
       ShellEvent(
         type: ShellEventType.shellError,
@@ -629,6 +944,33 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
   String _diagnosticPreview(Object? value) {
     final preview = value?.toString() ?? '';
     return preview.length > 240 ? '${preview.substring(0, 240)}...' : preview;
+  }
+
+  Future<Map<String, dynamic>> _probeJsonWithPersistentDiagnostics(
+    Map<String, dynamic> probeJson,
+  ) async {
+    try {
+      final current = await widget.store.load();
+      final persistent = persistentShellDiagnosticsForProbe(
+        current.probeDiagnostics,
+        const <String, dynamic>{},
+      );
+      if (persistent.isEmpty) {
+        return probeJson;
+      }
+      final diagnostics = <String, dynamic>{
+        ...persistent,
+        if (probeJson['probe_diagnostics'] is Map)
+          ...Map<String, dynamic>.from(
+            (probeJson['probe_diagnostics'] as Map).map(
+              (key, value) => MapEntry(key.toString(), value),
+            ),
+          ),
+      };
+      return <String, dynamic>{...probeJson, 'probe_diagnostics': diagnostics};
+    } catch (_) {
+      return probeJson;
+    }
   }
 
   String _probeDebugMessage(FeishuPageProbe probe) {
@@ -662,12 +1004,22 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     );
     return withRuntime.copyWith(
       probeDiagnostics: <String, dynamic>{
-        ...probe.probeDiagnostics,
+        ...persistentShellDiagnosticsForProbe(
+          withRuntime.probeDiagnostics,
+          probe.probeDiagnostics,
+        ),
         ..._feedFreshnessDiagnostics(probe),
         ..._networkCaptureStore.toDiagnosticsJson(),
         'pending_media_feed_card_key': probe.pendingMediaFeedCardKey,
         'last_media_open_result': _lastMediaOpenResult,
+        'last_media_preview_open_result': _lastMediaPreviewOpenResult,
+        'last_media_preview_original_result': _lastMediaPreviewOriginalResult,
+        'last_media_preview_close_result': _lastMediaPreviewCloseResult,
         'last_feed_open_result': _lastFeedOpenResult,
+        'last_active_configured_feed_jump_result':
+            _lastActiveConfiguredFeedJumpResult,
+        'last_configured_media_feed_keepalive_result':
+            _lastConfiguredMediaFeedKeepAliveResult,
         'last_probe_at': now.toIso8601String(),
         'shell_probe_reason': reason,
         'last_probe_reason': reason,
@@ -718,12 +1070,166 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
         signature != _lastFeedContentSignature;
   }
 
-  void _recordStrictNoDomOpenResults() {
-    if (!feishuStrictNoDomForwardingEnabled) {
+  void _recordLatestFeedAutoOpenDisabledResult() {
+    if (feishuLatestFeedAutoOpenEnabled) {
       return;
     }
-    _lastMediaOpenResult = feishuStrictNoDomOpenResult();
-    _lastFeedOpenResult = feishuStrictNoDomOpenResult();
+    _lastFeedOpenResult = feishuLatestFeedAutoOpenDisabledResult();
+  }
+
+  Future<void> _openConfiguredMediaFeedKeepAliveIfNeeded(
+    FeishuPageProbe probe,
+  ) async {
+    final now = DateTime.now().toUtc();
+    final configuredSources = _configuredMediaSourcesFromDiagnostics(
+      probe.probeDiagnostics,
+    );
+    final sourceIds = configuredMediaSourceIdsFromDiagnostics(
+      probe.probeDiagnostics,
+    );
+    final sourceNames = configuredMediaSourceNamesFromDiagnostics(
+      probe.probeDiagnostics,
+    );
+    final currentSnapshot = await widget.store.load();
+    final pendingNeedsExtraction = pendingMediaFeedNeedsOriginalExtraction(
+      probe: probe,
+      recentEvents: currentSnapshot.recentEvents,
+    );
+    if (!shouldOpenConfiguredMediaFeedKeepAlive(
+      sameFeedSignatureCount: _sameFeedContentSignatureCount,
+      hasConfiguredMediaSources: sourceIds.isNotEmpty || sourceNames.isNotEmpty,
+      pendingMediaNeedsExtraction: pendingNeedsExtraction,
+      now: now,
+      lastOpenedAt: _lastConfiguredMediaFeedKeepAliveAt,
+    )) {
+      _lastConfiguredMediaFeedKeepAliveResult = <String, dynamic>{
+        'attempted': false,
+        'opened': false,
+        'reason': 'keepalive_not_due',
+        'attempted_at': now.toIso8601String(),
+        'same_feed_signature_count': _sameFeedContentSignatureCount,
+        'pending_media_needs_extraction': pendingNeedsExtraction,
+        'configured_media_source_count': configuredSources.isNotEmpty
+            ? configuredSources.length
+            : sourceIds.length + sourceNames.length,
+      };
+      return;
+    }
+    final preferredIndex = configuredSources.isEmpty
+        ? 0
+        : _configuredMediaFeedKeepAliveCursor % configuredSources.length;
+    final preferredSource = configuredSources.isEmpty
+        ? const <String, String>{}
+        : configuredSources[preferredIndex];
+    try {
+      await _controller.executeScript(
+        'window.__wukongFeishuMonitorConfiguredMediaSources = '
+        '${jsonEncode(<String, Object>{'configured_ids': sourceIds.toList(growable: false), 'configured_names': sourceNames.toList(growable: false), 'preferred_id': preferredSource['conversation_id'] ?? '', 'preferred_name': preferredSource['conversation_name'] ?? ''})};',
+      );
+      final result = await _controller.executeScript(
+        feishuOpenConfiguredMediaFeedScript,
+      );
+      if (result is Map) {
+        final normalizedResult = Map<String, dynamic>.from(
+          result.map((key, value) => MapEntry(key.toString(), value)),
+        );
+        _lastConfiguredMediaFeedKeepAliveResult = <String, dynamic>{
+          ...normalizedResult,
+          'attempted': true,
+          'attempted_at': now.toIso8601String(),
+          'same_feed_signature_count': _sameFeedContentSignatureCount,
+          'cursor_index': preferredIndex,
+          'text_preview': _diagnosticPreview(normalizedResult['text']),
+        };
+      } else {
+        _lastConfiguredMediaFeedKeepAliveResult = <String, dynamic>{
+          'attempted': true,
+          'opened': false,
+          'reason': 'unexpected_result',
+          'attempted_at': now.toIso8601String(),
+          'cursor_index': preferredIndex,
+          'value': result.toString(),
+        };
+      }
+      if (result is Map &&
+          (result['opened'] == true || result['matched'] == true)) {
+        _lastConfiguredMediaFeedKeepAliveAt = now;
+        _configuredMediaFeedKeepAliveCursor =
+            nextConfiguredMediaFeedKeepAliveCursor(
+              currentIndex: _configuredMediaFeedKeepAliveCursor,
+              sourceCount: configuredSources.length,
+            );
+        _probeScheduler.request('configured_media_feed_keepalive_opened');
+      }
+    } catch (error) {
+      _lastConfiguredMediaFeedKeepAliveResult = <String, dynamic>{
+        'attempted': true,
+        'opened': false,
+        'reason': 'error',
+        'attempted_at': now.toIso8601String(),
+        'cursor_index': preferredIndex,
+        'error': error.toString(),
+      };
+    }
+  }
+
+  Future<void> _jumpActiveConfiguredMediaFeedToNewestIfNeeded(
+    FeishuPageProbe probe,
+  ) async {
+    final now = DateTime.now().toUtc();
+    final sourceIds = configuredMediaSourceIdsFromDiagnostics(
+      probe.probeDiagnostics,
+    );
+    final sourceNames = configuredMediaSourceNamesFromDiagnostics(
+      probe.probeDiagnostics,
+    );
+    if (sourceIds.isEmpty && sourceNames.isEmpty) {
+      _lastActiveConfiguredFeedJumpResult = <String, dynamic>{
+        'attempted': false,
+        'jumped': false,
+        'reason': 'no_configured_media_sources',
+        'attempted_at': now.toIso8601String(),
+      };
+      return;
+    }
+    try {
+      await _controller.executeScript(
+        'window.__wukongFeishuMonitorConfiguredMediaSources = '
+        '${jsonEncode(<String, Object>{'configured_ids': sourceIds.toList(growable: false), 'configured_names': sourceNames.toList(growable: false)})};',
+      );
+      final result = await _controller.executeScript(
+        feishuJumpActiveConfiguredMediaFeedToNewestScript,
+      );
+      if (result is Map) {
+        final normalizedResult = Map<String, dynamic>.from(
+          result.map((key, value) => MapEntry(key.toString(), value)),
+        );
+        _lastActiveConfiguredFeedJumpResult = <String, dynamic>{
+          ...normalizedResult,
+          'attempted_at': now.toIso8601String(),
+          'text_preview': _diagnosticPreview(normalizedResult['text']),
+        };
+        if (normalizedResult['jumped'] == true) {
+          _probeScheduler.request('active_configured_media_feed_jumped_newest');
+        }
+      } else {
+        _lastActiveConfiguredFeedJumpResult = <String, dynamic>{
+          'attempted': true,
+          'jumped': false,
+          'reason': 'unexpected_result',
+          'attempted_at': now.toIso8601String(),
+          'value': result.toString(),
+        };
+      }
+    } catch (error) {
+      _lastActiveConfiguredFeedJumpResult = <String, dynamic>{
+        'attempted': true,
+        'jumped': false,
+        'reason': 'error',
+        'attempted_at': now.toIso8601String(),
+        'error': error.toString(),
+      };
+    }
   }
 
   Future<void> _openPendingMediaFeedIfNeeded(FeishuPageProbe probe) async {
@@ -732,6 +1238,20 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
         'attempted': false,
         'opened': false,
         'reason': 'no_pending_media_feed',
+        'attempted_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      return;
+    }
+    final currentSnapshot = await widget.store.load();
+    if (!pendingMediaFeedNeedsOriginalExtraction(
+      probe: probe,
+      recentEvents: currentSnapshot.recentEvents,
+    )) {
+      _lastMediaOpenResult = <String, dynamic>{
+        'attempted': false,
+        'opened': false,
+        'reason': 'pending_media_already_extracted',
+        'key': _pendingMediaFeedKey(probe),
         'attempted_at': DateTime.now().toUtc().toIso8601String(),
       };
       return;
@@ -801,6 +1321,191 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     }
   }
 
+  Future<void> _openLatestMediaPreviewIfNeeded(FeishuPageProbe probe) async {
+    final domSignature = configuredDomImageSignature(probe);
+    if (domSignature.isEmpty) {
+      _lastMediaPreviewOpenResult = <String, dynamic>{
+        'attempted': false,
+        'opened': false,
+        'reason': 'no_configured_dom_image',
+        'attempted_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      return;
+    }
+    final pendingKey = probeHasPendingMediaFeedCard(probe)
+        ? _pendingMediaFeedKey(probe)
+        : '';
+    final extractionSignature = mediaPreviewExtractionSignature(
+      domImageSignature: domSignature,
+      pendingMediaFeedKey: pendingKey,
+    );
+    final now = DateTime.now().toUtc();
+    if (extractionSignature == _lastOpenedDomImageSignature) {
+      await _closeMediaPreviewIfOpen(reason: 'same_configured_dom_image');
+      _lastMediaPreviewOpenResult = mediaPreviewExtractionDiagnostics(
+        <String, dynamic>{
+          'attempted': false,
+          'opened': false,
+          'reason': 'same_configured_dom_image',
+          'attempted_at': now.toIso8601String(),
+        },
+        extractionSignature: extractionSignature,
+        pendingMediaFeedKey: pendingKey,
+      );
+      _lastMediaPreviewOriginalResult = mediaPreviewExtractionDiagnostics(
+        <String, dynamic>{
+          'attempted': false,
+          'clicked': false,
+          'reason': 'same_configured_dom_image',
+          'attempted_at': now.toIso8601String(),
+        },
+        extractionSignature: extractionSignature,
+        pendingMediaFeedKey: pendingKey,
+      );
+      return;
+    }
+    try {
+      final result = await _controller.executeScript(
+        feishuOpenLatestMediaPreviewScript,
+      );
+      if (result is Map) {
+        final normalizedResult = Map<String, dynamic>.from(
+          result.map((key, value) => MapEntry(key.toString(), value)),
+        );
+        _lastMediaPreviewOpenResult = mediaPreviewExtractionDiagnostics(
+          <String, dynamic>{
+            ...normalizedResult,
+            'attempted': true,
+            'attempted_at': now.toIso8601String(),
+          },
+          extractionSignature: extractionSignature,
+          pendingMediaFeedKey: pendingKey,
+        );
+      } else {
+        _lastMediaPreviewOpenResult = mediaPreviewExtractionDiagnostics(
+          <String, dynamic>{
+            'attempted': true,
+            'opened': false,
+            'reason': 'unexpected_result',
+            'attempted_at': now.toIso8601String(),
+            'value': result.toString(),
+          },
+          extractionSignature: extractionSignature,
+          pendingMediaFeedKey: pendingKey,
+        );
+      }
+      if (result is Map && result['opened'] == true) {
+        _lastOpenedDomImageSignature = extractionSignature;
+        _probeScheduler.request('media_preview_opened');
+      }
+    } catch (error) {
+      _lastMediaPreviewOpenResult = mediaPreviewExtractionDiagnostics(
+        <String, dynamic>{
+          'attempted': true,
+          'opened': false,
+          'reason': 'error',
+          'attempted_at': now.toIso8601String(),
+          'error': error.toString(),
+        },
+        extractionSignature: extractionSignature,
+        pendingMediaFeedKey: pendingKey,
+      );
+    }
+    await _triggerMediaPreviewOriginalIfNeeded(
+      probe,
+      signature: extractionSignature,
+    );
+  }
+
+  Future<void> _closeMediaPreviewIfOpen({required String reason}) async {
+    final now = DateTime.now().toUtc();
+    try {
+      final result = await _controller.executeScript(
+        feishuCloseMediaPreviewScript,
+      );
+      if (result is Map) {
+        final normalizedResult = Map<String, dynamic>.from(
+          result.map((key, value) => MapEntry(key.toString(), value)),
+        );
+        _lastMediaPreviewCloseResult = <String, dynamic>{
+          ...normalizedResult,
+          'trigger_reason': reason,
+          'attempted_at': now.toIso8601String(),
+        };
+        if (normalizedResult['closed'] == true) {
+          _probeScheduler.request('media_preview_closed');
+        }
+      } else {
+        _lastMediaPreviewCloseResult = <String, dynamic>{
+          'closed': false,
+          'reason': 'unexpected_result',
+          'trigger_reason': reason,
+          'attempted_at': now.toIso8601String(),
+          'value': result.toString(),
+        };
+      }
+    } catch (error) {
+      _lastMediaPreviewCloseResult = <String, dynamic>{
+        'closed': false,
+        'reason': 'error',
+        'trigger_reason': reason,
+        'attempted_at': now.toIso8601String(),
+        'error': error.toString(),
+      };
+    }
+  }
+
+  Future<void> _triggerMediaPreviewOriginalIfNeeded(
+    FeishuPageProbe probe, {
+    required String signature,
+  }) async {
+    if (signature.isEmpty) {
+      _lastMediaPreviewOriginalResult = <String, dynamic>{
+        'attempted': false,
+        'clicked': false,
+        'reason': 'no_configured_dom_image',
+        'attempted_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      return;
+    }
+    final now = DateTime.now().toUtc();
+    try {
+      final result = await _controller.executeScript(
+        feishuTriggerMediaPreviewOriginalScript,
+      );
+      if (result is Map) {
+        final normalizedResult = Map<String, dynamic>.from(
+          result.map((key, value) => MapEntry(key.toString(), value)),
+        );
+        _lastMediaPreviewOriginalResult = <String, dynamic>{
+          ...normalizedResult,
+          'attempted': true,
+          'attempted_at': now.toIso8601String(),
+        };
+      } else {
+        _lastMediaPreviewOriginalResult = <String, dynamic>{
+          'attempted': true,
+          'clicked': false,
+          'reason': 'unexpected_result',
+          'attempted_at': now.toIso8601String(),
+          'value': result.toString(),
+        };
+      }
+      if (result is Map && result['clicked'] == true) {
+        _lastOpenedDomImageSignature = signature;
+        _probeScheduler.request('media_preview_original_clicked');
+      }
+    } catch (error) {
+      _lastMediaPreviewOriginalResult = <String, dynamic>{
+        'attempted': true,
+        'clicked': false,
+        'reason': 'error',
+        'attempted_at': now.toIso8601String(),
+        'error': error.toString(),
+      };
+    }
+  }
+
   Future<void> _openLatestFeedIfNeeded() async {
     final now = DateTime.now().toUtc();
     try {
@@ -848,6 +1553,36 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     return '';
   }
 
+  List<Map<String, String>> _configuredMediaSourcesFromDiagnostics(
+    Map<String, dynamic> diagnostics,
+  ) {
+    final sources = diagnostics['configured_media_sources'];
+    if (sources is! List) {
+      return const <Map<String, String>>[];
+    }
+    final result = <Map<String, String>>[];
+    final seen = <String>{};
+    for (final source in sources) {
+      if (source is! Map) {
+        continue;
+      }
+      final id = (source['conversation_id'] ?? '').toString().trim();
+      final name = (source['conversation_name'] ?? '').toString().trim();
+      if (id.isEmpty && name.isEmpty) {
+        continue;
+      }
+      final key = id.isNotEmpty ? 'id:$id' : 'name:$name';
+      if (!seen.add(key)) {
+        continue;
+      }
+      result.add(<String, String>{
+        'conversation_id': id,
+        'conversation_name': name,
+      });
+    }
+    return result;
+  }
+
   Future<void> _reload() async {
     setState(() {
       _loading = true;
@@ -868,11 +1603,22 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     });
     _lastOpenedMediaFeedKey = '';
     _lastOpenedMediaFeedAt = null;
+    _lastOpenedDomImageSignature = '';
     _lastFeedContentSignature = '';
     _sameFeedContentSignatureCount = 0;
     _lastMediaOpenResult = const <String, dynamic>{
       'attempted': false,
       'opened': false,
+      'reason': 'hard_reload_reset',
+    };
+    _lastMediaPreviewOpenResult = const <String, dynamic>{
+      'attempted': false,
+      'opened': false,
+      'reason': 'hard_reload_reset',
+    };
+    _lastMediaPreviewOriginalResult = const <String, dynamic>{
+      'attempted': false,
+      'clicked': false,
       'reason': 'hard_reload_reset',
     };
     _lastFeedOpenResult = const <String, dynamic>{
@@ -896,11 +1642,22 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
     });
     _lastOpenedMediaFeedKey = '';
     _lastOpenedMediaFeedAt = null;
+    _lastOpenedDomImageSignature = '';
     _lastFeedContentSignature = '';
     _sameFeedContentSignatureCount = 0;
     _lastMediaOpenResult = const <String, dynamic>{
       'attempted': false,
       'opened': false,
+      'reason': 'session_reset',
+    };
+    _lastMediaPreviewOpenResult = const <String, dynamic>{
+      'attempted': false,
+      'opened': false,
+      'reason': 'session_reset',
+    };
+    _lastMediaPreviewOriginalResult = const <String, dynamic>{
+      'attempted': false,
+      'clicked': false,
       'reason': 'session_reset',
     };
     _lastFeedOpenResult = const <String, dynamic>{
@@ -968,12 +1725,13 @@ class _FeishuMonitorShellHomeState extends State<FeishuMonitorShellHome> {
       ),
       body: Column(
         children: [
-          Container(
-            width: double.infinity,
-            color: const Color(0xFFF8F8F8),
-            padding: const EdgeInsets.all(12),
-            child: Text(_error.isEmpty ? feishuShellReadyMessage : _error),
-          ),
+          if (_error.isNotEmpty)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFF8F8F8),
+              padding: const EdgeInsets.all(12),
+              child: Text(_error),
+            ),
           Expanded(
             child: _webviewReady
                 ? Webview(_controller)

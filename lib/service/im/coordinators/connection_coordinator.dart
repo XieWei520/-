@@ -72,11 +72,21 @@ class ConnectionCoordinator {
     required int connectionStatus,
     required bool sessionRuntimeRunning,
   }) {
-    return initializedUid == uid &&
-        initializedToken == token &&
-        initializedDeviceSessionId == deviceSessionId &&
-        connectionStatus == WKConnectStatus.syncCompleted &&
-        sessionRuntimeRunning;
+    if (initializedUid != uid ||
+        initializedToken != token ||
+        initializedDeviceSessionId != deviceSessionId) {
+      return false;
+    }
+
+    switch (connectionStatus) {
+      case WKConnectStatus.connecting:
+      case WKConnectStatus.success:
+      case WKConnectStatus.syncMsg:
+      case WKConnectStatus.syncCompleted:
+        return true;
+      default:
+        return false;
+    }
   }
 
   Uri buildSessionGatewayUri({

@@ -23,9 +23,7 @@ Future<int> runFeishuMonitorShellCli(
     token: token,
   );
   await server.start();
-  stdout.writeln(
-    'feishu_monitor_shell listening on http://127.0.0.1:$port',
-  );
+  stdout.writeln('feishu_monitor_shell listening on http://127.0.0.1:$port');
 
   final completer = Completer<int>();
   ProcessSignal.sigint.watch().listen((_) async {

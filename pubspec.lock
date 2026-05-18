@@ -1764,7 +1764,7 @@ packages:
   wukongimfluttersdk:
     dependency: "direct main"
     description:
-      path: "../TangSengDaoDao/WuKongIMFlutterSDK-master"
+      path: "packages/wukongimfluttersdk"
       relative: true
     source: path
     version: "1.6.7"

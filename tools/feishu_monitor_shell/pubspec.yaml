@@ -6,6 +6,10 @@ version: 0.1.0
 environment:
   sdk: ^3.11.1
 
+dependencies:
+  local_monitor_shell_core:
+    path: ../local_monitor_shell_core
+
 dev_dependencies:
   lints: ^6.0.0
   test: ^1.25.6

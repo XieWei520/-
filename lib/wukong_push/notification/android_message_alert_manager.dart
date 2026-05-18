@@ -141,6 +141,7 @@ class AndroidMessageAlertManager {
 
     final settings = _alertSettingsStore.read();
     if (!settings.newMsgNotice) {
+      debugPrint('Android message alert skipped: new message notice disabled.');
       return;
     }
 
@@ -155,6 +156,12 @@ class AndroidMessageAlertManager {
 
     final notification = decision.notification;
     if (notification != null) {
+      debugPrint(
+        'Android message alert notification: lifecycle=$lifecycleState, '
+        'channel=${NotificationHelper.messageAlertChannelId}, '
+        'sound=${settings.voiceOn}, vibration=${settings.shockOn}, '
+        'group=${notification.identifier}',
+      );
       await _presenter.showNotification(
         AndroidMessageNotification(
           id: _stablePositiveId(notification.identifier),

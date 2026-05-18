@@ -96,9 +96,13 @@ void main() {
     expect(credentials.deviceSessionId, 'device_session_01');
   });
 
-  test(
-    'does not reuse initialized IM session when realtime runtime is degraded',
-    () {
+  test('reuses initialized IM session while the SDK connection is active', () {
+    for (final status in <int>[
+      WKConnectStatus.connecting,
+      WKConnectStatus.success,
+      WKConnectStatus.syncMsg,
+      WKConnectStatus.syncCompleted,
+    ]) {
       expect(
         shouldReuseInitializedImSession(
           initializedUid: 'u_self',
@@ -107,12 +111,19 @@ void main() {
           uid: 'u_self',
           token: 'token_01',
           deviceSessionId: 'device_session_01',
-          connectionStatus: WKConnectStatus.syncCompleted,
+          connectionStatus: status,
           sessionRuntimeRunning: false,
         ),
-        isFalse,
+        isTrue,
+        reason: 'status=$status should not restart the IM socket',
       );
+    }
 
+    for (final status in <int>[
+      WKConnectStatus.fail,
+      WKConnectStatus.kicked,
+      WKConnectStatus.noNetwork,
+    ]) {
       expect(
         shouldReuseInitializedImSession(
           initializedUid: 'u_self',
@@ -121,13 +132,14 @@ void main() {
           uid: 'u_self',
           token: 'token_01',
           deviceSessionId: 'device_session_01',
-          connectionStatus: WKConnectStatus.syncCompleted,
+          connectionStatus: status,
           sessionRuntimeRunning: true,
         ),
-        isTrue,
+        isFalse,
+        reason: 'status=$status should allow an IM reconnect',
       );
-    },
-  );
+    }
+  });
 
   group('startSessionRuntimeForInit', () {
     test('returns true when native session runtime starts', () async {

@@ -1,3 +1,5 @@
+import 'package:wukong_im_app/modules/local_monitor/local_monitor_shell_models.dart';
+
 class FeishuMonitorShellStatus {
   const FeishuMonitorShellStatus({
     required this.shellState,
@@ -18,6 +20,11 @@ class FeishuMonitorShellStatus {
     required this.observedConversations,
     this.observedMessages = const <FeishuMonitorObservedMessage>[],
     this.recentEvents = const <FeishuMonitorMessageEvent>[],
+    this.workerId = 'worker-1',
+    this.mediaQueueDepth = 0,
+    this.mediaQueueOldestWaitSeconds = 0,
+    this.mediaQueueEstimatedNextDelaySeconds = 0,
+    this.mediaQueueLastSkipReason = '',
     required this.lastError,
   });
 
@@ -39,124 +46,82 @@ class FeishuMonitorShellStatus {
   final List<FeishuMonitorObservedConversation> observedConversations;
   final List<FeishuMonitorObservedMessage> observedMessages;
   final List<FeishuMonitorMessageEvent> recentEvents;
+  final String workerId;
+  final int mediaQueueDepth;
+  final int mediaQueueOldestWaitSeconds;
+  final int mediaQueueEstimatedNextDelaySeconds;
+  final String mediaQueueLastSkipReason;
   final String lastError;
 
   bool get isOnline => shellState.trim().toLowerCase() == 'online';
   bool get isCapturing => captureState.trim().toLowerCase() == 'running';
 
   factory FeishuMonitorShellStatus.fromJson(Map<String, dynamic> json) {
-    return FeishuMonitorShellStatus(
-      shellState: (json['shell_state'] ?? 'offline').toString(),
-      captureState: (json['capture_state'] ?? 'stopped').toString(),
-      loginState: (json['login_state'] ?? 'unknown').toString(),
-      hookState: (json['hook_state'] ?? 'unknown').toString(),
-      runtimeUrl: (json['runtime_url'] ?? '').toString(),
-      pageTitle: (json['page_title'] ?? '').toString(),
-      pageKind: (json['page_kind'] ?? '').toString(),
-      webviewAvailable: json['webview_available'] == true,
-      shellMode: (json['shell_mode'] ?? 'service').toString(),
-      queueDepth: _asInt(json['queue_depth']),
-      messagesToday: _asInt(json['messages_today']),
-      deliveriesSucceededToday: _asInt(json['deliveries_succeeded_today']),
-      deliveriesFailedToday: _asInt(json['deliveries_failed_today']),
-      lastUpdatedAt: _asDateTime(json['last_updated_at']),
-      probeObservedAt: _asDateTime(json['probe_observed_at']),
-      observedConversations: _asObservedConversations(
-        json['observed_conversations'],
+    final shared = LocalMonitorShellStatus.fromJson(json);
+    final diagnostics = shared.probeDiagnostics;
+    return FeishuMonitorShellStatus.fromLocal(
+      shared,
+      mediaQueueDepth: localMonitorInt(
+        diagnostics['media_queue_depth'] ?? json['media_queue_depth'],
       ),
-      observedMessages: _asObservedMessages(json['observed_messages']),
-      recentEvents: _asRecentEvents(json['recent_events']),
-      lastError: (json['last_error'] ?? '').toString(),
+      mediaQueueOldestWaitSeconds: localMonitorInt(
+        diagnostics['media_queue_oldest_wait_seconds'] ??
+            json['media_queue_oldest_wait_seconds'],
+      ),
+      mediaQueueEstimatedNextDelaySeconds: localMonitorInt(
+        diagnostics['media_queue_estimated_next_delay_seconds'] ??
+            json['media_queue_estimated_next_delay_seconds'],
+      ),
+      mediaQueueLastSkipReason:
+          (diagnostics['media_queue_last_skip_reason'] ??
+                  json['media_queue_last_skip_reason'] ??
+                  '')
+              .toString(),
     );
   }
 
-  static int _asInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.toInt();
-    }
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+  factory FeishuMonitorShellStatus.fromLocal(
+    LocalMonitorShellStatus status, {
+    int mediaQueueDepth = 0,
+    int mediaQueueOldestWaitSeconds = 0,
+    int mediaQueueEstimatedNextDelaySeconds = 0,
+    String mediaQueueLastSkipReason = '',
+  }) {
+    return FeishuMonitorShellStatus(
+      shellState: status.shellState,
+      captureState: status.captureState,
+      loginState: status.loginState,
+      hookState: status.hookState,
+      runtimeUrl: status.runtimeUrl,
+      pageTitle: status.pageTitle,
+      pageKind: status.pageKind,
+      webviewAvailable: status.webviewAvailable,
+      shellMode: status.shellMode,
+      queueDepth: status.queueDepth,
+      messagesToday: status.messagesToday,
+      deliveriesSucceededToday: status.deliveriesSucceededToday,
+      deliveriesFailedToday: status.deliveriesFailedToday,
+      lastUpdatedAt: status.lastUpdatedAt,
+      probeObservedAt: status.probeObservedAt,
+      observedConversations: status.observedConversations
+          .map(FeishuMonitorObservedConversation.fromLocal)
+          .toList(growable: false),
+      observedMessages: status.observedMessages
+          .map(FeishuMonitorObservedMessage.fromLocal)
+          .toList(growable: false),
+      recentEvents: status.recentEvents
+          .map(FeishuMonitorMessageEvent.fromLocal)
+          .toList(growable: false),
+      workerId: status.workerId,
+      mediaQueueDepth: mediaQueueDepth,
+      mediaQueueOldestWaitSeconds: mediaQueueOldestWaitSeconds,
+      mediaQueueEstimatedNextDelaySeconds: mediaQueueEstimatedNextDelaySeconds,
+      mediaQueueLastSkipReason: mediaQueueLastSkipReason,
+      lastError: status.lastError,
+    );
   }
 
-  static DateTime? asDateTime(dynamic value) {
-    final raw = value?.toString().trim() ?? '';
-    if (raw.isEmpty) {
-      return null;
-    }
-    return DateTime.tryParse(raw);
-  }
-
-  static DateTime? _asDateTime(dynamic value) => asDateTime(value);
-
-  static List<FeishuMonitorObservedConversation> _asObservedConversations(
-    dynamic value,
-  ) {
-    if (value is! List) {
-      return const <FeishuMonitorObservedConversation>[];
-    }
-
-    return value
-        .whereType<Object?>()
-        .map((item) {
-          if (item is Map<String, dynamic>) {
-            return FeishuMonitorObservedConversation.fromJson(item);
-          }
-          if (item is Map) {
-            return FeishuMonitorObservedConversation.fromJson(
-              Map<String, dynamic>.from(item),
-            );
-          }
-          return null;
-        })
-        .whereType<FeishuMonitorObservedConversation>()
-        .toList(growable: false);
-  }
-
-  static List<FeishuMonitorObservedMessage> _asObservedMessages(dynamic value) {
-    if (value is! List) {
-      return const <FeishuMonitorObservedMessage>[];
-    }
-
-    return value
-        .whereType<Object?>()
-        .map((item) {
-          if (item is Map<String, dynamic>) {
-            return FeishuMonitorObservedMessage.fromJson(item);
-          }
-          if (item is Map) {
-            return FeishuMonitorObservedMessage.fromJson(
-              Map<String, dynamic>.from(item),
-            );
-          }
-          return null;
-        })
-        .whereType<FeishuMonitorObservedMessage>()
-        .toList(growable: false);
-  }
-
-  static List<FeishuMonitorMessageEvent> _asRecentEvents(dynamic value) {
-    if (value is! List) {
-      return const <FeishuMonitorMessageEvent>[];
-    }
-
-    return value
-        .whereType<Object?>()
-        .map((item) {
-          if (item is Map<String, dynamic>) {
-            return FeishuMonitorMessageEvent.fromJson(item);
-          }
-          if (item is Map) {
-            return FeishuMonitorMessageEvent.fromJson(
-              Map<String, dynamic>.from(item),
-            );
-          }
-          return null;
-        })
-        .whereType<FeishuMonitorMessageEvent>()
-        .toList(growable: false);
-  }
+  static DateTime? asDateTime(Object? value) => localMonitorDateTime(value);
 }
 
 class FeishuMonitorObservedConversation {
@@ -177,12 +142,20 @@ class FeishuMonitorObservedConversation {
   factory FeishuMonitorObservedConversation.fromJson(
     Map<String, dynamic> json,
   ) {
+    return FeishuMonitorObservedConversation.fromLocal(
+      LocalMonitorObservedConversation.fromJson(json),
+    );
+  }
+
+  factory FeishuMonitorObservedConversation.fromLocal(
+    LocalMonitorObservedConversation conversation,
+  ) {
     return FeishuMonitorObservedConversation(
-      id: (json['id'] ?? '').toString(),
-      name: (json['name'] ?? '').toString(),
-      type: (json['type'] ?? '').toString(),
-      lastMessagePreview: (json['last_message_preview'] ?? '').toString(),
-      observedAt: FeishuMonitorShellStatus._asDateTime(json['observed_at']),
+      id: conversation.id,
+      name: conversation.name,
+      type: conversation.type,
+      lastMessagePreview: conversation.lastMessagePreview,
+      observedAt: conversation.observedAt,
     );
   }
 }
@@ -211,18 +184,26 @@ class FeishuMonitorObservedMessage {
   final List<FeishuMonitorImageAttachment> imageAttachments;
 
   factory FeishuMonitorObservedMessage.fromJson(Map<String, dynamic> json) {
+    return FeishuMonitorObservedMessage.fromLocal(
+      LocalMonitorObservedMessage.fromJson(json),
+    );
+  }
+
+  factory FeishuMonitorObservedMessage.fromLocal(
+    LocalMonitorObservedMessage message,
+  ) {
     return FeishuMonitorObservedMessage(
-      id: (json['id'] ?? '').toString(),
-      conversationId: (json['conversation_id'] ?? '').toString(),
-      conversationName: (json['conversation_name'] ?? '').toString(),
-      senderName: (json['sender_name'] ?? '').toString(),
-      messageType: (json['message_type'] ?? '').toString(),
-      text: (json['text'] ?? '').toString(),
-      observedAt: FeishuMonitorShellStatus.asDateTime(json['observed_at']),
-      captureSource: (json['capture_source'] ?? '').toString(),
-      imageAttachments: FeishuMonitorImageAttachment.listFromJson(
-        json['image_attachments'],
-      ),
+      id: message.id,
+      conversationId: message.conversationId,
+      conversationName: message.conversationName,
+      senderName: message.senderName,
+      messageType: message.messageType,
+      text: message.text,
+      observedAt: message.observedAt,
+      captureSource: message.captureSource,
+      imageAttachments: message.imageAttachments
+          .map(FeishuMonitorImageAttachment.fromLocal)
+          .toList(growable: false),
     );
   }
 }
@@ -244,34 +225,26 @@ class FeishuMonitorImageAttachment {
       sourceUrl.trim().isNotEmpty || localPath.trim().isNotEmpty;
 
   factory FeishuMonitorImageAttachment.fromJson(Map<String, dynamic> json) {
-    return FeishuMonitorImageAttachment(
-      sourceUrl: (json['source_url'] ?? json['sourceUrl'] ?? '').toString(),
-      localPath: (json['local_path'] ?? json['localPath'] ?? '').toString(),
-      width: FeishuMonitorShellStatus._asInt(json['width']),
-      height: FeishuMonitorShellStatus._asInt(json['height']),
+    return FeishuMonitorImageAttachment.fromLocal(
+      LocalMonitorImageAttachment.fromJson(json),
     );
   }
 
-  static List<FeishuMonitorImageAttachment> listFromJson(dynamic value) {
-    if (value is! List) {
-      return const <FeishuMonitorImageAttachment>[];
-    }
-    return value
-        .whereType<Object?>()
-        .map((item) {
-          if (item is Map<String, dynamic>) {
-            return FeishuMonitorImageAttachment.fromJson(item);
-          }
-          if (item is Map) {
-            return FeishuMonitorImageAttachment.fromJson(
-              Map<String, dynamic>.from(item),
-            );
-          }
-          return null;
-        })
-        .whereType<FeishuMonitorImageAttachment>()
-        .where((item) => item.hasUsableSource)
-        .toList(growable: false);
+  factory FeishuMonitorImageAttachment.fromLocal(
+    LocalMonitorImageAttachment image,
+  ) {
+    return FeishuMonitorImageAttachment(
+      sourceUrl: image.sourceUrl,
+      localPath: image.localPath,
+      width: image.width,
+      height: image.height,
+    );
+  }
+
+  static List<FeishuMonitorImageAttachment> listFromJson(Object? value) {
+    return LocalMonitorImageAttachment.listFromJson(
+      value,
+    ).map(FeishuMonitorImageAttachment.fromLocal).toList(growable: false);
   }
 }
 
@@ -311,24 +284,30 @@ class FeishuMonitorMessageEvent {
   final List<FeishuMonitorImageAttachment> imageAttachments;
 
   factory FeishuMonitorMessageEvent.fromJson(Map<String, dynamic> json) {
+    return FeishuMonitorMessageEvent.fromLocal(
+      LocalMonitorMessageEvent.fromJson(json),
+    );
+  }
+
+  factory FeishuMonitorMessageEvent.fromLocal(LocalMonitorMessageEvent event) {
     return FeishuMonitorMessageEvent(
-      eventId: (json['event_id'] ?? '').toString(),
-      dedupeKey: (json['dedupe_key'] ?? '').toString(),
-      accountId: (json['account_id'] ?? '').toString(),
-      conversationId: (json['conversation_id'] ?? '').toString(),
-      conversationName: (json['conversation_name'] ?? '').toString(),
-      conversationType: (json['conversation_type'] ?? '').toString(),
-      messageId: (json['message_id'] ?? '').toString(),
-      senderId: (json['sender_id'] ?? '').toString(),
-      senderName: (json['sender_name'] ?? '').toString(),
-      messageType: (json['message_type'] ?? '').toString(),
-      text: (json['text'] ?? '').toString(),
-      sentAt: FeishuMonitorShellStatus.asDateTime(json['sent_at']),
-      observedAt: FeishuMonitorShellStatus.asDateTime(json['observed_at']),
-      captureSource: (json['capture_source'] ?? '').toString(),
-      imageAttachments: FeishuMonitorImageAttachment.listFromJson(
-        json['image_attachments'],
-      ),
+      eventId: event.eventId,
+      dedupeKey: event.dedupeKey,
+      accountId: event.accountId,
+      conversationId: event.conversationId,
+      conversationName: event.conversationName,
+      conversationType: event.conversationType,
+      messageId: event.messageId,
+      senderId: event.senderId,
+      senderName: event.senderName,
+      messageType: event.messageType,
+      text: event.text,
+      sentAt: event.sentAt,
+      observedAt: event.observedAt,
+      captureSource: event.captureSource,
+      imageAttachments: event.imageAttachments
+          .map(FeishuMonitorImageAttachment.fromLocal)
+          .toList(growable: false),
     );
   }
 }
@@ -354,15 +333,19 @@ class FeishuMonitorShellEvent {
   bool get isShellError => type == 'shell_error';
 
   factory FeishuMonitorShellEvent.fromJson(Map<String, dynamic> json) {
+    return FeishuMonitorShellEvent.fromLocal(
+      LocalMonitorShellEvent.fromJson(json),
+    );
+  }
+
+  factory FeishuMonitorShellEvent.fromLocal(LocalMonitorShellEvent event) {
     return FeishuMonitorShellEvent(
-      type: (json['type'] ?? '').toString(),
-      reason: (json['reason'] ?? '').toString(),
-      updatedAt: FeishuMonitorShellStatus.asDateTime(json['updated_at']),
-      recentEvents: FeishuMonitorShellStatus._asInt(json['recent_events']),
-      observedConversations: FeishuMonitorShellStatus._asInt(
-        json['observed_conversations'],
-      ),
-      error: (json['error'] ?? '').toString(),
+      type: event.type,
+      reason: event.reason,
+      updatedAt: event.updatedAt,
+      recentEvents: event.recentEvents,
+      observedConversations: event.observedConversations,
+      error: event.error,
     );
   }
 }
@@ -383,12 +366,18 @@ class FeishuMonitorShellHealth {
   final int queueDepth;
 
   factory FeishuMonitorShellHealth.fromJson(Map<String, dynamic> json) {
+    return FeishuMonitorShellHealth.fromLocal(
+      LocalMonitorShellHealth.fromJson(json),
+    );
+  }
+
+  factory FeishuMonitorShellHealth.fromLocal(LocalMonitorShellHealth health) {
     return FeishuMonitorShellHealth(
-      status: (json['status'] ?? 'unknown').toString(),
-      needsLogin: json['needs_login'] == true,
-      hookHealthy: json['hook_healthy'] == true,
-      captureRunning: json['capture_running'] == true,
-      queueDepth: FeishuMonitorShellStatus._asInt(json['queue_depth']),
+      status: health.status,
+      needsLogin: health.needsLogin,
+      hookHealthy: health.hookHealthy,
+      captureRunning: health.captureRunning,
+      queueDepth: health.queueDepth,
     );
   }
 }

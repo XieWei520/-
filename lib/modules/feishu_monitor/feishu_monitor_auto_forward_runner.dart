@@ -1,18 +1,28 @@
 import 'dart:async';
 
+import 'package:wukong_im_app/modules/local_monitor/local_monitor_auto_forward_coordinator.dart';
+import 'package:wukong_im_app/modules/local_monitor/local_monitor_runner.dart';
+
 import 'feishu_monitor_forwarding_service.dart';
 import 'feishu_monitor_shell_client.dart';
 import 'feishu_monitor_shell_models.dart';
 
-class FeishuMonitorAutoForwardRunner {
+class FeishuMonitorAutoForwardRunner
+    implements LocalMonitorAutoForwardRunnerController {
   FeishuMonitorAutoForwardRunner({
     FeishuMonitorShellClient? client,
+    FeishuMonitorShellClientGroup? clientGroup,
     FeishuMonitorForwardingService? forwardingService,
     FeishuMonitorForwardingSettingsStore? forwardingSettingsStore,
     Duration interval = const Duration(seconds: 1),
     Duration eventReconnectDelay = const Duration(seconds: 1),
+    DateTime Function()? clock,
     void Function(Object error, StackTrace stackTrace)? onError,
-  }) : _client = client ?? FeishuMonitorShellClient(),
+  }) : _clientGroup =
+           clientGroup ??
+           FeishuMonitorShellClientGroup.single(
+             client ?? FeishuMonitorShellClient(),
+           ),
        _forwardingService =
            forwardingService ?? FeishuMonitorForwardingService(),
        _forwardingSettingsStore =
@@ -20,31 +30,44 @@ class FeishuMonitorAutoForwardRunner {
            const SharedPreferencesFeishuMonitorForwardingSettingsStore(),
        _interval = interval,
        _eventReconnectDelay = eventReconnectDelay,
+       _clock = clock ?? DateTime.now,
        _onError = onError;
 
-  final FeishuMonitorShellClient _client;
+  final FeishuMonitorShellClientGroup _clientGroup;
   final FeishuMonitorForwardingService _forwardingService;
   final FeishuMonitorForwardingSettingsStore _forwardingSettingsStore;
   final Duration _interval;
   final Duration _eventReconnectDelay;
+  final DateTime Function() _clock;
   final void Function(Object error, StackTrace stackTrace)? _onError;
   Timer? _timer;
-  Timer? _eventReconnectTimer;
-  StreamSubscription<FeishuMonitorShellEvent>? _eventSubscription;
+  final Map<FeishuMonitorShellClient, Timer> _eventReconnectTimers =
+      <FeishuMonitorShellClient, Timer>{};
+  final Map<
+    FeishuMonitorShellClient,
+    StreamSubscription<FeishuMonitorShellEvent>
+  >
+  _eventSubscriptions =
+      <FeishuMonitorShellClient, StreamSubscription<FeishuMonitorShellEvent>>{};
   bool _running = false;
   bool _started = false;
   bool _primed = false;
+  bool _snapshotUpdateObserved = false;
   int _eventGeneration = 0;
+  DateTime? _startedAt;
 
   Duration get interval => _interval;
 
+  @override
   void start() {
     if (_started) {
       return;
     }
     _started = true;
     _primed = false;
+    _snapshotUpdateObserved = false;
     _eventGeneration += 1;
+    _startedAt = _clock().toUtc();
     unawaited(_runOnceGuarded(primeIfNeeded: true));
     _timer = Timer.periodic(_interval, (_) {
       unawaited(_runOnceGuarded());
@@ -52,18 +75,26 @@ class FeishuMonitorAutoForwardRunner {
     _subscribeToEvents(_eventGeneration);
   }
 
+  @override
   void stop() {
     _started = false;
     _primed = false;
+    _snapshotUpdateObserved = false;
     _eventGeneration += 1;
+    _startedAt = null;
     _timer?.cancel();
     _timer = null;
-    _eventReconnectTimer?.cancel();
-    _eventReconnectTimer = null;
-    unawaited(_eventSubscription?.cancel());
-    _eventSubscription = null;
+    for (final timer in _eventReconnectTimers.values) {
+      timer.cancel();
+    }
+    _eventReconnectTimers.clear();
+    for (final subscription in _eventSubscriptions.values) {
+      unawaited(subscription.cancel());
+    }
+    _eventSubscriptions.clear();
   }
 
+  @override
   void dispose() {
     stop();
   }
@@ -87,24 +118,45 @@ class FeishuMonitorAutoForwardRunner {
           )) {
         return null;
       }
-      final status = await _client.fetchStatus();
-      if (!status.isOnline || !status.isCapturing) {
-        return null;
-      }
-      if (status.recentEvents.isEmpty) {
-        return null;
-      }
-      if (_started && !_primed) {
-        await _forwardingService.primeRoutedRecentEvents(
-          settings: settings,
-          events: status.recentEvents,
+      final assignedWorkerIds = _clientGroup.workerIdsForRoutes(
+        settings.routes,
+      );
+      await _syncConfiguredMediaSources(settings.routes);
+      final statuses = await _clientGroup.fetchStatuses(
+        workerIds: assignedWorkerIds,
+        onError: _onError,
+      );
+      final recentEvents = _mergeForwardableRecentEvents(statuses);
+      if (primeIfNeeded && !_primed && !_snapshotUpdateObserved) {
+        if (recentEvents.isEmpty) {
+          return null;
+        }
+        final split = splitLocalMonitorStartupEvents(
+          events: recentEvents,
+          startedAt: _startedAt,
+          observedAtForEvent: (event) => event.observedAt,
         );
+        if (split.startupEvents.isNotEmpty) {
+          await _forwardingService.primeRoutedRecentEvents(
+            settings: settings,
+            events: split.startupEvents,
+          );
+        }
         _primed = true;
+        if (split.liveEvents.isEmpty) {
+          return null;
+        }
+        return _forwardingService.forwardRoutedRecentEvents(
+          settings: settings,
+          events: split.liveEvents,
+        );
+      }
+      if (recentEvents.isEmpty) {
         return null;
       }
       return _forwardingService.forwardRoutedRecentEvents(
         settings: settings,
-        events: status.recentEvents,
+        events: recentEvents,
       );
     } finally {
       _running = false;
@@ -120,62 +172,121 @@ class FeishuMonitorAutoForwardRunner {
   }
 
   void _subscribeToEvents(int generation) {
-    if (!_started ||
-        generation != _eventGeneration ||
-        _eventSubscription != null) {
+    if (!_started || generation != _eventGeneration) {
       return;
     }
+    for (final client in _clientGroup.clients) {
+      _subscribeClientToEvents(client, generation);
+    }
+  }
 
+  void _subscribeClientToEvents(
+    FeishuMonitorShellClient client,
+    int generation,
+  ) {
+    if (!_started ||
+        generation != _eventGeneration ||
+        _eventSubscriptions.containsKey(client)) {
+      return;
+    }
     try {
       late final StreamSubscription<FeishuMonitorShellEvent> subscription;
-      subscription = _client.watchEvents().listen(
+      subscription = client.watchEvents().listen(
         (event) {
           if (_started &&
               generation == _eventGeneration &&
-              _eventSubscription == subscription &&
+              _eventSubscriptions[client] == subscription &&
               event.isSnapshotUpdated) {
+            _snapshotUpdateObserved = true;
             unawaited(_runOnceGuarded());
           }
         },
         onError: (Object error, StackTrace stackTrace) {
           _onError?.call(error, stackTrace);
-          if (_eventSubscription == subscription &&
+          if (_eventSubscriptions[client] == subscription &&
               generation == _eventGeneration) {
-            _eventSubscription = null;
-            _scheduleEventReconnect(generation);
+            _eventSubscriptions.remove(client);
+            _scheduleEventReconnect(client, generation);
           }
         },
         onDone: () {
-          if (_eventSubscription == subscription &&
+          if (_eventSubscriptions[client] == subscription &&
               generation == _eventGeneration) {
-            _eventSubscription = null;
-            _scheduleEventReconnect(generation);
+            _eventSubscriptions.remove(client);
+            _scheduleEventReconnect(client, generation);
           }
         },
         cancelOnError: true,
       );
-      _eventSubscription = subscription;
+      _eventSubscriptions[client] = subscription;
     } catch (error, stackTrace) {
       if (generation == _eventGeneration) {
         _onError?.call(error, stackTrace);
-        _eventSubscription = null;
-        _scheduleEventReconnect(generation);
+        _eventSubscriptions.remove(client);
+        _scheduleEventReconnect(client, generation);
       }
     }
   }
 
-  void _scheduleEventReconnect(int generation) {
+  void _scheduleEventReconnect(
+    FeishuMonitorShellClient client,
+    int generation,
+  ) {
     if (!_started ||
         generation != _eventGeneration ||
-        _eventReconnectTimer != null) {
+        _eventReconnectTimers.containsKey(client)) {
       return;
     }
 
-    _eventReconnectTimer = Timer(_eventReconnectDelay, () {
+    _eventReconnectTimers[client] = Timer(_eventReconnectDelay, () {
       if (generation == _eventGeneration) {
-        _eventReconnectTimer = null;
-        _subscribeToEvents(generation);
+        _eventReconnectTimers.remove(client);
+        _subscribeClientToEvents(client, generation);
       }
     });
+  }
+
+  Future<void> _syncConfiguredMediaSources(
+    List<FeishuMonitorForwardingRoute> routes,
+  ) async {
+    try {
+      await _clientGroup.syncConfiguredMediaSources(routes);
+    } catch (error, stackTrace) {
+      _onError?.call(error, stackTrace);
+    }
+  }
+
+  List<FeishuMonitorMessageEvent> _mergeForwardableRecentEvents(
+    List<FeishuMonitorShellStatus> statuses,
+  ) {
+    return mergeLocalMonitorStatusEvents<
+      FeishuMonitorShellStatus,
+      FeishuMonitorMessageEvent
+    >(
+      statuses: statuses,
+      isStatusForwardable: (status) => status.isOnline && status.isCapturing,
+      eventsForStatus: (status) => status.recentEvents,
+      dedupeKeyForEvent: _dedupeKeyFor,
+      includeEvent: (event) => !_isStaleStartupNetworkImage(event),
+    );
+  }
+
+  bool _isStaleStartupNetworkImage(FeishuMonitorMessageEvent event) {
+    if (event.captureSource.trim() != 'network_original_image') {
+      return false;
+    }
+    final startedAt = _startedAt;
+    final observedAt = event.observedAt;
+    if (startedAt == null || observedAt == null) {
+      return false;
+    }
+    return observedAt.toUtc().isBefore(startedAt);
+  }
+
+  String _dedupeKeyFor(FeishuMonitorMessageEvent event) {
+    return localMonitorMessageDedupeKey(
+      dedupeKey: event.dedupeKey,
+      eventId: event.eventId,
+    );
   }
 }

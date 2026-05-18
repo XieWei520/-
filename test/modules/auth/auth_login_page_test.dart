@@ -19,6 +19,7 @@ import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_copy.dart';
 import 'package:wukong_im_app/modules/auth/presentation/widgets/auth_flow_shell.dart';
 import 'package:wukong_im_app/service/api/common_api.dart';
 import 'package:wukong_im_app/service/api/login_bridge_api.dart';
+import 'package:wukong_im_app/widgets/wk_design_tokens.dart';
 import 'package:wukong_im_app/widgets/wk_sub_page_scaffold.dart';
 
 class _PendingLoginAuthRepository implements AuthRepository {
@@ -370,20 +371,43 @@ void main() {
     );
   });
 
-  testWidgets('login page uses warm Web B stage colors', (tester) async {
+  testWidgets('login page uses liquid-glass auth stage', (tester) async {
     await pumpLoginPage(tester);
 
     final background = tester.widget<DecoratedBox>(
       find.byKey(const ValueKey<String>('wk_login_background')),
     );
     final decoration = background.decoration as BoxDecoration;
-    expect(decoration.color, const Color(0xFFFFFAF5));
+    expect(decoration.color, const Color(0xFFF0F4F8));
 
     final stageShell = tester.widget<Container>(
       find.byKey(const ValueKey<String>('auth-stage-shell')),
     );
     final shellDecoration = stageShell.decoration! as BoxDecoration;
-    expect(shellDecoration.borderRadius, BorderRadius.circular(10));
+    expect(shellDecoration.borderRadius, BorderRadius.circular(20));
+  });
+
+  testWidgets('login page footer shows the ICP filing link', (tester) async {
+    await pumpLoginPage(tester);
+
+    final filingLink = find.byKey(
+      const ValueKey<String>('auth_login_icp_link'),
+    );
+
+    expect(filingLink, findsOneWidget);
+    expect(
+      find.textContaining('\u6e58ICP\u59072026016828\u53f7'),
+      findsOneWidget,
+    );
+    expect(tester.widget<TextButton>(filingLink).onPressed, isNotNull);
+
+    final textStyle = tester
+        .widget<TextButton>(filingLink)
+        .style
+        ?.textStyle
+        ?.resolve(<WidgetState>{});
+    expect(textStyle?.fontFamily, WKFontFamily.chinese);
+    expect(textStyle?.fontFamilyFallback, contains('Microsoft YaHei UI'));
   });
 
   testWidgets('renders remember-password and auto-login toggles', (

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/chat_micro_interactions.dart';
 import '../modules/customer_service/customer_service_badge.dart';
 import '../modules/customer_service/customer_service_identity.dart';
 import '../modules/vip/vip_badge.dart';
 import '../core/utils/platform_utils.dart';
+import 'liquid_glass_tokens.dart';
 import 'wk_avatar.dart';
 import 'wk_colors.dart';
 import 'wk_design_tokens.dart';
@@ -91,12 +93,6 @@ class WKConversationItem extends StatelessWidget {
         !webStyle &&
         PlatformUtils.isMobile &&
         MediaQuery.sizeOf(context).width < 420;
-    final labelStyle = const TextStyle(
-      fontFamily: WKFontFamily.primary,
-      color: WKColors.white,
-      fontSize: 11,
-      fontWeight: FontWeight.w700,
-    );
     final baseSubtitle = data.lastMsgContent?.trim().isNotEmpty == true
         ? data.lastMsgContent!.trim()
         : (data.subtitle?.trim().isNotEmpty == true
@@ -130,12 +126,12 @@ class WKConversationItem extends StatelessWidget {
     );
 
     final effectiveRowBackground = webStyle
-        ? (selected ? WKWebColors.actionSoft : WKWebColors.surface)
+        ? (selected ? const Color(0xFFEAF2FF) : const Color(0xFFFFFFFF))
         : isWarmMobileStyle
         ? ((selected || data.isTop) ? WKWebColors.actionSoft : rowBackground)
         : rowBackground;
     final effectivePadding = webStyle
-        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
+        ? const EdgeInsets.symmetric(horizontal: 10, vertical: 6)
         : isWarmMobileStyle
         ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
         : const EdgeInsets.symmetric(horizontal: 15, vertical: 5);
@@ -149,7 +145,7 @@ class WKConversationItem extends StatelessWidget {
     final hitbox = Container(
       key: const ValueKey<String>('wk-conversation-item-hitbox'),
       height: webStyle
-          ? WKWebSizes.conversationRowHeight
+          ? 68
           : isWarmMobileStyle
           ? 80
           : null,
@@ -160,13 +156,25 @@ class WKConversationItem extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: isWarmMobileStyle ? 56 : 60,
-            height: isWarmMobileStyle ? 56 : 60,
+            width: webStyle
+                ? 48
+                : isWarmMobileStyle
+                ? 56
+                : 60,
+            height: webStyle
+                ? 48
+                : isWarmMobileStyle
+                ? 56
+                : 60,
             child: Center(
               child: WKAvatar(
                 url: data.avatarUrl,
                 name: data.title,
-                size: isWarmMobileStyle ? 48 : 50,
+                size: webStyle
+                    ? 42
+                    : isWarmMobileStyle
+                    ? 48
+                    : 50,
                 isGroup: data.isGroup,
                 borderRadius: isWarmMobileStyle
                     ? BorderRadius.circular(12)
@@ -174,7 +182,13 @@ class WKConversationItem extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: isWarmMobileStyle ? 12 : 10),
+          SizedBox(
+            width: webStyle
+                ? 8
+                : isWarmMobileStyle
+                ? 12
+                : 10,
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,9 +212,9 @@ class WKConversationItem extends StatelessWidget {
                               data.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontFamily: WKFontFamily.title,
-                                fontSize: 16,
+                                fontSize: webStyle ? 15 : 16,
                                 fontWeight: FontWeight.w700,
                                 color: WKColors.textPrimary,
                               ),
@@ -240,7 +254,7 @@ class WKConversationItem extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 3),
+                SizedBox(height: webStyle ? 2 : 3),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -298,26 +312,11 @@ class WKConversationItem extends StatelessWidget {
                     ],
                     if (data.unreadCount > 0) ...[
                       const SizedBox(width: 5),
-                      Container(
-                        constraints: const BoxConstraints(
-                          minWidth: 20,
-                          minHeight: 20,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: unreadBackground,
-                          borderRadius: BorderRadius.circular(WKRadius.pill),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          data.unreadCount > 99
-                              ? '99+'
-                              : data.unreadCount.toString(),
-                          style: labelStyle,
-                        ),
+                      UnreadBadgeBounce(
+                        count: data.unreadCount,
+                        color: unreadBackground,
+                        size: 20,
+                        fontSize: 11,
                       ),
                     ],
                   ],
@@ -344,7 +343,9 @@ class WKConversationItem extends StatelessWidget {
           borderRadius: rowBorderRadius,
           border: webStyle
               ? Border.all(
-                  color: selected ? WKWebColors.action : Colors.transparent,
+                  color: selected
+                      ? const Color(0xFFD8E6FF)
+                      : Colors.transparent,
                 )
               : isWarmMobileStyle
               ? Border.all(
@@ -356,18 +357,44 @@ class WKConversationItem extends StatelessWidget {
               : null,
         ),
         child: webStyle
-            ? Material(
-                type: MaterialType.transparency,
-                borderRadius: rowBorderRadius,
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: onTap,
-                  onLongPress: onLongPress,
-                  borderRadius: rowBorderRadius,
-                  highlightColor: WKWebColors.actionSoft.withValues(alpha: 0.6),
-                  splashColor: WKWebColors.actionSoft.withValues(alpha: 0.4),
-                  child: hitbox,
-                ),
+            ? Stack(
+                children: [
+                  Material(
+                    type: MaterialType.transparency,
+                    borderRadius: rowBorderRadius,
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: onTap,
+                      onLongPress: onLongPress,
+                      borderRadius: rowBorderRadius,
+                      highlightColor: WKWebColors.actionSoft.withValues(
+                        alpha: 0.6,
+                      ),
+                      splashColor: WKWebColors.actionSoft.withValues(
+                        alpha: 0.4,
+                      ),
+                      child: hitbox,
+                    ),
+                  ),
+                  if (selected)
+                    Positioned(
+                      left: 0,
+                      top: 10,
+                      bottom: 10,
+                      child: IgnorePointer(
+                        child: Container(
+                          key: const ValueKey<String>(
+                            'wk-conversation-item-active-indicator',
+                          ),
+                          width: 2,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2563D9),
+                            borderRadius: LiquidGlassRadii.pill,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               )
             : InkWell(
                 onTap: onTap,

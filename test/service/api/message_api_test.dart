@@ -304,6 +304,34 @@ void main() {
         expect(payload.containsKey('client_msg_no'), isFalse);
       },
     );
+
+    test(
+      'deleteConversation uses the server persisted conversation delete route',
+      () async {
+        RequestOptions? capturedOptions;
+        final adapter = _RoutingJsonAdapter((options) {
+          if (options.method.toUpperCase() == 'DELETE' &&
+              options.uri.path == '/v1/conversations/g_delete_target/2') {
+            capturedOptions = options;
+            return _MockJsonResponse(<String, dynamic>{'code': 0});
+          }
+
+          return _MockJsonResponse(<String, dynamic>{
+            'code': 404,
+            'msg': 'Unhandled request: ${options.method} ${options.uri.path}',
+          }, statusCode: 404);
+        });
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+
+        await MessageApi.instance.deleteConversation(
+          channelId: 'g_delete_target',
+          channelType: WKChannelType.group,
+        );
+
+        expect(capturedOptions, isNotNull);
+        expect(capturedOptions!.data, isNull);
+      },
+    );
   });
 }
 

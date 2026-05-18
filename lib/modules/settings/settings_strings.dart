@@ -453,11 +453,15 @@ class SettingsStrings {
 }
 
 SettingsStrings resolveSettingsStrings({Locale? locale}) {
+  if (locale?.languageCode.toLowerCase() == 'en' &&
+      locale?.countryCode?.toUpperCase() == 'US') {
+    return _enUsSettingsStrings;
+  }
   return _zhHansSettingsStrings;
 }
 
 const SettingsStrings zhHansSettingsStrings = _zhHansSettingsStrings;
-const SettingsStrings enUsSettingsStrings = _enUsSettingsStrings;
+final SettingsStrings enUsSettingsStrings = _enUsSettingsStrings;
 
 const SettingsStrings _zhHansSettingsStrings = SettingsStrings(
   generalMenu: '通用',
@@ -661,4 +665,242 @@ const SettingsStrings _zhHansSettingsStrings = SettingsStrings(
   workplaceCatalogNoLaunchRoute: '当前应用没有可打开的链接。',
 );
 
-const SettingsStrings _enUsSettingsStrings = _zhHansSettingsStrings;
+final SettingsStrings _enUsSettingsStrings = SettingsStrings(
+  generalMenu: _zhHansSettingsStrings.generalMenu,
+  notificationsMenu: _zhHansSettingsStrings.notificationsMenu,
+  favoritesMenu: _zhHansSettingsStrings.favoritesMenu,
+  privacyMenu: _zhHansSettingsStrings.privacyMenu,
+  accountSecurityMenu: _zhHansSettingsStrings.accountSecurityMenu,
+  pcLoginMenu: _zhHansSettingsStrings.pcLoginMenu,
+  guestUser: _zhHansSettingsStrings.guestUser,
+  settingsTitle: _zhHansSettingsStrings.settingsTitle,
+  darkMode: _zhHansSettingsStrings.darkMode,
+  language: _zhHansSettingsStrings.language,
+  fontSize: _zhHansSettingsStrings.fontSize,
+  chatBackground: _zhHansSettingsStrings.chatBackground,
+  clearImageCache: _zhHansSettingsStrings.clearImageCache,
+  clearAllChatHistory: _zhHansSettingsStrings.clearAllChatHistory,
+  messageBackup: _zhHansSettingsStrings.messageBackup,
+  messageRecovery: _zhHansSettingsStrings.messageRecovery,
+  appModules: _zhHansSettingsStrings.appModules,
+  thirdPartySharing: _zhHansSettingsStrings.thirdPartySharing,
+  errorLogs: _zhHansSettingsStrings.errorLogs,
+  about: _zhHansSettingsStrings.about,
+  logout: _zhHansSettingsStrings.logout,
+  save: _zhHansSettingsStrings.save,
+  cancel: _zhHansSettingsStrings.cancel,
+  clear: _zhHansSettingsStrings.clear,
+  confirm: _zhHansSettingsStrings.confirm,
+  enabled: _zhHansSettingsStrings.enabled,
+  disabled: _zhHansSettingsStrings.disabled,
+  followSystem: _zhHansSettingsStrings.followSystem,
+  simplifiedChinese: _zhHansSettingsStrings.simplifiedChinese,
+  englishDisplay: _zhHansSettingsStrings.englishDisplay,
+  clearImageCacheMessage: _zhHansSettingsStrings.clearImageCacheMessage,
+  clearImageCacheSuccess: _zhHansSettingsStrings.clearImageCacheSuccess,
+  logoutMessage: _zhHansSettingsStrings.logoutMessage,
+  logoutAction: _zhHansSettingsStrings.logoutAction,
+  logoutFailedPrefix: _zhHansSettingsStrings.logoutFailedPrefix,
+  clearAllChatHistoryMessage: _zhHansSettingsStrings.clearAllChatHistoryMessage,
+  clearAllChatHistorySuccess: _zhHansSettingsStrings.clearAllChatHistorySuccess,
+  notificationSettingsTitle: _zhHansSettingsStrings.notificationSettingsTitle,
+  notificationMasterSwitchTitle:
+      _zhHansSettingsStrings.notificationMasterSwitchTitle,
+  notificationMasterSwitchDescription:
+      _zhHansSettingsStrings.notificationMasterSwitchDescription,
+  showMessageDetailsTitle: _zhHansSettingsStrings.showMessageDetailsTitle,
+  sound: _zhHansSettingsStrings.sound,
+  vibration: _zhHansSettingsStrings.vibration,
+  notificationSoundDescription:
+      _zhHansSettingsStrings.notificationSoundDescription,
+  openMessageNotificationSettings:
+      _zhHansSettingsStrings.openMessageNotificationSettings,
+  openCallInvitationNotificationSettings:
+      _zhHansSettingsStrings.openCallInvitationNotificationSettings,
+  openSettingsFailedSuffix: _zhHansSettingsStrings.openSettingsFailedSuffix,
+  notificationPermissionHint: _zhHansSettingsStrings.notificationPermissionHint,
+  callPermissionHint: _zhHansSettingsStrings.callPermissionHint,
+  notificationSaveSuccess: _zhHansSettingsStrings.notificationSaveSuccess,
+  notificationSaveFailedPrefix:
+      _zhHansSettingsStrings.notificationSaveFailedPrefix,
+  privacySettingsTitle: _zhHansSettingsStrings.privacySettingsTitle,
+  privacyHeroTitle: _zhHansSettingsStrings.privacyHeroTitle,
+  privacyHeroSubtitle: _zhHansSettingsStrings.privacyHeroSubtitle,
+  visibilitySectionTitle: _zhHansSettingsStrings.visibilitySectionTitle,
+  disablePhoneSearchTitle: _zhHansSettingsStrings.disablePhoneSearchTitle,
+  disablePhoneSearchSubtitle: _zhHansSettingsStrings.disablePhoneSearchSubtitle,
+  showOnlineStatusTitle: _zhHansSettingsStrings.showOnlineStatusTitle,
+  showOnlineStatusSubtitle: _zhHansSettingsStrings.showOnlineStatusSubtitle,
+  showMessagePreviewTitle: _zhHansSettingsStrings.showMessagePreviewTitle,
+  showMessagePreviewSubtitle: _zhHansSettingsStrings.showMessagePreviewSubtitle,
+  securitySectionTitle: _zhHansSettingsStrings.securitySectionTitle,
+  deviceLockTitle: _zhHansSettingsStrings.deviceLockTitle,
+  deviceLockSubtitle: _zhHansSettingsStrings.deviceLockSubtitle,
+  blacklistTitle: _zhHansSettingsStrings.blacklistTitle,
+  blacklistSubtitle: _zhHansSettingsStrings.blacklistSubtitle,
+  settingsSaved: _zhHansSettingsStrings.settingsSaved,
+  saveFailedPrefix: _zhHansSettingsStrings.saveFailedPrefix,
+  setDeviceLock: _zhHansSettingsStrings.setDeviceLock,
+  enterPassword: _zhHansSettingsStrings.enterPassword,
+  passwordHint6Digits: _zhHansSettingsStrings.passwordHint6Digits,
+  confirmPassword: _zhHansSettingsStrings.confirmPassword,
+  deviceLockPasswordMustBe6Digits:
+      _zhHansSettingsStrings.deviceLockPasswordMustBe6Digits,
+  passwordsDoNotMatch: _zhHansSettingsStrings.passwordsDoNotMatch,
+  enableDeviceLockFailedPrefix:
+      _zhHansSettingsStrings.enableDeviceLockFailedPrefix,
+  disableDeviceLockFailedPrefix:
+      _zhHansSettingsStrings.disableDeviceLockFailedPrefix,
+  accountSecurityTitle: _zhHansSettingsStrings.accountSecurityTitle,
+  accountAndDevicesTitle: _zhHansSettingsStrings.accountAndDevicesTitle,
+  accountAndDevicesSubtitlePrefix:
+      _zhHansSettingsStrings.accountAndDevicesSubtitlePrefix,
+  accountAndDevicesSubtitleSuffix:
+      _zhHansSettingsStrings.accountAndDevicesSubtitleSuffix,
+  signedInDevicesSection: _zhHansSettingsStrings.signedInDevicesSection,
+  accountActionsSection: _zhHansSettingsStrings.accountActionsSection,
+  deviceListTitle: _zhHansSettingsStrings.deviceListTitle,
+  devicesCountSuffix: _zhHansSettingsStrings.devicesCountSuffix,
+  destroyAccountTitle: _zhHansSettingsStrings.destroyAccountTitle,
+  destroyAccountSubtitle: _zhHansSettingsStrings.destroyAccountSubtitle,
+  destroyAccountDialogTitle: _zhHansSettingsStrings.destroyAccountDialogTitle,
+  destroyAccountDialogMessage:
+      _zhHansSettingsStrings.destroyAccountDialogMessage,
+  destroyAccountVerificationHint:
+      _zhHansSettingsStrings.destroyAccountVerificationHint,
+  destroyAccountSendCode: _zhHansSettingsStrings.destroyAccountSendCode,
+  destroyAccountSending: _zhHansSettingsStrings.destroyAccountSending,
+  destroyAccountConfirmAction:
+      _zhHansSettingsStrings.destroyAccountConfirmAction,
+  destroyAccountSuccess: _zhHansSettingsStrings.destroyAccountSuccess,
+  destroyAccountCodeRequired: _zhHansSettingsStrings.destroyAccountCodeRequired,
+  destroyAccountSendCodeFailedPrefix:
+      _zhHansSettingsStrings.destroyAccountSendCodeFailedPrefix,
+  destroyAccountFailedPrefix: _zhHansSettingsStrings.destroyAccountFailedPrefix,
+  signedInDevicesTitle: _zhHansSettingsStrings.signedInDevicesTitle,
+  loading: _zhHansSettingsStrings.loading,
+  noDevices: _zhHansSettingsStrings.noDevices,
+  removeDeviceTitle: _zhHansSettingsStrings.removeDeviceTitle,
+  removeDeviceMessage: _zhHansSettingsStrings.removeDeviceMessage,
+  remove: _zhHansSettingsStrings.remove,
+  removeFailedPrefix: _zhHansSettingsStrings.removeFailedPrefix,
+  unknownDevice: _zhHansSettingsStrings.unknownDevice,
+  currentDevice: _zhHansSettingsStrings.currentDevice,
+  blacklistPageTitle: _zhHansSettingsStrings.blacklistPageTitle,
+  blacklistEmpty: _zhHansSettingsStrings.blacklistEmpty,
+  blacklistEmptyHint: _zhHansSettingsStrings.blacklistEmptyHint,
+  userIdCannotBeEmpty: _zhHansSettingsStrings.userIdCannotBeEmpty,
+  removedFromBlacklist: _zhHansSettingsStrings.removedFromBlacklist,
+  operationFailedPrefix: _zhHansSettingsStrings.operationFailedPrefix,
+  unknownUser: _zhHansSettingsStrings.unknownUser,
+  pcLoginPageTitle: _zhHansSettingsStrings.pcLoginPageTitle,
+  loadingWebLoginAddress: _zhHansSettingsStrings.loadingWebLoginAddress,
+  pcLoginGuideDescription: _zhHansSettingsStrings.pcLoginGuideDescription,
+  copyAddress: _zhHansSettingsStrings.copyAddress,
+  copyWebLoginUrl: _zhHansSettingsStrings.copyWebLoginUrl,
+  webLoginAddressCopied: _zhHansSettingsStrings.webLoginAddressCopied,
+  scanQrCode: _zhHansSettingsStrings.scanQrCode,
+  useMobileScanToConfirmLogin:
+      _zhHansSettingsStrings.useMobileScanToConfirmLogin,
+  pcLoginStatus: _zhHansSettingsStrings.pcLoginStatus,
+  openManagementControls: _zhHansSettingsStrings.openManagementControls,
+  phoneMute: _zhHansSettingsStrings.phoneMute,
+  muted: _zhHansSettingsStrings.muted,
+  fileHelper: _zhHansSettingsStrings.fileHelper,
+  openChat: _zhHansSettingsStrings.openChat,
+  lock: _zhHansSettingsStrings.lock,
+  locked: _zhHansSettingsStrings.locked,
+  unlocked: _zhHansSettingsStrings.unlocked,
+  exitAllPcWebLogin: _zhHansSettingsStrings.exitAllPcWebLogin,
+  pcLoginLockedNotice: _zhHansSettingsStrings.pcLoginLockedNotice,
+  phoneNotificationsMuted: _zhHansSettingsStrings.phoneNotificationsMuted,
+  phoneNotificationsEnabled: _zhHansSettingsStrings.phoneNotificationsEnabled,
+  pcLoginHeroTitle: _zhHansSettingsStrings.pcLoginHeroTitle,
+  generalHeroTitle: 'General Settings',
+  generalHeroSubtitle:
+      'Adjust appearance, storage, messaging, modules, and account options.',
+  generalAppearanceSectionTitle: 'Appearance',
+  generalStorageSectionTitle: 'Storage',
+  generalMessagesSectionTitle: 'Messages',
+  generalModulesSectionTitle: 'Modules',
+  generalSupportSectionTitle: 'Support',
+  generalAccountSectionTitle: 'Account',
+  notificationHeroTitle: 'Notifications',
+  notificationHeroSubtitle:
+      'Control alerts, in-app behavior, and system notification access.',
+  notificationPreferencesSectionTitle: 'Preferences',
+  notificationSystemSectionTitle: 'System Access',
+  notificationHelpSectionTitle: 'Need Help?',
+  notificationDisabledHint:
+      'When disabled, the app still syncs messages but no new notification alerts are shown.',
+  notificationSystemSettingsHint:
+      'If alerts are still missing, open system settings to check notification permissions.',
+  favoritesPageTitle: 'Favorites',
+  favoritesHeroTitle: 'Favorite Messages',
+  favoritesHeroSubtitle:
+      'Quickly find, open, and manage your saved message collection.',
+  favoritesSearchHint: 'Search favorites',
+  favoritesLoadingHint: 'Loading favorites...',
+  favoritesEmptyTitle: 'No Favorites Yet',
+  favoritesEmptySubtitle:
+      'Messages you save will appear here for quick access.',
+  favoritesLoadFailed: 'Unable to load favorites. Pull down to retry.',
+  favoritesRefreshFailed: 'Refresh failed. Please try again.',
+  favoritesRetry: 'Retry',
+  favoritesDeleteTitle: 'Remove Favorite',
+  favoritesDeleteMessage:
+      'Remove this item from favorites? This does not delete the original message.',
+  favoritesDeleteAction: 'Remove',
+  favoritesDeleteTooltip: 'Remove from favorites',
+  favoritesDeleteFailed: 'Failed to remove favorite: ',
+  favoritesOpenFailed: 'Unable to open favorite: ',
+  favoritesUnsupportedOpen:
+      'This favorite cannot be opened on the current platform.',
+  appModulesPageTitle: 'App Modules',
+  appModulesSaveAction: 'Save Changes',
+  appModulesHeroTitle: 'App Modules',
+  appModulesHeroSubtitle:
+      'Choose which modules are visible and keep your module list synced.',
+  appModulesStatusTitle: 'Current Status',
+  appModulesListSectionTitle: 'Module List',
+  appModulesHelpCopy:
+      'Changes apply after saving. Modules unavailable to your account are disabled automatically.',
+  appModulesLoadingHint: 'Loading modules...',
+  appModulesEmptyHint: 'No modules available right now.',
+  appModulesFallbackModuleName: 'Unknown Module',
+  appModulesSaveSuccess: 'Module settings saved.',
+  appModulesSyncedStatus: 'Synced',
+  appModulesLoadFailedPrefix: 'Failed to load app modules: ',
+  appModulesSaveFailedPrefix: 'Failed to save app modules: ',
+  appModulesRetry: 'Retry',
+  workplaceCatalogEntryTitle: _zhHansSettingsStrings.workplaceCatalogEntryTitle,
+  workplaceCatalogEntrySubtitle:
+      _zhHansSettingsStrings.workplaceCatalogEntrySubtitle,
+  workplaceCatalogBrowseAction:
+      _zhHansSettingsStrings.workplaceCatalogBrowseAction,
+  workplaceCatalogPageTitle: _zhHansSettingsStrings.workplaceCatalogPageTitle,
+  workplaceCatalogHeroTitle: _zhHansSettingsStrings.workplaceCatalogHeroTitle,
+  workplaceCatalogHeroSubtitle:
+      _zhHansSettingsStrings.workplaceCatalogHeroSubtitle,
+  workplaceCatalogBannersSectionTitle:
+      _zhHansSettingsStrings.workplaceCatalogBannersSectionTitle,
+  workplaceCatalogMyAppsSectionTitle:
+      _zhHansSettingsStrings.workplaceCatalogMyAppsSectionTitle,
+  workplaceCatalogRecentSectionTitle:
+      _zhHansSettingsStrings.workplaceCatalogRecentSectionTitle,
+  workplaceCatalogCategoriesSectionTitle:
+      _zhHansSettingsStrings.workplaceCatalogCategoriesSectionTitle,
+  workplaceCatalogCategoryAppsSectionTitle:
+      _zhHansSettingsStrings.workplaceCatalogCategoryAppsSectionTitle,
+  workplaceCatalogEmptyHint: _zhHansSettingsStrings.workplaceCatalogEmptyHint,
+  workplaceCatalogAddAction: _zhHansSettingsStrings.workplaceCatalogAddAction,
+  workplaceCatalogRemoveAction:
+      _zhHansSettingsStrings.workplaceCatalogRemoveAction,
+  workplaceCatalogOpenAction: _zhHansSettingsStrings.workplaceCatalogOpenAction,
+  workplaceCatalogOpenFailedPrefix:
+      _zhHansSettingsStrings.workplaceCatalogOpenFailedPrefix,
+  workplaceCatalogPendingNativeRoutePrefix:
+      _zhHansSettingsStrings.workplaceCatalogPendingNativeRoutePrefix,
+  workplaceCatalogNoLaunchRoute:
+      _zhHansSettingsStrings.workplaceCatalogNoLaunchRoute,
+);

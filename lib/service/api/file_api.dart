@@ -51,6 +51,28 @@ class FileApi {
     );
   }
 
+  Future<String> uploadChatFileAtPath({
+    required String filePath,
+    required String uploadPath,
+  }) async {
+    final normalizedFilePath = filePath.trim();
+    final normalizedUploadPath = _normalizeObjectPath(uploadPath);
+    final multipartUrl = await tryMultipartChatFileUpload(
+      filePath: normalizedFilePath,
+      fileType: 'chat',
+      objectPath: normalizedUploadPath,
+      thresholdBytes: multipartUploadThresholdBytes,
+    );
+    if (multipartUrl != null && multipartUrl.isNotEmpty) {
+      return multipartUrl;
+    }
+    return _uploadFile(
+      filePath: normalizedFilePath,
+      fileType: 'chat',
+      uploadPath: normalizedUploadPath,
+    );
+  }
+
   Future<String> uploadChatFileBytes({
     required Uint8List bytes,
     required String fileName,

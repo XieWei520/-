@@ -169,7 +169,9 @@ void main() {
   testWidgets('send button uses compact motion states for composer feedback', (
     tester,
   ) async {
-    final gateway = _FakeChatSceneGateway(sendError: Exception('keep composer'));
+    final gateway = _FakeChatSceneGateway(
+      sendError: Exception('keep composer'),
+    );
     addTearDown(gateway.dispose);
 
     await tester.pumpWidget(
@@ -2687,6 +2689,7 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
     required String channelId,
     required int channelType,
     String? channelName,
+    int? expireSeconds,
   }) async {
     sentContents.add(content);
     sentChannels.add('$channelType:$channelId');

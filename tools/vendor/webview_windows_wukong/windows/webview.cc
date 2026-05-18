@@ -17,6 +17,7 @@
 #include <limits>
 #include <mutex>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 #include "util/composition.desktop.interop.h"
@@ -30,6 +31,7 @@ namespace {
 constexpr size_t kMaxPayloadPreviewBytes = 16 * 1024;
 constexpr size_t kMaxPendingNetworkEvents = 256;
 constexpr size_t kMaxSavedImageBodyBytes = 25 * 1024 * 1024;
+constexpr size_t kMaxGatewayProtobufPreviewBytes = 96 * 1024;
 constexpr auto kSavedImageCacheMaxAge = std::chrono::hours(24);
 constexpr auto kSavedImageCacheCleanupInterval = std::chrono::minutes(30);
 
@@ -89,6 +91,13 @@ std::string TruncatePreview(const std::string& value) {
     return value;
   }
   return value.substr(0, kMaxPayloadPreviewBytes);
+}
+
+std::string TruncatePreview(const std::string& value, size_t max_bytes) {
+  if (value.size() <= max_bytes) {
+    return value;
+  }
+  return value.substr(0, max_bytes);
 }
 
 std::string LowerCopy(const std::string& value) {
@@ -207,6 +216,105 @@ bool JsonHasKey(const std::string& json, const std::string& key) {
   return json.find("\"" + key + "\"") != std::string::npos;
 }
 
+size_t JsonValueEnd(const std::string& json, size_t value_start) {
+  if (value_start >= json.size()) {
+    return std::string::npos;
+  }
+
+  const char first = json[value_start];
+  if (first == '{' || first == '[') {
+    int depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+    for (size_t i = value_start; i < json.size(); ++i) {
+      const char ch = json[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (in_string && ch == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch == '"') {
+        in_string = !in_string;
+        continue;
+      }
+      if (in_string) {
+        continue;
+      }
+      if (ch == first) {
+        ++depth;
+        continue;
+      }
+      if ((first == '{' && ch == '}') || (first == '[' && ch == ']')) {
+        --depth;
+        if (depth == 0) {
+          return i + 1;
+        }
+      }
+    }
+    return std::string::npos;
+  }
+
+  if (first == '"') {
+    bool escaped = false;
+    for (size_t i = value_start + 1; i < json.size(); ++i) {
+      const char ch = json[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch == '"') {
+        return i + 1;
+      }
+    }
+    return std::string::npos;
+  }
+
+  return json.find_first_of(",}\r\n", value_start);
+}
+
+std::string JsonRawValue(const std::string& json, const std::string& key) {
+  const auto key_pos = json.find("\"" + key + "\"");
+  if (key_pos == std::string::npos) {
+    return "";
+  }
+  const auto colon_pos = json.find(':', key_pos);
+  if (colon_pos == std::string::npos) {
+    return "";
+  }
+  const auto value_start = json.find_first_not_of(" \t\r\n", colon_pos + 1);
+  if (value_start == std::string::npos) {
+    return "";
+  }
+  const auto value_end = JsonValueEnd(json, value_start);
+  if (value_end == std::string::npos || value_end <= value_start) {
+    return "";
+  }
+  return json.substr(value_start, value_end - value_start);
+}
+
+std::string JsonObjectValue(const std::string& json, const std::string& key) {
+  const std::string raw_value = JsonRawValue(json, key);
+  if (!raw_value.empty() && raw_value.front() == '{') {
+    return raw_value;
+  }
+  return "";
+}
+
+std::string JsonArrayValue(const std::string& json, const std::string& key) {
+  const std::string raw_value = JsonRawValue(json, key);
+  if (!raw_value.empty() && raw_value.front() == '[') {
+    return raw_value;
+  }
+  return "";
+}
+
 bool MimeTypeStartsWithImage(const std::string& mime_type) {
   const std::string lower_mime = LowerCopy(mime_type);
   return lower_mime.rfind("image/", 0) == 0;
@@ -224,6 +332,12 @@ bool ContainsAny(const std::string& value,
 
 bool StartsWith(const std::string& value, const std::string& prefix) {
   return value.rfind(prefix, 0) == 0;
+}
+
+bool EndsWith(const std::string& value, const std::string& suffix) {
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
+             0;
 }
 
 struct ParsedUrlParts {
@@ -310,6 +424,25 @@ bool HostIsOrSubdomainOf(const std::string& host, const std::string& domain) {
   return host[host.size() - domain.size() - 1] == '.';
 }
 
+bool IsFeishuImageCdnHost(const std::string& host) {
+  if (HostIsOrSubdomainOf(host, "imfile.feishucdn.com")) {
+    return true;
+  }
+
+  constexpr std::string_view suffix = "-imfile.feishucdn.com";
+  if (!EndsWith(host, std::string(suffix)) || host.size() <= suffix.size()) {
+    return false;
+  }
+
+  const auto shard = host.substr(0, host.size() - suffix.size());
+  if (shard.size() < 2 || shard.front() != 's') {
+    return false;
+  }
+  return std::all_of(shard.begin() + 1, shard.end(), [](unsigned char c) {
+    return std::isdigit(c) != 0;
+  });
+}
+
 bool IsTrustedFeishuHost(const std::string& host) {
   return HostIsOrSubdomainOf(host, "feishu.cn") ||
          HostIsOrSubdomainOf(host, "feishu.net") ||
@@ -348,7 +481,7 @@ bool LooksLikeFeishuMessageImage(const std::string& url) {
     return false;
   }
 
-  if (HostIsOrSubdomainOf(parts.host, "imfile.feishucdn.com")) {
+  if (IsFeishuImageCdnHost(parts.host)) {
     return StartsWith(parts.path, "/static-resource/v1/");
   }
 
@@ -363,6 +496,13 @@ bool LooksLikeFeishuMessageImage(const std::string& url) {
 
   return IsKnownMessageImagePath(parts.path) ||
          IsMessageImageHintPath(parts.path);
+}
+
+bool LooksLikeFeishuImGateway(const std::string& url) {
+  const auto parts = ParseUrlParts(url);
+  return parts.valid &&
+         parts.host == "internal-api-lark-api.feishu.cn" &&
+         StartsWith(parts.path, "/im/gateway");
 }
 
 std::string ImageExtensionForMimeType(const std::string& mime_type) {
@@ -643,12 +783,36 @@ void TrySaveImageBody(WebviewNetworkEvent* event, const std::string& body,
 
 bool ShouldReadResponseBody(const WebviewNetworkEvent& event) {
   const std::string probe = LowerCopy(event.mime_type + " " + event.url);
+  if (LooksLikeFeishuImGateway(event.url) &&
+      probe.find("protobuf") != std::string::npos) {
+    return true;
+  }
   return probe.find("json") != std::string::npos ||
          probe.find("text") != std::string::npos ||
          probe.find("messenger") != std::string::npos ||
          probe.find("message") != std::string::npos ||
          probe.find("image") != std::string::npos ||
          probe.find("resource") != std::string::npos;
+}
+
+bool ShouldEmitRequestDiagnostic(const WebviewNetworkEvent& event) {
+  const std::string probe = LowerCopy(event.resource_type + " " + event.url);
+  return probe.find("image") != std::string::npos ||
+         probe.find("static-resource") != std::string::npos ||
+         probe.find("imfile.feishucdn.com") != std::string::npos ||
+         probe.find("internal-api-lark-file") != std::string::npos ||
+         LooksLikeFeishuImGateway(event.url) ||
+         LooksLikeFeishuMessageImage(event.url);
+}
+
+bool ShouldEmitDataReceivedDiagnostic(const WebviewNetworkEvent& event) {
+  const std::string probe = LowerCopy(event.url + " " + event.mime_type);
+  return probe.find("image") != std::string::npos ||
+         probe.find("static-resource") != std::string::npos ||
+         probe.find("imfile.feishucdn.com") != std::string::npos ||
+         probe.find("internal-api-lark-file") != std::string::npos ||
+         LooksLikeFeishuImGateway(event.url) ||
+         LooksLikeFeishuMessageImage(event.url);
 }
 
 }  // namespace
@@ -1165,6 +1329,45 @@ bool Webview::SetCacheDisabled(bool disabled) {
                                               nullptr) == S_OK;
 }
 
+void Webview::HandleNetworkRequestWillBeSent(const std::string& json) {
+  if (!network_capture_enabled_) {
+    return;
+  }
+
+  WebviewNetworkEvent event;
+  event.id = JsonStringValue(json, "requestId");
+  event.observed_at = NowIso8601Utc();
+  event.source = "httpRequest";
+  const std::string request_json = JsonObjectValue(json, "request");
+  event.url = JsonStringValue(request_json.empty() ? json : request_json, "url");
+  event.method =
+      JsonStringValue(request_json.empty() ? json : request_json, "method");
+  event.resource_type = JsonStringValue(json, "type");
+  event.document_url = JsonStringValue(json, "documentURL");
+  event.frame_id = JsonStringValue(json, "frameId");
+  const std::string initiator_json = JsonObjectValue(json, "initiator");
+  event.initiator_type = JsonStringValue(initiator_json, "type");
+  event.initiator_url = JsonStringValue(initiator_json, "url");
+  event.initiator_line_number = JsonIntValue(initiator_json, "lineNumber");
+  event.initiator_column_number = JsonIntValue(initiator_json, "columnNumber");
+  const std::string initiator_stack_json =
+      JsonObjectValue(initiator_json, "stack");
+  const std::string call_frames_json =
+      JsonArrayValue(initiator_stack_json, "callFrames");
+  event.initiator_stack_url = JsonStringValue(call_frames_json, "url");
+  if (event.initiator_url.empty()) {
+    event.initiator_url = event.initiator_stack_url;
+  }
+
+  if (event.id.empty()) {
+    event.id = event.url;
+  }
+  if (!ShouldEmitRequestDiagnostic(event)) {
+    return;
+  }
+  EmitNetworkEvent(event);
+}
+
 void Webview::HandleNetworkResponseReceived(const std::string& json) {
   if (!network_capture_enabled_) {
     return;
@@ -1243,7 +1446,11 @@ void Webview::HandleNetworkLoadingFinished(const std::string& json) {
             const bool base64_encoded =
                 JsonBoolValue(response_json, "base64Encoded");
             event_with_body.payload_preview =
-                TruncatePreview(body);
+                TruncatePreview(
+                    body,
+                    LooksLikeFeishuImGateway(event.url)
+                        ? kMaxGatewayProtobufPreviewBytes
+                        : kMaxPayloadPreviewBytes);
             if (event.status_code >= 200 && event.status_code < 300) {
               TrySaveImageBody(&event_with_body, body, base64_encoded);
             }
@@ -1251,6 +1458,82 @@ void Webview::HandleNetworkLoadingFinished(const std::string& json) {
             return S_OK;
           })
           .Get());
+}
+
+void Webview::HandleNetworkDataReceived(const std::string& json) {
+  if (!network_capture_enabled_) {
+    return;
+  }
+
+  WebviewNetworkEvent event;
+  event.id = JsonStringValue(json, "requestId");
+  event.observed_at = NowIso8601Utc();
+  event.source = "dataReceived";
+  event.method = "DATA";
+  event.mime_type = "application/octet-stream";
+  event.body_size = JsonIntValue(json, "dataLength");
+  if (event.body_size == 0) {
+    event.body_size = JsonIntValue(json, "encodedDataLength");
+  }
+  if (event.id.empty()) {
+    return;
+  }
+
+  const auto pending_it = pending_network_events_.find(event.id);
+  if (pending_it != pending_network_events_.end()) {
+    event.url = pending_it->second.url;
+    event.mime_type = pending_it->second.mime_type;
+    event.resource_type = pending_it->second.resource_type;
+    event.document_url = pending_it->second.document_url;
+    event.initiator_type = pending_it->second.initiator_type;
+    event.initiator_url = pending_it->second.initiator_url;
+    event.initiator_stack_url = pending_it->second.initiator_stack_url;
+    event.initiator_line_number = pending_it->second.initiator_line_number;
+    event.initiator_column_number = pending_it->second.initiator_column_number;
+    event.frame_id = pending_it->second.frame_id;
+  }
+  if (!ShouldEmitDataReceivedDiagnostic(event)) {
+    return;
+  }
+  EmitNetworkEvent(event);
+}
+
+void Webview::HandleNetworkEventSourceMessageReceived(
+    const std::string& json) {
+  if (!network_capture_enabled_) {
+    return;
+  }
+
+  WebviewNetworkEvent event;
+  event.id = JsonStringValue(json, "requestId");
+  event.observed_at = NowIso8601Utc();
+  event.source = "eventSourceMessage";
+  event.url = JsonStringValue(json, "eventName");
+  event.method = "EVENT_SOURCE";
+  event.mime_type = "text/event-stream";
+  event.payload_preview = TruncatePreview(JsonStringValue(json, "data"));
+  if (event.id.empty()) {
+    event.id = "eventsource";
+  }
+  EmitNetworkEvent(event);
+}
+
+void Webview::HandleNetworkWebSocketCreated(const std::string& json) {
+  if (!network_capture_enabled_) {
+    return;
+  }
+
+  WebviewNetworkEvent event;
+  event.id = JsonStringValue(json, "requestId");
+  event.observed_at = NowIso8601Utc();
+  event.source = "webSocketCreated";
+  event.url = JsonStringValue(json, "url");
+  event.method = "WS_CREATED";
+  event.mime_type = "application/octet-stream";
+  if (event.id.empty()) {
+    event.id = event.url.empty() ? "websocket" : event.url;
+  }
+  EmitNetworkEvent(event);
 }
 
 void Webview::HandleNetworkWebSocketFrameReceived(const std::string& json) {
@@ -1275,6 +1558,45 @@ void Webview::HandleNetworkWebSocketFrameReceived(const std::string& json) {
   EmitNetworkEvent(event);
 }
 
+void Webview::HandleNetworkWebSocketFrameSent(const std::string& json) {
+  if (!network_capture_enabled_) {
+    return;
+  }
+
+  WebviewNetworkEvent event;
+  event.id = JsonStringValue(json, "requestId");
+  event.observed_at = NowIso8601Utc();
+  event.source = "webSocketFrameSent";
+  event.method = "WS_SENT";
+  if (JsonHasKey(json, "opcode")) {
+    event.method = std::format("WS_SENT:{}", JsonIntValue(json, "opcode"));
+  }
+  event.mime_type = "application/octet-stream";
+  event.payload_preview =
+      TruncatePreview(JsonStringValue(json, "payloadData"));
+  if (event.id.empty()) {
+    event.id = "websocket";
+  }
+  EmitNetworkEvent(event);
+}
+
+void Webview::HandleNetworkWebSocketClosed(const std::string& json) {
+  if (!network_capture_enabled_) {
+    return;
+  }
+
+  WebviewNetworkEvent event;
+  event.id = JsonStringValue(json, "requestId");
+  event.observed_at = NowIso8601Utc();
+  event.source = "webSocketClosed";
+  event.method = "WS_CLOSED";
+  event.mime_type = "application/octet-stream";
+  if (event.id.empty()) {
+    event.id = "websocket";
+  }
+  EmitNetworkEvent(event);
+}
+
 void Webview::EmitNetworkEvent(const WebviewNetworkEvent& event) {
   if (network_event_callback_) {
     network_event_callback_(event);
@@ -1285,6 +1607,15 @@ void Webview::CleanupNetworkCapture() {
   network_capture_enabled_ = false;
   pending_network_events_.clear();
   pending_network_event_order_.clear();
+
+  if (network_request_will_be_sent_receiver_ &&
+      event_registrations_.has_network_request_will_be_sent_token_) {
+    network_request_will_be_sent_receiver_->remove_DevToolsProtocolEventReceived(
+        event_registrations_.network_request_will_be_sent_token_);
+  }
+  network_request_will_be_sent_receiver_.reset();
+  event_registrations_.has_network_request_will_be_sent_token_ = false;
+  event_registrations_.network_request_will_be_sent_token_ = {};
 
   if (network_response_received_receiver_ &&
       event_registrations_.has_network_response_received_token_) {
@@ -1304,6 +1635,36 @@ void Webview::CleanupNetworkCapture() {
   event_registrations_.has_network_loading_finished_token_ = false;
   event_registrations_.network_loading_finished_token_ = {};
 
+  if (network_data_received_receiver_ &&
+      event_registrations_.has_network_data_received_token_) {
+    network_data_received_receiver_->remove_DevToolsProtocolEventReceived(
+        event_registrations_.network_data_received_token_);
+  }
+  network_data_received_receiver_.reset();
+  event_registrations_.has_network_data_received_token_ = false;
+  event_registrations_.network_data_received_token_ = {};
+
+  if (network_event_source_message_received_receiver_ &&
+      event_registrations_.has_network_event_source_message_received_token_) {
+    network_event_source_message_received_receiver_
+        ->remove_DevToolsProtocolEventReceived(
+            event_registrations_
+                .network_event_source_message_received_token_);
+  }
+  network_event_source_message_received_receiver_.reset();
+  event_registrations_
+      .has_network_event_source_message_received_token_ = false;
+  event_registrations_.network_event_source_message_received_token_ = {};
+
+  if (network_websocket_created_receiver_ &&
+      event_registrations_.has_network_websocket_created_token_) {
+    network_websocket_created_receiver_->remove_DevToolsProtocolEventReceived(
+        event_registrations_.network_websocket_created_token_);
+  }
+  network_websocket_created_receiver_.reset();
+  event_registrations_.has_network_websocket_created_token_ = false;
+  event_registrations_.network_websocket_created_token_ = {};
+
   if (network_websocket_frame_received_receiver_ &&
       event_registrations_.has_network_websocket_frame_received_token_) {
     network_websocket_frame_received_receiver_
@@ -1313,6 +1674,25 @@ void Webview::CleanupNetworkCapture() {
   network_websocket_frame_received_receiver_.reset();
   event_registrations_.has_network_websocket_frame_received_token_ = false;
   event_registrations_.network_websocket_frame_received_token_ = {};
+
+  if (network_websocket_frame_sent_receiver_ &&
+      event_registrations_.has_network_websocket_frame_sent_token_) {
+    network_websocket_frame_sent_receiver_
+        ->remove_DevToolsProtocolEventReceived(
+            event_registrations_.network_websocket_frame_sent_token_);
+  }
+  network_websocket_frame_sent_receiver_.reset();
+  event_registrations_.has_network_websocket_frame_sent_token_ = false;
+  event_registrations_.network_websocket_frame_sent_token_ = {};
+
+  if (network_websocket_closed_receiver_ &&
+      event_registrations_.has_network_websocket_closed_token_) {
+    network_websocket_closed_receiver_->remove_DevToolsProtocolEventReceived(
+        event_registrations_.network_websocket_closed_token_);
+  }
+  network_websocket_closed_receiver_.reset();
+  event_registrations_.has_network_websocket_closed_token_ = false;
+  event_registrations_.network_websocket_closed_token_ = {};
 
   if (webview_) {
     webview_->CallDevToolsProtocolMethod(L"Network.disable", L"{}", nullptr);
@@ -1351,6 +1731,40 @@ WebviewNetworkCaptureStartResult Webview::StartNetworkCapture() {
   if (FAILED(webview_->CallDevToolsProtocolMethod(L"Network.enable", L"{}",
                                                   nullptr))) {
     return FailNetworkCaptureStart("WebView2 CDP Network.enable failed.");
+  }
+
+  if (!network_request_will_be_sent_receiver_) {
+    if (FAILED(webview_->GetDevToolsProtocolEventReceiver(
+            L"Network.requestWillBeSent",
+            &network_request_will_be_sent_receiver_)) ||
+        !network_request_will_be_sent_receiver_) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP receiver attach failed for Network.requestWillBeSent.");
+    }
+    if (FAILED(network_request_will_be_sent_receiver_
+                   ->add_DevToolsProtocolEventReceived(
+                       Callback<
+                           ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
+                           [this](
+                               ICoreWebView2* sender,
+                               ICoreWebView2DevToolsProtocolEventReceivedEventArgs*
+                                   args) -> HRESULT {
+                             wil::unique_cotaskmem_string json_args;
+                             if (args->get_ParameterObjectAsJson(&json_args) ==
+                                 S_OK) {
+                               HandleNetworkRequestWillBeSent(
+                                   util::Utf8FromUtf16(json_args.get()));
+                             }
+                             return S_OK;
+                           })
+                           .Get(),
+                       &event_registrations_
+                            .network_request_will_be_sent_token_))) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP event subscription failed for "
+          "Network.requestWillBeSent.");
+    }
+    event_registrations_.has_network_request_will_be_sent_token_ = true;
   }
 
   if (!network_response_received_receiver_) {
@@ -1418,6 +1832,108 @@ WebviewNetworkCaptureStartResult Webview::StartNetworkCapture() {
     event_registrations_.has_network_loading_finished_token_ = true;
   }
 
+  if (!network_data_received_receiver_) {
+    if (FAILED(webview_->GetDevToolsProtocolEventReceiver(
+            L"Network.dataReceived", &network_data_received_receiver_)) ||
+        !network_data_received_receiver_) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP receiver attach failed for Network.dataReceived.");
+    }
+    if (FAILED(network_data_received_receiver_
+                   ->add_DevToolsProtocolEventReceived(
+                       Callback<
+                           ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
+                           [this](
+                               ICoreWebView2* sender,
+                               ICoreWebView2DevToolsProtocolEventReceivedEventArgs*
+                                   args) -> HRESULT {
+                             wil::unique_cotaskmem_string json_args;
+                             if (args->get_ParameterObjectAsJson(&json_args) ==
+                                 S_OK) {
+                               HandleNetworkDataReceived(
+                                   util::Utf8FromUtf16(json_args.get()));
+                             }
+                             return S_OK;
+                           })
+                           .Get(),
+                       &event_registrations_
+                            .network_data_received_token_))) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP event subscription failed for Network.dataReceived.");
+    }
+    event_registrations_.has_network_data_received_token_ = true;
+  }
+
+  if (!network_event_source_message_received_receiver_) {
+    if (FAILED(webview_->GetDevToolsProtocolEventReceiver(
+            L"Network.eventSourceMessageReceived",
+            &network_event_source_message_received_receiver_)) ||
+        !network_event_source_message_received_receiver_) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP receiver attach failed for "
+          "Network.eventSourceMessageReceived.");
+    }
+    if (FAILED(network_event_source_message_received_receiver_
+                   ->add_DevToolsProtocolEventReceived(
+                       Callback<
+                           ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
+                           [this](
+                               ICoreWebView2* sender,
+                               ICoreWebView2DevToolsProtocolEventReceivedEventArgs*
+                                   args) -> HRESULT {
+                             wil::unique_cotaskmem_string json_args;
+                             if (args->get_ParameterObjectAsJson(&json_args) ==
+                                 S_OK) {
+                               HandleNetworkEventSourceMessageReceived(
+                                   util::Utf8FromUtf16(json_args.get()));
+                             }
+                             return S_OK;
+                           })
+                           .Get(),
+                       &event_registrations_
+                            .network_event_source_message_received_token_))) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP event subscription failed for "
+          "Network.eventSourceMessageReceived.");
+    }
+    event_registrations_
+        .has_network_event_source_message_received_token_ = true;
+  }
+
+  if (!network_websocket_created_receiver_) {
+    if (FAILED(webview_->GetDevToolsProtocolEventReceiver(
+            L"Network.webSocketCreated",
+            &network_websocket_created_receiver_)) ||
+        !network_websocket_created_receiver_) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP receiver attach failed for Network.webSocketCreated.");
+    }
+    if (FAILED(network_websocket_created_receiver_
+                   ->add_DevToolsProtocolEventReceived(
+                       Callback<
+                           ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
+                           [this](
+                               ICoreWebView2* sender,
+                               ICoreWebView2DevToolsProtocolEventReceivedEventArgs*
+                                   args) -> HRESULT {
+                             wil::unique_cotaskmem_string json_args;
+                             if (args->get_ParameterObjectAsJson(&json_args) ==
+                                 S_OK) {
+                               HandleNetworkWebSocketCreated(
+                                   util::Utf8FromUtf16(json_args.get()));
+                             }
+                             return S_OK;
+                           })
+                           .Get(),
+                       &event_registrations_
+                            .network_websocket_created_token_))) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP event subscription failed for "
+          "Network.webSocketCreated.");
+    }
+    event_registrations_.has_network_websocket_created_token_ = true;
+  }
+
   if (!network_websocket_frame_received_receiver_) {
     if (FAILED(webview_->GetDevToolsProtocolEventReceiver(
             L"Network.webSocketFrameReceived",
@@ -1451,6 +1967,75 @@ WebviewNetworkCaptureStartResult Webview::StartNetworkCapture() {
           "Network.webSocketFrameReceived.");
     }
     event_registrations_.has_network_websocket_frame_received_token_ = true;
+  }
+
+  if (!network_websocket_frame_sent_receiver_) {
+    if (FAILED(webview_->GetDevToolsProtocolEventReceiver(
+            L"Network.webSocketFrameSent",
+            &network_websocket_frame_sent_receiver_)) ||
+        !network_websocket_frame_sent_receiver_) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP receiver attach failed for "
+          "Network.webSocketFrameSent.");
+    }
+    if (FAILED(network_websocket_frame_sent_receiver_
+                   ->add_DevToolsProtocolEventReceived(
+                       Callback<
+                           ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
+                           [this](
+                               ICoreWebView2* sender,
+                               ICoreWebView2DevToolsProtocolEventReceivedEventArgs*
+                                   args) -> HRESULT {
+                             wil::unique_cotaskmem_string json_args;
+                             if (args->get_ParameterObjectAsJson(&json_args) ==
+                                 S_OK) {
+                               HandleNetworkWebSocketFrameSent(
+                                   util::Utf8FromUtf16(json_args.get()));
+                             }
+                             return S_OK;
+                           })
+                           .Get(),
+                       &event_registrations_
+                            .network_websocket_frame_sent_token_))) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP event subscription failed for "
+          "Network.webSocketFrameSent.");
+    }
+    event_registrations_.has_network_websocket_frame_sent_token_ = true;
+  }
+
+  if (!network_websocket_closed_receiver_) {
+    if (FAILED(webview_->GetDevToolsProtocolEventReceiver(
+            L"Network.webSocketClosed",
+            &network_websocket_closed_receiver_)) ||
+        !network_websocket_closed_receiver_) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP receiver attach failed for Network.webSocketClosed.");
+    }
+    if (FAILED(network_websocket_closed_receiver_
+                   ->add_DevToolsProtocolEventReceived(
+                       Callback<
+                           ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
+                           [this](
+                               ICoreWebView2* sender,
+                               ICoreWebView2DevToolsProtocolEventReceivedEventArgs*
+                                   args) -> HRESULT {
+                             wil::unique_cotaskmem_string json_args;
+                             if (args->get_ParameterObjectAsJson(&json_args) ==
+                                 S_OK) {
+                               HandleNetworkWebSocketClosed(
+                                   util::Utf8FromUtf16(json_args.get()));
+                             }
+                             return S_OK;
+                           })
+                           .Get(),
+                       &event_registrations_
+                            .network_websocket_closed_token_))) {
+      return FailNetworkCaptureStart(
+          "WebView2 CDP event subscription failed for "
+          "Network.webSocketClosed.");
+    }
+    event_registrations_.has_network_websocket_closed_token_ = true;
   }
 
   return {true, ""};

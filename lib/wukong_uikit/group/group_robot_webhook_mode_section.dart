@@ -28,25 +28,16 @@ class GroupRobotWebhookModeSection extends StatelessWidget {
     final canEdit = !isBusy && onModeChanged != null;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 18, 15, 18),
+      padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '回调模式',
+            '接入方式',
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
               color: WKColors.colorDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '可在群聊内接收回调与官方回调之间切换，按需选择接入方式。',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.5,
-              color: WKColors.color999,
             ),
           ),
           const SizedBox(height: 8),
@@ -58,28 +49,29 @@ class GroupRobotWebhookModeSection extends StatelessWidget {
               }
               onModeChanged?.call(value);
             },
-            child: Column(
+            child: Row(
               children: [
-                RadioListTile<GroupRobotWebhookMode>(
-                  key: const ValueKey('group-robot-webhook-mode-im-generated'),
-                  value: GroupRobotWebhookMode.imGenerated,
-                  dense: true,
-                  enabled: canEdit,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(GroupRobotWebhookMode.imGenerated.label),
-                  subtitle: const Text(
-                    '使用当前页面生成的回调地址与加签密钥接收消息',
+                Expanded(
+                  child: _WebhookModeOption(
+                    key: const ValueKey(
+                      'group-robot-webhook-mode-im-generated',
+                    ),
+                    value: GroupRobotWebhookMode.imGenerated,
+                    selected: mode == GroupRobotWebhookMode.imGenerated,
+                    enabled: canEdit,
+                    onTap: () =>
+                        onModeChanged?.call(GroupRobotWebhookMode.imGenerated),
                   ),
                 ),
-                RadioListTile<GroupRobotWebhookMode>(
-                  key: const ValueKey('group-robot-webhook-mode-official'),
-                  value: GroupRobotWebhookMode.official,
-                  dense: true,
-                  enabled: canEdit,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(GroupRobotWebhookMode.official.label),
-                  subtitle: Text(
-                    '手动填写$providerName官方回调地址与密钥进行接入',
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _WebhookModeOption(
+                    key: const ValueKey('group-robot-webhook-mode-official'),
+                    value: GroupRobotWebhookMode.official,
+                    selected: mode == GroupRobotWebhookMode.official,
+                    enabled: canEdit,
+                    onTap: () =>
+                        onModeChanged?.call(GroupRobotWebhookMode.official),
                   ),
                 ),
               ],
@@ -93,11 +85,12 @@ class GroupRobotWebhookModeSection extends StatelessWidget {
               enabled: !isBusy,
               autocorrect: false,
               decoration: const InputDecoration(
-                labelText: '官方回调地址',
+                labelText: '官方 Webhook',
                 hintText: 'https://',
                 border: OutlineInputBorder(),
                 filled: true,
                 fillColor: WKColors.homeBg,
+                isDense: true,
               ),
             ),
             const SizedBox(height: 12),
@@ -107,11 +100,12 @@ class GroupRobotWebhookModeSection extends StatelessWidget {
               enabled: !isBusy,
               autocorrect: false,
               decoration: const InputDecoration(
-                labelText: '官方密钥（可选）',
+                labelText: '加签密钥（可选）',
                 border: OutlineInputBorder(),
-                hintText: '如果官方机器人启用了签名，请填写对应加签密钥',
+                hintText: '启用签名时填写',
                 filled: true,
                 fillColor: WKColors.homeBg,
+                isDense: true,
               ),
             ),
             const SizedBox(height: 8),
@@ -125,6 +119,62 @@ class GroupRobotWebhookModeSection extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _WebhookModeOption extends StatelessWidget {
+  final GroupRobotWebhookMode value;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _WebhookModeOption({
+    super.key,
+    required this.value,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? WKColors.brand50 : WKColors.homeBg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? WKColors.brand500 : WKColors.colorLine,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Radio<GroupRobotWebhookMode>(
+              value: value,
+              enabled: enabled,
+              visualDensity: VisualDensity.compact,
+            ),
+            Flexible(
+              child: Text(
+                value.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: enabled ? WKColors.colorDark : WKColors.color999,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

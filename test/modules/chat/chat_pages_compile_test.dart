@@ -7,7 +7,9 @@ import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/modules/chat/message_forwarding.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_gateway.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_providers.dart';
+import 'package:wukong_im_app/modules/chat/widgets/chat_pinned_message_banner.dart';
 import 'package:wukong_im_app/modules/search/presentation/message_record_search_page.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 import 'package:wukong_im_app/wukong_uikit/chat/message_long_press_menu.dart';
 import 'package:wukong_im_app/wukong_uikit/user/user_detail_page.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -115,6 +117,60 @@ void main() {
 
     expect(find.byType(MessageRecordSearchPage), findsOneWidget);
   });
+
+  testWidgets(
+    'pinned message banner uses liquid glass styling and keeps actions',
+    (tester) async {
+      var tapCount = 0;
+      var clearCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatPinnedMessageBanner(
+              data: const ChatPinnedMessageBannerData(
+                previewText: 'Pinned body',
+                count: 2,
+              ),
+              onTap: () => tapCount += 1,
+              onClearAll: () => clearCount += 1,
+            ),
+          ),
+        ),
+      );
+
+      final container = tester.widget<Container>(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey<String>('chat-pinned-banner')),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      final decoration = container.decoration as BoxDecoration;
+      final gradient = decoration.gradient as LinearGradient;
+
+      expect(gradient.colors, <Color>[
+        LiquidGlassColors.primary2.withValues(alpha: 0.10),
+        LiquidGlassColors.primary.withValues(alpha: 0.08),
+      ]);
+      expect(decoration.borderRadius, LiquidGlassRadii.lg);
+      expect(
+        decoration.border,
+        Border.all(color: LiquidGlassColors.primary2.withValues(alpha: 0.15)),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('chat-pinned-banner')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('chat-pinned-clear-all')),
+      );
+
+      expect(tapCount, 1);
+      expect(clearCount, 1);
+    },
+  );
 }
 
 class _EmptyMessageListNotifier extends MessageListNotifier {
@@ -159,6 +215,7 @@ class _CompileSafeChatSceneGateway extends ChatSceneGateway {
     required String channelId,
     required int channelType,
     String? channelName,
+    int? expireSeconds,
   }) async {}
 
   @override

@@ -1,9 +1,17 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/data/providers/channel_provider.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
+import 'package:wukong_im_app/data/providers/user_provider.dart';
+import 'package:wukong_im_app/modules/home/home_surface_kernel.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_list_page.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_list_item_loader.dart';
+import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
+import 'package:wukong_im_app/service/im/im_service.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_panel.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
+import 'package:wukong_im_app/widgets/wk_main_top_bar.dart';
 import 'package:wukong_im_app/wukong_base/msg/msg_content_type.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -320,6 +328,252 @@ void main() {
     expect(builds['u_1001'], greaterThan(1));
     expect(builds['u_1002'], 1);
   });
+
+  testWidgets('embedded conversation list uses liquid surface search chrome', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        conversationProvider.overrideWith(
+          (ref) => ConversationNotifier.forTest(const <WKUIConversationMsg>[]),
+        ),
+        friendListProvider.overrideWith(
+          (ref) => FriendListNotifier(loadOnInit: false),
+        ),
+        customerServiceConversationAccountsProvider.overrideWith(
+          (ref) async => const [],
+        ),
+        myGroupListProvider.overrideWith(
+          (ref) => MyGroupListNotifier(loadOnInit: false),
+        ),
+        homeSurfaceKernelProvider.overrideWithValue(HomeSurfaceKernel()),
+        imServiceProvider.overrideWith(
+          (ref) => _ConversationListTestIMService(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: SizedBox(
+            width: 340,
+            height: 640,
+            child: ConversationListPage(embedded: true),
+          ),
+        ),
+      ),
+    );
+
+    final embeddedMaterial = tester.widget<Material>(
+      find.byKey(const ValueKey<String>('conversation-list-embedded')),
+    );
+    expect(embeddedMaterial.color, LiquidGlassColors.surfaceSolid);
+
+    final searchBar = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('conversation-list-search-bar')),
+    );
+    final decoration = searchBar.decoration! as BoxDecoration;
+    expect(decoration.color, LiquidGlassColors.surfaceSolid);
+    expect(decoration.borderRadius, LiquidGlassRadii.pill);
+    expect(decoration.border, Border.all(color: LiquidGlassColors.border));
+    expect(
+      find.byKey(const ValueKey<String>('conversation-list-liquid-header')),
+      findsOneWidget,
+    );
+    expect(find.text('消息'), findsOneWidget);
+    expect(find.byType(WKMainTopBar), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('conversation-list-liquid-top-menu')),
+      findsOneWidget,
+    );
+    expect(find.byType(LiquidGlassPillButton), findsOneWidget);
+  });
+
+  testWidgets('embedded conversation list uses dark liquid surface chrome', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        conversationProvider.overrideWith(
+          (ref) => ConversationNotifier.forTest(const <WKUIConversationMsg>[]),
+        ),
+        friendListProvider.overrideWith(
+          (ref) => FriendListNotifier(loadOnInit: false),
+        ),
+        customerServiceConversationAccountsProvider.overrideWith(
+          (ref) async => const [],
+        ),
+        myGroupListProvider.overrideWith(
+          (ref) => MyGroupListNotifier(loadOnInit: false),
+        ),
+        homeSurfaceKernelProvider.overrideWithValue(HomeSurfaceKernel()),
+        imServiceProvider.overrideWith(
+          (ref) => _ConversationListTestIMService(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: ThemeData.dark(),
+          home: const SizedBox(
+            width: 340,
+            height: 640,
+            child: ConversationListPage(embedded: true),
+          ),
+        ),
+      ),
+    );
+
+    final embeddedMaterial = tester.widget<Material>(
+      find.byKey(const ValueKey<String>('conversation-list-embedded')),
+    );
+    expect(embeddedMaterial.color, LiquidGlassColors.darkSurfaceSolid);
+
+    final searchBar = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('conversation-list-search-bar')),
+    );
+    final decoration = searchBar.decoration! as BoxDecoration;
+    expect(decoration.color, LiquidGlassColors.darkSurfaceSolid);
+    expect(decoration.border, Border.all(color: LiquidGlassColors.darkBorder));
+
+    final headerTitle = tester.widget<Text>(find.text('消息'));
+    expect(headerTitle.style?.color, LiquidGlassColors.darkText);
+
+    final searchHint = tester.widget<Text>(find.text('搜索'));
+    expect(searchHint.style?.color, LiquidGlassColors.darkTextSecondary);
+
+    final headerIcon = tester.widget<Icon>(find.byIcon(Icons.add_rounded).last);
+    expect(headerIcon.color, LiquidGlassColors.darkText);
+
+    expect(
+      find.byKey(const ValueKey<String>('conversation-list-liquid-top-menu')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('embedded conversation header disables title switch motion', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: [
+        conversationProvider.overrideWith(
+          (ref) => ConversationNotifier.forTest(const <WKUIConversationMsg>[]),
+        ),
+        friendListProvider.overrideWith(
+          (ref) => FriendListNotifier(loadOnInit: false),
+        ),
+        customerServiceConversationAccountsProvider.overrideWith(
+          (ref) async => const [],
+        ),
+        myGroupListProvider.overrideWith(
+          (ref) => MyGroupListNotifier(loadOnInit: false),
+        ),
+        homeSurfaceKernelProvider.overrideWithValue(HomeSurfaceKernel()),
+        imServiceProvider.overrideWith(
+          (ref) => _ConversationListTestIMService(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: MediaQuery(
+            data: MediaQueryData(disableAnimations: true),
+            child: SizedBox(
+              width: 340,
+              height: 640,
+              child: ConversationListPage(embedded: true),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final switcher = tester.widget<AnimatedSwitcher>(
+      find.byKey(
+        const ValueKey<String>('conversation-list-liquid-title-switcher'),
+      ),
+    );
+    expect(switcher.duration, Duration.zero);
+  });
+
+  testWidgets(
+    'embedded conversation list uses readable selection header copy',
+    (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          conversationProvider.overrideWith(
+            (ref) => ConversationNotifier.forTest(<WKUIConversationMsg>[
+              _buildConversation(
+                channelId: 'u_selectable',
+                channelType: WKChannelType.personal,
+                unreadCount: 0,
+                lastMsgTimestamp: 1000,
+                clientMsgNo: 'client_selectable',
+              ),
+            ]),
+          ),
+          friendListProvider.overrideWith(
+            (ref) => FriendListNotifier(loadOnInit: false),
+          ),
+          customerServiceConversationAccountsProvider.overrideWith(
+            (ref) async => const [],
+          ),
+          myGroupListProvider.overrideWith(
+            (ref) => MyGroupListNotifier(loadOnInit: false),
+          ),
+          homeSurfaceKernelProvider.overrideWithValue(HomeSurfaceKernel()),
+          imServiceProvider.overrideWith(
+            (ref) => _ConversationListTestIMService(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: SizedBox(
+              width: 340,
+              height: 640,
+              child: ConversationListPage(embedded: true),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('conversation-list-liquid-top-menu')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.playlist_add_check_circle_outlined));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('u_selectable'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('\u5DF2\u9009\u62E9 1 \u9879'), findsOneWidget);
+      expect(find.byTooltip('\u53D6\u6D88\u9009\u62E9'), findsOneWidget);
+      expect(
+        find.byTooltip('\u5220\u9664\u6240\u9009\u4F1A\u8BDD'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('conversation-list-liquid-top-menu')),
+        findsNothing,
+      );
+    },
+  );
 }
 
 class _ConversationListHarness extends ConsumerWidget {
@@ -377,4 +631,19 @@ WKUIConversationMsg _buildConversation({
     ..unreadCount = unreadCount
     ..lastMsgTimestamp = lastMsgTimestamp
     ..clientMsgNo = clientMsgNo;
+}
+
+class _ConversationListTestIMService extends IMService {
+  _ConversationListTestIMService()
+    : super(
+        realtimeRolloutTelemetry: RealtimeRolloutTelemetry(
+          flushInterval: Duration.zero,
+        ),
+      );
+
+  @override
+  Future<bool> init() async => true;
+
+  @override
+  void disconnect({bool isLogout = false}) {}
 }

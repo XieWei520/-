@@ -414,8 +414,7 @@ void main() {
     'group avatar upload keeps returned avatar visible when reload is stale',
     (tester) async {
       const oldAvatar = 'groups/g_task2/avatar-old.png';
-      const newAvatar =
-          'https://infoequity.cn/v1/groups/g_task2/avatar?t=123';
+      const newAvatar = 'https://infoequity.cn/v1/groups/g_task2/avatar?t=123';
       final adapter = _GroupDetailRoutingAdapter(
         groupNo: _groupNo,
         group: _buildGroupJson(role: 1, invite: 0, avatar: oldAvatar),
@@ -576,6 +575,43 @@ void main() {
       await _runAddFlow(tester);
 
       expect(find.textContaining('添加群成员失败'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'add member picker backfills uid-only friends from user profile',
+    (tester) async {
+      const friendUid = 'e7b89b61bf304c73a77f4db6a37a321f';
+      final adapter = _GroupDetailRoutingAdapter(
+        groupNo: _groupNo,
+        group: _buildGroupJson(role: 0, invite: 0),
+        members: _buildMembersJson(currentUid: 'u_member', currentRole: 0),
+        friends: const <Map<String, dynamic>>[
+          <String, dynamic>{'uid': friendUid},
+        ],
+        userProfiles: const <String, Map<String, dynamic>>{
+          friendUid: <String, dynamic>{
+            'uid': friendUid,
+            'name': 'Friend Display Name',
+            'avatar': 'https://example.com/friend.png',
+          },
+        },
+      );
+
+      await _pumpGroupDetailPage(
+        tester,
+        adapter: adapter,
+        currentUid: 'u_member',
+      );
+
+      final addAffordance = _findAddMemberAffordance();
+      expect(addAffordance, findsOneWidget);
+
+      await tester.tap(addAffordance);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Friend Display Name'), findsOneWidget);
+      expect(find.text(friendUid), findsOneWidget);
     },
   );
 }
@@ -754,6 +790,7 @@ class _GroupDetailRoutingAdapter implements HttpClientAdapter {
     required Map<String, dynamic> group,
     required List<Map<String, dynamic>> members,
     required List<Map<String, dynamic>> friends,
+    Map<String, Map<String, dynamic>> userProfiles = const {},
     this.failMembersRequest = false,
     this.failInviteRequest = false,
     this.messageAutoDeleteSeconds = 0,
@@ -763,12 +800,16 @@ class _GroupDetailRoutingAdapter implements HttpClientAdapter {
            .toList(),
        _friends = friends
            .map((friend) => Map<String, dynamic>.from(friend))
-           .toList();
+           .toList(),
+       _userProfiles = userProfiles.map(
+         (uid, profile) => MapEntry(uid, Map<String, dynamic>.from(profile)),
+       );
 
   final String groupNo;
   final Map<String, dynamic> _group;
   final List<Map<String, dynamic>> _members;
   final List<Map<String, dynamic>> _friends;
+  final Map<String, Map<String, dynamic>> _userProfiles;
   final bool failMembersRequest;
   final bool failInviteRequest;
   int messageAutoDeleteSeconds;
@@ -861,6 +902,11 @@ class _GroupDetailRoutingAdapter implements HttpClientAdapter {
   }
 
   Map<String, dynamic> _resolveUserInfo(String uid) {
+    final profile = _userProfiles[uid];
+    if (profile != null) {
+      return <String, dynamic>{'uid': uid, ...profile};
+    }
+
     final member = _members.cast<Map<String, dynamic>?>().firstWhere((item) {
       final map = item ?? const <String, dynamic>{};
       final memberUid =

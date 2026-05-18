@@ -17,7 +17,10 @@ void main() {
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('feishu-shell-test-');
     server = ShellServer(
-      store: ShellStore(File('${tempDir.path}/status.json')),
+      store: ShellStore(
+        File('${tempDir.path}/status.json'),
+        clock: () => DateTime.parse('2026-05-10T12:00:00Z'),
+      ),
       host: InternetAddress.loopbackIPv4,
       port: 0,
       token: 'test-token',
@@ -99,6 +102,263 @@ void main() {
     expect(response.statusCode, HttpStatus.ok);
     expect(json['capture_state'], 'running');
     expect(json['hook_state'], 'healthy');
+  });
+
+  test('POST /routing/sources stores configured media sources', () async {
+    final request = await client.postUrl(baseUri.resolve('/routing/sources'));
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    request.headers.contentType = ContentType.json;
+    request.write(
+      jsonEncode(<String, Object>{
+        'sources': <Map<String, String>>[
+          <String, String>{
+            'conversation_id': 'feed:alpha',
+            'conversation_name': 'Alpha Group',
+          },
+          <String, String>{
+            'conversation_id': '',
+            'conversation_name': 'Beta Group',
+          },
+          <String, String>{'conversation_id': '', 'conversation_name': ''},
+        ],
+      }),
+    );
+
+    final response = await request.close();
+    final body = await utf8.decodeStream(response);
+    final json = jsonDecode(body) as Map<String, dynamic>;
+    final stored = await server.store.load();
+
+    expect(response.statusCode, HttpStatus.ok);
+    expect(json['configured_media_source_count'], 2);
+    expect(stored.probeDiagnostics['configured_media_source_count'], 2);
+    expect(
+      stored.probeDiagnostics['configured_media_sources'],
+      <Map<String, String>>[
+        <String, String>{
+          'conversation_id': 'feed:alpha',
+          'conversation_name': 'Alpha Group',
+        },
+        <String, String>{
+          'conversation_id': '',
+          'conversation_name': 'Beta Group',
+        },
+      ],
+    );
+  });
+
+  test(
+    'store update preserves newer capture state during delayed saves',
+    () async {
+      final stale = (await server.store.load()).copyWith(
+        captureState: 'stopped',
+        runtimeUrl: 'https://www.feishu.cn/messenger/',
+        lastUpdatedAt: DateTime.utc(2026, 5, 10, 11),
+      );
+      await server.store.update(
+        (snapshot) => snapshot.copyWith(
+          captureState: 'running',
+          lastUpdatedAt: DateTime.utc(2026, 5, 10, 11, 0, 1),
+        ),
+        preserveCaptureState: false,
+      );
+
+      await server.store.update((snapshot) {
+        return stale.copyWith(
+          pageTitle: '消息 - 飞书',
+          lastUpdatedAt: DateTime.utc(2026, 5, 10, 11, 0, 2),
+        );
+      });
+
+      final restored = await server.store.load();
+      expect(restored.captureState, 'running');
+      expect(restored.pageTitle, '消息 - 飞书');
+    },
+  );
+
+  test(
+    'store update preserves explicit stopped state during delayed saves',
+    () async {
+      final stale = (await server.store.load()).copyWith(
+        captureState: 'running',
+        runtimeUrl: 'https://www.feishu.cn/messenger/',
+        lastUpdatedAt: DateTime.utc(2026, 5, 10, 11),
+      );
+      await server.store.update(
+        (snapshot) => snapshot.copyWith(
+          captureState: 'stopped',
+          lastUpdatedAt: DateTime.utc(2026, 5, 10, 11, 0, 1),
+        ),
+        preserveCaptureState: false,
+      );
+
+      await server.store.update((snapshot) {
+        return stale.copyWith(
+          pageTitle: '消息 - 飞书',
+          lastUpdatedAt: DateTime.utc(2026, 5, 10, 11, 0, 2),
+        );
+      });
+
+      final restored = await server.store.load();
+      expect(restored.captureState, 'stopped');
+      expect(restored.pageTitle, '消息 - 飞书');
+    },
+  );
+
+  test('store load waits for in-flight snapshot update', () async {
+    final snapshotFile = File('${tempDir.path}/slow-status.json');
+    await snapshotFile.writeAsString(
+      jsonEncode(
+        ShellSnapshot.initial()
+            .copyWith(pageTitle: 'old', lastUpdatedAt: DateTime.utc(2026))
+            .toJson(),
+      ),
+    );
+    final slowStore = _BlockingSaveShellStore(snapshotFile);
+
+    final updateFuture = slowStore.update((snapshot) {
+      return snapshot.copyWith(
+        pageTitle: 'new',
+        lastUpdatedAt: DateTime.utc(2026, 5, 10, 14),
+      );
+    });
+    await slowStore.saveStarted.future;
+
+    final loadFuture = slowStore.load();
+    final completedEarly = await Future.any(<Future<bool>>[
+      loadFuture.then((_) => true),
+      Future<bool>.delayed(const Duration(milliseconds: 20), () => false),
+    ]);
+    expect(completedEarly, isFalse);
+
+    slowStore.releaseSave.complete();
+    await updateFuture;
+
+    final loaded = await loadFuture;
+    expect(loaded.pageTitle, 'new');
+  });
+
+  test(
+    'store save retries when status file is temporarily locked',
+    () async {
+      final snapshotFile = File('${tempDir.path}/locked-status.json');
+      await snapshotFile.writeAsString(
+        jsonEncode(
+          ShellSnapshot.initial()
+              .copyWith(pageTitle: 'old', lastUpdatedAt: DateTime.utc(2026))
+              .toJson(),
+        ),
+      );
+      final lockedFile = await snapshotFile.open(mode: FileMode.append);
+      await lockedFile.lock();
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 80), () async {
+          await lockedFile.unlock();
+          await lockedFile.close();
+        }),
+      );
+
+      final store = ShellStore(snapshotFile);
+      await store.save(
+        ShellSnapshot.initial().copyWith(
+          pageTitle: 'new',
+          lastUpdatedAt: DateTime.utc(2026, 5, 12, 15),
+        ),
+      );
+
+      final loaded = await store.load();
+      expect(loaded.pageTitle, 'new');
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test('store prunes local capture records older than retention', () async {
+    final snapshotFile = File('${tempDir.path}/retention-status.json');
+    final store = ShellStore(
+      snapshotFile,
+      clock: () => DateTime.parse('2026-05-10T12:00:00Z'),
+    );
+
+    await store.save(
+      ShellSnapshot.initial().copyWith(
+        observedMessages: const <ObservedMessageCandidate>[
+          ObservedMessageCandidate(
+            id: 'old_message',
+            conversationId: 'chat_old',
+            conversationName: 'Old Group',
+            senderName: 'Alice',
+            messageType: 'text',
+            text: 'old',
+            observedAt: '2026-05-09T11:59:59Z',
+            captureSource: 'dom_probe',
+          ),
+          ObservedMessageCandidate(
+            id: 'recent_message',
+            conversationId: 'chat_recent',
+            conversationName: 'Recent Group',
+            senderName: 'Bob',
+            messageType: 'text',
+            text: 'recent',
+            observedAt: '2026-05-09T12:00:00Z',
+            captureSource: 'dom_probe',
+          ),
+          ObservedMessageCandidate(
+            id: 'invalid_timestamp_message',
+            conversationId: 'chat_unknown',
+            conversationName: 'Unknown Group',
+            senderName: 'Carol',
+            messageType: 'text',
+            text: 'keep invalid timestamp',
+            observedAt: '',
+            captureSource: 'dom_probe',
+          ),
+        ],
+        recentEvents: const <NormalizedMessageEvent>[
+          NormalizedMessageEvent(
+            eventId: 'old_event',
+            dedupeKey: 'chat_old:msg_old',
+            accountId: '',
+            conversationId: 'chat_old',
+            conversationName: 'Old Group',
+            conversationType: 'unknown',
+            messageId: 'msg_old',
+            senderId: '',
+            senderName: 'Alice',
+            messageType: 'text',
+            text: 'old',
+            sentAt: '',
+            observedAt: '2026-05-09T11:59:59Z',
+            captureSource: 'dom_probe',
+          ),
+          NormalizedMessageEvent(
+            eventId: 'recent_event',
+            dedupeKey: 'chat_recent:msg_recent',
+            accountId: '',
+            conversationId: 'chat_recent',
+            conversationName: 'Recent Group',
+            conversationType: 'unknown',
+            messageId: 'msg_recent',
+            senderId: '',
+            senderName: 'Bob',
+            messageType: 'text',
+            text: 'recent',
+            sentAt: '',
+            observedAt: '2026-05-09T12:00:00Z',
+            captureSource: 'dom_probe',
+          ),
+        ],
+      ),
+    );
+
+    final loaded = await store.load();
+
+    expect(loaded.observedMessages.map((message) => message.id), <String>[
+      'recent_message',
+      'invalid_timestamp_message',
+    ]);
+    expect(loaded.recentEvents.map((event) => event.eventId), <String>[
+      'recent_event',
+    ]);
   });
 
   test('GET /conversations returns observed conversation list', () async {
@@ -696,5 +956,23 @@ Future<void> _waitFor(
       fail('Timed out waiting for $description');
     }
     await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
+class _BlockingSaveShellStore extends ShellStore {
+  _BlockingSaveShellStore(super.snapshotFile);
+
+  final Completer<void> saveStarted = Completer<void>();
+  final Completer<void> releaseSave = Completer<void>();
+  var _blocked = false;
+
+  @override
+  Future<void> save(ShellSnapshot snapshot) async {
+    if (!_blocked && snapshot.pageTitle == 'new') {
+      _blocked = true;
+      saveStarted.complete();
+      await releaseSave.future;
+    }
+    await super.save(snapshot);
   }
 }

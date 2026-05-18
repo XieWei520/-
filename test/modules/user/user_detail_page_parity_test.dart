@@ -10,7 +10,11 @@ import 'package:wukong_im_app/modules/customer_service/customer_service_badge.da
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/modules/vip/vip_badge.dart';
 import 'package:wukong_im_app/modules/vip/vip_guard.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_panel.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 import 'package:wukong_im_app/widgets/wk_avatar.dart';
+import 'package:wukong_im_app/widgets/wk_colors.dart';
+import 'package:wukong_im_app/widgets/wk_sub_page_scaffold.dart';
 import 'package:wukong_im_app/wukong_uikit/user/file_helper_page.dart';
 import 'package:wukong_im_app/wukong_uikit/user/my_info_page.dart';
 import 'package:wukong_im_app/wukong_uikit/user/set_user_remark_page.dart';
@@ -96,6 +100,26 @@ void main() {
     expect(find.text('\u6635\u79f0\uff1a'), findsOneWidget);
     expect(find.text('\u609f\u7a7a\u53f7\uff1a'), findsOneWidget);
     expect(find.text('\u624b\u673a\u901a\u8baf\u5f55'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('user-detail-liquid-shell')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('user-detail-liquid-panel')),
+      findsOneWidget,
+    );
+    expect(find.byType(LiquidGlassPanel), findsAtLeastNWidgets(1));
+    expect(find.byType(WKSubPageScaffold), findsNothing);
+
+    final displayName = tester.widget<Text>(find.text('\u5907\u6ce8Alice'));
+    expect(displayName.style?.color, LiquidGlassColors.text);
+    expect(displayName.style?.color, isNot(WKColors.colorDark));
+    final metadataLabel = tester.widget<Text>(find.text('\u6635\u79f0\uff1a'));
+    expect(metadataLabel.style?.color, LiquidGlassColors.textSecondary);
+    expect(metadataLabel.style?.color, isNot(WKColors.colorDark));
+    final metadataValue = tester.widget<Text>(find.text('Alice'));
+    expect(metadataValue.style?.color, LiquidGlassColors.text);
+    expect(metadataValue.style?.color, isNot(WKColors.colorDark));
 
     final avatar = tester.widget<WKAvatar>(find.byType(WKAvatar).first);
     expect(avatar.size, 50);

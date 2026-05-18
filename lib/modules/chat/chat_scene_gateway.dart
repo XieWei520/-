@@ -23,19 +23,35 @@ typedef SdkSendWithOption =
       WKSendOptions options,
     );
 
+typedef ChatSceneSendMessage =
+    FutureOr<void> Function(WKMessageContent content, WKChannel channel);
+
+typedef ChatSceneSendMessageWithOptions =
+    FutureOr<void> Function(
+      WKMessageContent content,
+      WKChannel channel,
+      WKSendOptions? options,
+    );
+
+const int defaultChatMessageRetentionSeconds = 30 * 24 * 60 * 60;
+
 Future<void> sendPersistentSdkMessage({
   required WKMessageContent content,
   required WKChannel channel,
+  WKSendOptions? options,
   SdkSendWithOption? sendWithOption,
 }) async {
   final sender = sendWithOption ?? WKIM.shared.messageManager.sendWithOption;
-  await Future<void>.sync(() => sender(content, channel, WKSendOptions()));
+  await Future<void>.sync(
+    () => sender(content, channel, options ?? WKSendOptions()),
+  );
 }
 
 WKMsg buildDirectOutgoingMessage({
   required WKMessageContent content,
   required WKChannel channel,
   required String currentUid,
+  int? expireSeconds,
   DateTime? now,
 }) {
   final resolvedNow = now ?? DateTime.now();
@@ -49,6 +65,10 @@ WKMsg buildDirectOutgoingMessage({
     ..status = WKSendMsgResult.sendLoading
     ..timestamp = timestamp
     ..clientSeq = _buildDirectOutgoingClientSeq(resolvedNow);
+  if (expireSeconds != null && expireSeconds > 0) {
+    message.expireTime = expireSeconds;
+    message.expireTimestamp = timestamp + expireSeconds;
+  }
   message.content = encodeDirectOutgoingPayload(content);
   message.orderSeq = timestamp * WKIM.shared.messageManager.wkOrderSeqFactor;
   message.setChannelInfo(channel);
@@ -205,6 +225,7 @@ abstract class ChatSceneGateway {
     required String channelId,
     required int channelType,
     String? channelName,
+    int? expireSeconds,
   });
 
   Future<void> retryMessage(WKMsg message) async {}
@@ -254,8 +275,8 @@ class ApiChatSceneGateway implements ChatSceneGateway {
     MessageApi? messageApi,
     ReactionManager? reactionManager,
     Future<List<WKUIConversationMsg>> Function()? loadConversations,
-    FutureOr<void> Function(WKMessageContent content, WKChannel channel)?
-    sendMessage,
+    ChatSceneSendMessage? sendMessage,
+    ChatSceneSendMessageWithOptions? sendMessageWithOptions,
     FutureOr<void> Function(WKMsg message)? retryMessage,
     Future<void> Function(String clientMsgNo)? deleteLocalMessage,
     FutureOr<void> Function(List<WKMsgExtra> extras)? saveRemoteExtras,
@@ -265,7 +286,7 @@ class ApiChatSceneGateway implements ChatSceneGateway {
        _messageApi = messageApi ?? MessageApi.instance,
        _reactionManager = reactionManager ?? ReactionManager(),
        _loadConversations = loadConversations ?? _defaultLoadConversations,
-       _sendMessage = sendMessage ?? _defaultSendMessage,
+       _sendMessage = _resolveSendMessage(sendMessage, sendMessageWithOptions),
        _retryMessage = retryMessage ?? _defaultRetryMessage,
        _deleteLocalMessage = deleteLocalMessage ?? _defaultDeleteLocalMessage,
        _saveRemoteExtras = saveRemoteExtras ?? _defaultSaveRemoteExtras,
@@ -276,8 +297,7 @@ class ApiChatSceneGateway implements ChatSceneGateway {
   final MessageApi _messageApi;
   final ReactionManager _reactionManager;
   final Future<List<WKUIConversationMsg>> Function() _loadConversations;
-  final FutureOr<void> Function(WKMessageContent content, WKChannel channel)
-  _sendMessage;
+  final ChatSceneSendMessageWithOptions _sendMessage;
   final FutureOr<void> Function(WKMsg message) _retryMessage;
   final Future<void> Function(String clientMsgNo) _deleteLocalMessage;
   final FutureOr<void> Function(List<WKMsgExtra> extras) _saveRemoteExtras;
@@ -288,11 +308,29 @@ class ApiChatSceneGateway implements ChatSceneGateway {
     return WKIM.shared.conversationManager.getAll();
   }
 
+  static ChatSceneSendMessageWithOptions _resolveSendMessage(
+    ChatSceneSendMessage? sendMessage,
+    ChatSceneSendMessageWithOptions? sendMessageWithOptions,
+  ) {
+    if (sendMessageWithOptions != null) {
+      return sendMessageWithOptions;
+    }
+    if (sendMessage != null) {
+      return (content, channel, options) => sendMessage(content, channel);
+    }
+    return _defaultSendMessage;
+  }
+
   static Future<void> _defaultSendMessage(
     WKMessageContent content,
     WKChannel channel,
+    WKSendOptions? options,
   ) async {
-    await sendPersistentSdkMessage(content: content, channel: channel);
+    await sendPersistentSdkMessage(
+      content: content,
+      channel: channel,
+      options: options,
+    );
   }
 
   static Future<void> _defaultDeleteLocalMessage(String clientMsgNo) {
@@ -427,12 +465,16 @@ class ApiChatSceneGateway implements ChatSceneGateway {
     required String channelId,
     required int channelType,
     String? channelName,
+    int? expireSeconds,
   }) async {
     final channel = WKChannel(channelId, channelType);
     if (channelName != null && channelName.trim().isNotEmpty) {
       channel.channelName = channelName.trim();
     }
-    await Future<void>.sync(() => _sendMessage(content, channel));
+    final options =
+        WKSendOptions()
+          ..expire = expireSeconds ?? defaultChatMessageRetentionSeconds;
+    await Future<void>.sync(() => _sendMessage(content, channel, options));
   }
 
   @override
@@ -455,7 +497,13 @@ class ApiChatSceneGateway implements ChatSceneGateway {
           continue;
         }
         pendingSends.add(
-          Future<void>.sync(() => _sendMessage(content, channel)),
+          Future<void>.sync(
+            () => _sendMessage(
+              content,
+              channel,
+              WKSendOptions()..expire = defaultChatMessageRetentionSeconds,
+            ),
+          ),
         );
       }
     }

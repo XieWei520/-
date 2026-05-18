@@ -1,6 +1,9 @@
 import 'package:wukongimfluttersdk/entity/channel.dart';
+import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_screenshot_content.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
+
+import '../../modules/chat/chat_scene_gateway.dart';
 
 /// Service for sending screenshot notification messages.
 ///
@@ -21,6 +24,10 @@ class ScreenshotNotificationService {
   }) async {
     final content = WKScreenshotContent();
     final channel = WKChannel(channelId, channelType);
-    await WKIM.shared.messageManager.sendMessage(content, channel);
+    await WKIM.shared.messageManager.sendWithOption(
+      content,
+      channel,
+      WKSendOptions()..expire = defaultChatMessageRetentionSeconds,
+    );
   }
 }

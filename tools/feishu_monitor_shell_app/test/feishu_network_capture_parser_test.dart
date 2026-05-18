@@ -43,6 +43,48 @@ void main() {
     expect(json, containsPair('body_save_error', ''));
   });
 
+  test('request diagnostics are redacted and never become image candidates', () {
+    final event = FeishuNetworkCaptureEvent(
+      id: 'request-1',
+      observedAt: DateTime.utc(2026, 5, 10, 4, 30),
+      source: FeishuNetworkEventSource.httpRequest,
+      url:
+          'https://imfile.feishucdn.com/static-resource/v1/img.webp?token=secret',
+      method: 'GET',
+      statusCode: 0,
+      mimeType: '',
+      payloadPreview:
+          '{"image_url":"https://imfile.feishucdn.com/static-resource/v1/img.webp?token=secret"}',
+      resourceType: 'Image',
+      documentUrl: 'https://feishu.cn/messenger/?conversation_id=secret',
+      initiatorType: 'script',
+      initiatorUrl: 'https://lf-package.feishucdn.com/obj/app.js?token=secret',
+      initiatorStackUrl:
+          'https://lf-package.feishucdn.com/obj/chunk.js?token=secret',
+      initiatorLineNumber: 42,
+      initiatorColumnNumber: 7,
+      frameId: 'frame-1',
+    );
+
+    final json = event.toRedactedJson();
+    final candidates = parseFeishuNetworkImageCandidates(event);
+
+    expect(json, containsPair('source', 'httpRequest'));
+    expect(json, containsPair('resource_type', 'Image'));
+    expect(
+      json['document_url'].toString(),
+      contains('conversation_id=<redacted>'),
+    );
+    expect(json['initiator_url'].toString(), contains('token=<redacted>'));
+    expect(
+      json['initiator_stack_url'].toString(),
+      contains('token=<redacted>'),
+    );
+    expect(json, containsPair('initiator_line_number', 42));
+    expect(json, containsPair('initiator_column_number', 7));
+    expect(candidates, isEmpty);
+  });
+
   test('image candidate summary preserves quality label', () {
     const groupName = '\u6ee1\u6ee1\u6b63\u80fd\u91cf';
     final candidate = FeishuNetworkImageCandidate(
@@ -157,6 +199,22 @@ void main() {
     expect(parseFeishuNetworkImageCandidates(event), isEmpty);
   });
 
+  test('parser ignores realtime channel diagnostics as image candidates', () {
+    final event = FeishuNetworkCaptureEvent(
+      id: 'ws_sent_1',
+      observedAt: DateTime.utc(2026, 5, 10, 6, 2),
+      source: FeishuNetworkEventSource.webSocketFrameSent,
+      url: 'wss://internal-api-lark-api.feishu.cn/push',
+      method: 'WS_SENT:1',
+      statusCode: 0,
+      mimeType: 'application/octet-stream',
+      payloadPreview:
+          '{"conversation_id":"feed:2e500f14","image_key":"img_v3_abc"}',
+    );
+
+    expect(parseFeishuNetworkImageCandidates(event), isEmpty);
+  });
+
   test('parser records saved direct image responses as candidates', () {
     final event = FeishuNetworkCaptureEvent(
       id: 'evt_image_response',
@@ -189,6 +247,45 @@ void main() {
     expect(candidates.single.bodySize, 12345);
     expect(candidates.single.bodyMimeType, 'image/webp');
   });
+
+  test(
+    'parser carries request diagnostics into saved direct image candidates',
+    () {
+      final event = FeishuNetworkCaptureEvent(
+        id: 'evt_image',
+        observedAt: DateTime.utc(2026, 5, 10, 6, 1),
+        source: FeishuNetworkEventSource.httpResponse,
+        url:
+            'https://internal-api-lark-file.feishu.cn/static-resource/v1/image.webp?token=secret',
+        method: 'GET',
+        statusCode: 200,
+        mimeType: 'image/webp',
+        payloadPreview: '',
+        bodyLocalPath: r'C:\Temp\wukong_feishu_monitor_images\abc.webp',
+        bodySha1: 'abc123',
+        bodySize: 12345,
+        bodyMimeType: 'image/webp',
+        bodySaved: true,
+        resourceType: 'Image',
+        documentUrl: 'https://feishu.cn/messenger/?conversation_id=secret',
+        initiatorType: 'parser',
+        initiatorUrl: 'https://feishu.cn/messenger/?token=secret',
+        frameId: 'frame-1',
+      );
+
+      final candidates = parseFeishuNetworkImageCandidates(event);
+
+      expect(candidates, hasLength(1));
+      final status = candidates.single.toStatusJson();
+      expect(status['request_resource_type'], 'Image');
+      expect(
+        status['request_document_url'],
+        contains('conversation_id=<redacted>'),
+      );
+      expect(status['request_initiator_type'], 'parser');
+      expect(status['request_frame_id'], 'frame-1');
+    },
+  );
 
   test('parser ignores direct frontend static image responses', () {
     final event = FeishuNetworkCaptureEvent(
@@ -254,14 +351,23 @@ void main() {
     expect(parseFeishuNetworkImageCandidates(event), isEmpty);
   });
 
-  test('parser ignores saved direct image responses with negative body size', () {
-    final event = _savedDirectImageEvent('evt_negative_body_size', bodySize: -1);
+  test(
+    'parser ignores saved direct image responses with negative body size',
+    () {
+      final event = _savedDirectImageEvent(
+        'evt_negative_body_size',
+        bodySize: -1,
+      );
 
-    expect(parseFeishuNetworkImageCandidates(event), isEmpty);
-  });
+      expect(parseFeishuNetworkImageCandidates(event), isEmpty);
+    },
+  );
 
   test('parser ignores saved direct image responses with blank local path', () {
-    final event = _savedDirectImageEvent('evt_blank_path', bodyLocalPath: '   ');
+    final event = _savedDirectImageEvent(
+      'evt_blank_path',
+      bodyLocalPath: '   ',
+    );
 
     expect(parseFeishuNetworkImageCandidates(event), isEmpty);
   });

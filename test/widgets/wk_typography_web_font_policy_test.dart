@@ -106,7 +106,9 @@ void main() {
     expect(source, contains('style: Theme.of(context).textTheme.bodyLarge'));
     expect(
       source,
-      contains('fontFamilyFallback: WKTypography.fontFamilyFallback'),
+      matches(
+        RegExp(r'fontFamilyFallback:\s*WKTypography\.fontFamilyFallback'),
+      ),
     );
   });
 }

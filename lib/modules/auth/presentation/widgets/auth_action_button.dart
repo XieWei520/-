@@ -45,6 +45,7 @@ class AuthActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = AuthExperiencePalette.of(context);
     final onTap = isLoading ? null : onPressed;
     final borderRadius = BorderRadius.circular(
       AuthExperienceTokens.actionButtonRadius,
@@ -60,9 +61,7 @@ class AuthActionButton extends StatelessWidget {
             child: CircularProgressIndicator(
               strokeWidth: 2.2,
               valueColor: AlwaysStoppedAnimation<Color>(
-                _isPrimary
-                    ? Colors.white
-                    : AuthExperienceTokens.brandAccentStrong,
+                _isPrimary ? Colors.white : palette.brandAccentStrong,
               ),
             ),
           )
@@ -88,8 +87,8 @@ class AuthActionButton extends StatelessWidget {
             onPressed: onTap,
             style: ElevatedButton.styleFrom(
               elevation: 0,
-              backgroundColor: AuthExperienceTokens.brandAccent,
-              disabledBackgroundColor: AuthExperienceTokens.brandMuted,
+              backgroundColor: palette.brandAccent,
+              disabledBackgroundColor: palette.brandMuted,
               foregroundColor: Colors.white,
               disabledForegroundColor: Colors.white,
               padding:
@@ -102,13 +101,9 @@ class AuthActionButton extends StatelessWidget {
         : OutlinedButton(
             onPressed: onTap,
             style: OutlinedButton.styleFrom(
-              backgroundColor: AuthExperienceTokens.stageShellTop.withValues(
-                alpha: 0.88,
-              ),
-              foregroundColor: AuthExperienceTokens.brandAccentStrong,
-              side: const BorderSide(
-                color: AuthExperienceTokens.stageShellBorder,
-              ),
+              backgroundColor: palette.stageShellTop.withValues(alpha: 0.88),
+              foregroundColor: palette.brandAccentStrong,
+              side: BorderSide(color: palette.stageShellBorder),
               padding:
                   padding ??
                   const EdgeInsets.symmetric(horizontal: 18, vertical: 12),

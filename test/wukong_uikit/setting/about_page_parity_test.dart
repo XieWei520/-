@@ -51,7 +51,7 @@ void main() {
     expect(find.text('wukong_im_app'), findsNothing);
   });
 
-  testWidgets('about page shows readable Xiang ICP filing number', (
+  testWidgets('about page does not show the web ICP filing number', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: AboutPage()));
@@ -59,7 +59,7 @@ void main() {
 
     expect(
       find.textContaining('\u6e58ICP\u59072026016828\u53f7'),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.textContaining('?ICP?2026016828?'), findsNothing);
     expect(
@@ -68,7 +68,7 @@ void main() {
     );
   });
 
-  testWidgets('about page legal footer does not overflow on narrow screens', (
+  testWidgets('about page footer does not overflow on narrow screens', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -82,13 +82,8 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(
       find.byKey(const ValueKey<String>('about-legal-link')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(
-      tester
-          .getRect(find.byKey(const ValueKey<String>('about-legal-link')))
-          .width,
-      lessThanOrEqualTo(320),
-    );
+    expect(find.textContaining('Copyright'), findsOneWidget);
   });
 }

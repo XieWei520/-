@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/entity/channel_member.dart';
@@ -16,6 +17,7 @@ import 'package:wukongimfluttersdk/type/const.dart';
 
 import '../core/cache/media_cache_manager.dart';
 import '../core/config/api_config.dart';
+import '../core/theme/chat_bubble_theme.dart';
 import '../core/utils/avatar_utils.dart';
 import '../data/models/link_preview.dart';
 import '../data/models/wk_custom_content.dart';
@@ -28,6 +30,7 @@ import '../wukong_base/msg/msg_content_type.dart';
 import '../wukong_base/msg/widget/wk_message_reaction.dart' as reaction_widget;
 import '../wukong_base/utils/time_utils.dart';
 import 'local_media_image_provider.dart';
+import 'liquid_glass_tokens.dart';
 import 'robot_message_card.dart';
 import 'wk_avatar.dart';
 import 'wk_colors.dart';
@@ -179,8 +182,8 @@ MessageParticipantInfo resolveMessageParticipantInfo(
       normalizedCurrentUid.isNotEmpty && senderUid == normalizedCurrentUid;
 
   final displayName = _firstNonEmpty([
-    if (isCurrentUserSender) currentUserDisplayName,
     robotIdentity?.displayName,
+    if (isCurrentUserSender) currentUserDisplayName,
     _resolveGroupMemberName(fallbackMember),
     _resolveGroupMemberName(member),
     _resolveChannelName(fallbackChannel),
@@ -193,8 +196,8 @@ MessageParticipantInfo resolveMessageParticipantInfo(
 
   final avatarUrl = _resolveParticipantAvatarUrl(
     _firstNonEmpty([
-      if (isCurrentUserSender) currentUserAvatarUrl,
       robotIdentity?.displayAvatar,
+      if (isCurrentUserSender) currentUserAvatarUrl,
       _resolveGroupMemberAvatar(fallbackMember),
       _resolveGroupMemberAvatar(member),
       fallbackChannel?.avatar.trim(),
@@ -241,7 +244,7 @@ typedef MessageVoiceContentBuilder =
       bool isSelf,
     );
 
-const Color _warmWebBubbleMetaColor = Color(0xFF475569);
+const Color _warmWebBubbleMetaColor = Color(0xB3FFFFFF);
 
 class MessageBubble extends StatelessWidget {
   final ChatMessageViewModel model;
@@ -314,11 +317,14 @@ class MessageBubble extends StatelessWidget {
         message.channelType == WKChannelType.group &&
         resolvedParticipant.displayName.trim().isNotEmpty;
     final bubblePadding = _bubblePaddingFor(effectiveContentType);
-    final bubbleDecoration = _bubbleDecoration(effectiveContentType);
     final useWarmTextColors =
         webStyle && isSelf && _isTextLikeContent(effectiveContentType);
     return LayoutBuilder(
       builder: (context, constraints) {
+        final bubbleDecoration = _bubbleDecoration(
+          context,
+          effectiveContentType,
+        );
         final laneWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
@@ -327,46 +333,59 @@ class MessageBubble extends StatelessWidget {
               ? null
               : onTap,
           onLongPress: onLongPress,
-          onSecondaryTapDown: onSecondaryTapDown,
-          child: Container(
-            key: const ValueKey<String>('message-bubble-body'),
-            constraints: BoxConstraints(
-              maxWidth: _resolveBubbleMaxWidth(
-                laneWidth: laneWidth,
-                effectiveContentType: effectiveContentType,
-              ),
-            ),
-            padding: bubblePadding,
-            decoration: bubbleDecoration,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showPinnedIndicator) ...[
-                  _PinnedMessageIndicator(
-                    isSelf: isSelf,
-                    useWarmTextColors: useWarmTextColors,
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                _buildContent(
-                  context: context,
-                  previewText: model.previewText,
-                  effectiveContentType: effectiveContentType,
-                  useWarmTextColors: useWarmTextColors,
+          child: Listener(
+            onPointerDown: (event) {
+              if (event.buttons != kSecondaryMouseButton) {
+                return;
+              }
+              onSecondaryTapDown?.call(
+                TapDownDetails(
+                  globalPosition: event.position,
+                  localPosition: event.localPosition,
+                  kind: event.kind,
                 ),
-                if (showInlineMeta) ...[
-                  const SizedBox(height: 10),
-                  _CompactMessageStatusBadge(
-                    status: resolvedStatusInfo,
-                    isSelf: isSelf,
-                    timeText: timeText,
-                    insideBubble: true,
+              );
+            },
+            child: Container(
+              key: const ValueKey<String>('message-bubble-body'),
+              constraints: BoxConstraints(
+                maxWidth: _resolveBubbleMaxWidth(
+                  laneWidth: laneWidth,
+                  effectiveContentType: effectiveContentType,
+                ),
+              ),
+              padding: bubblePadding,
+              decoration: bubbleDecoration,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showPinnedIndicator) ...[
+                    _PinnedMessageIndicator(
+                      isSelf: isSelf,
+                      useWarmTextColors: useWarmTextColors,
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  _buildContent(
+                    context: context,
+                    previewText: model.previewText,
+                    effectiveContentType: effectiveContentType,
                     useWarmTextColors: useWarmTextColors,
-                    onRetrySend: onRetrySend,
                   ),
+                  if (showInlineMeta) ...[
+                    const SizedBox(height: 10),
+                    _CompactMessageStatusBadge(
+                      status: resolvedStatusInfo,
+                      isSelf: isSelf,
+                      timeText: timeText,
+                      insideBubble: true,
+                      useWarmTextColors: useWarmTextColors,
+                      onRetrySend: onRetrySend,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
@@ -383,7 +402,7 @@ class MessageBubble extends StatelessWidget {
                 WKAvatar(
                   url: resolvedParticipant.avatarUrl,
                   name: resolvedParticipant.displayName,
-                  size: 40,
+                  size: 38,
                 ),
                 const SizedBox(width: 8),
               ],
@@ -421,7 +440,7 @@ class MessageBubble extends StatelessWidget {
                 WKAvatar(
                   url: resolvedParticipant.avatarUrl,
                   name: resolvedParticipant.displayName,
-                  size: 40,
+                  size: 38,
                 ),
               ],
             ],
@@ -435,7 +454,7 @@ class MessageBubble extends StatelessWidget {
     required double laneWidth,
     required int effectiveContentType,
   }) {
-    final avatarAndGapWidth = 48.0;
+    final avatarAndGapWidth = 46.0;
     final horizontalOuterPadding = 24.0;
     final availableWidth = math.max(
       0,
@@ -451,9 +470,10 @@ class MessageBubble extends StatelessWidget {
             availableWidth,
             webStyle ? WKWebSizes.messageBubbleMaxWidth : availableWidth,
           );
+    final widthRatio = webStyle ? WKWebSizes.messageBubbleWidthRatio : 0.68;
     final desiredWidth = effectiveContentType == MsgContentType.robotCard
         ? upperBound
-        : availableWidth * WKWebSizes.messageBubbleWidthRatio;
+        : availableWidth * widthRatio;
     final lowerBound = math.min(WKWebSizes.messageBubbleMinWidth, upperBound);
     return desiredWidth.clamp(lowerBound, upperBound).toDouble();
   }
@@ -492,59 +512,18 @@ class MessageBubble extends StatelessWidget {
         contentType == MsgContentType.robotCard;
   }
 
-  BoxDecoration _bubbleDecoration(int effectiveContentType) {
+  BoxDecoration _bubbleDecoration(
+    BuildContext context,
+    int effectiveContentType,
+  ) {
     if (effectiveContentType == MsgContentType.robotCard) {
       return const BoxDecoration(color: Colors.transparent);
     }
 
-    if (webStyle && _isTextLikeContent(effectiveContentType)) {
-      return BoxDecoration(
-        color: isSelf ? WKWebColors.actionSoft : WKWebColors.surface,
-        borderRadius: BorderRadius.circular(WKWebRadius.control),
-        border: Border.all(
-          color: isSelf ? WKWebColors.borderWarm : const Color(0xFFFFEDD5),
-        ),
-      );
-    }
-
-    final borderRadius = BorderRadius.only(
-      topLeft: const Radius.circular(22),
-      topRight: const Radius.circular(22),
-      bottomLeft: Radius.circular(isSelf ? 22 : 8),
-      bottomRight: Radius.circular(isSelf ? 8 : 22),
-    );
-
-    if (isSelf) {
-      return BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFF4B8CFF), Color(0xFF1F67E8)],
-        ),
-        borderRadius: borderRadius,
-        border: Border.all(color: const Color(0x33235DDC)),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x1A1F67E8),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      );
-    }
-
-    return BoxDecoration(
-      color: const Color(0xFFFCFCFE),
-      borderRadius: borderRadius,
-      border: Border.all(color: const Color(0xFFE4E9F1)),
-      boxShadow: const <BoxShadow>[
-        BoxShadow(
-          color: Color(0x140F172A),
-          blurRadius: 18,
-          offset: Offset(0, 8),
-        ),
-      ],
-    );
+    final brightness = Theme.of(context).brightness;
+    return isSelf
+        ? ChatBubbleTheme.outgoingDecoration(brightness)
+        : ChatBubbleTheme.incomingDecoration(brightness);
   }
 
   Widget _buildContent({
@@ -557,8 +536,9 @@ class MessageBubble extends StatelessWidget {
     final resolvedContentType =
         effectiveContentType ?? _resolveEffectiveContentType();
     Widget content = switch (resolvedContentType) {
-      MsgContentType.robotCard => _buildRobotCardContent(),
+      MsgContentType.robotCard => _buildRobotCardContent(context),
       WkMessageContentType.text => _buildTextContent(
+        context,
         previewText,
         useWarmTextColors: useWarmTextColors,
       ),
@@ -567,13 +547,17 @@ class MessageBubble extends StatelessWidget {
       WkMessageContentType.sticker => _buildStickerContent(context),
       WkMessageContentType.voice =>
         voiceContentBuilder?.call(context, model, isSelf) ??
-            _buildVoiceContent(),
+            _buildVoiceContent(context),
       WkMessageContentType.video => _buildVideoContent(context),
-      WkMessageContentType.location => _buildLocationContent(),
-      WkMessageContentType.file => _buildFileContent(),
+      WkMessageContentType.location => _buildLocationContent(context),
+      WkMessageContentType.file => _buildFileContent(context),
       WkMessageContentType.card => _buildInteractiveCardContent(),
       MsgContentType.richText => _buildRichTextContent(context),
-      _ => _buildTextContent(previewText, useWarmTextColors: useWarmTextColors),
+      _ => _buildTextContent(
+        context,
+        previewText,
+        useWarmTextColors: useWarmTextColors,
+      ),
     };
 
     if (reply != null) {
@@ -581,7 +565,11 @@ class MessageBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildReplyPreview(reply, useWarmTextColors: useWarmTextColors),
+          _buildReplyPreview(
+            context,
+            reply,
+            useWarmTextColors: useWarmTextColors,
+          ),
           const SizedBox(height: 8),
           content,
         ],
@@ -759,7 +747,11 @@ class MessageBubble extends StatelessWidget {
     return '消息包含敏感词，仅自己可见';
   }
 
-  Widget _buildReplyPreview(WKReply reply, {bool useWarmTextColors = false}) {
+  Widget _buildReplyPreview(
+    BuildContext context,
+    WKReply reply, {
+    bool useWarmTextColors = false,
+  }) {
     final author = (reply.fromName).trim().isNotEmpty
         ? reply.fromName.trim()
         : (reply.fromUID).trim().isNotEmpty
@@ -767,55 +759,78 @@ class MessageBubble extends StatelessWidget {
         : '未知用户';
     final summary = summarizeReply(reply);
 
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final replySurface = dark
+        ? LiquidGlassColors.darkSurface
+        : const Color(0x0F4F46E5);
+    final replyBorder = dark
+        ? LiquidGlassColors.darkBorder
+        : LiquidGlassColors.border;
+    final replyText = dark
+        ? LiquidGlassColors.darkText
+        : LiquidGlassColors.text;
+    final replySecondary = dark
+        ? LiquidGlassColors.darkTextSecondary
+        : LiquidGlassColors.textSecondary;
+    final accentColor = isSelf
+        ? Colors.white.withValues(alpha: 0.40)
+        : (dark ? LiquidGlassColors.darkPrimary : LiquidGlassColors.primary)
+              .withValues(alpha: 0.35);
+
     return Container(
+      key: const ValueKey<String>('message-reply-preview'),
       width: double.infinity,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: useWarmTextColors
-            ? WKWebColors.surfaceSoft
-            : isSelf
-            ? WKColors.white.withValues(alpha: 0.18)
-            : const Color(0xFFF3F6FA),
+        color: isSelf ? Colors.white.withValues(alpha: 0.15) : replySurface,
         borderRadius: BorderRadius.circular(WKRadius.sm),
         border: Border.all(
-          color: useWarmTextColors
-              ? WKWebColors.borderWarm
-              : isSelf
-              ? WKColors.white.withValues(alpha: 0.2)
-              : const Color(0xFFE0E6EE),
+          color: isSelf ? Colors.white.withValues(alpha: 0.18) : replyBorder,
         ),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: [
-          Text(
-            author,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: useWarmTextColors
-                  ? WKWebColors.textPrimary
-                  : isSelf
-                  ? WKColors.sendText
-                  : const Color(0xFF3567C8),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          Container(
+            key: const ValueKey<String>('message-reply-accent-bar'),
+            width: 3,
+            height: 38,
+            decoration: BoxDecoration(
+              color: accentColor,
+              borderRadius: BorderRadius.circular(999),
             ),
           ),
-          const SizedBox(height: 2),
-          _buildEmojiAwareText(
-            summary,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: useWarmTextColors
-                  ? _warmWebBubbleMetaColor
-                  : isSelf
-                  ? WKColors.white.withValues(alpha: 0.78)
-                  : const Color(0xFF707A8D),
-              fontSize: 12,
-              height: 1.25,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  author,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isSelf ? Colors.white : replyText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                _buildEmojiAwareText(
+                  summary,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isSelf
+                        ? Colors.white.withValues(alpha: 0.78)
+                        : replySecondary,
+                    fontSize: 12,
+                    height: 1.25,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -840,13 +855,14 @@ class MessageBubble extends StatelessWidget {
     return Text(text, maxLines: maxLines, overflow: overflow, style: style);
   }
 
-  Widget _buildTextContent(String text, {bool useWarmTextColors = false}) {
+  Widget _buildTextContent(
+    BuildContext context,
+    String text, {
+    bool useWarmTextColors = false,
+  }) {
+    final brightness = Theme.of(context).brightness;
     final textStyle = TextStyle(
-      color: useWarmTextColors
-          ? WKWebColors.textPrimary
-          : isSelf
-          ? WKColors.sendText
-          : WKColors.receiveText,
+      color: ChatBubbleTheme.textColor(isSelf: isSelf, brightness: brightness),
       fontSize: 16.5,
       height: 1.45,
       fontWeight: FontWeight.w500,
@@ -1136,6 +1152,7 @@ class MessageBubble extends StatelessWidget {
             width: mediaSize.width,
             height: mediaSize.height,
             child: _buildStickerAsset(
+              context: context,
               animationKey: animationKey,
               previewKey: previewKey,
               localPath: localPath,
@@ -1230,6 +1247,7 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildStickerAsset({
+    required BuildContext context,
     required String animationKey,
     required String previewKey,
     required String localPath,
@@ -1244,6 +1262,7 @@ class MessageBubble extends StatelessWidget {
       animationKey,
     ]);
     return _buildStickerMediaCandidate(
+      context: context,
       sources: sources,
       index: 0,
       fallbackText: fallbackText,
@@ -1265,17 +1284,19 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget _buildStickerMediaCandidate({
+    required BuildContext context,
     required List<String> sources,
     required int index,
     required String fallbackText,
     required MediaDecodeRequest decodeRequest,
   }) {
     if (index >= sources.length) {
-      return _buildStickerPlaceholder(fallbackText);
+      return _buildStickerPlaceholder(context, fallbackText);
     }
 
     final source = sources[index];
     Widget next() => _buildStickerMediaCandidate(
+      context: context,
       sources: sources,
       index: index + 1,
       fallbackText: fallbackText,
@@ -1320,25 +1341,35 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildStickerPlaceholder(String fallbackText) {
+  Widget _buildStickerPlaceholder(BuildContext context, String fallbackText) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final placeholderSurface = dark
+        ? LiquidGlassColors.darkSurfaceSolid
+        : const Color(0xFFF3F6FA);
+    final placeholderBorder = dark
+        ? LiquidGlassColors.darkBorder
+        : const Color(0xFFE4E9F1);
+    final placeholderText = dark
+        ? LiquidGlassColors.darkPrimary
+        : LiquidGlassColors.primary;
     return Container(
       key: const ValueKey<String>('message-sticker-placeholder'),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: isSelf
             ? Colors.white.withValues(alpha: 0.18)
-            : const Color(0xFFF3F6FA),
+            : placeholderSurface,
         borderRadius: BorderRadius.circular(WKRadius.md),
         border: Border.all(
           color: isSelf
               ? Colors.white.withValues(alpha: 0.24)
-              : const Color(0xFFE4E9F1),
+              : placeholderBorder,
         ),
       ),
       child: Text(
         fallbackText,
         style: TextStyle(
-          color: isSelf ? WKColors.sendText : WKColors.receiveText,
+          color: isSelf ? Colors.white : placeholderText,
           fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
@@ -1346,32 +1377,47 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildVoiceContent() {
+  Widget _buildVoiceContent(BuildContext context) {
     var duration = 0;
     if (message.messageContent is WKVoiceContent) {
       duration = (message.messageContent as WKVoiceContent).timeTrad;
     }
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = dark
+        ? LiquidGlassColors.darkPrimary
+        : LiquidGlassColors.primary;
+    final textColor = dark
+        ? LiquidGlassColors.darkText
+        : LiquidGlassColors.text;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.volume_up_rounded,
-          size: 20,
-          color: isSelf ? WKColors.sendText : WKColors.receiveText,
+        Container(
+          key: const ValueKey<String>('message-voice-play-button'),
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: isSelf ? Colors.white.withValues(alpha: 0.25) : primaryColor,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.volume_up_rounded,
+            size: 18,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(width: 8),
         Text(
           '$duration"',
-          style: TextStyle(
-            color: isSelf ? WKColors.sendText : WKColors.receiveText,
-          ),
+          style: TextStyle(color: isSelf ? Colors.white : textColor),
         ),
       ],
     );
   }
 
-  Widget _buildLocationContent() {
+  Widget _buildLocationContent(BuildContext context) {
     var title = '位置';
     var address = '';
     final payload = model.structuredPayload;
@@ -1387,6 +1433,14 @@ class MessageBubble extends StatelessWidget {
       address = _readStructuredString(payload, const ['address']);
     }
 
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = dark
+        ? LiquidGlassColors.darkText
+        : ChatBubbleTheme.incomingTextLight;
+    final secondaryColor = dark
+        ? LiquidGlassColors.darkTextSecondary
+        : LiquidGlassColors.textSecondary;
+
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 240),
       child: Column(
@@ -1397,7 +1451,7 @@ class MessageBubble extends StatelessWidget {
             children: [
               _buildAttachmentGlyph(
                 WKReferenceAssets.chatFunctionLocation,
-                tint: isSelf ? WKColors.sendText : WKColors.danger,
+                tint: isSelf ? Colors.white : WKColors.danger,
                 size: 22,
               ),
               const SizedBox(width: 8),
@@ -1407,7 +1461,7 @@ class MessageBubble extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: isSelf ? WKColors.sendText : WKColors.receiveText,
+                    color: isSelf ? Colors.white : titleColor,
                     fontWeight: FontWeight.w600,
                     fontSize: 15,
                   ),
@@ -1423,8 +1477,8 @@ class MessageBubble extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: isSelf
-                    ? WKColors.white.withValues(alpha: 0.72)
-                    : WKColors.textSecondary,
+                    ? Colors.white.withValues(alpha: 0.72)
+                    : secondaryColor,
                 fontSize: 12,
               ),
             ),
@@ -1434,7 +1488,7 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildFileContent() {
+  Widget _buildFileContent(BuildContext context) {
     var name = '文件';
     var size = 0;
     final payload = model.structuredPayload;
@@ -1450,45 +1504,70 @@ class MessageBubble extends StatelessWidget {
       size = _readStructuredInt(payload, const ['size']);
     }
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 220),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildAttachmentGlyph(
-            WKReferenceAssets.chatFunctionFile,
-            tint: isSelf ? WKColors.sendText : WKColors.warning,
-            size: 24,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isSelf ? WKColors.sendText : WKColors.receiveText,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-                Text(
-                  _formatFileSize(size),
-                  style: TextStyle(
-                    color: isSelf
-                        ? WKColors.white.withValues(alpha: 0.72)
-                        : WKColors.textSecondary,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fileSurface = dark
+        ? LiquidGlassColors.darkSurfaceSolid
+        : LiquidGlassColors.surfaceSolid;
+    final fileBorder = dark
+        ? LiquidGlassColors.darkBorder
+        : LiquidGlassColors.border;
+    final fileTitle = dark
+        ? LiquidGlassColors.darkText
+        : LiquidGlassColors.text;
+    final fileSecondary = dark
+        ? LiquidGlassColors.darkTextSecondary
+        : LiquidGlassColors.textSecondary;
+
+    return Container(
+      key: const ValueKey<String>('message-file-card'),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isSelf ? Colors.white.withValues(alpha: 0.20) : fileSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelf ? Colors.white.withValues(alpha: 0.15) : fileBorder,
+        ),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 220),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildAttachmentGlyph(
+              WKReferenceAssets.chatFunctionFile,
+              tint: isSelf ? Colors.white : LiquidGlassColors.warning,
+              size: 24,
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isSelf ? Colors.white : fileTitle,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    _formatFileSize(size),
+                    style: TextStyle(
+                      color: isSelf
+                          ? Colors.white.withValues(alpha: 0.72)
+                          : fileSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1562,13 +1641,13 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildRobotCardContent() {
+  Widget _buildRobotCardContent(BuildContext context) {
     final data = resolveRobotCardViewData(
       message,
       structuredPayload: model.structuredPayload,
     );
     if (data == null) {
-      return _buildTextContent(model.previewText);
+      return _buildTextContent(context, model.previewText);
     }
     final timeText = message.timestamp > 0
         ? WKTimeUtils.formatTimeOnly(message.timestamp)
@@ -1670,14 +1749,18 @@ class MessageBubble extends StatelessWidget {
     double size = 24,
   }) {
     final backgroundColor = isSelf
-        ? WKColors.white.withValues(alpha: 0.16)
-        : WKColors.surfaceSoft;
+        ? Colors.white.withValues(alpha: 0.20)
+        : LiquidGlassColors.surfaceSolid;
+    final borderColor = isSelf
+        ? Colors.white.withValues(alpha: 0.15)
+        : LiquidGlassColors.border;
     return Container(
       width: 40,
       height: 40,
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
       ),
       alignment: Alignment.center,
       child: WKReferenceAssets.image(

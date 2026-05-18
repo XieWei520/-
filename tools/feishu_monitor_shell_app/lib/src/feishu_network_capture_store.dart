@@ -6,6 +6,8 @@ import 'feishu_network_forwardable_image_resolver.dart';
 
 class FeishuNetworkCaptureStore {
   static const int _maxResolverDecisions = 20;
+  static const int _maxProbes = 20;
+  static const int _maxRequestDiagnostics = 256;
 
   FeishuNetworkCaptureStore({
     int maxEvents = 50,
@@ -28,6 +30,10 @@ class FeishuNetworkCaptureStore {
       <FeishuNetworkImageAttribution>[];
   final List<Map<String, Object?>> _resolverDecisions =
       <Map<String, Object?>>[];
+  final List<Map<String, Object?>> _probes = <Map<String, Object?>>[];
+  final Map<String, FeishuNetworkCaptureEvent> _requestDiagnostics =
+      <String, FeishuNetworkCaptureEvent>{};
+  final List<String> _requestDiagnosticOrder = <String>[];
 
   String _state = 'running';
   String _lastError = '';
@@ -36,6 +42,7 @@ class FeishuNetworkCaptureStore {
   int _savedImageCount = 0;
   int _attributionCount = 0;
   int _forwardableImageCount = 0;
+  int _probeCount = 0;
   String _lastImageSkipReason = '';
   Map<String, Object?>? _lastForwardableImage;
 
@@ -52,9 +59,63 @@ class FeishuNetworkCaptureStore {
 
   void addEvent(FeishuNetworkCaptureEvent event) {
     _eventCount += 1;
+    if (event.source == FeishuNetworkEventSource.httpRequest) {
+      _rememberRequestDiagnostic(event);
+    }
     _events.add(event);
     _trim(_events, maxEvents);
     _appendDiagnosticsLine(event.toRedactedJson());
+  }
+
+  FeishuNetworkCaptureEvent enrichEventWithRequestDiagnostics(
+    FeishuNetworkCaptureEvent event,
+  ) {
+    if (event.source == FeishuNetworkEventSource.httpRequest) {
+      return event;
+    }
+    final request = _requestDiagnostics[event.id.trim()];
+    if (request == null) {
+      return event;
+    }
+    return FeishuNetworkCaptureEvent(
+      id: event.id,
+      observedAt: event.observedAt,
+      source: event.source,
+      url: event.url,
+      method: event.method,
+      statusCode: event.statusCode,
+      mimeType: event.mimeType,
+      payloadPreview: event.payloadPreview,
+      bodyLocalPath: event.bodyLocalPath,
+      bodySha1: event.bodySha1,
+      bodySize: event.bodySize,
+      bodyMimeType: event.bodyMimeType,
+      bodyBase64Encoded: event.bodyBase64Encoded,
+      bodySaved: event.bodySaved,
+      bodySaveError: event.bodySaveError,
+      resourceType: event.resourceType.trim().isEmpty
+          ? request.resourceType
+          : event.resourceType,
+      documentUrl: event.documentUrl.trim().isEmpty
+          ? request.documentUrl
+          : event.documentUrl,
+      initiatorType: event.initiatorType.trim().isEmpty
+          ? request.initiatorType
+          : event.initiatorType,
+      initiatorUrl: event.initiatorUrl.trim().isEmpty
+          ? request.initiatorUrl
+          : event.initiatorUrl,
+      initiatorStackUrl: event.initiatorStackUrl.trim().isEmpty
+          ? request.initiatorStackUrl
+          : event.initiatorStackUrl,
+      initiatorLineNumber: event.initiatorLineNumber == 0
+          ? request.initiatorLineNumber
+          : event.initiatorLineNumber,
+      initiatorColumnNumber: event.initiatorColumnNumber == 0
+          ? request.initiatorColumnNumber
+          : event.initiatorColumnNumber,
+      frameId: event.frameId.trim().isEmpty ? request.frameId : event.frameId,
+    );
   }
 
   void addCandidate(FeishuNetworkImageCandidate candidate) {
@@ -73,6 +134,17 @@ class FeishuNetworkCaptureStore {
     _appendDiagnosticsLine(<String, Object?>{
       'diagnostic_type': 'image_attribution',
       ...attribution.toStatusJson(),
+    });
+  }
+
+  void addProbe(Map<String, Object?> probe) {
+    _probeCount += 1;
+    final copy = _deepJsonCopy(probe) as Map<String, Object?>;
+    _probes.add(copy);
+    _trim(_probes, _maxProbes);
+    _appendDiagnosticsLine(<String, Object?>{
+      'diagnostic_type': 'network_probe',
+      ...copy,
     });
   }
 
@@ -124,6 +196,13 @@ class FeishuNetworkCaptureStore {
           ? null
           : _deepJsonCopy(_lastForwardableImage),
       'network_last_image_skip_reason': _lastImageSkipReason,
+      'network_probe_count': _probeCount,
+      'network_recent_probes': _probes
+          .map((probe) => _deepJsonCopy(probe) as Map<String, Object?>)
+          .toList(growable: false),
+      'network_last_probe': _probes.isEmpty
+          ? null
+          : _deepJsonCopy(_probes.last) as Map<String, Object?>,
       'network_recent_image_resolver_decisions': _resolverDecisions
           .map((decision) => _deepJsonCopy(decision) as Map<String, Object?>)
           .toList(growable: false),
@@ -162,7 +241,26 @@ class FeishuNetworkCaptureStore {
     if (decision != null) {
       return _deepJsonCopy(decision) as Map<String, Object?>;
     }
-    return const <String, Object?>{};
+    final reason = resolution.skipReason.trim();
+    return reason.isEmpty
+        ? const <String, Object?>{}
+        : <String, Object?>{'reason': reason};
+  }
+
+  void _rememberRequestDiagnostic(FeishuNetworkCaptureEvent event) {
+    final id = event.id.trim();
+    if (id.isEmpty) {
+      return;
+    }
+    final isNew = !_requestDiagnostics.containsKey(id);
+    _requestDiagnostics[id] = event;
+    if (isNew) {
+      _requestDiagnosticOrder.add(id);
+    }
+    while (_requestDiagnosticOrder.length > _maxRequestDiagnostics) {
+      final oldest = _requestDiagnosticOrder.removeAt(0);
+      _requestDiagnostics.remove(oldest);
+    }
   }
 }
 

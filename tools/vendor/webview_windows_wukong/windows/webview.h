@@ -51,6 +51,14 @@ struct WebviewNetworkEvent {
   int status_code = 0;
   std::string mime_type;
   std::string payload_preview;
+  std::string resource_type;
+  std::string document_url;
+  std::string initiator_type;
+  std::string initiator_url;
+  std::string initiator_stack_url;
+  int initiator_line_number = 0;
+  int initiator_column_number = 0;
+  std::string frame_id;
   std::string body_local_path;
   std::string body_sha1;
   int64_t body_size = 0;
@@ -113,9 +121,15 @@ struct EventRegistrations {
   bool has_web_message_received_token_ = false;
   bool has_permission_requested_token_ = false;
   bool has_devtools_protocol_event_token_ = false;
+  bool has_network_request_will_be_sent_token_ = false;
   bool has_network_response_received_token_ = false;
   bool has_network_loading_finished_token_ = false;
+  bool has_network_data_received_token_ = false;
+  bool has_network_event_source_message_received_token_ = false;
+  bool has_network_websocket_created_token_ = false;
   bool has_network_websocket_frame_received_token_ = false;
+  bool has_network_websocket_frame_sent_token_ = false;
+  bool has_network_websocket_closed_token_ = false;
   bool has_new_windows_requested_token_ = false;
   bool has_contains_fullscreen_element_changed_token_ = false;
   EventRegistrationToken source_changed_token_{};
@@ -129,9 +143,15 @@ struct EventRegistrations {
   EventRegistrationToken web_message_received_token_{};
   EventRegistrationToken permission_requested_token_{};
   EventRegistrationToken devtools_protocol_event_token_{};
+  EventRegistrationToken network_request_will_be_sent_token_{};
   EventRegistrationToken network_response_received_token_{};
   EventRegistrationToken network_loading_finished_token_{};
+  EventRegistrationToken network_data_received_token_{};
+  EventRegistrationToken network_event_source_message_received_token_{};
+  EventRegistrationToken network_websocket_created_token_{};
   EventRegistrationToken network_websocket_frame_received_token_{};
+  EventRegistrationToken network_websocket_frame_sent_token_{};
+  EventRegistrationToken network_websocket_closed_token_{};
   EventRegistrationToken new_windows_requested_token_{};
   EventRegistrationToken contains_fullscreen_element_changed_token_{};
 };
@@ -275,11 +295,23 @@ class Webview {
   wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
       devtools_protocol_event_receiver_;
   wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
+      network_request_will_be_sent_receiver_;
+  wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
       network_response_received_receiver_;
   wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
       network_loading_finished_receiver_;
   wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
+      network_data_received_receiver_;
+  wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
+      network_event_source_message_received_receiver_;
+  wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
+      network_websocket_created_receiver_;
+  wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
       network_websocket_frame_received_receiver_;
+  wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
+      network_websocket_frame_sent_receiver_;
+  wil::com_ptr<ICoreWebView2DevToolsProtocolEventReceiver>
+      network_websocket_closed_receiver_;
   wil::com_ptr<ICoreWebView2Settings2> settings2_;
   POINT last_cursor_pos_ = {0, 0};
   VirtualKeyState virtual_keys_;
@@ -327,9 +359,15 @@ class Webview {
   WebviewNetworkCaptureStartResult FailNetworkCaptureStart(
       const std::string& message);
   void StorePendingNetworkEvent(const WebviewNetworkEvent& event);
+  void HandleNetworkRequestWillBeSent(const std::string& json);
   void HandleNetworkResponseReceived(const std::string& json);
   void HandleNetworkLoadingFinished(const std::string& json);
+  void HandleNetworkDataReceived(const std::string& json);
+  void HandleNetworkEventSourceMessageReceived(const std::string& json);
+  void HandleNetworkWebSocketCreated(const std::string& json);
   void HandleNetworkWebSocketFrameReceived(const std::string& json);
+  void HandleNetworkWebSocketFrameSent(const std::string& json);
+  void HandleNetworkWebSocketClosed(const std::string& json);
   void EmitNetworkEvent(const WebviewNetworkEvent& event);
   void SendScroll(double offset, bool horizontal);
 };

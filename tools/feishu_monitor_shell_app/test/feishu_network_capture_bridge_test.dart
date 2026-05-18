@@ -171,6 +171,51 @@ void main() {
     expect(received.single.bodySaveError, isEmpty);
   });
 
+  test('bridge parses realtime channel diagnostics', () async {
+    final bridge = FeishuNetworkCaptureBridge();
+    StreamSubscription<FeishuNetworkCaptureEvent>? subscription;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(bridge.channel, (call) async {
+          if (call.method == 'stop') {
+            return <String, Object>{'state': 'stopped'};
+          }
+          return null;
+        });
+    addTearDown(() async {
+      await subscription?.cancel();
+      await bridge.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(bridge.channel, null);
+    });
+
+    final received = <FeishuNetworkCaptureEvent>[];
+    subscription = bridge.events.listen(received.add);
+
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          bridge.channel.name,
+          bridge.channel.codec.encodeMethodCall(
+            const MethodCall('networkEvent', <String, Object>{
+              'id': 'ws_1',
+              'observed_at': '2026-05-10T06:00:00Z',
+              'source': 'webSocketCreated',
+              'url': 'wss://internal-api-lark-api.feishu.cn/ws?token=secret',
+              'method': 'WS_CREATED',
+              'status_code': 0,
+              'mime_type': 'application/octet-stream',
+              'payload_preview': '',
+            }),
+          ),
+          (_) {},
+        );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(received, hasLength(1));
+    expect(received.single.source, FeishuNetworkEventSource.webSocketCreated);
+    expect(received.single.url, contains('internal-api-lark-api.feishu.cn'));
+  });
+
   test('bridge parses string response body bool metadata', () async {
     final bridge = FeishuNetworkCaptureBridge();
     StreamSubscription<FeishuNetworkCaptureEvent>? subscription;
@@ -217,6 +262,73 @@ void main() {
     expect(received, hasLength(1));
     expect(received.single.bodyBase64Encoded, isTrue);
     expect(received.single.bodySaved, isTrue);
+  });
+
+  test('bridge preserves request initiator diagnostics', () async {
+    final bridge = FeishuNetworkCaptureBridge();
+    StreamSubscription<FeishuNetworkCaptureEvent>? subscription;
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(bridge.channel, (call) async {
+          if (call.method == 'stop') {
+            return <String, Object>{'state': 'stopped'};
+          }
+          return null;
+        });
+    addTearDown(() async {
+      await subscription?.cancel();
+      await bridge.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(bridge.channel, null);
+    });
+
+    final received = <FeishuNetworkCaptureEvent>[];
+    subscription = bridge.events.listen(received.add);
+
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          bridge.channel.name,
+          bridge.channel.codec.encodeMethodCall(
+            const MethodCall('networkEvent', <String, Object>{
+              'id': 'req_image',
+              'observed_at': '2026-05-10T06:00:00Z',
+              'source': 'httpRequest',
+              'url':
+                  'https://imfile.feishucdn.com/static-resource/v1/img.webp?token=secret',
+              'method': 'GET',
+              'status_code': 0,
+              'mime_type': '',
+              'payload_preview': '',
+              'resource_type': 'Image',
+              'document_url':
+                  'https://feishu.cn/messenger/?conversation_id=secret',
+              'initiator_type': 'script',
+              'initiator_url':
+                  'https://lf-package.feishucdn.com/obj/feishu-static/app.js?token=secret',
+              'initiator_stack_url':
+                  'https://lf-package.feishucdn.com/obj/feishu-static/chunk.js?token=secret',
+              'initiator_line_number': 42,
+              'initiator_column_number': 7,
+              'frame_id': 'frame-1',
+            }),
+          ),
+          (_) {},
+        );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(received, hasLength(1));
+    expect(received.single.source, FeishuNetworkEventSource.httpRequest);
+    expect(received.single.resourceType, 'Image');
+    expect(received.single.documentUrl, contains('feishu.cn/messenger'));
+    expect(received.single.initiatorType, 'script');
+    expect(received.single.initiatorUrl, contains('lf-package.feishucdn.com'));
+    expect(
+      received.single.initiatorStackUrl,
+      contains('lf-package.feishucdn.com'),
+    );
+    expect(received.single.initiatorLineNumber, 42);
+    expect(received.single.initiatorColumnNumber, 7);
+    expect(received.single.frameId, 'frame-1');
   });
 
   test('bridge exposes native unavailable errors', () async {

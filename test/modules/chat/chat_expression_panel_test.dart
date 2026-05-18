@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/chat/chat_gif_panel_service.dart';
 import 'package:wukong_im_app/modules/chat/expression/chat_expression_models.dart';
 import 'package:wukong_im_app/modules/chat/widgets/chat_expression_panel.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 
 void main() {
   testWidgets('expression panel uses one shell and swaps content inside it', (
@@ -95,6 +96,99 @@ void main() {
       find.byKey(const ValueKey<String>('chat-expression-emoji-grid')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('expression panel shell uses liquid glass surface styling', (
+    tester,
+  ) async {
+    const snapshot = ChatExpressionRegistrySnapshot(
+      categories: <ChatExpressionCategory>[
+        ChatExpressionCategory(
+          id: 'emoji:0',
+          kind: ChatExpressionKind.emoji,
+          label: '0',
+          iconKey: 'emoji:0',
+          emojiTags: <String>['[\u5fae\u7b11]'],
+          stickers: <ChatStickerDefinition>[],
+          recents: <ChatExpressionRecentRecord>[],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatExpressionPanel(
+            snapshot: snapshot,
+            activeCategoryId: 'emoji:0',
+            gifResults: const <ChatGifPanelResult>[],
+            gifErrorText: null,
+            onCategorySelected: (_) {},
+            onRecentSelected: (_) {},
+            onEmojiSelected: (_) {},
+            onStickerSelected: (_, _) {},
+            onGifQueryChanged: (_) {},
+            onGifSelected: (_) {},
+            onBackspaceTap: () {},
+          ),
+        ),
+      ),
+    );
+
+    final shell = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('chat-expression-panel-shell')),
+    );
+    final decoration = shell.decoration as BoxDecoration;
+    expect(decoration.color, LiquidGlassColors.surfaceSolid);
+    expect(decoration.border, Border.all(color: LiquidGlassColors.border));
+    expect(decoration.borderRadius, LiquidGlassRadii.lg);
+    expect(decoration.boxShadow, LiquidGlassShadows.md);
+  });
+
+  testWidgets('expression panel shell resolves dark liquid glass styling', (
+    tester,
+  ) async {
+    const snapshot = ChatExpressionRegistrySnapshot(
+      categories: <ChatExpressionCategory>[
+        ChatExpressionCategory(
+          id: 'emoji:0',
+          kind: ChatExpressionKind.emoji,
+          label: '0',
+          iconKey: 'emoji:0',
+          emojiTags: <String>['[\u5fae\u7b11]'],
+          stickers: <ChatStickerDefinition>[],
+          recents: <ChatExpressionRecentRecord>[],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: ChatExpressionPanel(
+            snapshot: snapshot,
+            activeCategoryId: 'emoji:0',
+            gifResults: const <ChatGifPanelResult>[],
+            gifErrorText: null,
+            onCategorySelected: (_) {},
+            onRecentSelected: (_) {},
+            onEmojiSelected: (_) {},
+            onStickerSelected: (_, _) {},
+            onGifQueryChanged: (_) {},
+            onGifSelected: (_) {},
+            onBackspaceTap: () {},
+          ),
+        ),
+      ),
+    );
+
+    final shell = tester.widget<Container>(
+      find.byKey(const ValueKey<String>('chat-expression-panel-shell')),
+    );
+    final decoration = shell.decoration as BoxDecoration;
+    expect(decoration.color, LiquidGlassColors.darkSurfaceSolid);
+    expect(decoration.border, Border.all(color: LiquidGlassColors.darkBorder));
   });
 
   testWidgets('sticker grid decodes lightweight previews at bounded size', (

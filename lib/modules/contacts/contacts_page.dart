@@ -20,6 +20,7 @@ import '../../widgets/wk_avatar.dart';
 import '../../widgets/wk_branded_icon.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
+import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_main_top_bar.dart';
 import '../../widgets/wk_reference_assets.dart';
 import '../../widgets/wk_screen_popup_menu.dart';
@@ -183,10 +184,10 @@ class ContactsPage extends ConsumerStatefulWidget {
 }
 
 class _ContactsPageState extends ConsumerState<ContactsPage> {
-  static const double _headerItemHeight = 60;
-  static const double _headerBottomGap = 20;
-  static const double _contactRowHeight = 70;
-  static const double _sectionHeight = 28;
+  static const double _headerItemHeight = LiquidGlassSizes.listRowHeight;
+  static const double _headerBottomGap = LiquidGlassSizes.sectionGap;
+  static const double _contactRowHeight = LiquidGlassSizes.listRowHeight;
+  static const double _sectionHeight = 30;
 
   final ScrollController _scrollController = ScrollController();
   late final String _channelRefreshListenerKey;
@@ -347,6 +348,14 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
     final strings = resolveContactsStrings(
       locale: Localizations.maybeLocaleOf(context),
     );
+    final tokens = LiquidGlassTokens.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final shellBackground = dark
+        ? LiquidGlassColors.darkBackground
+        : WKWebColors.surfaceSoft;
+    final frameBackground = dark
+        ? LiquidGlassColors.darkBackground
+        : WKWebColors.pageWarm;
     final AsyncValue<List<Friend>> friendsState =
         widget.friendsStateOverride ?? ref.watch(friendListProvider);
     final directoryController = ref.watch(contactsDirectoryControllerProvider);
@@ -473,7 +482,12 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
       ],
     );
 
-    final content = Scaffold(backgroundColor: WKColors.homeBg, body: body);
+    final shellBody = DecoratedBox(
+      key: const ValueKey<String>('contacts-liquid-shell'),
+      decoration: BoxDecoration(color: shellBackground),
+      child: body,
+    );
+    final content = Scaffold(backgroundColor: shellBackground, body: shellBody);
     final useWebFrame =
         widget.forceWebFrameForTesting ||
         (kIsWeb &&
@@ -485,14 +499,20 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
 
     return Scaffold(
       key: const ValueKey<String>('contacts-web-frame'),
-      backgroundColor: WKWebColors.pageWarm,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 920),
-          child: WKWebPanel(
-            key: const ValueKey<String>('contacts-web-panel'),
-            margin: const EdgeInsets.all(WKSpace.md),
-            child: content.body ?? const SizedBox.shrink(),
+      backgroundColor: frameBackground,
+      body: DecoratedBox(
+        decoration: BoxDecoration(color: frameBackground),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: LiquidGlassSizes.pageContentMaxWidth,
+            ),
+            child: WKWebPanel(
+              key: const ValueKey<String>('contacts-web-panel'),
+              color: tokens.surfaceSolid,
+              margin: const EdgeInsets.all(LiquidGlassSizes.pageContentPadding),
+              child: content.body ?? const SizedBox.shrink(),
+            ),
           ),
         ),
       ),
@@ -1032,116 +1052,158 @@ class _ContactsHeaderSection extends StatelessWidget {
     if (headerMenus.isEmpty) {
       return const SizedBox.shrink();
     }
+    final tokens = LiquidGlassTokens.of(context);
 
-    return Column(
-      children: [
-        for (var index = 0; index < headerMenus.length; index++)
-          _ContactsHeaderItem(
-            menu: headerMenus[index],
-            showBottomGap: index == headerMenus.length - 1,
-          ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, LiquidGlassSizes.sectionGap),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tokens.surfaceSolid,
+          borderRadius: LiquidGlassRadii.lg,
+          border: Border.all(color: tokens.border),
+          boxShadow: LiquidGlassShadows.sm,
+        ),
+        child: Column(
+          children: [
+            for (var index = 0; index < headerMenus.length; index++)
+              _ContactsHeaderItem(
+                menu: headerMenus[index],
+                showDivider: index < headerMenus.length - 1,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 class _ContactsHeaderItem extends StatelessWidget {
   final ContactsMenu menu;
-  final bool showBottomGap;
+  final bool showDivider;
 
-  const _ContactsHeaderItem({required this.menu, this.showBottomGap = false});
+  const _ContactsHeaderItem({required this.menu, this.showDivider = false});
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     final title = (menu.text ?? menu.sid).trim();
     final normalizedUid = menu.uid?.trim() ?? '';
     final showAvatar = normalizedUid.isNotEmpty;
     final showDot = menu.showRedDot;
     final brandedIconSpec = resolveContactsHeaderIconSpec(menu.sid);
+    final actionColor = Theme.of(context).brightness == Brightness.dark
+        ? LiquidGlassColors.darkPrimary
+        : WKWebColors.action;
 
     return Column(
       children: [
         Material(
-          color: WKColors.surface,
+          color: tokens.surfaceSolid,
+          shape: const RoundedRectangleBorder(
+            borderRadius: LiquidGlassRadii.lg,
+          ),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             key: ValueKey('contacts-header-${menu.sid}'),
             onTap: () => menu.onClick?.call(menu.sid),
-            highlightColor: WKColors.screenBgSelected,
-            splashColor: WKColors.screenBgSelected,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-              child: Row(
-                children: [
-                  if (brandedIconSpec != null)
-                    buildWKBrandedIcon(brandedIconSpec)
-                  else if ((menu.imgResource ?? '').trim().isNotEmpty)
-                    WKReferenceAssets.image(
-                      menu.imgResource!,
-                      width: 40,
-                      height: 40,
-                    )
-                  else
-                    const SizedBox(width: 40, height: 40),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: const TextStyle(
-                        fontFamily: WKFontFamily.primary,
-                        fontSize: 16,
-                        color: WKColors.colorDark,
+            borderRadius: LiquidGlassRadii.lg,
+            highlightColor: actionColor.withValues(alpha: 0.06),
+            splashColor: actionColor.withValues(alpha: 0.08),
+            child: SizedBox(
+              height: LiquidGlassSizes.listRowHeight,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    if (brandedIconSpec != null)
+                      SizedBox(
+                        width: LiquidGlassSizes.listIconSize,
+                        height: LiquidGlassSizes.listIconSize,
+                        child: buildWKBrandedIcon(
+                          brandedIconSpec,
+                          size: LiquidGlassSizes.listIconSize,
+                          radius: 12,
+                        ),
+                      )
+                    else if ((menu.imgResource ?? '').trim().isNotEmpty)
+                      WKReferenceAssets.image(
+                        menu.imgResource!,
+                        width: LiquidGlassSizes.listIconSize,
+                        height: LiquidGlassSizes.listIconSize,
+                      )
+                    else
+                      const SizedBox(
+                        width: LiquidGlassSizes.listIconSize,
+                        height: LiquidGlassSizes.listIconSize,
                       ),
-                    ),
-                  ),
-                  if (showAvatar)
-                    Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        WKAvatar(name: normalizedUid, size: 40),
-                        if (showDot)
-                          Positioned(
-                            top: 0,
-                            right: 0,
-                            child: Container(
-                              key: ValueKey('contacts-header-dot-${menu.sid}'),
-                              width: 10,
-                              height: 10,
-                              decoration: const BoxDecoration(
-                                color: WKColors.reminderColor,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                      ],
-                    )
-                  else if (menu.badgeNum > 0)
-                    Container(
-                      constraints: const BoxConstraints(
-                        minWidth: 20,
-                        minHeight: 20,
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: WKColors.reminderColor,
-                        borderRadius: BorderRadius.circular(WKRadius.pill),
-                      ),
+                    const SizedBox(width: 12),
+                    Expanded(
                       child: Text(
-                        menu.badgeNum > 99 ? '99+' : '${menu.badgeNum}',
-                        style: const TextStyle(
+                        title,
+                        style: TextStyle(
                           fontFamily: WKFontFamily.primary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: WKColors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: tokens.text,
                         ),
                       ),
                     ),
-                ],
+                    if (showAvatar)
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          WKAvatar(name: normalizedUid, size: 40),
+                          if (showDot)
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: Container(
+                                key: ValueKey(
+                                  'contacts-header-dot-${menu.sid}',
+                                ),
+                                width: 10,
+                                height: 10,
+                                decoration: const BoxDecoration(
+                                  color: WKColors.reminderColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      )
+                    else if (menu.badgeNum > 0)
+                      Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: WKColors.reminderColor,
+                          borderRadius: BorderRadius.circular(WKRadius.pill),
+                        ),
+                        child: Text(
+                          menu.badgeNum > 99 ? '99+' : '${menu.badgeNum}',
+                          style: const TextStyle(
+                            fontFamily: WKFontFamily.primary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: WKColors.white,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-        if (showBottomGap) Container(height: 20, color: WKColors.homeBg),
+        if (showDivider)
+          Padding(
+            padding: const EdgeInsets.only(left: 62),
+            child: Divider(height: 1, thickness: 1, color: tokens.border),
+          ),
       ],
     );
   }

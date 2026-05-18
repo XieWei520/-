@@ -230,74 +230,110 @@ void main() {
       );
     });
 
-    test(
-      'defaults to degradation-only polling with the approved backoff schedule',
-      () {
-        final loop = PendingCallRecoveryLoop(
-          callStore: CallStore(machine: const CallStateMachine()),
-          fetchPendingCalls: ({required fallback}) async => <CallRoom>[],
-          currentUidReader: () => 'u_self',
-        );
-        addTearDown(loop.stop);
-
-        expect(loop.enableSafetyPolling, isFalse);
-        expect(loop.degradedThreshold, const Duration(seconds: 6));
-        expect(loop.backoffSchedule, <Duration>[
-          Duration(seconds: 2),
-          Duration(seconds: 5),
-          Duration(seconds: 15),
-          Duration(seconds: 30),
-          Duration(seconds: 60),
-        ]);
-      },
-    );
-
-    test('does not poll by default until the gateway is degraded', () async {
-      final store = CallStore(machine: const CallStateMachine());
-      addTearDown(store.dispose);
-
-      var fetchCount = 0;
+    test('defaults to safety polling with the approved backoff schedule', () {
       final loop = PendingCallRecoveryLoop(
-        callStore: store,
-        fetchPendingCalls: ({required fallback}) async {
-          fetchCount++;
-          expect(fallback, isTrue);
-          return <CallRoom>[
-            CallRoom(
-              roomId: 'room_pending_01',
-              callerUid: 'u_peer',
-              calleeUid: 'u_self',
-              callType: CallType.video,
-              status: CallRoomStatus.pending,
-              callerName: 'Peer',
-            ),
-          ];
-        },
+        callStore: CallStore(machine: const CallStateMachine()),
+        fetchPendingCalls: ({required fallback}) async => <CallRoom>[],
         currentUidReader: () => 'u_self',
-        degradedThreshold: Duration.zero,
-        backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
-        delay: (_) => Completer<void>().future,
       );
       addTearDown(loop.stop);
 
-      loop.setGatewayDegradationReader((_) => false);
-      loop.start();
-
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(fetchCount, 0);
-      expect(store.state.isActive, isFalse);
-
-      loop.setGatewayDegradationReader((_) => true);
-
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
-
-      expect(fetchCount, 1);
-      expect(store.state.roomId, 'room_pending_01');
-      expect(store.state.status, CallLifecycleStatus.ringing);
+      expect(loop.enableSafetyPolling, isTrue);
+      expect(loop.degradedThreshold, const Duration(seconds: 6));
+      expect(loop.safetyPollingInterval, const Duration(seconds: 2));
+      expect(loop.backoffSchedule, <Duration>[
+        Duration(seconds: 2),
+        Duration(seconds: 5),
+        Duration(seconds: 15),
+        Duration(seconds: 30),
+        Duration(seconds: 60),
+      ]);
     });
+
+    test(
+      'polls pending calls by default without gateway degradation',
+      () async {
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        var fetchCount = 0;
+        final loop = PendingCallRecoveryLoop(
+          callStore: store,
+          fetchPendingCalls: ({required fallback}) async {
+            fetchCount++;
+            expect(fallback, isTrue);
+            return <CallRoom>[
+              CallRoom(
+                roomId: 'room_pending_01',
+                callerUid: 'u_peer',
+                calleeUid: 'u_self',
+                callType: CallType.video,
+                status: CallRoomStatus.pending,
+                callerName: 'Peer',
+              ),
+            ];
+          },
+          currentUidReader: () => 'u_self',
+          degradedThreshold: Duration.zero,
+          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+          delay: (_) => Completer<void>().future,
+        );
+        addTearDown(loop.stop);
+
+        loop.setGatewayDegradationReader((_) => false);
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 1);
+        expect(store.state.roomId, 'room_pending_01');
+        expect(store.state.status, CallLifecycleStatus.ringing);
+      },
+    );
+
+    test(
+      'treats fallback pending rooms as incoming when local uid cache is stale',
+      () async {
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        var fetchCount = 0;
+        final loop = PendingCallRecoveryLoop(
+          callStore: store,
+          fetchPendingCalls: ({required fallback}) async {
+            fetchCount++;
+            expect(fallback, isTrue);
+            return <CallRoom>[
+              CallRoom(
+                roomId: 'room_pending_stale_uid_01',
+                callerUid: 'u_peer',
+                calleeUid: 'u_actual_self',
+                callType: CallType.audio,
+                status: CallRoomStatus.pending,
+                callerName: 'Peer',
+              ),
+            ];
+          },
+          currentUidReader: () => 'u_stale_cache',
+          degradedThreshold: Duration.zero,
+          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+          delay: (_) => Completer<void>().future,
+        );
+        addTearDown(loop.stop);
+
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 1);
+        expect(store.state.roomId, 'room_pending_stale_uid_01');
+        expect(store.state.direction, CallDirection.incoming);
+        expect(store.state.peerUid, 'u_peer');
+        expect(store.state.status, CallLifecycleStatus.ringing);
+      },
+    );
 
     test(
       'wakes degradation-only polling when a passive reader later reports degraded',
@@ -326,6 +362,7 @@ void main() {
             ];
           },
           currentUidReader: () => 'u_self',
+          enableSafetyPolling: false,
           degradedThreshold: const Duration(seconds: 6),
           backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
           delay: (delay) {
@@ -375,6 +412,7 @@ void main() {
             return fetchCompleter.future;
           },
           currentUidReader: () => 'u_self',
+          enableSafetyPolling: false,
           degradedThreshold: Duration.zero,
           backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
           delay: (_) => Completer<void>().future,
@@ -428,6 +466,7 @@ void main() {
             return completer.future;
           },
           currentUidReader: () => 'u_self',
+          enableSafetyPolling: false,
           degradedThreshold: Duration.zero,
           backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
           delay: (_) => Completer<void>().future,
@@ -476,6 +515,7 @@ void main() {
             return <CallRoom>[];
           },
           currentUidReader: () => 'u_self',
+          enableSafetyPolling: false,
           degradedThreshold: Duration.zero,
           safetyPollingInterval: const Duration(milliseconds: 50),
           backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
@@ -617,6 +657,24 @@ void main() {
       },
     );
 
+    test('direct personal rooms keep legacy answer signaling path', () {
+      expect(
+        shouldUseSessionOrchestratorForRoom(
+          CallRoom(
+            roomId: 'room_personal_channel_01',
+            callerUid: 'u_peer',
+            calleeUid: 'u_self',
+            callType: CallType.audio,
+            status: CallRoomStatus.pending,
+            channelId: 'u_peer',
+            channelType: 1,
+          ),
+          useOrchestratorForDirectCalls: false,
+        ),
+        isFalse,
+      );
+    });
+
     test('rejects an empty signal backoff schedule', () {
       expect(
         () => SignalRecoveryLoop(
@@ -698,6 +756,66 @@ void main() {
     );
 
     test(
+      'polls active call signals by default when realtime runtime is absent',
+      () async {
+        final store = CallStore(machine: const CallStateMachine());
+        addTearDown(store.dispose);
+
+        store.apply(
+          const CallEvent.localDial(
+            roomId: 'room_signal_no_runtime_01',
+            peerUid: 'u_peer',
+            peerName: 'Peer',
+            callType: CallType.audio,
+          ),
+        );
+
+        final appliedEvents = <RemoteSignalCallEvent>[];
+        final sleepGate = Completer<void>();
+        var fetchCount = 0;
+        final loop = SignalRecoveryLoop(
+          callStore: store,
+          fetchSignals: (roomId, {required fallback}) async {
+            fetchCount++;
+            expect(roomId, 'room_signal_no_runtime_01');
+            expect(fallback, isTrue);
+            return <CallSignal>[
+              CallSignal(
+                fromUid: 'u_peer',
+                signalType: CallSignalType.offer,
+                payload: const <String, dynamic>{'sdp': 'remote_offer'},
+              ),
+            ];
+          },
+          applyRemoteSignal: (event) {
+            appliedEvents.add(event);
+            return store.apply(event);
+          },
+          currentUidReader: () => 'u_self',
+          degradedThreshold: Duration.zero,
+          backoffSchedule: const <Duration>[Duration(milliseconds: 1)],
+          delay: (_) => sleepGate.future,
+        );
+        addTearDown(() {
+          loop.stop();
+          if (!sleepGate.isCompleted) {
+            sleepGate.complete();
+          }
+        });
+
+        loop.start();
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(fetchCount, 1);
+        expect(appliedEvents, hasLength(1));
+        expect(appliedEvents.single.fromUid, 'u_peer');
+        expect(appliedEvents.single.signalType, CallSignalType.offer);
+      },
+    );
+
+    test(
       'buffered remote signals replay offer before ice candidates after accept',
       () {
         final queue = BufferedRemoteSignalQueue();
@@ -772,7 +890,7 @@ void main() {
     );
 
     test(
-      'resolved accepted UI state keeps connected once buffered replay already connected',
+      'resolved accepted UI state leaves the incoming page in connecting state',
       () {
         expect(
           resolveAcceptedIncomingUiState(CallState.connected),
@@ -780,10 +898,29 @@ void main() {
         );
         expect(
           resolveAcceptedIncomingUiState(CallState.calling),
-          CallState.ringing,
+          CallState.calling,
+        );
+        expect(
+          resolveAcceptedIncomingUiState(CallState.ringing),
+          CallState.calling,
         );
       },
     );
+
+    test('terminal session lifecycle states emit ended UI state', () {
+      expect(
+        resolveCallSessionUiState(CallLifecycleStatus.ending),
+        CallState.ended,
+      );
+      expect(
+        resolveCallSessionUiState(CallLifecycleStatus.ended),
+        CallState.ended,
+      );
+      expect(
+        resolveCallSessionUiState(CallLifecycleStatus.failed),
+        CallState.ended,
+      );
+    });
 
     test(
       'accept incoming call refuses a room that is no longer active',

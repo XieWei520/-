@@ -45,7 +45,7 @@ void main() {
       );
     });
 
-    test('foreign text message omits recall but keeps Android order', () {
+    test('foreign text message without recall permission omits recall', () {
       final actions = buildChatMessageActionDescriptors(
         message: _buildInteractiveTextMessage(),
         isSelf: false,
@@ -77,6 +77,27 @@ void main() {
       expect(
         actions.map((entry) => entry.order).toList(growable: false),
         const <int>[0, 1, 2, 4, 5, 8],
+      );
+    });
+
+    test('foreign text message with moderator permission exposes recall', () {
+      final actions = buildChatMessageActionDescriptors(
+        message: _buildInteractiveTextMessage(),
+        isSelf: false,
+        canRecall: true,
+      );
+
+      expect(
+        actions.map((entry) => entry.action).toList(growable: false),
+        const <ChatSceneAction>[
+          ChatSceneAction.reply,
+          ChatSceneAction.forward,
+          ChatSceneAction.copy,
+          ChatSceneAction.favorite,
+          ChatSceneAction.select,
+          ChatSceneAction.recall,
+          ChatSceneAction.react,
+        ],
       );
     });
 
@@ -140,11 +161,11 @@ void main() {
       );
     });
 
-    test('foreign message never exposes recall', () {
+    test('foreign message without recall permission omits recall', () {
       final actions = buildChatMessageActionDescriptors(
         message: _buildInteractiveTextMessage(),
         isSelf: false,
-        canRecall: true,
+        canRecall: false,
       );
 
       expect(
@@ -275,6 +296,71 @@ void main() {
 
       expect(labels, isNot(contains('\u7f6e\u9876')));
       expect(labels, isNot(contains('\u53d6\u6d88\u7f6e\u9876')));
+    });
+
+    test('group owner can recall messages from any member role', () {
+      expect(
+        canRecallChatMessage(
+          isSelf: false,
+          channelType: ChannelType.group,
+          currentUserGroupRole: ChatGroupRole.owner,
+          senderGroupRole: ChatGroupRole.normal,
+        ),
+        isTrue,
+      );
+      expect(
+        canRecallChatMessage(
+          isSelf: false,
+          channelType: ChannelType.group,
+          currentUserGroupRole: ChatGroupRole.owner,
+          senderGroupRole: ChatGroupRole.admin,
+        ),
+        isTrue,
+      );
+    });
+
+    test('group admin can recall normal member messages only', () {
+      expect(
+        canRecallChatMessage(
+          isSelf: false,
+          channelType: ChannelType.group,
+          currentUserGroupRole: ChatGroupRole.admin,
+          senderGroupRole: ChatGroupRole.normal,
+        ),
+        isTrue,
+      );
+      expect(
+        canRecallChatMessage(
+          isSelf: false,
+          channelType: ChannelType.group,
+          currentUserGroupRole: ChatGroupRole.admin,
+          senderGroupRole: ChatGroupRole.owner,
+        ),
+        isFalse,
+      );
+    });
+
+    test('normal member cannot recall foreign messages', () {
+      expect(
+        canRecallChatMessage(
+          isSelf: false,
+          channelType: ChannelType.group,
+          currentUserGroupRole: ChatGroupRole.normal,
+          senderGroupRole: ChatGroupRole.normal,
+        ),
+        isFalse,
+      );
+    });
+
+    test('self messages can be recalled outside groups', () {
+      expect(
+        canRecallChatMessage(
+          isSelf: true,
+          channelType: ChannelType.personal,
+          currentUserGroupRole: ChatGroupRole.normal,
+        ),
+        isTrue,
+      );
     });
   });
 }

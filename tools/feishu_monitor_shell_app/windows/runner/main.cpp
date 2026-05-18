@@ -27,7 +27,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"feishu_monitor_shell_app", origin, size)) {
+  if (!window.Create(L"\u98DE\u4E66\u6D88\u606F\u76D1\u63A7\u52A9\u624B", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

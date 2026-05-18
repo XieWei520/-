@@ -361,10 +361,24 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                 ListView(
                   padding: EdgeInsets.zero,
                   children: [
+                    WKSettingsGroup(children: [_buildSummarySection()]),
+                    const WKSectionGap(10),
                     WKSettingsGroup(
                       children: [
-                        _buildSummarySection(),
-                        const Divider(height: 1, indent: 15, endIndent: 15),
+                        GroupRobotIdentitySection(
+                          providerName: '飞书',
+                          displayNameController: _displayNameController,
+                          displayAvatar: _displayAvatar,
+                          isBusy: _isSaving,
+                          onDisplayNameChanged: _scheduleDisplayIdentitySave,
+                          onUploadAvatar: _uploadDisplayAvatar,
+                          onClearAvatar: () => unawaited(_clearDisplayAvatar()),
+                        ),
+                      ],
+                    ),
+                    const WKSectionGap(10),
+                    WKSettingsGroup(
+                      children: [
                         GroupRobotWebhookModeSection(
                           providerName: '飞书',
                           mode: _webhookMode,
@@ -383,34 +397,18 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                             _buildCreateSection(),
                           ] else ...[
                             _buildCredentialSection(
-                              title: '回调地址',
+                              title: 'Webhook',
                               value: config.webhookUrl,
-                              subtitle: '将此地址配置到支持飞书机器人回调协议的第三方系统中。',
-                              copyLabel: '回调地址',
+                              copyLabel: 'Webhook',
                             ),
                             const Divider(height: 1, indent: 15, endIndent: 15),
                             _buildCredentialSection(
                               title: '加签密钥',
                               value: config.secret,
-                              subtitle: '第三方系统发消息时需按飞书规则计算签名。',
                               copyLabel: '加签密钥',
                             ),
                           ],
                         ],
-                      ],
-                    ),
-                    const WKSectionGap(10),
-                    WKSettingsGroup(
-                      children: [
-                        GroupRobotIdentitySection(
-                          providerName: '飞书',
-                          displayNameController: _displayNameController,
-                          displayAvatar: _displayAvatar,
-                          isBusy: _isSaving,
-                          onDisplayNameChanged: _scheduleDisplayIdentitySave,
-                          onUploadAvatar: _uploadDisplayAvatar,
-                          onClearAvatar: () => unawaited(_clearDisplayAvatar()),
-                        ),
                       ],
                     ),
                     if (config != null ||
@@ -431,20 +429,20 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                           ),
                           WKSettingsCell(
                             key: const ValueKey('group-robot-save-config-cell'),
-                            title: '保存当前配置',
+                            title: '保存配置',
                             onTap: _isSaving ? null : _saveConfig,
                           ),
                           if (_webhookMode ==
                                   GroupRobotWebhookMode.imGenerated &&
                               config != null) ...[
                             WKSettingsCell(
-                              title: '重新生成加签密钥',
+                              title: '重置加签密钥',
                               onTap: _isSaving
                                   ? null
                                   : () => _saveConfig(regenerateSecret: true),
                             ),
                             WKSettingsCell(
-                              title: '重新生成 Webhook',
+                              title: '重置 Webhook',
                               onTap: _isSaving
                                   ? null
                                   : () => _saveConfig(regenerateWebhook: true),
@@ -500,41 +498,50 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
         : widget.groupName.trim();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 18, 15, 18),
+      padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            resolvedGroupName,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: WKColors.colorDark,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '群号：${widget.groupNo}',
-            style: const TextStyle(fontSize: 14, color: WKColors.color999),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            '用于将第三方系统按飞书机器人格式推送的消息接入当前 IM 群聊。',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.5,
-              color: WKColors.colorDark,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
             children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      resolvedGroupName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: WKColors.colorDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '群号：${widget.groupNo}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: WKColors.color999,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               _StatusChip(
                 label: config == null ? '未生成' : '已生成',
                 color: config == null ? WKColors.color999 : WKColors.brand500,
               ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
               _StatusChip(
                 label: config == null
                     ? '未启用'
@@ -545,34 +552,25 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                           ? const Color(0xFF1C9C5E)
                           : WKColors.danger),
               ),
-              _StatusChip(
-                label: config?.secretSet == true ? '已配置加签' : '未配置加签',
-                color: config?.secretSet == true
-                    ? const Color(0xFF148A8A)
-                    : WKColors.color999,
-              ),
-              _StatusChip(
-                label: config?.appSecretSet == true ? '已配置飞书应用' : '未配置飞书应用',
-                color: config?.appSecretSet == true
-                    ? const Color(0xFF4B62D4)
-                    : WKColors.color999,
-              ),
+              _StatusChip(label: _webhookMode.label, color: WKColors.info),
+              if (config?.secretSet == true)
+                _StatusChip(label: '已加签', color: const Color(0xFF148A8A)),
+              if ((config?.lastPushAt ?? 0) > 0)
+                _StatusChip(
+                  label: '最近 ${_formatTimestamp(config!.lastPushAt)}',
+                  color: WKColors.color999,
+                ),
             ],
           ),
-          if ((config?.lastPushAt ?? 0) > 0) ...[
-            const SizedBox(height: 14),
-            Text(
-              '最近收消息：${_formatTimestamp(config!.lastPushAt)}',
-              style: const TextStyle(fontSize: 14, color: WKColors.colorDark),
-            ),
-          ],
           if ((config?.lastError ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
               '最近错误：${config!.lastError}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 14,
-                height: 1.45,
+                fontSize: 13,
+                height: 1.4,
                 color: WKColors.danger,
               ),
             ),
@@ -584,32 +582,17 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
 
   Widget _buildCreateSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 18, 15, 18),
+      padding: const EdgeInsets.fromLTRB(15, 12, 15, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '生成接入配置',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: WKColors.colorDark,
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _isSaving ? null : _saveConfig,
+              icon: const Icon(Icons.auto_fix_high_outlined),
+              label: const Text('生成 Webhook'),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '生成后，系统会为当前群创建一组可接入第三方系统的 Webhook 与加签密钥。',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.5,
-              color: WKColors.color999,
-            ),
-          ),
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: _isSaving ? null : _saveConfig,
-            icon: const Icon(Icons.auto_fix_high_outlined),
-            label: const Text('立即生成'),
           ),
         ],
       ),
@@ -619,11 +602,10 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
   Widget _buildCredentialSection({
     required String title,
     required String value,
-    required String subtitle,
     required String copyLabel,
   }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 16, 15, 16),
+      padding: const EdgeInsets.fromLTRB(15, 12, 15, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -633,7 +615,7 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                 child: Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: WKColors.colorDark,
                   ),
@@ -645,15 +627,6 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
                 label: const Text('复制'),
               ),
             ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.45,
-              color: WKColors.color999,
-            ),
           ),
           const SizedBox(height: 10),
           Container(
@@ -684,20 +657,12 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
     required GroupRobotWebhookMode mode,
   }) {
     if (mode == GroupRobotWebhookMode.official) {
-      return '1. 官方模式下，系统将以你填写的飞书官方 Webhook 为主。\n'
-          '2. 请确保 URL 包含 open.feishu.cn，并按需填写签名密钥。\n'
-          '3. 当前版本中，官方 Webhook 消息不会回流同步到 IM 群聊。';
+      return '官方模式：填写飞书官方 Webhook；消息不会回流同步到 IM 群聊。';
     }
 
-    final buffer = StringBuffer()
-      ..writeln('1. 这里生成的是当前群的接入 Webhook，不是飞书后台现成地址。')
-      ..writeln('2. 将页面中的 Webhook 与加签密钥复制到第三方平台，按飞书机器人协议推送即可。')
-      ..writeln('3. 同时兼容飞书 V1 的 {title,text} 与 V2 的 {msg_type,content} 消息体。');
-
-    if (generated) {
-      buffer.writeln('4. 重新生成 Webhook 或加签密钥后，旧配置会立即失效，需要同步更新第三方平台。');
-    }
-    return buffer.toString().trimRight();
+    return generated
+        ? '复制 Webhook 与加签密钥到第三方平台；重置后旧配置立即失效。'
+        : '生成 Webhook 后即可接入第三方平台。';
   }
 
   String _formatTimestamp(int value) {

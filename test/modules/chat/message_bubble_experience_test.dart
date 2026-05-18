@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/core/cache/media_cache_manager.dart';
 import 'package:wukong_im_app/core/config/api_config.dart';
+import 'package:wukong_im_app/core/theme/chat_bubble_theme.dart';
 import 'package:wukong_im_app/data/models/link_preview.dart';
 import 'package:wukong_im_app/data/models/wk_custom_content.dart'
     show WKLocationContent;
@@ -9,6 +10,7 @@ import 'package:wukong_im_app/data/models/wk_robot_card_content.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_mapper.dart';
 import 'package:wukong_im_app/modules/chat/link_preview_service.dart';
 import 'package:wukong_im_app/widgets/message_bubble.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/widgets/wk_emoji_text.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
@@ -222,6 +224,37 @@ void main() {
     );
 
     test(
+      'resolveMessageParticipantInfo prefers robot identity for outgoing group relay messages',
+      () {
+        final message = WKMsg()
+          ..fromUID = 'u_me'
+          ..channelID = 'g_team'
+          ..channelType = WKChannelType.group
+          ..contentType = WkMessageContentType.unknown
+          ..content =
+              '{"type":1,"content":"relay text","robot":{"provider":"feishu","name":"飞书转发助手","avatar":"robots/feishu/avatar.png"}}';
+        final fallbackMember = WKChannelMember()
+          ..memberUID = 'u_me'
+          ..memberName = 'Group Nickname'
+          ..memberAvatar = 'users/stale/avatar';
+
+        final info = resolveMessageParticipantInfo(
+          message,
+          fallbackGroupMember: fallbackMember,
+          currentUid: 'u_me',
+          currentUserDisplayName: 'Current Me',
+          currentUserAvatarUrl: 'users/current/avatar',
+        );
+
+        expect(info.displayName, '飞书转发助手');
+        expect(
+          info.avatarUrl,
+          ApiConfig.resolveMediaUrl('robots/feishu/avatar.png'),
+        );
+      },
+    );
+
+    test(
       'resolveMessageParticipantInfo does not reuse the group avatar as a member avatar',
       () {
         final message = WKMsg()
@@ -243,6 +276,51 @@ void main() {
         );
       },
     );
+
+    test('ChatBubbleTheme exposes restrained IM asymmetric radii', () {
+      expect(
+        ChatBubbleTheme.outgoingRadius,
+        const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(4),
+        ),
+      );
+      expect(
+        ChatBubbleTheme.incomingRadius,
+        const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+          bottomLeft: Radius.circular(4),
+          bottomRight: Radius.circular(16),
+        ),
+      );
+
+      final outgoingDecoration = ChatBubbleTheme.outgoingDecoration(
+        Brightness.light,
+      );
+      expect(
+        outgoingDecoration.gradient,
+        ChatBubbleTheme.outgoingGradientLight,
+      );
+      expect(outgoingDecoration.boxShadow, ChatBubbleTheme.outgoingShadowLight);
+
+      final incomingLight = ChatBubbleTheme.incomingDecoration(
+        Brightness.light,
+      );
+      final incomingDark = ChatBubbleTheme.incomingDecoration(Brightness.dark);
+      expect(
+        incomingLight.border,
+        Border.all(color: ChatBubbleTheme.incomingBorderLight),
+      );
+      expect(
+        incomingDark.border,
+        Border.all(color: ChatBubbleTheme.incomingBorderDark),
+      );
+      expect(incomingLight.boxShadow, ChatBubbleTheme.incomingShadowLight);
+      expect(incomingDark.boxShadow, ChatBubbleTheme.incomingShadowDark);
+    });
 
     test(
       'resolveMessageStatusInfo maps outgoing send status to visual states',
@@ -914,6 +992,90 @@ void main() {
       expect(decoration.gradient, isNotNull);
     });
 
+    testWidgets('outgoing text bubble uses restrained blue gradient', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('restrained blue')
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      final body = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-bubble-body')),
+      );
+      final decoration = body.decoration! as BoxDecoration;
+      final gradient = decoration.gradient! as LinearGradient;
+      expect(gradient.colors, const [Color(0xFF2F80ED), Color(0xFF2563D9)]);
+      expect(decoration.boxShadow, ChatBubbleTheme.outgoingShadowLight);
+      expect(
+        decoration.borderRadius,
+        const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(4),
+        ),
+      );
+
+      final contentText = tester.widget<SelectableText>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SelectableText && widget.data == 'restrained blue',
+        ),
+      );
+      expect(contentText.style?.color, Colors.white);
+    });
+
+    testWidgets('dark outgoing text bubble uses muted blue gradient', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('dark outgoing')
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      final body = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-bubble-body')),
+      );
+      final decoration = body.decoration! as BoxDecoration;
+      final gradient = decoration.gradient! as LinearGradient;
+      expect(gradient.colors, const [Color(0xFF2563D9), Color(0xFF1D4ED8)]);
+      expect(decoration.boxShadow, ChatBubbleTheme.outgoingShadowDark);
+
+      final contentText = tester.widget<SelectableText>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SelectableText && widget.data == 'dark outgoing',
+        ),
+      );
+      expect(contentText.style?.color, Colors.white);
+    });
+
     testWidgets(
       'text bubble with android emoji tag renders inline emoji asset and keeps status badge',
       (tester) async {
@@ -1021,6 +1183,16 @@ void main() {
       );
 
       expect(find.byType(WKEmojiText), findsOneWidget);
+      final replyPreview = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-reply-preview')),
+      );
+      final replyDecoration = replyPreview.decoration! as BoxDecoration;
+      expect(replyDecoration.color, Colors.white.withValues(alpha: 0.15));
+      final accentBar = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-reply-accent-bar')),
+      );
+      final accentDecoration = accentBar.decoration! as BoxDecoration;
+      expect(accentDecoration.color, Colors.white.withValues(alpha: 0.40));
       expect(
         find.byWidgetPredicate(
           (widget) =>
@@ -1125,7 +1297,7 @@ void main() {
       expect(find.text('Preview with image'), findsOneWidget);
     });
 
-    testWidgets('incoming text bubble uses a bordered card surface', (
+    testWidgets('incoming text bubble uses white bordered surface', (
       tester,
     ) async {
       final message = WKMsg()
@@ -1149,8 +1321,67 @@ void main() {
         find.byKey(const ValueKey<String>('message-bubble-body')),
       );
       final decoration = bubble.decoration as BoxDecoration;
+      expect(decoration.color, Colors.white);
       expect(decoration.border, isNotNull);
-      expect(decoration.boxShadow, isNotEmpty);
+      expect(decoration.boxShadow, ChatBubbleTheme.incomingShadowLight);
+      expect(
+        decoration.borderRadius,
+        const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
+          bottomLeft: Radius.circular(4),
+          bottomRight: Radius.circular(16),
+        ),
+      );
+
+      final contentText = tester.widget<SelectableText>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SelectableText && widget.data == 'incoming hello',
+        ),
+      );
+      expect(contentText.style?.color, ChatBubbleTheme.incomingTextLight);
+    });
+
+    testWidgets('dark incoming text bubble uses muted surface and text', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_other'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent('dark incoming')
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      final body = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-bubble-body')),
+      );
+      final decoration = body.decoration! as BoxDecoration;
+      expect(decoration.color, ChatBubbleTheme.incomingBgDark);
+      expect(
+        decoration.border,
+        Border.all(color: ChatBubbleTheme.incomingBorderDark),
+      );
+      expect(decoration.boxShadow, ChatBubbleTheme.incomingShadowDark);
+
+      final contentText = tester.widget<SelectableText>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SelectableText && widget.data == 'dark incoming',
+        ),
+      );
+      expect(contentText.style?.color, ChatBubbleTheme.incomingTextDark);
     });
 
     testWidgets('pinned text bubble shows compact pinned marker', (
@@ -1268,6 +1499,64 @@ void main() {
       expect(find.text('custom voice bubble'), findsOneWidget);
       expect(find.byIcon(Icons.volume_up_rounded), findsNothing);
       expect(builderCalls, 1);
+    });
+
+    testWidgets('incoming voice bubble uses primary play button', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_peer'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.voice
+        ..messageContent = WKVoiceContent(7)
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      final button = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-voice-play-button')),
+      );
+      final decoration = button.decoration! as BoxDecoration;
+      expect(decoration.color, LiquidGlassColors.primary);
+      final icon = tester.widget<Icon>(find.byIcon(Icons.volume_up_rounded));
+      expect(icon.color, Colors.white);
+    });
+
+    testWidgets('outgoing voice bubble uses translucent play button', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.voice
+        ..messageContent = WKVoiceContent(7)
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      final button = tester.widget<Container>(
+        find.byKey(const ValueKey<String>('message-voice-play-button')),
+      );
+      final decoration = button.decoration! as BoxDecoration;
+      expect(decoration.color, Colors.white.withValues(alpha: 0.25));
+      final icon = tester.widget<Icon>(find.byIcon(Icons.volume_up_rounded));
+      expect(icon.color, Colors.white);
     });
 
     testWidgets('non-voice content ignores injected voice builder', (
@@ -1868,6 +2157,45 @@ void main() {
           ),
           findsOneWidget,
         );
+
+        final fileCard = tester.widget<Container>(
+          find.byKey(const ValueKey<String>('message-file-card')),
+        );
+        final decoration = fileCard.decoration! as BoxDecoration;
+        expect(decoration.color, LiquidGlassColors.surfaceSolid);
+        expect(decoration.border, Border.all(color: LiquidGlassColors.border));
+      },
+    );
+
+    testWidgets(
+      'outgoing file bubble uses translucent nested liquid glass card',
+      (tester) async {
+        final message = WKMsg()
+          ..fromUID = 'u_self'
+          ..contentType = WkMessageContentType.unknown
+          ..messageContent = WKUnknownContent()
+          ..content =
+              '{"type":${WkMessageContentType.file},"name":"outgoing.pdf","size":2048}';
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                model: ChatMessageMapper().map(message, currentUid: 'u_self'),
+              ),
+            ),
+          ),
+        );
+
+        final fileCard = tester.widget<Container>(
+          find.byKey(const ValueKey<String>('message-file-card')),
+        );
+        final decoration = fileCard.decoration! as BoxDecoration;
+        expect(decoration.color, Colors.white.withValues(alpha: 0.20));
+        expect(
+          decoration.border,
+          Border.all(color: Colors.white.withValues(alpha: 0.15)),
+        );
       },
     );
 
@@ -2099,14 +2427,14 @@ void main() {
       },
     );
 
-    testWidgets('warm Web text bubble uses approved outgoing color', (
+    testWidgets('Web text bubble uses restrained blue gradient', (
       tester,
     ) async {
       final message = WKMsg()
         ..fromUID = 'u_me'
         ..channelType = WKChannelType.personal
         ..contentType = WkMessageContentType.text
-        ..messageContent = WKTextContent('hello warm web')
+        ..messageContent = WKTextContent('hello liquid web')
         ..status = WKSendMsgResult.sendSuccess;
 
       await tester.pumpWidget(
@@ -2124,11 +2452,13 @@ void main() {
         find.byKey(const ValueKey<String>('message-bubble-body')),
       );
       final decoration = body.decoration! as BoxDecoration;
-      expect(decoration.color, WKWebColors.actionSoft);
+      final gradient = decoration.gradient! as LinearGradient;
+      expect(gradient.colors, const [Color(0xFF2F80ED), Color(0xFF2563D9)]);
+      expect(decoration.boxShadow, ChatBubbleTheme.outgoingShadowLight);
     });
 
     testWidgets(
-      'warm Web text bubble caps itself to the chat lane instead of the whole window',
+      'liquid glass Web text bubble caps itself to the chat lane instead of the whole window',
       (tester) async {
         tester.view.devicePixelRatio = 1;
         tester.view.physicalSize = const Size(1440, 900);
@@ -2140,7 +2470,7 @@ void main() {
           ..channelType = WKChannelType.personal
           ..contentType = WkMessageContentType.text
           ..messageContent = WKTextContent(
-            'This warm web message is intentionally long so the bubble has to wrap within the approved max width rather than stretching across the whole desktop workspace.',
+            'This liquid glass web message is intentionally long so the bubble has to wrap within the approved max width rather than stretching across the whole desktop workspace.',
           )
           ..status = WKSendMsgResult.sendSuccess;
 
@@ -2168,13 +2498,13 @@ void main() {
     );
 
     testWidgets(
-      'warm Web outgoing text bubble uses dark readable content and metadata colors',
+      'Web outgoing text bubble uses white content and metadata colors',
       (tester) async {
         final message = WKMsg()
           ..fromUID = 'u_me'
           ..channelType = WKChannelType.personal
           ..contentType = WkMessageContentType.text
-          ..messageContent = WKTextContent('readable warm web')
+          ..messageContent = WKTextContent('readable liquid web')
           ..timestamp = 1710000000
           ..wkMsgExtra = (WKMsgExtra()..isPinned = 1)
           ..status = WKSendMsgResult.sendSuccess;
@@ -2194,16 +2524,17 @@ void main() {
           find.byKey(const ValueKey<String>('message-bubble-body')),
         );
         final decoration = body.decoration! as BoxDecoration;
-        expect(decoration.color, WKWebColors.actionSoft);
+        final gradient = decoration.gradient! as LinearGradient;
+        expect(gradient.colors, const [Color(0xFF2F80ED), Color(0xFF2563D9)]);
 
         final contentText = tester.widget<SelectableText>(
           find.byWidgetPredicate(
             (widget) =>
-                widget is SelectableText && widget.data == 'readable warm web',
+                widget is SelectableText &&
+                widget.data == 'readable liquid web',
           ),
         );
-        expect(contentText.style?.color, WKWebColors.textPrimary);
-        expect(contentText.style?.color, isNot(Colors.white));
+        expect(contentText.style?.color, Colors.white);
 
         final pinnedText = tester.widget<Text>(
           find.descendant(
@@ -2211,8 +2542,7 @@ void main() {
             matching: find.text('\u7f6e\u9876'),
           ),
         );
-        expect(pinnedText.style?.color, const Color(0xFF475569));
-        expect(pinnedText.style?.color, isNot(Colors.white));
+        expect(pinnedText.style?.color, const Color(0xB3FFFFFF));
 
         final metadataText = tester.widget<Text>(
           find
@@ -2222,8 +2552,7 @@ void main() {
               )
               .first,
         );
-        expect(metadataText.style?.color, const Color(0xFF475569));
-        expect(metadataText.style?.color, isNot(Colors.white));
+        expect(metadataText.style?.color, const Color(0xB3FFFFFF));
       },
     );
   });

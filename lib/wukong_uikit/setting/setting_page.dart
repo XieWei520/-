@@ -17,6 +17,8 @@ import '../../modules/settings/settings_surface_widgets.dart';
 import '../../service/api/common_api.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
+import '../../widgets/liquid_glass_panel.dart';
+import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_reference_assets.dart';
 import '../../widgets/wk_sub_page_scaffold.dart';
 import '../../wk_endpoint/providers/slot_registry_provider.dart';
@@ -327,18 +329,20 @@ class _SettingPageState extends ConsumerState<SettingPage> {
   }
 
   Widget _buildUnifiedSettingsCell(SettingsCellItem cell) {
+    final tokens = LiquidGlassTokens.of(context);
     if (cell.style == SettingsCellStyle.dangerCentered) {
       return InkWell(
+        borderRadius: LiquidGlassRadii.lg,
         onTap: cell.onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: WKSpace.lg,
-            vertical: WKSpace.md,
+            vertical: WKSpace.sm,
           ),
           child: Center(
             child: Text(
               cell.title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: WKColors.danger,
@@ -355,6 +359,11 @@ class _SettingPageState extends ConsumerState<SettingPage> {
       trailing = buildSettingsAboutTrailing(
         showNewVersionBadge: cell.showNewVersionBadge,
       );
+    } else if (cell.id == 'settings.dark_mode' && value.isNotEmpty) {
+      trailing = _SettingsLiquidSwitchVisual(
+        isOn: WKSettingPreferences.isDarkModeEnabled(),
+        label: value,
+      );
     } else if (cell.accessory == SettingsCellAccessory.arrow) {
       trailing = Row(
         mainAxisSize: MainAxisSize.min,
@@ -362,28 +371,31 @@ class _SettingPageState extends ConsumerState<SettingPage> {
           if (value.isNotEmpty) ...[
             Text(
               value,
-              style: const TextStyle(fontSize: 13, color: WKColors.color999),
+              style: TextStyle(fontSize: 13, color: tokens.textSecondary),
             ),
             const SizedBox(width: WKSpace.xs),
           ],
-          const Icon(Icons.chevron_right_rounded, color: WKColors.color999),
+          Icon(Icons.chevron_right_rounded, color: tokens.textTertiary),
         ],
       );
     } else if (value.isNotEmpty) {
       trailing = Text(
         value,
-        style: const TextStyle(fontSize: 13, color: WKColors.color999),
+        style: TextStyle(fontSize: 13, color: tokens.textSecondary),
       );
     }
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        borderRadius: LiquidGlassRadii.lg,
+        highlightColor: LiquidGlassColors.primary.withValues(alpha: 0.08),
+        splashColor: LiquidGlassColors.primary.withValues(alpha: 0.10),
         onTap: cell.onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: WKSpace.lg,
-            vertical: WKSpace.md,
+            vertical: WKSpace.sm,
           ),
           child: Row(
             children: [
@@ -392,10 +404,10 @@ class _SettingPageState extends ConsumerState<SettingPage> {
               Expanded(
                 child: Text(
                   cell.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
-                    color: WKColors.colorDark,
+                    color: tokens.text,
                   ),
                 ),
               ),
@@ -436,6 +448,46 @@ class _SettingPageState extends ConsumerState<SettingPage> {
       'settings.logout' => Icons.logout_rounded,
       _ => Icons.tune_rounded,
     };
+  }
+
+  Widget _buildLiquidSettingsSection({
+    required String title,
+    required List<Widget> children,
+  }) {
+    final tokens = LiquidGlassTokens.of(context);
+    return LiquidGlassPanel(
+      shadow: LiquidGlassShadows.md,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              WKSpace.lg,
+              WKSpace.sm,
+              WKSpace.lg,
+              WKSpace.xs,
+            ),
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: tokens.text,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          for (var index = 0; index < children.length; index++) ...[
+            children[index],
+            if (index != children.length - 1)
+              Divider(
+                indent: 72,
+                endIndent: 16,
+                color: tokens.border,
+                height: 1,
+              ),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -479,32 +531,38 @@ class _SettingPageState extends ConsumerState<SettingPage> {
     return SettingsScaffold(
       title: strings.settingsTitle,
       loading: _isClearingCache || _isClearingChatHistory || _isLoggingOut,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          WKSpace.md,
-          WKSpace.md,
-          WKSpace.md,
-          WKSpace.xl,
-        ),
-        children: [
-          SettingsHero(
-            icon: Icons.tune_rounded,
-            title: strings.generalHeroTitle,
-            subtitle: strings.generalHeroSubtitle,
+      child: LiquidGlassStage(
+        key: const ValueKey<String>('settings-liquid-shell'),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            WKSpace.md,
+            WKSpace.md,
+            WKSpace.md,
+            WKSpace.xl,
           ),
-          const SizedBox(height: WKSpace.md),
-          for (var index = 0; index < sections.length; index++) ...[
-            SettingsSection(
-              title: _sectionTitle(sections[index].id, strings),
-              children: [
-                for (final cell in sections[index].cells)
-                  _buildUnifiedSettingsCell(cell),
-              ],
+          children: [
+            LiquidGlassPanel(
+              shadow: LiquidGlassShadows.md,
+              child: SettingsHero(
+                icon: Icons.tune_rounded,
+                title: strings.generalHeroTitle,
+                subtitle: strings.generalHeroSubtitle,
+              ),
             ),
-            if (index != sections.length - 1)
-              const SizedBox(height: WKSpace.md),
+            const SizedBox(height: WKSpace.md),
+            for (var index = 0; index < sections.length; index++) ...[
+              _buildLiquidSettingsSection(
+                title: _sectionTitle(sections[index].id, strings),
+                children: [
+                  for (final cell in sections[index].cells)
+                    _buildUnifiedSettingsCell(cell),
+                ],
+              ),
+              if (index != sections.length - 1)
+                const SizedBox(height: WKSpace.sm),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -526,15 +584,64 @@ class _SettingsCellIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     return Container(
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: WKColors.surfaceSoft,
-        borderRadius: BorderRadius.circular(WKRadius.md),
+        color: tokens.surfaceSolid,
+        borderRadius: LiquidGlassRadii.md,
+        border: Border.all(color: tokens.border),
       ),
       alignment: Alignment.center,
-      child: Icon(icon, color: WKColors.brand500),
+      child: Icon(icon, color: LiquidGlassColors.primary),
+    );
+  }
+}
+
+class _SettingsLiquidSwitchVisual extends StatelessWidget {
+  const _SettingsLiquidSwitchVisual({required this.isOn, required this.label});
+
+  final bool isOn;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+    return Semantics(
+      toggled: isOn,
+      label: label,
+      child: DecoratedBox(
+        key: const ValueKey<String>('settings-liquid-switch-dark-mode'),
+        decoration: BoxDecoration(
+          color: isOn
+              ? LiquidGlassColors.primary.withValues(alpha: 0.16)
+              : LiquidGlassColors.primary.withValues(alpha: 0.08),
+          borderRadius: LiquidGlassRadii.pill,
+          border: Border.all(
+            color: isOn
+                ? LiquidGlassColors.primary.withValues(alpha: 0.32)
+                : LiquidGlassColors.primary.withValues(alpha: 0.18),
+          ),
+          boxShadow: LiquidGlassShadows.sm,
+        ),
+        child: SizedBox(
+          width: 46,
+          height: 26,
+          child: Align(
+            alignment: isOn ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              width: 20,
+              height: 20,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              decoration: BoxDecoration(
+                color: isOn ? LiquidGlassColors.primary : tokens.textTertiary,
+                borderRadius: LiquidGlassRadii.pill,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -70,6 +70,36 @@ void main() {
     },
   );
 
+  test('closes the call page when the call reaches a terminal state', () {
+    expect(shouldCloseCallPageForState(CallState.ended), isTrue);
+    expect(shouldCloseCallPageForState(CallState.connected), isFalse);
+    expect(shouldCloseCallPageForState(CallState.calling), isFalse);
+  });
+
+  test('requests call route close only once for an ended state', () {
+    expect(
+      shouldRequestCallRouteClose(
+        state: CallState.ended,
+        closeAlreadyRequested: false,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldRequestCallRouteClose(
+        state: CallState.ended,
+        closeAlreadyRequested: true,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRequestCallRouteClose(
+        state: CallState.connected,
+        closeAlreadyRequested: false,
+      ),
+      isFalse,
+    );
+  });
+
   test('app startup and im service do not import web call stubs', () {
     final appSource = File('lib/app/app.dart').readAsStringSync();
     final imServiceSource = File(

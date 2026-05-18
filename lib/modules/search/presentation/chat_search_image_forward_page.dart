@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
+import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_image_content.dart';
+import 'package:wukongimfluttersdk/model/wk_message_content.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../../../data/providers/conversation_provider.dart';
+import '../../chat/chat_scene_gateway.dart';
 import '../../chat/message_forwarding.dart';
 import '../domain/search_models.dart';
 import '../../../wukong_base/views/user_avatar.dart';
@@ -16,6 +19,12 @@ typedef SearchForwardTargetResolver =
     );
 typedef SearchForwardSubmitCallback =
     Future<void> Function(List<ForwardTarget> targets, SearchMediaItem item);
+typedef SearchForwardMessageSender =
+    Future<void> Function(
+      WKMessageContent content,
+      WKChannel channel,
+      WKSendOptions options,
+    );
 
 class ChatSearchImageForwardPage extends ConsumerStatefulWidget {
   const ChatSearchImageForwardPage({
@@ -23,11 +32,13 @@ class ChatSearchImageForwardPage extends ConsumerStatefulWidget {
     required this.item,
     this.resolveTargets,
     this.onSubmitTargets,
+    this.sendMessage,
   });
 
   final SearchMediaItem item;
   final SearchForwardTargetResolver? resolveTargets;
   final SearchForwardSubmitCallback? onSubmitTargets;
+  final SearchForwardMessageSender? sendMessage;
 
   @override
   ConsumerState<ChatSearchImageForwardPage> createState() =>
@@ -199,7 +210,18 @@ class _ChatSearchImageForwardPageState
           : (cloneMessageContentForForward(content) ?? content);
       final channel = WKChannel(target.channelId, target.channelType)
         ..channelName = target.displayName;
-      WKIM.shared.messageManager.sendMessage(contentToSend, channel);
+      final options =
+          WKSendOptions()..expire = defaultChatMessageRetentionSeconds;
+      final sendMessage = widget.sendMessage;
+      if (sendMessage != null) {
+        await sendMessage(contentToSend, channel, options);
+      } else {
+        await sendPersistentSdkMessage(
+          content: contentToSend,
+          channel: channel,
+          options: options,
+        );
+      }
     }
 
     if (!context.mounted) {

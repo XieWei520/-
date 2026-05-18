@@ -38,20 +38,49 @@ class Friend {
   factory Friend.fromJson(Map<String, dynamic> json) {
     // 服务器返回 uid 在 to_uid 字段中
     final uid = json['uid'] ?? json['to_uid'] ?? '';
+    final nestedUser = _firstMap(
+      json['to_user'],
+      json['user'],
+      json['channel'],
+    );
     final isUploadAvatar = _parseTimestamp(json['is_upload_avatar']);
     final name = _normalizeBuiltInName(
       uid.toString(),
-      json['name']?.toString() ?? json['to_name']?.toString(),
+      _firstNonEmptyText(
+        json['name'],
+        json['to_name'],
+        json['nickname'],
+        json['display_name'],
+        json['channel_name'],
+        nestedUser?['name'],
+        nestedUser?['nickname'],
+        nestedUser?['display_name'],
+        nestedUser?['channel_name'],
+      ),
     );
     return Friend(
       uid: uid,
       name: name,
       avatar: _resolveAvatarUrl(
-        json['avatar'],
+        _firstNonEmptyText(
+          json['avatar'],
+          json['to_avatar'],
+          json['channel_avatar'],
+          nestedUser?['avatar'],
+          nestedUser?['channel_avatar'],
+        ),
         uid.toString(),
         isUploadAvatar: isUploadAvatar,
       ),
-      remark: json['remark'] ?? json['to_remark'],
+      remark: _firstNonEmptyText(
+        json['remark'],
+        json['to_remark'],
+        json['friend_remark'],
+        json['channel_remark'],
+        nestedUser?['remark'],
+        nestedUser?['friend_remark'],
+        nestedUser?['channel_remark'],
+      ),
       status: _parseTimestamp(json['status']),
       category: normalizePublicAccountCategory(json['category']?.toString()),
       robot: _parseTimestamp(json['robot']),
@@ -62,6 +91,52 @@ class Friend {
       updatedAt: _parseTimestamp(json['updated_at']),
       vipLevel: _parseTimestamp(json['vip_level']) ?? 0,
     );
+  }
+
+  static Map<String, dynamic>? _firstMap(
+    Object? first, [
+    Object? second,
+    Object? third,
+  ]) {
+    for (final value in <Object?>[first, second, third]) {
+      if (value is Map<String, dynamic>) {
+        return value;
+      }
+      if (value is Map) {
+        return Map<String, dynamic>.from(value);
+      }
+    }
+    return null;
+  }
+
+  static String? _firstNonEmptyText(
+    Object? first, [
+    Object? second,
+    Object? third,
+    Object? fourth,
+    Object? fifth,
+    Object? sixth,
+    Object? seventh,
+    Object? eighth,
+    Object? ninth,
+  ]) {
+    for (final value in <Object?>[
+      first,
+      second,
+      third,
+      fourth,
+      fifth,
+      sixth,
+      seventh,
+      eighth,
+      ninth,
+    ]) {
+      final text = value?.toString().trim();
+      if (text != null && text.isNotEmpty) {
+        return text;
+      }
+    }
+    return null;
   }
 
   static int? _parseTimestamp(dynamic value) {

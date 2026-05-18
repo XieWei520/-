@@ -39,7 +39,7 @@ class PendingCallRecoveryLoop {
     required PendingCallsFetcher fetchPendingCalls,
     required String Function() currentUidReader,
     this.onAcceptedRoom,
-    this.enableSafetyPolling = false,
+    this.enableSafetyPolling = true,
     this.degradedThreshold = const Duration(seconds: 6),
     this.safetyPollingInterval = const Duration(seconds: 2),
     List<Duration> backoffSchedule = const <Duration>[
@@ -169,28 +169,15 @@ class PendingCallRecoveryLoop {
     if (currentUid.isEmpty || room.roomId.trim().isEmpty) {
       return null;
     }
-    final isOutgoing = room.callerUid.trim() == currentUid;
-    final isIncoming =
-        !isOutgoing &&
-        ((room.channelId ?? '').trim().isNotEmpty ||
-            room.calleeUid.trim() == currentUid);
-    if (isIncoming) {
-      return CallEvent.invite(
-        roomId: room.roomId,
-        peerUid: _peerUid(room, incoming: true),
-        peerName: _peerName(room, incoming: true),
-        callType: room.callType,
-      );
+    if (room.callerUid.trim().isEmpty) {
+      return null;
     }
-    if (isOutgoing) {
-      return CallEvent.localDial(
-        roomId: room.roomId,
-        peerUid: _peerUid(room, incoming: false),
-        peerName: _peerName(room, incoming: false),
-        callType: room.callType,
-      );
-    }
-    return null;
+    return CallEvent.invite(
+      roomId: room.roomId,
+      peerUid: _peerUid(room, incoming: true),
+      peerName: _peerName(room, incoming: true),
+      callType: room.callType,
+    );
   }
 
   String _peerUid(CallRoom room, {required bool incoming}) {

@@ -30,6 +30,7 @@ import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
 import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
@@ -96,6 +97,7 @@ void main() {
 
   Widget wrapWithApp(
     Widget child, {
+    ThemeData? theme,
     NavigatorObserver? navigatorObserver,
     ChatTypingGateway typingGateway = const _NoopTypingGateway(),
     List<Override> overrides = const <Override>[],
@@ -111,6 +113,7 @@ void main() {
         ...overrides,
       ],
       child: MaterialApp(
+        theme: theme,
         home: child,
         navigatorObservers: navigatorObserver == null
             ? const <NavigatorObserver>[]
@@ -126,6 +129,7 @@ void main() {
     required String channelName,
     String? channelCategory,
     int initialVipLevel = 0,
+    ThemeData? theme,
     NavigatorObserver? navigatorObserver,
     ChatTypingGateway typingGateway = const _NoopTypingGateway(),
     List<Override> overrides = const <Override>[],
@@ -139,6 +143,7 @@ void main() {
           channelCategory: channelCategory,
           initialVipLevel: initialVipLevel,
         ),
+        theme: theme,
         navigatorObserver: navigatorObserver,
         typingGateway: typingGateway,
         overrides: overrides,
@@ -250,9 +255,63 @@ void main() {
       final disabledSendIcon = tester.widget<Image>(
         find.descendant(of: sendFinder, matching: find.byType(Image)).first,
       );
-      expect(disabledSendIcon.color, WKWebColors.action);
+      expect(disabledSendIcon.color, const Color(0xFF64748B));
     });
   });
+
+  testWidgets(
+    'Android narrow chat chrome resolves liquid colors in dark mode',
+    (tester) async {
+      await runWithAndroidPhoneViewport(tester, () async {
+        await pumpChatPage(
+          tester,
+          channelId: 'fileHelper',
+          channelType: WKChannelType.personal,
+          channelName: 'Android Dark',
+          theme: ThemeData.dark(),
+        );
+        await tester.pump(const Duration(milliseconds: 350));
+
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        expect(scaffold.backgroundColor, LiquidGlassColors.darkBackground);
+        expect(scaffold.backgroundColor, isNot(WKWebColors.pageWarm));
+
+        final appBar = tester.widget<AppBar>(find.byType(AppBar).first);
+        expect(appBar.backgroundColor, LiquidGlassColors.darkSurface);
+        expect(appBar.backgroundColor, isNot(WKWebColors.surface));
+
+        final backButton = find.byKey(
+          const ValueKey<String>('chat-back-button'),
+        );
+        final backIcon = tester.widget<Image>(
+          find.descendant(of: backButton, matching: find.byType(Image)).first,
+        );
+        expect(backIcon.color, LiquidGlassColors.darkText);
+        expect(backIcon.color, isNot(WKWebColors.textPrimary));
+
+        final textField = tester.widget<TextField>(
+          find.byKey(const ValueKey<String>('chat-input-field')),
+        );
+        final inputDecoration = textField.decoration!;
+        expect(inputDecoration.fillColor, LiquidGlassColors.darkSurface);
+        expect(inputDecoration.fillColor, isNot(WKWebColors.surface));
+
+        final enabledBorder =
+            inputDecoration.enabledBorder as OutlineInputBorder;
+        expect(enabledBorder.borderSide.color, LiquidGlassColors.darkBorder);
+        expect(enabledBorder.borderSide.color, isNot(WKWebColors.borderWarm));
+
+        final sendFinder = find.byKey(
+          const ValueKey<String>('chat-send-button'),
+        );
+        final disabledSendIcon = tester.widget<Image>(
+          find.descendant(of: sendFinder, matching: find.byType(Image)).first,
+        );
+        expect(disabledSendIcon.color, LiquidGlassColors.darkPrimary);
+        expect(disabledSendIcon.color, isNot(WKWebColors.action));
+      });
+    },
+  );
 
   testWidgets(
     'robot chat shows Android menu button and sends bot commands with robot id',
@@ -2446,6 +2505,7 @@ class _RecordingChatSceneGateway extends ChatSceneGateway {
     required String channelId,
     required int channelType,
     String? channelName,
+    int? expireSeconds,
   }) async {
     sentContents.add(content);
   }

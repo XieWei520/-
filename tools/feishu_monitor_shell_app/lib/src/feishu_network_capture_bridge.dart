@@ -98,6 +98,14 @@ FeishuNetworkCaptureEvent _eventFromMap(Map<Object?, Object?> map) {
     bodyBase64Encoded: _boolValue(map['body_base64_encoded']),
     bodySaved: _boolValue(map['body_saved']),
     bodySaveError: _stringValue(map['body_save_error']),
+    resourceType: _stringValue(map['resource_type']),
+    documentUrl: _stringValue(map['document_url']),
+    initiatorType: _stringValue(map['initiator_type']),
+    initiatorUrl: _stringValue(map['initiator_url']),
+    initiatorStackUrl: _stringValue(map['initiator_stack_url']),
+    initiatorLineNumber: _intValue(map['initiator_line_number']),
+    initiatorColumnNumber: _intValue(map['initiator_column_number']),
+    frameId: _stringValue(map['frame_id']),
   );
 }
 

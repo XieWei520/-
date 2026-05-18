@@ -31,6 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   path_provider: ^2.1.2
+  crypto: ^3.0.7
   webview_windows:
     path: ../vendor/webview_windows_wukong
   feishu_monitor_shell:

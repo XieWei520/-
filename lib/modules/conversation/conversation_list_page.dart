@@ -24,9 +24,11 @@ import '../../service/api/group_api.dart';
 import '../../service/im/im_service.dart';
 import '../../service/api/user_api.dart';
 import '../../core/utils/platform_utils.dart';
+import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_conversation_item.dart';
 import '../../widgets/wk_design_tokens.dart';
+import '../../widgets/liquid_glass_panel.dart';
 import '../../widgets/wk_main_top_bar.dart';
 import '../../widgets/wk_reference_assets.dart';
 import '../../widgets/wk_screen_popup_menu.dart';
@@ -469,6 +471,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     final conversationRowKeys = ref.watch(conversationRowOrderProvider);
     final personalInfos = ref.watch(preferredPersonalConversationInfoProvider);
     final groupInfos = ref.watch(preferredGroupConversationInfoProvider);
@@ -476,6 +479,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
         PlatformUtils.isMobile &&
         !widget.embedded &&
         MediaQuery.sizeOf(context).width < 420;
+    final showSearchChrome = isWarmMobileStyle || widget.embedded;
     final availableKeys = {
       for (final rowKey in conversationRowKeys)
         conversationSelectionKeyFromRowKey(rowKey),
@@ -490,6 +494,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
     final content = Column(
       children: [
         _ConversationListHeader(
+          embedded: widget.embedded,
           isWarmMobileStyle: isWarmMobileStyle,
           selectionMode: _selectionMode,
           selectedCount: _selectedKeys.length,
@@ -509,12 +514,13 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
             ref.read(conversationProvider),
           ),
         ),
-        if (isWarmMobileStyle) ...[
+        if (showSearchChrome) ...[
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _ConversationListSearchBar(
               onTap: () => _openGlobalSearch(context),
+              liquidStyle: widget.embedded,
             ),
           ),
           const SizedBox(height: 10),
@@ -607,7 +613,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
     if (widget.embedded) {
       return Material(
         key: const ValueKey<String>('conversation-list-embedded'),
-        color: WKWebColors.surface,
+        color: tokens.surfaceSolid,
         child: content,
       );
     }
@@ -880,6 +886,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
 
 class _ConversationListHeader extends ConsumerWidget {
   const _ConversationListHeader({
+    required this.embedded,
     required this.isWarmMobileStyle,
     required this.selectionMode,
     required this.selectedCount,
@@ -891,6 +898,7 @@ class _ConversationListHeader extends ConsumerWidget {
     required this.onShowTopMenu,
   });
 
+  final bool embedded;
   final bool isWarmMobileStyle;
   final bool selectionMode;
   final int selectedCount;
@@ -909,10 +917,28 @@ class _ConversationListHeader extends ConsumerWidget {
     final titleKey = ValueKey<String>(
       selectionMode ? 'selected_$selectedCount' : 'status_$connectionStatus',
     );
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final headerTitleDuration = LiquidGlassMotion.normal.resolve(
+      disableAnimations: disableAnimations,
+    );
+
+    if (embedded) {
+      return _EmbeddedConversationListHeader(
+        titleKey: titleKey,
+        selectedCount: selectedCount,
+        title: '\u6D88\u606F',
+        selectionMode: selectionMode,
+        canDeleteSelection: canDeleteSelection,
+        onClearSelection: onClearSelection,
+        onDeleteSelected: onDeleteSelected,
+        onShowTopMenu: onShowTopMenu,
+      );
+    }
 
     return WKMainTopBar(
       title: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
+        key: const ValueKey<String>('conversation-list-main-title-switcher'),
+        duration: headerTitleDuration,
         switchInCurve: Curves.linear,
         switchOutCurve: Curves.linear,
         layoutBuilder: (currentChild, previousChildren) {
@@ -929,6 +955,9 @@ class _ConversationListHeader extends ConsumerWidget {
           );
         },
         transitionBuilder: (child, animation) {
+          if (disableAnimations) {
+            return child;
+          }
           final isCurrent = child.key == titleKey;
           final offsetTween = Tween<Offset>(
             begin: isCurrent ? const Offset(0, -1) : const Offset(0, 1),
@@ -943,14 +972,14 @@ class _ConversationListHeader extends ConsumerWidget {
         },
         child: Text(
           selectionMode
-              ? '宸查€変腑 $selectedCount 椤?'
+              ? '已选择 $selectedCount 项'
               : resolveConversationHeaderTitle(connectionStatus),
           key: titleKey,
         ),
       ),
       leading: selectionMode
           ? WKTopBarActionButton(
-              tooltip: '鍙栨秷閫夋嫨',
+              tooltip: '取消选择',
               padding: const EdgeInsets.only(left: 8),
               onTap: onClearSelection,
               child: const Icon(Icons.close, color: WKColors.popupText),
@@ -959,7 +988,7 @@ class _ConversationListHeader extends ConsumerWidget {
       actions: selectionMode
           ? [
               WKTopBarActionButton(
-                tooltip: '鍒犻櫎宸查€変細璇?',
+                tooltip: '删除已选会话',
                 onTap: canDeleteSelection ? onDeleteSelected : null,
                 child: Icon(
                   Icons.delete_outline,
@@ -972,7 +1001,7 @@ class _ConversationListHeader extends ConsumerWidget {
           : isWarmMobileStyle
           ? [
               WKTopBarActionButton(
-                tooltip: '鎼滅储',
+                tooltip: '搜索',
                 padding: const EdgeInsets.only(right: 12),
                 variant: WKTopBarActionButtonVariant.warmSquare,
                 size: 38,
@@ -987,7 +1016,7 @@ class _ConversationListHeader extends ConsumerWidget {
               Builder(
                 builder: (buttonContext) {
                   return WKTopBarActionButton(
-                    tooltip: '鏇村',
+                    tooltip: '更多',
                     padding: const EdgeInsets.only(right: 16),
                     variant: WKTopBarActionButtonVariant.warmSquare,
                     size: 38,
@@ -1004,7 +1033,7 @@ class _ConversationListHeader extends ConsumerWidget {
             ]
           : [
               WKTopBarActionButton(
-                tooltip: '璁惧绠＄悊',
+                tooltip: '设备管理',
                 padding: const EdgeInsets.only(right: 24),
                 onTap: onOpenDeviceManager,
                 child: WKReferenceAssets.image(
@@ -1015,7 +1044,7 @@ class _ConversationListHeader extends ConsumerWidget {
                 ),
               ),
               WKTopBarActionButton(
-                tooltip: '鎼滅储',
+                tooltip: '搜索',
                 padding: const EdgeInsets.only(right: 29),
                 onTap: onOpenGlobalSearch,
                 child: WKReferenceAssets.image(
@@ -1028,7 +1057,7 @@ class _ConversationListHeader extends ConsumerWidget {
               Builder(
                 builder: (buttonContext) {
                   return WKTopBarActionButton(
-                    tooltip: '鏇村',
+                    tooltip: '更多',
                     onTap: () => onShowTopMenu(buttonContext),
                     child: WKReferenceAssets.image(
                       WKReferenceAssets.add,
@@ -1044,13 +1073,163 @@ class _ConversationListHeader extends ConsumerWidget {
   }
 }
 
-class _ConversationListSearchBar extends StatelessWidget {
-  const _ConversationListSearchBar({required this.onTap});
+class _EmbeddedConversationListHeader extends StatelessWidget {
+  const _EmbeddedConversationListHeader({
+    required this.titleKey,
+    required this.selectedCount,
+    required this.title,
+    required this.selectionMode,
+    required this.canDeleteSelection,
+    required this.onClearSelection,
+    required this.onDeleteSelected,
+    required this.onShowTopMenu,
+  });
 
-  final VoidCallback onTap;
+  final ValueKey<String> titleKey;
+  final int selectedCount;
+  final String title;
+  final bool selectionMode;
+  final bool canDeleteSelection;
+  final VoidCallback onClearSelection;
+  final VoidCallback onDeleteSelected;
+  final Future<void> Function(BuildContext anchorContext) onShowTopMenu;
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final titleDuration = LiquidGlassMotion.normal.resolve(
+      disableAnimations: disableAnimations,
+    );
+
+    return Padding(
+      key: const ValueKey<String>('conversation-list-liquid-header'),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+      child: Row(
+        children: [
+          if (selectionMode) ...[
+            _EmbeddedHeaderIconButton(
+              key: const ValueKey<String>(
+                'conversation-list-liquid-cancel-selection',
+              ),
+              tooltip: '取消选择',
+              icon: Icons.close,
+              onPressed: onClearSelection,
+            ),
+            const SizedBox(width: 10),
+          ],
+          Expanded(
+            child: AnimatedSwitcher(
+              key: const ValueKey<String>(
+                'conversation-list-liquid-title-switcher',
+              ),
+              duration: titleDuration,
+              switchInCurve: Curves.linear,
+              switchOutCurve: Curves.linear,
+              child: Text(
+                selectionMode ? '已选择 $selectedCount 项' : title,
+                key: titleKey,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: WKFontFamily.title,
+                  fontSize: 18,
+                  height: 1.2,
+                  fontWeight: FontWeight.w700,
+                  color: tokens.text,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+          ),
+          if (selectionMode)
+            _EmbeddedHeaderIconButton(
+              key: const ValueKey<String>(
+                'conversation-list-liquid-delete-selection',
+              ),
+              tooltip: '删除所选会话',
+              icon: Icons.delete_outline,
+              onPressed: canDeleteSelection ? onDeleteSelected : null,
+            )
+          else
+            Builder(
+              builder: (buttonContext) {
+                return LiquidGlassPillButton(
+                  key: const ValueKey<String>(
+                    'conversation-list-liquid-top-menu',
+                  ),
+                  label: '新增',
+                  icon: Icons.add_rounded,
+                  onPressed: () => onShowTopMenu(buttonContext),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmbeddedHeaderIconButton extends StatelessWidget {
+  const _EmbeddedHeaderIconButton({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: tokens.surfaceSolid,
+              border: Border.all(color: tokens.border),
+              boxShadow: LiquidGlassShadows.sm,
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: onPressed == null ? tokens.textTertiary : tokens.text,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConversationListSearchBar extends StatelessWidget {
+  const _ConversationListSearchBar({
+    required this.onTap,
+    this.liquidStyle = false,
+  });
+
+  final VoidCallback onTap;
+  final bool liquidStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
+    final borderRadius = liquidStyle
+        ? LiquidGlassRadii.pill
+        : BorderRadius.circular(12);
     return Semantics(
       button: true,
       label: '搜索',
@@ -1058,15 +1237,20 @@ class _ConversationListSearchBar extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: borderRadius,
           child: Container(
             key: const ValueKey<String>('conversation-list-search-bar'),
             height: 42,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: WKWebColors.surfaceSoft,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: WKWebColors.borderWarm, width: 1.1),
+              color: liquidStyle
+                  ? tokens.surfaceSolid
+                  : WKWebColors.surfaceSoft,
+              borderRadius: borderRadius,
+              border: Border.all(
+                color: liquidStyle ? tokens.border : WKWebColors.borderWarm,
+                width: liquidStyle ? 1 : 1.1,
+              ),
             ),
             child: Row(
               children: [
@@ -1074,10 +1258,12 @@ class _ConversationListSearchBar extends StatelessWidget {
                   WKReferenceAssets.search,
                   width: 16,
                   height: 16,
-                  tint: WKWebColors.textSecondary,
+                  tint: liquidStyle
+                      ? tokens.textSecondary
+                      : WKWebColors.textSecondary,
                 ),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
                     '搜索',
                     maxLines: 1,
@@ -1085,7 +1271,9 @@ class _ConversationListSearchBar extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: WKFontFamily.primary,
                       fontSize: 14,
-                      color: WKWebColors.textSecondary,
+                      color: liquidStyle
+                          ? tokens.textSecondary
+                          : WKWebColors.textSecondary,
                     ),
                   ),
                 ),

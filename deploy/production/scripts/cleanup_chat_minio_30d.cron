@@ -1,0 +1,1 @@
+23 3 * * * /opt/wukongim-prod/scripts/cleanup_chat_minio_30d.sh >> /opt/wukongim-prod/logs/cleanup_chat_minio_30d.log 2>&1

@@ -27,6 +27,8 @@ import 'package:wukong_im_app/service/api/user_api.dart';
 import 'package:wukong_im_app/widgets/wk_main_top_bar.dart';
 import 'package:wukong_im_app/widgets/wk_reference_assets.dart';
 import 'package:wukong_im_app/widgets/wk_web_ui_tokens.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
+import 'package:wukong_im_app/widgets/wk_colors.dart';
 import 'package:wukong_im_app/wukong_base/endpoint/entity/contacts_menu.dart';
 
 void main() {
@@ -332,6 +334,105 @@ void main() {
     expect(tappedSid, 'org');
   });
 
+  testWidgets('contacts header rows use restrained IM surface tokens', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithApp(
+        ContactsPage(
+          headerMenus: [
+            ContactsMenu(
+              sid: 'org',
+              imgResource: WKReferenceAssets.newFriend,
+              text: '\u7ec4\u7ec7\u67b6\u6784',
+            ),
+          ],
+          friendsStateOverride: const AsyncValue.data(<Friend>[]),
+          requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('contacts-liquid-shell')),
+      findsOneWidget,
+    );
+
+    final rowFinder = find.byKey(const ValueKey('contacts-header-org'));
+    final rowMaterial = tester.widget<Material>(
+      find.ancestor(of: rowFinder, matching: find.byType(Material)).first,
+    );
+    final rowShape = rowMaterial.shape as RoundedRectangleBorder?;
+
+    expect(rowMaterial.color, WKWebColors.surface);
+    expect(rowShape?.borderRadius, LiquidGlassRadii.lg);
+    expect(rowShape?.side, BorderSide.none);
+
+    final headerTitle = tester.widget<Text>(
+      find.descendant(
+        of: rowFinder,
+        matching: find.text('\u7ec4\u7ec7\u67b6\u6784'),
+      ),
+    );
+    expect(headerTitle.style?.color, LiquidGlassColors.text);
+    expect(headerTitle.style?.color, isNot(WKColors.colorDark));
+
+    final rowInkWell = tester.widget<InkWell>(rowFinder);
+    expect(rowInkWell.borderRadius, LiquidGlassRadii.lg);
+    expect(tester.getSize(rowFinder).height, LiquidGlassSizes.listRowHeight);
+    expect(
+      rowInkWell.highlightColor,
+      WKWebColors.action.withValues(alpha: 0.06),
+    );
+    expect(rowInkWell.splashColor, WKWebColors.action.withValues(alpha: 0.08));
+  });
+
+  testWidgets(
+    'contacts page aligns header and friend rows to one shape system',
+    (tester) async {
+      await tester.pumpWidget(
+        wrapWithApp(
+          ContactsPage(
+            headerMenus: [
+              ContactsMenu(
+                sid: 'org',
+                imgResource: WKReferenceAssets.newFriend,
+                text: '\u7ec4\u7ec7\u67b6\u6784',
+              ),
+            ],
+            friendsStateOverride: AsyncValue.data([
+              Friend(uid: 'u_alice', name: 'Alice'),
+            ]),
+            requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
+            contactPresenceOverrides: const {},
+          ),
+        ),
+      );
+
+      final headerRowFinder = find.byKey(const ValueKey('contacts-header-org'));
+      final contactSurfaceFinder = find.byKey(
+        const ValueKey<String>('contacts-row-surface-u_alice'),
+      );
+
+      expect(
+        tester.getSize(headerRowFinder).height,
+        LiquidGlassSizes.listRowHeight,
+      );
+      expect(
+        tester.getSize(contactSurfaceFinder).height,
+        LiquidGlassSizes.listRowHeight,
+      );
+
+      final contactMaterial = tester.widget<Material>(contactSurfaceFinder);
+      final contactShape = contactMaterial.shape as RoundedRectangleBorder?;
+      expect(contactShape?.borderRadius, LiquidGlassRadii.lg);
+
+      final headerLeft = tester.getTopLeft(headerRowFinder).dx;
+      final contactLeft = tester.getTopLeft(contactSurfaceFinder).dx;
+      expect(contactLeft, headerLeft);
+    },
+  );
+
   testWidgets(
     'contacts page does not show header red dot when custom uid menu disables it',
     (tester) async {
@@ -557,11 +658,7 @@ void main() {
       wrapWithApp(
         ContactsPage(
           friendsStateOverride: AsyncValue.data([
-            Friend(
-              uid: 'u_cs',
-              name: 'CS Alice',
-              category: 'customerService',
-            ),
+            Friend(uid: 'u_cs', name: 'CS Alice', category: 'customerService'),
           ]),
           requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
           contactPresenceOverrides: const {},
@@ -590,6 +687,26 @@ void main() {
 
     expect(find.byType(ContactsListViewport), findsOneWidget);
     expect(find.byType(ContactsAlphabetIndex), findsOneWidget);
+  });
+
+  testWidgets('contacts friend row primary text uses liquid-glass text token', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithApp(
+        ContactsPage(
+          friendsStateOverride: AsyncValue.data([
+            Friend(uid: 'u_alice', name: 'Alice'),
+          ]),
+          requestsStateOverride: const AsyncValue.data(<FriendRequest>[]),
+          contactPresenceOverrides: const {},
+        ),
+      ),
+    );
+
+    final nameText = tester.widget<Text>(find.text('Alice'));
+    expect(nameText.style?.color, LiquidGlassColors.text);
+    expect(nameText.style?.color, isNot(WKColors.colorDark));
   });
 
   testWidgets(
@@ -735,6 +852,10 @@ void main() {
 
     expect(
       find.byKey(const ValueKey<String>('contacts-web-frame')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('contacts-liquid-shell')),
       findsOneWidget,
     );
     final panelFinder = find.byKey(

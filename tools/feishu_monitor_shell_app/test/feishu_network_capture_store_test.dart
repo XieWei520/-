@@ -130,6 +130,54 @@ void main() {
     expect(lastCandidate['resource_key'], '<redacted>');
   });
 
+  test('store merges request diagnostics into matching response events', () {
+    final store = FeishuNetworkCaptureStore();
+
+    store.addEvent(
+      FeishuNetworkCaptureEvent(
+        id: 'evt_image',
+        observedAt: DateTime.utc(2026, 5, 10, 6),
+        source: FeishuNetworkEventSource.httpRequest,
+        url:
+            'https://internal-api-lark-file.feishu.cn/static-resource/v1/image.webp?token=secret',
+        method: 'GET',
+        statusCode: 0,
+        mimeType: '',
+        payloadPreview: '',
+        resourceType: 'Image',
+        documentUrl: 'https://feishu.cn/messenger/?conversation_id=secret',
+        initiatorType: 'parser',
+        initiatorUrl: 'https://feishu.cn/messenger/?token=secret',
+        frameId: 'frame-1',
+      ),
+    );
+
+    final merged = store.enrichEventWithRequestDiagnostics(
+      FeishuNetworkCaptureEvent(
+        id: 'evt_image',
+        observedAt: DateTime.utc(2026, 5, 10, 6, 1),
+        source: FeishuNetworkEventSource.httpResponse,
+        url:
+            'https://internal-api-lark-file.feishu.cn/static-resource/v1/image.webp?token=secret',
+        method: 'GET',
+        statusCode: 200,
+        mimeType: 'image/webp',
+        payloadPreview: '',
+        bodyLocalPath: r'C:\Temp\wukong_feishu_monitor_images\abc.webp',
+        bodySha1: 'abc123',
+        bodySize: 12345,
+        bodyMimeType: 'image/webp',
+        bodySaved: true,
+      ),
+    );
+
+    expect(merged.resourceType, 'Image');
+    expect(merged.documentUrl, contains('conversation_id=secret'));
+    expect(merged.initiatorType, 'parser');
+    expect(merged.initiatorUrl, contains('token=secret'));
+    expect(merged.frameId, 'frame-1');
+  });
+
   test('store counts saved image candidates beyond recent buffer', () {
     final store = FeishuNetworkCaptureStore(maxCandidates: 1);
 
@@ -528,7 +576,7 @@ void main() {
     expect(nextAttempt['reason'], 'initial');
   });
 
-  test('store omits resolver decision fields when decision is null', () async {
+  test('store records resolver skip reason when decision is null', () async {
     final dir = await Directory.systemTemp.createTemp(
       'feishu_network_capture_test_',
     );
@@ -553,15 +601,15 @@ void main() {
     expect(
       (summary['network_recent_image_resolver_decisions']! as List<Object?>)
           .single,
-      isEmpty,
+      <String, Object?>{'reason': 'attribution_missing'},
     );
 
     final lines = await file.readAsLines();
     final resolverLine = jsonDecode(lines.single) as Map<String, Object?>;
     expect(resolverLine, <String, Object?>{
       'diagnostic_type': 'image_resolver',
+      'reason': 'attribution_missing',
     });
-    expect(resolverLine, isNot(containsPair('reason', anything)));
   });
 
   test('store redacts data image attribution payloads', () async {

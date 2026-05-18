@@ -84,7 +84,7 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
        _telemetry = telemetry,
        _conversationLoader = conversationLoader ?? loadDefaultConversations,
        _deleteConversationAction =
-           deleteConversationAction ?? _deleteConversationFromSdk,
+           deleteConversationAction ?? _deleteConversationPersistently,
        _removeDraftAction = removeDraftAction ?? _removeDraftFromStore,
        _attachSdkListeners = attachSdkListeners,
        _deletedConversationTombstones =
@@ -129,11 +129,15 @@ class ConversationNotifier extends StateNotifier<List<WKUIConversationMsg>> {
   _deletedConversationTombstones;
   final Map<String, _ConversationReadTombstone> _readConversationTombstones;
 
-  static Future<void> _deleteConversationFromSdk(
+  static Future<void> _deleteConversationPersistently(
     String channelId,
     int channelType,
-  ) {
-    return WKIM.shared.conversationManager.deleteMsg(channelId, channelType);
+  ) async {
+    await MessageApi.instance.deleteConversation(
+      channelId: channelId,
+      channelType: channelType,
+    );
+    await WKIM.shared.conversationManager.deleteMsg(channelId, channelType);
   }
 
   static Future<void> _removeDraftFromStore(String channelId, int channelType) {

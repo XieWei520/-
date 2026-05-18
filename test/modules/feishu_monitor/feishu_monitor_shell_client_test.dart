@@ -3,15 +3,114 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/modules/feishu_monitor/feishu_monitor_forwarding_service.dart';
 import 'package:wukong_im_app/modules/feishu_monitor/feishu_monitor_shell_client.dart';
 
 void main() {
+  test(
+    'recommended client group targets six local shell workers for 120 routes',
+    () async {
+      final requestedUris = <Uri>[];
+      final adapter = _RoutingAdapter((options) {
+        requestedUris.add(options.uri);
+        final workerNumber = options.uri.port - 18765;
+        return _jsonResponse(<String, dynamic>{
+          'shell_state': 'online',
+          'capture_state': 'running',
+          'worker_id': 'worker-$workerNumber',
+        });
+      });
+      final dio = Dio()..httpClientAdapter = adapter;
+      final group = FeishuMonitorShellClientGroup.recommendedForRouteCount(
+        120,
+        dio: dio,
+        token: 'local-shell-token',
+      );
+
+      final statuses = await group.fetchStatuses();
+
+      expect(group.clients.map((client) => client.workerId), <String>[
+        'worker-1',
+        'worker-2',
+        'worker-3',
+        'worker-4',
+        'worker-5',
+        'worker-6',
+      ]);
+      expect(requestedUris.map((uri) => uri.port), <int>[
+        18766,
+        18767,
+        18768,
+        18769,
+        18770,
+        18771,
+      ]);
+      expect(statuses.map((status) => status.workerId), <String>[
+        'worker-1',
+        'worker-2',
+        'worker-3',
+        'worker-4',
+        'worker-5',
+        'worker-6',
+      ]);
+    },
+  );
+
+  test('fetchStatuses can be scoped to workers with assigned routes', () async {
+    final requestedPorts = <int>[];
+    final adapter = _RoutingAdapter((options) {
+      requestedPorts.add(options.uri.port);
+      final workerNumber = options.uri.port - 18765;
+      return _jsonResponse(<String, dynamic>{
+        'shell_state': 'online',
+        'capture_state': 'running',
+        'worker_id': 'worker-$workerNumber',
+      });
+    });
+    final dio = Dio()..httpClientAdapter = adapter;
+    final group = FeishuMonitorShellClientGroup.recommendedForRouteCount(
+      120,
+      dio: dio,
+      token: 'local-shell-token',
+    );
+
+    final statuses = await group.fetchStatuses(
+      workerIds: const <String>{'worker-1'},
+    );
+
+    expect(requestedPorts, <int>[18766]);
+    expect(statuses.map((status) => status.workerId), <String>['worker-1']);
+  });
+
+  test('syncConfiguredMediaSources only contacts assigned workers', () async {
+    final requestedPorts = <int>[];
+    final adapter = _RoutingAdapter((options) {
+      requestedPorts.add(options.uri.port);
+      expect(options.method, 'POST');
+      expect(options.uri.path, '/routing/sources');
+      return _jsonResponse(<String, dynamic>{'ok': true});
+    });
+    final dio = Dio()..httpClientAdapter = adapter;
+    final group = FeishuMonitorShellClientGroup.recommendedForRouteCount(
+      120,
+      dio: dio,
+      token: 'local-shell-token',
+    );
+
+    await group.syncConfiguredMediaSources(<FeishuMonitorForwardingRoute>[
+      _route(
+        sourceConversationId: 'feed:a',
+        targetGroupId: 'wk_a',
+        workerId: 'worker-1',
+      ),
+    ]);
+
+    expect(requestedPorts, <int>[18766]);
+  });
+
   test('fetchStatus parses shell snapshot', () async {
     final adapter = _RoutingAdapter((options) {
-      expect(
-        options.headers['Authorization'],
-        'Bearer local-shell-token',
-      );
+      expect(options.headers['Authorization'], 'Bearer local-shell-token');
       expect(options.uri.path, '/status');
       return _jsonResponse(<String, dynamic>{
         'shell_state': 'online',
@@ -96,18 +195,12 @@ void main() {
     expect(status.shellMode, 'desktop_shell');
     expect(status.queueDepth, 3);
     expect(status.messagesToday, 12);
-    expect(
-      status.probeObservedAt,
-      DateTime.parse('2026-05-09T10:01:00Z'),
-    );
+    expect(status.probeObservedAt, DateTime.parse('2026-05-09T10:01:00Z'));
     expect(status.observedConversations, hasLength(2));
     expect(status.observedConversations.first.id, 'oc_1');
     expect(status.observedConversations.first.name, 'Alpha');
     expect(status.observedConversations.first.type, 'group');
-    expect(
-      status.observedConversations.first.lastMessagePreview,
-      'hello',
-    );
+    expect(status.observedConversations.first.lastMessagePreview, 'hello');
     expect(
       status.observedConversations.first.observedAt,
       DateTime.parse('2026-05-09T10:01:02Z'),
@@ -203,10 +296,7 @@ data: {"error":"capture failed"}
     expect(events.first.type, 'snapshot_updated');
     expect(events.first.isSnapshotUpdated, isTrue);
     expect(events.first.reason, 'poll');
-    expect(
-      events.first.updatedAt,
-      DateTime.parse('2026-05-09T10:02:00Z'),
-    );
+    expect(events.first.updatedAt, DateTime.parse('2026-05-09T10:02:00Z'));
     expect(events.first.recentEvents, 2);
     expect(events.first.observedConversations, 3);
     expect(events.last.type, 'shell_error');
@@ -250,5 +340,24 @@ ResponseBody _sseResponse(String raw) {
     headers: <String, List<String>>{
       Headers.contentTypeHeader: <String>['text/event-stream'],
     },
+  );
+}
+
+FeishuMonitorForwardingRoute _route({
+  required String sourceConversationId,
+  required String targetGroupId,
+  required String workerId,
+}) {
+  return FeishuMonitorForwardingRoute(
+    id: 'route_$sourceConversationId',
+    enabled: true,
+    sourceConversationId: sourceConversationId,
+    sourceConversationName: 'Alpha',
+    sourceConversationType: 'unknown',
+    targetGroupId: targetGroupId,
+    targetGroupName: 'Target',
+    workerId: workerId,
+    createdAt: DateTime.parse('2026-05-09T01:00:00Z'),
+    updatedAt: DateTime.parse('2026-05-09T01:00:00Z'),
   );
 }

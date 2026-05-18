@@ -342,8 +342,11 @@ class CallStateMachine {
     CallSignalType signalType,
   ) {
     return switch (signalType) {
-      CallSignalType.offer || CallSignalType.answer => current.copyWith(
+      CallSignalType.offer => current.copyWith(
         status: CallLifecycleStatus.connecting,
+      ),
+      CallSignalType.answer => current.copyWith(
+        status: CallLifecycleStatus.connected,
       ),
       CallSignalType.hangup => current.copyWith(
         status: CallLifecycleStatus.ended,

@@ -9,6 +9,7 @@ import '../../../modules/vip/vip_badge.dart';
 import '../../../widgets/wk_avatar.dart';
 import '../../../widgets/wk_colors.dart';
 import '../../../widgets/wk_design_tokens.dart';
+import '../../../widgets/liquid_glass_tokens.dart';
 import '../../../widgets/wk_status_view.dart';
 import '../contacts_strings.dart';
 import '../contacts_directory_controller.dart';
@@ -36,6 +37,7 @@ class ContactsListViewport extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = LiquidGlassTokens.of(context);
     final strings = resolveContactsStrings(
       locale: Localizations.maybeLocaleOf(context),
     );
@@ -45,7 +47,11 @@ class ContactsListViewport extends StatelessWidget {
       key: const ValueKey('contacts-list-viewport-repaint'),
       child: ListView.builder(
         controller: scrollController,
-        padding: EdgeInsets.zero,
+        padding: const EdgeInsets.only(
+          left: LiquidGlassSizes.pageContentPadding,
+          right: LiquidGlassSizes.pageContentPadding,
+          bottom: 8,
+        ),
         itemCount: entries.isEmpty ? 2 : entries.length + 2,
         itemBuilder: (context, index) {
           if (index == 0) {
@@ -66,15 +72,15 @@ class ContactsListViewport extends StatelessWidget {
           final rowIndex = index - 1;
           if (rowIndex >= entries.length) {
             return Container(
-              color: WKColors.homeBg,
-              padding: const EdgeInsets.symmetric(vertical: 15),
+              color: Colors.transparent,
+              padding: const EdgeInsets.symmetric(vertical: 12),
               alignment: Alignment.center,
               child: Text(
                 strings.contactsCount(entries.length),
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: WKFontFamily.primary,
-                  fontSize: 16,
-                  color: WKColors.colorDark,
+                  fontSize: 13,
+                  color: tokens.textSecondary,
                 ),
               ),
             );
@@ -144,42 +150,53 @@ class _ContactRow extends StatelessWidget {
     final subtitle = _buildSubtitle();
     final recentOfflineBadgeText = _buildRecentOfflineBadgeText();
     final showOnlineDot = presence?.online ?? false;
+    final tokens = LiquidGlassTokens.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (showSection)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(15, 10, 15, 6),
+          Container(
+            height: 30,
+            alignment: Alignment.bottomLeft,
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
             child: Text(
               entry.sectionLetter,
-              style: const TextStyle(
-                fontFamily: WKFontFamily.title,
+              style: TextStyle(
+                fontFamily: WKFontFamily.primary,
                 fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: WKColors.brand500,
+                fontWeight: FontWeight.w600,
+                color: tokens.textSecondary,
               ),
             ),
           ),
         Material(
-          color: WKColors.surface,
+          key: ValueKey<String>('contacts-row-surface-${entry.friend.uid}'),
+          color: tokens.surfaceSolid,
+          shape: const RoundedRectangleBorder(
+            borderRadius: LiquidGlassRadii.lg,
+          ),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
             onLongPress: onLongPress,
-            highlightColor: WKColors.screenBgSelected,
-            splashColor: WKColors.screenBgSelected,
-            child: Container(
-              color: WKColors.surface,
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+            borderRadius: LiquidGlassRadii.lg,
+            highlightColor: LiquidGlassColors.primary.withValues(alpha: 0.05),
+            splashColor: LiquidGlassColors.primary.withValues(alpha: 0.07),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: LiquidGlassSizes.listRowHeight,
+              ),
               child: Row(
                 children: [
+                  const SizedBox(width: 16),
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
                       WKAvatar(
                         url: entry.friend.avatar,
                         name: entry.sortKey,
-                        size: 50,
+                        size: LiquidGlassSizes.listAvatarSize,
                       ),
                       if (showOnlineDot)
                         Positioned(
@@ -195,7 +212,7 @@ class _ContactRow extends StatelessWidget {
                               color: _onlineDotColor,
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: WKColors.layoutColor,
+                                color: tokens.surfaceSolid,
                                 width: 2,
                               ),
                             ),
@@ -216,7 +233,7 @@ class _ContactRow extends StatelessWidget {
                               color: _recentOfflineBadgeBackground,
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: WKColors.white,
+                                color: tokens.surfaceSolid,
                                 width: 2,
                               ),
                             ),
@@ -234,39 +251,45 @@ class _ContactRow extends StatelessWidget {
                         ),
                     ],
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildNameAndBadges(tags),
+                        _buildNameAndBadges(context, tags),
                         if (subtitle != null) ...[
                           const SizedBox(height: 2),
                           Text(
                             subtitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: WKFontFamily.primary,
-                              fontSize: 14,
-                              color: WKColors.color999,
+                              fontSize: 12,
+                              color: tokens.textSecondary,
                             ),
                           ),
                         ],
                       ],
                     ),
                   ),
+                  const SizedBox(width: 16),
                 ],
               ),
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.only(left: 60),
+          child: Divider(height: 1, thickness: 1, color: tokens.border),
+        ),
       ],
     );
   }
 
-  Widget _buildNameAndBadges(List<Widget> tags) {
+  Widget _buildNameAndBadges(BuildContext context, List<Widget> tags) {
+    final tokens = LiquidGlassTokens.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         return Wrap(
@@ -280,11 +303,11 @@ class _ContactRow extends StatelessWidget {
                 entry.sortKey,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: WKFontFamily.primary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: WKColors.colorDark,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: tokens.text,
                 ),
               ),
             ),

@@ -1,6 +1,12 @@
 enum FeishuNetworkEventSource {
+  httpRequest,
   httpResponse,
+  dataReceived,
+  eventSourceMessage,
+  webSocketCreated,
   webSocketFrame,
+  webSocketFrameSent,
+  webSocketClosed,
   imageRequest,
   unknown,
 }
@@ -24,6 +30,14 @@ class FeishuNetworkCaptureEvent {
     this.bodyBase64Encoded = false,
     this.bodySaved = false,
     this.bodySaveError = '',
+    this.resourceType = '',
+    this.documentUrl = '',
+    this.initiatorType = '',
+    this.initiatorUrl = '',
+    this.initiatorStackUrl = '',
+    this.initiatorLineNumber = 0,
+    this.initiatorColumnNumber = 0,
+    this.frameId = '',
   });
 
   final String id;
@@ -41,6 +55,14 @@ class FeishuNetworkCaptureEvent {
   final bool bodyBase64Encoded;
   final bool bodySaved;
   final String bodySaveError;
+  final String resourceType;
+  final String documentUrl;
+  final String initiatorType;
+  final String initiatorUrl;
+  final String initiatorStackUrl;
+  final int initiatorLineNumber;
+  final int initiatorColumnNumber;
+  final String frameId;
 
   Map<String, Object?> toRedactedJson() {
     return <String, Object?>{
@@ -61,6 +83,14 @@ class FeishuNetworkCaptureEvent {
       'body_base64_encoded': bodyBase64Encoded,
       'body_saved': bodySaved,
       'body_save_error': bodySaveError,
+      'resource_type': resourceType,
+      'document_url': redactUrl(documentUrl),
+      'initiator_type': initiatorType,
+      'initiator_url': redactUrl(initiatorUrl),
+      'initiator_stack_url': redactUrl(initiatorStackUrl),
+      'initiator_line_number': initiatorLineNumber,
+      'initiator_column_number': initiatorColumnNumber,
+      'frame_id': frameId,
     };
   }
 }
@@ -81,6 +111,14 @@ class FeishuNetworkImageCandidate {
     this.bodySha1 = '',
     this.bodySize = 0,
     this.bodyMimeType = '',
+    this.requestResourceType = '',
+    this.requestDocumentUrl = '',
+    this.requestInitiatorType = '',
+    this.requestInitiatorUrl = '',
+    this.requestInitiatorStackUrl = '',
+    this.requestInitiatorLineNumber = 0,
+    this.requestInitiatorColumnNumber = 0,
+    this.requestFrameId = '',
   });
 
   final String conversationId;
@@ -97,6 +135,14 @@ class FeishuNetworkImageCandidate {
   final String bodySha1;
   final int bodySize;
   final String bodyMimeType;
+  final String requestResourceType;
+  final String requestDocumentUrl;
+  final String requestInitiatorType;
+  final String requestInitiatorUrl;
+  final String requestInitiatorStackUrl;
+  final int requestInitiatorLineNumber;
+  final int requestInitiatorColumnNumber;
+  final String requestFrameId;
 
   Map<String, Object?> toStatusJson() {
     return <String, Object?>{
@@ -114,6 +160,14 @@ class FeishuNetworkImageCandidate {
       'body_sha1': bodySha1,
       'body_size': bodySize,
       'body_mime_type': bodyMimeType,
+      'request_resource_type': requestResourceType,
+      'request_document_url': redactUrl(requestDocumentUrl),
+      'request_initiator_type': requestInitiatorType,
+      'request_initiator_url': redactUrl(requestInitiatorUrl),
+      'request_initiator_stack_url': redactUrl(requestInitiatorStackUrl),
+      'request_initiator_line_number': requestInitiatorLineNumber,
+      'request_initiator_column_number': requestInitiatorColumnNumber,
+      'request_frame_id': requestFrameId,
     };
   }
 }

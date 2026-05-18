@@ -38,6 +38,7 @@ void main() {
       final result = await runner.runOnce();
 
       expect(client.fetchCount, 1);
+      expect(client.lastSyncedSourceIds, <String>['feed:alpha']);
       expect(service.callCount, 1);
       expect(service.lastSettings?.enabled, isTrue);
       expect(service.lastEvents, hasLength(1));
@@ -45,6 +46,213 @@ void main() {
       expect(result?.sent, 1);
     },
   );
+
+  test(
+    'runOnce merges events from all configured workers without duplicate forwarding',
+    () async {
+      final workerA = _FakeShellClient(
+        status: _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(conversationId: 'feed:a', text: 'from A', dedupeKey: 'same'),
+          ],
+        ),
+      );
+      final workerB = _FakeShellClient(
+        status: _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(conversationId: 'feed:b', text: 'from B', dedupeKey: 'same'),
+          ],
+        ),
+      );
+      final service = _FakeForwardingService();
+      final runner = FeishuMonitorAutoForwardRunner(
+        clientGroup: FeishuMonitorShellClientGroup.forTesting(
+          <FeishuMonitorShellClient>[workerA, workerB],
+        ),
+        forwardingService: service,
+        forwardingSettingsStore: _MemoryForwardingSettingsStore(
+          FeishuMonitorForwardingSettings(
+            enabled: true,
+            routes: <FeishuMonitorForwardingRoute>[
+              _route(sourceConversationId: 'feed:a', targetGroupId: 'wk_a'),
+              _route(sourceConversationId: 'feed:b', targetGroupId: 'wk_b'),
+            ],
+          ),
+        ),
+      );
+
+      final result = await runner.runOnce();
+
+      expect(workerA.fetchCount, 1);
+      expect(workerB.fetchCount, 1);
+      expect(service.callCount, 1);
+      expect(service.lastEvents, hasLength(1));
+      expect(service.lastEvents.single.dedupeKey, 'same');
+      expect(result?.sent, 1);
+    },
+  );
+
+  test(
+    'runOnce reports failed worker fetch and forwards healthy worker events',
+    () async {
+      final errors = <Object>[];
+      final failingWorker = _FailingFetchShellClient(
+        status: _status(),
+        error: StateError('worker fetch failed'),
+      );
+      final healthyWorker = _FakeShellClient(
+        status: _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(conversationId: 'feed:healthy', text: 'from healthy worker'),
+          ],
+        ),
+      );
+      final service = _FakeForwardingService();
+      final runner = FeishuMonitorAutoForwardRunner(
+        clientGroup: FeishuMonitorShellClientGroup.forTesting(
+          <FeishuMonitorShellClient>[failingWorker, healthyWorker],
+        ),
+        forwardingService: service,
+        forwardingSettingsStore: _MemoryForwardingSettingsStore(
+          FeishuMonitorForwardingSettings(
+            enabled: true,
+            routes: <FeishuMonitorForwardingRoute>[
+              _route(
+                sourceConversationId: 'feed:healthy',
+                targetGroupId: 'wk_healthy',
+              ),
+            ],
+          ),
+        ),
+        onError: (error, _) => errors.add(error),
+      );
+
+      final result = await runner.runOnce();
+
+      expect(failingWorker.fetchCount, 1);
+      expect(healthyWorker.fetchCount, 1);
+      expect(errors, hasLength(1));
+      expect(errors.single, isA<StateError>());
+      expect(service.callCount, 1);
+      expect(service.lastEvents, hasLength(1));
+      expect(service.lastEvents.single.text, 'from healthy worker');
+      expect(result?.sent, 1);
+    },
+  );
+
+  test('runOnce syncs each worker only with its assigned routes', () async {
+    final workerA = _FakeShellClient(
+      workerId: 'worker-1',
+      status: _status(workerId: 'worker-1'),
+    );
+    final workerB = _FakeShellClient(
+      workerId: 'worker-2',
+      status: _status(workerId: 'worker-2'),
+    );
+    final runner = FeishuMonitorAutoForwardRunner(
+      clientGroup: FeishuMonitorShellClientGroup.forTesting(
+        <FeishuMonitorShellClient>[workerA, workerB],
+      ),
+      forwardingService: _FakeForwardingService(),
+      forwardingSettingsStore: _MemoryForwardingSettingsStore(
+        FeishuMonitorForwardingSettings(
+          enabled: true,
+          routes: <FeishuMonitorForwardingRoute>[
+            _route(
+              sourceConversationId: 'feed:a',
+              targetGroupId: 'wk_a',
+              workerId: 'worker-1',
+            ),
+            _route(
+              sourceConversationId: 'feed:b',
+              targetGroupId: 'wk_b',
+              workerId: 'worker-2',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await runner.runOnce();
+
+    expect(workerA.lastSyncedSourceIds, <String>['feed:a']);
+    expect(workerB.lastSyncedSourceIds, <String>['feed:b']);
+  });
+
+  test('runOnce ignores extra workers with no assigned routes', () async {
+    final assignedWorker = _FakeShellClient(
+      workerId: 'worker-1',
+      status: _status(
+        workerId: 'worker-1',
+        recentEvents: <FeishuMonitorMessageEvent>[
+          _event(conversationId: 'feed:a', text: 'assigned worker event'),
+        ],
+      ),
+    );
+    final extraWorker = _FakeShellClient(
+      workerId: 'worker-2',
+      status: _status(workerId: 'worker-2'),
+    );
+    final service = _FakeForwardingService();
+    final runner = FeishuMonitorAutoForwardRunner(
+      clientGroup: FeishuMonitorShellClientGroup.forTesting(
+        <FeishuMonitorShellClient>[assignedWorker, extraWorker],
+      ),
+      forwardingService: service,
+      forwardingSettingsStore: _MemoryForwardingSettingsStore(
+        FeishuMonitorForwardingSettings(
+          enabled: true,
+          routes: <FeishuMonitorForwardingRoute>[
+            _route(
+              sourceConversationId: 'feed:a',
+              targetGroupId: 'wk_a',
+              workerId: 'worker-1',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final result = await runner.runOnce();
+
+    expect(assignedWorker.syncSourceCount, 1);
+    expect(assignedWorker.fetchCount, 1);
+    expect(extraWorker.syncSourceCount, 0);
+    expect(extraWorker.fetchCount, 0);
+    expect(service.callCount, 1);
+    expect(service.lastEvents.single.text, 'assigned worker event');
+    expect(result?.sent, 1);
+  });
+
+  test('runOnce assigns legacy unsharded routes to the first worker', () async {
+    final workerA = _FakeShellClient(
+      workerId: 'worker-1',
+      status: _status(workerId: 'worker-1'),
+    );
+    final workerB = _FakeShellClient(
+      workerId: 'worker-2',
+      status: _status(workerId: 'worker-2'),
+    );
+    final runner = FeishuMonitorAutoForwardRunner(
+      clientGroup: FeishuMonitorShellClientGroup.forTesting(
+        <FeishuMonitorShellClient>[workerA, workerB],
+      ),
+      forwardingService: _FakeForwardingService(),
+      forwardingSettingsStore: _MemoryForwardingSettingsStore(
+        FeishuMonitorForwardingSettings(
+          enabled: true,
+          routes: <FeishuMonitorForwardingRoute>[
+            _route(sourceConversationId: 'feed:legacy', targetGroupId: 'wk_a'),
+          ],
+        ),
+      ),
+    );
+
+    await runner.runOnce();
+
+    expect(workerA.lastSyncedSourceIds, <String>['feed:legacy']);
+    expect(workerB.lastSyncedSourceIds, isEmpty);
+  });
 
   test(
     'runOnce does not fetch shell status when auto-forwarding is disabled',
@@ -66,6 +274,7 @@ void main() {
 
       expect(result, isNull);
       expect(client.fetchCount, 0);
+      expect(client.syncSourceCount, 0);
       expect(service.callCount, 0);
     },
   );
@@ -123,48 +332,150 @@ void main() {
     });
   });
 
-  test('start waits to prime until first non-empty shell snapshot', () {
+  test('start forwards startup network images observed after runner start', () {
     fakeAsync((async) {
-      final client = _MutableShellClient(status: _status());
+      final startAt = DateTime.parse('2026-05-09T13:00:00Z');
+      final client = _FakeShellClient(
+        status: _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(
+              messageId: 'network_image:live:sha_live',
+              dedupeKey: 'feed:alpha:network_image:live:sha_live',
+              text: '[Image]',
+              captureSource: 'network_original_image',
+              observedAt: startAt.add(const Duration(milliseconds: 1)),
+            ),
+          ],
+        ),
+      );
       final service = _FakeForwardingService();
-      final runner = _runner(client: client, service: service);
+      final runner = FeishuMonitorAutoForwardRunner(
+        client: client,
+        forwardingService: service,
+        forwardingSettingsStore: _MemoryForwardingSettingsStore(
+          FeishuMonitorForwardingSettings(
+            enabled: true,
+            routes: <FeishuMonitorForwardingRoute>[
+              _route(
+                sourceConversationId: 'feed:alpha',
+                targetGroupId: 'wk_alpha',
+              ),
+            ],
+          ),
+        ),
+        clock: () => startAt,
+      );
 
       runner.start();
       async.flushMicrotasks();
 
-      expect(client.fetchCount, 1);
       expect(service.primeCount, 0);
-      expect(service.callCount, 0);
-
-      client.status = _status(
-        recentEvents: <FeishuMonitorMessageEvent>[
-          _event(conversationId: 'feed:alpha', text: 'existing image'),
-        ],
-      );
-      client.addEvent(_snapshotUpdatedEvent());
-      async.flushMicrotasks();
-
-      expect(client.fetchCount, 2);
-      expect(service.primeCount, 1);
-      expect(service.callCount, 0);
-      expect(service.lastPrimedEvents, hasLength(1));
-
-      client.status = _status(
-        recentEvents: <FeishuMonitorMessageEvent>[
-          _event(conversationId: 'feed:alpha', text: 'new image'),
-        ],
-      );
-      client.addEvent(_snapshotUpdatedEvent());
-      async.flushMicrotasks();
-
-      expect(client.fetchCount, 3);
-      expect(service.primeCount, 1);
       expect(service.callCount, 1);
-      expect(service.lastEvents.single.text, 'new image');
+      expect(service.lastEvents, hasLength(1));
+      expect(
+        service.lastEvents.single.dedupeKey,
+        'feed:alpha:network_image:live:sha_live',
+      );
 
       runner.dispose();
     });
   });
+
+  test(
+    'start forwards first non-empty snapshot update after empty startup',
+    () {
+      fakeAsync((async) {
+        final client = _MutableShellClient(status: _status());
+        final service = _FakeForwardingService();
+        final runner = _runner(client: client, service: service);
+
+        runner.start();
+        async.flushMicrotasks();
+
+        expect(client.fetchCount, 1);
+        expect(service.primeCount, 0);
+        expect(service.callCount, 0);
+
+        client.status = _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(
+              conversationId: 'feed:alpha',
+              text: 'live after empty startup',
+            ),
+          ],
+        );
+        client.addEvent(_snapshotUpdatedEvent());
+        async.flushMicrotasks();
+
+        expect(client.fetchCount, 2);
+        expect(service.primeCount, 0);
+        expect(service.callCount, 1);
+        expect(service.lastEvents, hasLength(1));
+        expect(service.lastEvents.single.text, 'live after empty startup');
+
+        client.status = _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(conversationId: 'feed:alpha', text: 'new image'),
+          ],
+        );
+        client.addEvent(_snapshotUpdatedEvent());
+        async.flushMicrotasks();
+
+        expect(client.fetchCount, 3);
+        expect(service.primeCount, 0);
+        expect(service.callCount, 2);
+        expect(service.lastEvents.single.text, 'new image');
+
+        runner.dispose();
+      });
+    },
+  );
+
+  test(
+    'start forwards first live event after initial empty shell snapshot',
+    () {
+      fakeAsync((async) {
+        final client = _MutableShellClient(status: _status());
+        final service = _FakeForwardingService();
+        final runner = _runner(client: client, service: service);
+
+        runner.start();
+        async.flushMicrotasks();
+
+        expect(client.fetchCount, 1);
+        expect(service.primeCount, 0);
+        expect(service.callCount, 0);
+
+        client.status = _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(conversationId: 'feed:alpha', text: 'live after login'),
+          ],
+        );
+        client.addEvent(_snapshotUpdatedEvent());
+        async.flushMicrotasks();
+
+        expect(client.fetchCount, 2);
+        expect(service.primeCount, 0);
+        expect(service.callCount, 1);
+        expect(service.lastEvents.single.text, 'live after login');
+
+        client.status = _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(conversationId: 'feed:alpha', text: 'second live event'),
+          ],
+        );
+        client.addEvent(_snapshotUpdatedEvent());
+        async.flushMicrotasks();
+
+        expect(client.fetchCount, 3);
+        expect(service.primeCount, 0);
+        expect(service.callCount, 2);
+        expect(service.lastEvents.single.text, 'second live event');
+
+        runner.dispose();
+      });
+    },
+  );
 
   test('start forwards immediately when snapshot update event arrives', () {
     fakeAsync((async) {
@@ -189,6 +500,102 @@ void main() {
 
       expect(client.fetchCount, 2);
       expect(service.callCount, 1);
+
+      runner.dispose();
+    });
+  });
+
+  test('start subscribes to events from every worker', () {
+    fakeAsync((async) {
+      final workerA = _MutableShellClient(
+        workerId: 'worker-1',
+        status: _status(workerId: 'worker-1'),
+      );
+      final workerB = _MutableShellClient(
+        workerId: 'worker-2',
+        status: _status(workerId: 'worker-2'),
+      );
+      final service = _FakeForwardingService();
+      final runner = FeishuMonitorAutoForwardRunner(
+        clientGroup: FeishuMonitorShellClientGroup.forTesting(
+          <FeishuMonitorShellClient>[workerA, workerB],
+        ),
+        forwardingService: service,
+        forwardingSettingsStore: _MemoryForwardingSettingsStore(
+          FeishuMonitorForwardingSettings(
+            enabled: true,
+            routes: <FeishuMonitorForwardingRoute>[
+              _route(
+                sourceConversationId: 'feed:a',
+                targetGroupId: 'wk_a',
+                workerId: 'worker-1',
+              ),
+              _route(
+                sourceConversationId: 'feed:b',
+                targetGroupId: 'wk_b',
+                workerId: 'worker-2',
+              ),
+            ],
+          ),
+        ),
+      );
+
+      runner.start();
+      async.flushMicrotasks();
+
+      expect(workerA.watchCount, 1);
+      expect(workerB.watchCount, 1);
+
+      workerB.status = _status(
+        workerId: 'worker-2',
+        recentEvents: <FeishuMonitorMessageEvent>[
+          _event(
+            conversationId: 'feed:b',
+            text: 'worker B live',
+            dedupeKey: 'feed:b:event_1',
+          ),
+        ],
+      );
+      workerB.addEvent(_snapshotUpdatedEvent());
+      async.flushMicrotasks();
+
+      expect(service.callCount, 1);
+      expect(service.lastEvents, hasLength(1));
+      expect(service.lastEvents.single.text, 'worker B live');
+
+      runner.dispose();
+    });
+  });
+
+  test('start forwards first snapshot update instead of priming it away', () {
+    fakeAsync((async) {
+      final client = _MutableShellClient(
+        status: _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(conversationId: 'feed:alpha', text: 'existing'),
+          ],
+        ),
+      );
+      final service = _FakeForwardingService();
+      final runner = _runner(client: client, service: service);
+
+      runner.start();
+
+      client.status = _status(
+        recentEvents: <FeishuMonitorMessageEvent>[
+          _event(
+            conversationId: 'feed:alpha',
+            text: 'live image after startup',
+            dedupeKey: 'feed:alpha:live-image-after-startup',
+          ),
+        ],
+      );
+      client.addEvent(_snapshotUpdatedEvent());
+      async.flushMicrotasks();
+
+      expect(service.primeCount, 0);
+      expect(service.callCount, 1);
+      expect(service.lastEvents.single.text, 'live image after startup');
 
       runner.dispose();
     });
@@ -224,6 +631,109 @@ void main() {
       runner.dispose();
     });
   });
+
+  test(
+    'fallback polling forwards first event that appears after empty startup',
+    () {
+      fakeAsync((async) {
+        final client = _MutableShellClient(status: _status());
+        final service = _FakeForwardingService();
+        final runner = _runner(
+          client: client,
+          service: service,
+          interval: const Duration(seconds: 3),
+        );
+
+        runner.start();
+        async.flushMicrotasks();
+
+        expect(service.primeCount, 0);
+        expect(service.callCount, 0);
+
+        client.status = _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(
+              conversationId: 'feed:alpha',
+              text: '[Image]',
+              dedupeKey: 'feed:alpha:network_image:live-after-empty:sha1',
+            ),
+          ],
+        );
+        async.elapse(const Duration(seconds: 3));
+        async.flushMicrotasks();
+
+        expect(service.primeCount, 0);
+        expect(service.callCount, 1);
+        expect(
+          service.lastEvents.single.dedupeKey,
+          'feed:alpha:network_image:live-after-empty:sha1',
+        );
+
+        runner.dispose();
+      });
+    },
+  );
+
+  test(
+    'start ignores stale network images already present in shell snapshot',
+    () {
+      fakeAsync((async) {
+        final startAt = DateTime.parse('2026-05-09T13:00:00Z');
+        final client = _MutableShellClient(status: _status());
+        final service = _FakeForwardingService();
+        final runner = FeishuMonitorAutoForwardRunner(
+          client: client,
+          forwardingService: service,
+          forwardingSettingsStore: _MemoryForwardingSettingsStore(
+            FeishuMonitorForwardingSettings(
+              enabled: true,
+              routes: <FeishuMonitorForwardingRoute>[
+                _route(
+                  sourceConversationId: 'feed:alpha',
+                  targetGroupId: 'wk_alpha',
+                ),
+              ],
+            ),
+          ),
+          clock: () => startAt,
+        );
+
+        runner.start();
+        async.flushMicrotasks();
+
+        client.status = _status(
+          recentEvents: <FeishuMonitorMessageEvent>[
+            _event(
+              messageId: 'network_image:old:sha_old',
+              dedupeKey: 'feed:alpha:network_image:old:sha_old',
+              text: '[Image]',
+              captureSource: 'network_original_image',
+              observedAt: startAt.subtract(const Duration(minutes: 20)),
+            ),
+            _event(
+              messageId: 'network_image:new:sha_new',
+              dedupeKey: 'feed:alpha:network_image:new:sha_new',
+              text: '[Image]',
+              captureSource: 'network_original_image',
+              observedAt: startAt.add(const Duration(seconds: 1)),
+            ),
+          ],
+        );
+        client.addEvent(_snapshotUpdatedEvent());
+        async.flushMicrotasks();
+
+        expect(service.primeCount, 0);
+        expect(service.callCount, 1);
+        expect(service.lastEvents, hasLength(1));
+        expect(
+          service.lastEvents.single.dedupeKey,
+          'feed:alpha:network_image:new:sha_new',
+        );
+
+        runner.dispose();
+      });
+    },
+  );
 
   test('repeated start does not create duplicate event subscriptions', () {
     fakeAsync((async) {
@@ -462,6 +972,7 @@ FeishuMonitorAutoForwardRunner _runner({
 FeishuMonitorShellStatus _status({
   List<FeishuMonitorMessageEvent> recentEvents =
       const <FeishuMonitorMessageEvent>[],
+  String workerId = 'worker-1',
 }) {
   return FeishuMonitorShellStatus(
     shellState: 'online',
@@ -482,6 +993,7 @@ FeishuMonitorShellStatus _status({
     observedConversations: const <FeishuMonitorObservedConversation>[],
     observedMessages: const <FeishuMonitorObservedMessage>[],
     recentEvents: recentEvents,
+    workerId: workerId,
     lastError: '',
   );
 }
@@ -489,22 +1001,26 @@ FeishuMonitorShellStatus _status({
 FeishuMonitorMessageEvent _event({
   String conversationId = 'feed:alpha',
   String text = 'hello',
+  String dedupeKey = 'feed:alpha:event_1',
+  String messageId = 'message_1',
+  String captureSource = 'feed_card_probe',
+  DateTime? observedAt,
 }) {
   return FeishuMonitorMessageEvent(
-    eventId: 'event_1',
-    dedupeKey: 'feed:alpha:event_1',
+    eventId: 'event_$messageId',
+    dedupeKey: dedupeKey,
     accountId: '',
     conversationId: conversationId,
     conversationName: 'Alpha',
     conversationType: 'unknown',
-    messageId: 'message_1',
+    messageId: messageId,
     senderId: '',
     senderName: 'Alice',
     messageType: 'text',
     text: text,
     sentAt: null,
-    observedAt: DateTime.parse('2026-05-09T13:00:00Z'),
-    captureSource: 'feed_card_probe',
+    observedAt: observedAt ?? DateTime.parse('2026-05-09T13:00:00Z'),
+    captureSource: captureSource,
   );
 }
 
@@ -522,6 +1038,7 @@ FeishuMonitorShellEvent _snapshotUpdatedEvent() {
 FeishuMonitorForwardingRoute _route({
   String sourceConversationId = 'feed:alpha',
   String targetGroupId = 'wk_alpha',
+  String workerId = '',
 }) {
   return FeishuMonitorForwardingRoute(
     id: 'route_1',
@@ -531,19 +1048,23 @@ FeishuMonitorForwardingRoute _route({
     sourceConversationType: 'unknown',
     targetGroupId: targetGroupId,
     targetGroupName: 'Target',
+    workerId: workerId,
     createdAt: DateTime.parse('2026-05-09T01:00:00Z'),
     updatedAt: DateTime.parse('2026-05-09T01:00:00Z'),
   );
 }
 
 class _FakeShellClient extends FeishuMonitorShellClient {
-  _FakeShellClient({required this.status});
+  _FakeShellClient({required this.status, super.workerId});
 
   FeishuMonitorShellStatus status;
   final List<StreamController<FeishuMonitorShellEvent>> events =
       <StreamController<FeishuMonitorShellEvent>>[];
   int fetchCount = 0;
   int watchCount = 0;
+  int syncSourceCount = 0;
+  List<String> lastSyncedSourceIds = const <String>[];
+  List<String> lastSyncedSourceNames = const <String>[];
 
   @override
   Future<FeishuMonitorShellStatus> fetchStatus() async {
@@ -557,6 +1078,21 @@ class _FakeShellClient extends FeishuMonitorShellClient {
     final controller = StreamController<FeishuMonitorShellEvent>();
     events.add(controller);
     return controller.stream;
+  }
+
+  @override
+  Future<void> syncConfiguredMediaSources(
+    List<FeishuMonitorForwardingRoute> routes,
+  ) async {
+    syncSourceCount += 1;
+    lastSyncedSourceIds = routes
+        .map((route) => route.sourceConversationId)
+        .where((value) => value.trim().isNotEmpty)
+        .toList(growable: false);
+    lastSyncedSourceNames = routes
+        .map((route) => route.sourceConversationName)
+        .where((value) => value.trim().isNotEmpty)
+        .toList(growable: false);
   }
 
   void addEvent(FeishuMonitorShellEvent event) {
@@ -573,7 +1109,19 @@ class _FakeShellClient extends FeishuMonitorShellClient {
 }
 
 class _MutableShellClient extends _FakeShellClient {
-  _MutableShellClient({required super.status});
+  _MutableShellClient({required super.status, super.workerId});
+}
+
+class _FailingFetchShellClient extends _FakeShellClient {
+  _FailingFetchShellClient({required super.status, required this.error});
+
+  final Object error;
+
+  @override
+  Future<FeishuMonitorShellStatus> fetchStatus() async {
+    fetchCount += 1;
+    throw error;
+  }
 }
 
 class _RetainedDataShellClient extends _FakeShellClient {
@@ -705,6 +1253,7 @@ class _NoopTextSender implements FeishuMonitorTextSender {
     required int channelType,
     String? channelName,
     required FeishuMonitorImageAttachment image,
+    FeishuMonitorRelayIdentity? relayIdentity,
   }) async {}
 
   @override
@@ -713,5 +1262,6 @@ class _NoopTextSender implements FeishuMonitorTextSender {
     required int channelType,
     String? channelName,
     required String text,
+    FeishuMonitorRelayIdentity? relayIdentity,
   }) async {}
 }

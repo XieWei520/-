@@ -12,18 +12,16 @@ void main() {
     () async {
       final firstController = StreamController<Object?>.broadcast();
       final secondController = StreamController<Object?>.broadcast();
-      final controllers = <StreamController<Object?>>[
-        firstController,
-        secondController,
-      ];
+      final firstSocket = _FakeSessionSocket(firstController.stream);
+      final secondSocket = _FakeSessionSocket(secondController.stream);
+      final sockets = <_FakeSessionSocket>[firstSocket, secondSocket];
       final connectedUris = <Uri>[];
       var connectCount = 0;
       final runtime = SessionRuntime(
         gateway: SessionEventGateway(
           connect: (uri, {headers}) {
             connectedUris.add(uri);
-            final controller = controllers[connectCount++];
-            return _FakeSessionSocket(controller.stream);
+            return sockets[connectCount++];
           },
           ack: (_) async {},
         ),
@@ -58,6 +56,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(connectCount, 2);
+      expect(firstSocket.closeCalls, 1);
       expect(runtime.isRunning, isTrue);
       expect(runtime.isGatewayDegraded, isFalse);
       expect(connectedUris.last.queryParameters['last_acked_seq'], '1');
@@ -340,6 +339,43 @@ void main() {
     expect(runtime.isRunning, isFalse);
   });
 
+  test('runtime start is idempotent while same session is recovering', () async {
+    final controller = StreamController<Object?>.broadcast();
+    final pauseRecovery = Completer<void>();
+    var connectCount = 0;
+    final runtime = SessionRuntime(
+      gateway: SessionEventGateway(
+        connect: (uri, {headers}) {
+          connectCount += 1;
+          return _FakeSessionSocket(controller.stream);
+        },
+      ),
+      onDeviceInvalidated: () {},
+      retryDelay: (_) => Duration.zero,
+      delay: (_) => pauseRecovery.future,
+    );
+    addTearDown(() async {
+      await runtime.stop();
+      if (!pauseRecovery.isCompleted) {
+        pauseRecovery.complete();
+      }
+      await controller.close();
+    });
+
+    final uri = Uri.parse(
+      'ws://example.com/v1/realtime/session/events/ws?device_session_id=device_01&last_acked_seq=0&control_protocol=protobuf',
+    );
+    await runtime.start(uri, headers: const <String, String>{'token': 't1'});
+    controller.addError(StateError('socket closed'));
+    await Future<void>.delayed(Duration.zero);
+
+    await runtime.start(uri, headers: const <String, String>{'token': 't1'});
+
+    expect(connectCount, 1);
+    expect(runtime.isRunning, isFalse);
+    expect(runtime.isGatewayDegraded, isTrue);
+  });
+
   test(
     'runtime requests delta and replays missing seqs before processing a gapped frame',
     () async {
@@ -381,6 +417,51 @@ void main() {
       expect(handledSeqs, <int>[11, 12, 13]);
       expect(ackedSeqs, <int>[11, 12, 13]);
       expect(gateway.lastAckedSeq, 13);
+    },
+  );
+
+  test(
+    'runtime fast-forwards pruned history when cold-start cursor is zero',
+    () async {
+      final controller = StreamController<Object?>.broadcast();
+      final pulled = <(int afterSeq, int limit)>[];
+      final handledSeqs = <int>[];
+      final ackedSeqs = <int>[];
+      final gateway = SessionEventGateway(
+        connect: (uri, {headers}) => _FakeSessionSocket(controller.stream),
+        ack: (lastAckedSeq) async {
+          ackedSeqs.add(lastAckedSeq);
+        },
+      );
+      final runtime = SessionRuntime(
+        gateway: gateway,
+        onDeviceInvalidated: () {},
+        pullAfterSeq: ({required afterSeq, required limit}) async {
+          pulled.add((afterSeq, limit));
+          if (afterSeq == 0) {
+            return <SessionEventFrame>[
+              _frame(seq: 5, eventId: 'evt_5'),
+              _frame(seq: 6, eventId: 'evt_6'),
+            ];
+          }
+          return const <SessionEventFrame>[];
+        },
+        onFrame: (frame) async {
+          handledSeqs.add(frame.userSeq);
+        },
+      );
+      addTearDown(() async {
+        await runtime.stop();
+        await controller.close();
+      });
+
+      await runtime.start(Uri.parse('ws://example.com'));
+      await runtime.handleFrame(_frame(seq: 7, eventId: 'evt_live_7'));
+
+      expect(pulled, <(int, int)>[(0, 200)]);
+      expect(handledSeqs, <int>[5, 6, 7]);
+      expect(ackedSeqs, <int>[5, 6, 7]);
+      expect(gateway.lastAckedSeq, 7);
     },
   );
 
@@ -551,6 +632,56 @@ void main() {
       expect(incompleteAcked.contains(13), isFalse);
     },
   );
+
+  test('runtime backs off before retrying after incomplete gap repair', () async {
+    final firstController = StreamController<Object?>.broadcast();
+    final secondController = StreamController<Object?>.broadcast();
+    final controllers = <StreamController<Object?>>[
+      firstController,
+      secondController,
+    ];
+    final delayRequests = <Duration>[];
+    final releaseDelay = Completer<void>();
+    var connectCount = 0;
+    final runtime = SessionRuntime(
+      gateway: SessionEventGateway(
+        connect: (uri, {headers}) =>
+            _FakeSessionSocket(controllers[connectCount++].stream),
+        ack: (_) async {},
+      ),
+      onDeviceInvalidated: () {},
+      retryDelay: (_) => const Duration(milliseconds: 250),
+      delay: (duration) {
+        delayRequests.add(duration);
+        return releaseDelay.future;
+      },
+      pullAfterSeq: ({required afterSeq, required limit}) async {
+        return const <SessionEventFrame>[];
+      },
+    );
+    addTearDown(() async {
+      await runtime.stop();
+      if (!releaseDelay.isCompleted) {
+        releaseDelay.complete();
+      }
+      await firstController.close();
+      await secondController.close();
+    });
+
+    await runtime.start(Uri.parse('ws://example.com'));
+    firstController.add(jsonForFrame(_frame(seq: 3, eventId: 'evt_gap')));
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(delayRequests, <Duration>[const Duration(milliseconds: 250)]);
+    expect(connectCount, 1);
+
+    releaseDelay.complete();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(connectCount, 2);
+  });
 
   test(
     'runtime serializes frame processing so async handlers cannot invert order',
@@ -725,6 +856,8 @@ class _AckAwareSessionEventGateway extends SessionEventGateway {
 class _FakeSessionSocket implements SessionSocket {
   _FakeSessionSocket(this.stream);
 
+  int closeCalls = 0;
+
   @override
   final Stream<Object?> stream;
 
@@ -732,7 +865,9 @@ class _FakeSessionSocket implements SessionSocket {
   Future<void> ready() async {}
 
   @override
-  Future<void> close([int? code, String? reason]) async {}
+  Future<void> close([int? code, String? reason]) async {
+    closeCalls += 1;
+  }
 }
 
 class _ReadyAwareFakeSessionSocket implements SessionSocket {

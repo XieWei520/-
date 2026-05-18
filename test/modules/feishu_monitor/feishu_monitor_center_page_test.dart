@@ -80,7 +80,7 @@ void main() {
       ),
     );
 
-    expect(find.text('飞书信息监控中心'), findsOneWidget);
+    expect(find.text('飞书信息转发中心'), findsOneWidget);
     expect(find.text('状态总览'), findsOneWidget);
     expect(find.text('Shell 程序'), findsOneWidget);
     expect(find.text('飞书账号'), findsOneWidget);
@@ -94,6 +94,155 @@ void main() {
     expect(find.text('飞书群组'), findsOneWidget);
     expect(find.text('图片处理'), findsOneWidget);
     expect(find.text('系统设置'), findsOneWidget);
+    expect(find.text('启动转发'), findsOneWidget);
+    expect(find.text('停止转发'), findsOneWidget);
+  });
+
+  testWidgets('quick capture actions show visible success feedback', (
+    tester,
+  ) async {
+    final client = _FakeShellClient(
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages,
+        recentEvents: recentEvents,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FeishuMonitorCenterPage(
+          client: client,
+          forwardingService: _FakeForwardingService(),
+          forwardingSettingsStore: _MemoryForwardingSettingsStore(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-monitor-start-capture-button')),
+    );
+
+    expect(client.startCaptureCount, 1);
+    expect(find.textContaining('已启动飞书转发'), findsWidgets);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-monitor-stop-capture-button')),
+    );
+
+    expect(client.stopCaptureCount, 1);
+    expect(find.textContaining('已停止飞书转发'), findsWidgets);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-monitor-reload-runtime-button')),
+    );
+
+    expect(client.reloadRuntimeCount, 1);
+    expect(find.textContaining('已重新加载飞书'), findsWidgets);
+  });
+
+  testWidgets('status overview shows worker and media queue diagnostics', (
+    tester,
+  ) async {
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages,
+        recentEvents: recentEvents,
+        workerId: 'worker-2',
+        mediaQueueDepth: 3,
+        mediaQueueOldestWaitSeconds: 45,
+        mediaQueueEstimatedNextDelaySeconds: 60,
+        mediaQueueLastSkipReason: 'image_extraction_timeout',
+      ),
+    );
+
+    expect(find.text('worker-2'), findsWidgets);
+    expect(find.textContaining('Media queue'), findsWidgets);
+    expect(find.textContaining('3'), findsWidgets);
+    expect(find.textContaining('45s'), findsWidgets);
+    expect(find.textContaining('60s'), findsWidgets);
+    expect(find.textContaining('image_extraction_timeout'), findsWidgets);
+  });
+
+  testWidgets(
+    'status overview warns when routes exceed single worker capacity',
+    (tester) async {
+      await _pumpCenter(
+        tester,
+        status: _onlineStatus(
+          probeObservedAt: probeObservedAt,
+          observedConversations: observedConversations,
+          observedMessages: observedMessages,
+          recentEvents: recentEvents,
+        ),
+        settingsStore: _MemoryForwardingSettingsStore(
+          initial: FeishuMonitorForwardingSettings(
+            enabled: true,
+            routes: List<FeishuMonitorForwardingRoute>.generate(
+              21,
+              (index) => _route(
+                id: 'route_$index',
+                sourceConversationId: 'feed:$index',
+                sourceConversationName: 'Source $index',
+                targetGroupId: 'wk_$index',
+                targetGroupName: 'Target $index',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.textContaining('worker capacity 20'), findsOneWidget);
+      expect(find.textContaining('21'), findsWidgets);
+    },
+  );
+
+  testWidgets('status overview falls back to observed event counts', (
+    tester,
+  ) async {
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages,
+        recentEvents: recentEvents,
+        messagesToday: 0,
+        deliveriesSucceededToday: 0,
+      ),
+      settingsStore: _MemoryForwardingSettingsStore(
+        initial: FeishuMonitorForwardingSettings(
+          enabled: true,
+          routes: <FeishuMonitorForwardingRoute>[
+            _route(
+              id: 'route_alpha',
+              sourceConversationId: 'feed:alpha',
+              sourceConversationName: 'Project Phoenix',
+              targetGroupId: 'wk_alpha',
+              targetGroupName: '悟空 Alpha 群',
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.text('4'), findsWidgets);
+    expect(find.textContaining('消息 3，事件 4'), findsOneWidget);
+    expect(find.textContaining('匹配可转发 2'), findsOneWidget);
   });
 
   testWidgets('runtime logs tab shows recent events and can switch tabs', (
@@ -112,7 +261,7 @@ void main() {
     expect(find.text('全部'), findsOneWidget);
     expect(find.text('成功'), findsWidgets);
     expect(find.text('错误'), findsOneWidget);
-    expect(find.text('捕获'), findsOneWidget);
+    expect(find.text('捕获'), findsWidgets);
     expect(find.text('转发'), findsWidgets);
     expect(find.textContaining('feed_card_probe'), findsWidgets);
     expect(find.textContaining('今天盘中、多空来回拉锯较强'), findsWidgets);
@@ -240,47 +389,46 @@ void main() {
     },
   );
 
-  testWidgets(
-    'manual forwarding ignores global auto-forwarding switch',
-    (tester) async {
-      final forwardingService = _FakeForwardingService();
-      final settingsStore = _MemoryForwardingSettingsStore(
-        initial: FeishuMonitorForwardingSettings(
-          enabled: false,
-          routes: <FeishuMonitorForwardingRoute>[
-            _route(
-              id: 'route_alpha',
-              sourceConversationId: 'feed:alpha',
-              sourceConversationName: 'Project Phoenix',
-              targetGroupId: 'wk_alpha',
-              targetGroupName: '悟空 Alpha 群',
-            ),
-          ],
-        ),
-      );
+  testWidgets('manual forwarding ignores global auto-forwarding switch', (
+    tester,
+  ) async {
+    final forwardingService = _FakeForwardingService();
+    final settingsStore = _MemoryForwardingSettingsStore(
+      initial: FeishuMonitorForwardingSettings(
+        enabled: false,
+        routes: <FeishuMonitorForwardingRoute>[
+          _route(
+            id: 'route_alpha',
+            sourceConversationId: 'feed:alpha',
+            sourceConversationName: 'Project Phoenix',
+            targetGroupId: 'wk_alpha',
+            targetGroupName: '悟空 Alpha 群',
+          ),
+        ],
+      ),
+    );
 
-      await _pumpCenter(
-        tester,
-        status: _onlineStatus(
-          probeObservedAt: probeObservedAt,
-          observedConversations: observedConversations,
-          observedMessages: observedMessages.take(1).toList(),
-          recentEvents: recentEvents.take(2).toList(),
-        ),
-        forwardingService: forwardingService,
-        settingsStore: settingsStore,
-      );
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages.take(1).toList(),
+        recentEvents: recentEvents.take(2).toList(),
+      ),
+      forwardingService: forwardingService,
+      settingsStore: settingsStore,
+    );
 
-      await _tapVisible(
-        tester,
-        find.byKey(const ValueKey('feishu-monitor-forward-recent-button')),
-      );
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-monitor-forward-recent-button')),
+    );
 
-      expect(forwardingService.lastSettings?.enabled, isTrue);
-      expect(settingsStore.saved?.enabled, isFalse);
-      expect(forwardingService.lastEvents, hasLength(2));
-    },
-  );
+    expect(forwardingService.lastSettings?.enabled, isTrue);
+    expect(settingsStore.saved?.enabled, isFalse);
+    expect(forwardingService.lastEvents, hasLength(2));
+  });
 
   testWidgets('manual forwarding result shows disabled skips', (tester) async {
     final forwardingService = _FixedResultForwardingService(
@@ -380,6 +528,121 @@ void main() {
     expect(settingsStore.saved?.routes.single.targetGroupId, 'group_alpha');
   });
 
+  testWidgets('route relay identity can be customized after group selection', (
+    tester,
+  ) async {
+    final settingsStore = _MemoryForwardingSettingsStore();
+
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages.take(1).toList(),
+        recentEvents: recentEvents.take(1).toList(),
+      ),
+      settingsStore: settingsStore,
+      loadTargetGroups: () async => <GroupInfo>[
+        GroupInfo(
+          groupNo: 'wk_relay',
+          name: 'Relay Target',
+          save: 1,
+          status: 1,
+        ),
+      ],
+    );
+
+    await _tapVisible(tester, find.text('飞书群组'));
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-configure-feed:alpha')),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('feishu-route-relay-name-field')),
+      '飞书转发助手 A',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('feishu-route-relay-avatar-field')),
+      'https://cdn.example.com/relay-a.png',
+    );
+    await _tapVisible(tester, find.text('Relay Target'));
+
+    final saved = settingsStore.saved;
+    expect(saved, isNotNull);
+    expect(saved!.routes.single.targetGroupId, 'wk_relay');
+    expect(saved.routes.single.relayDisplayName, '飞书转发助手 A');
+    expect(
+      saved.routes.single.relayAvatar,
+      'https://cdn.example.com/relay-a.png',
+    );
+  });
+
+  testWidgets('route relay avatar can be uploaded from local image', (
+    tester,
+  ) async {
+    final settingsStore = _MemoryForwardingSettingsStore();
+    var pickedPath = '';
+    var uploadedPath = '';
+
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages.take(1).toList(),
+        recentEvents: recentEvents.take(1).toList(),
+      ),
+      settingsStore: settingsStore,
+      loadTargetGroups: () async => <GroupInfo>[
+        GroupInfo(
+          groupNo: 'wk_relay',
+          name: 'Relay Target',
+          save: 1,
+          status: 1,
+        ),
+      ],
+      pickRelayAvatarImage: () async {
+        pickedPath = r'C:\avatars\relay.png';
+        return pickedPath;
+      },
+      uploadRelayAvatarImage: (path) async {
+        uploadedPath = path;
+        return 'https://cdn.example.com/uploaded-relay.png';
+      },
+    );
+
+    await _tapVisible(tester, find.text('\u98de\u4e66\u7fa4\u7ec4'));
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-configure-feed:alpha')),
+    );
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-relay-avatar-upload-button')),
+    );
+
+    expect(pickedPath, r'C:\avatars\relay.png');
+    expect(uploadedPath, r'C:\avatars\relay.png');
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('feishu-route-relay-avatar-field')),
+          )
+          .controller
+          ?.text,
+      'https://cdn.example.com/uploaded-relay.png',
+    );
+
+    await _tapVisible(tester, find.text('Relay Target'));
+
+    final saved = settingsStore.saved;
+    expect(saved, isNotNull);
+    expect(
+      saved!.routes.single.relayAvatar,
+      'https://cdn.example.com/uploaded-relay.png',
+    );
+  });
+
   testWidgets(
     'target group picker uses cached channel name when api name empty',
     (tester) async {
@@ -476,6 +739,33 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Feishu groups table exposes a horizontal scrollbar on narrow width',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(560, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await _pumpCenter(
+        tester,
+        status: _onlineStatus(
+          probeObservedAt: probeObservedAt,
+          observedConversations: observedConversations,
+          observedMessages: observedMessages.take(1).toList(),
+          recentEvents: recentEvents.take(2).toList(),
+        ),
+      );
+
+      await _tapVisible(tester, find.text('\u98de\u4e66\u7fa4\u7ec4'));
+
+      final scrollbar = tester.widget<Scrollbar>(
+        find.byKey(const ValueKey('feishu-groups-table-horizontal-scrollbar')),
+      );
+      expect(scrollbar.thumbVisibility, isTrue);
+      expect(scrollbar.interactive, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('auto forwarding toggle persists setting', (tester) async {
     final settingsStore = _MemoryForwardingSettingsStore();
     final forwardingService = _FakeForwardingService();
@@ -500,6 +790,165 @@ void main() {
     expect(settingsStore.saved?.enabled, isTrue);
     expect(forwardingService.lastSettings, isNull);
     expect(forwardingService.lastEvents, isEmpty);
+  });
+
+  testWidgets('runtime logs can be filtered and cleared', (tester) async {
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages.take(1).toList(),
+        recentEvents: recentEvents.take(2).toList(),
+      ),
+    );
+
+    expect(find.textContaining('event-only timeline text 2'), findsOneWidget);
+
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-log-filter-capture')),
+    );
+    expect(find.text('当前筛选：捕获'), findsOneWidget);
+
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-log-clear-button')),
+    );
+
+    expect(find.textContaining('日志已清空'), findsWidgets);
+    expect(find.textContaining('event-only timeline text 2'), findsNothing);
+  });
+
+  testWidgets('rules tab can test and delete a route', (tester) async {
+    final forwardingService = _FakeForwardingService();
+    final settingsStore = _MemoryForwardingSettingsStore(
+      initial: FeishuMonitorForwardingSettings(
+        enabled: true,
+        routes: <FeishuMonitorForwardingRoute>[
+          _route(
+            id: 'route_alpha',
+            sourceConversationId: 'feed:alpha',
+            sourceConversationName: 'Project Phoenix',
+            targetGroupId: 'wk_alpha',
+            targetGroupName: '悟空 Alpha 群',
+          ),
+        ],
+      ),
+    );
+
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages.take(1).toList(),
+        recentEvents: recentEvents.take(2).toList(),
+      ),
+      forwardingService: forwardingService,
+      settingsStore: settingsStore,
+    );
+
+    await _tapVisible(tester, find.text('转发规则'));
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-test-route_alpha')),
+    );
+
+    expect(forwardingService.lastSettings?.routes.single.id, 'route_alpha');
+    expect(
+      forwardingService.lastEvents.map((event) => event.conversationId),
+      everyElement('feed:alpha'),
+    );
+    expect(find.textContaining('测试完成'), findsWidgets);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-delete-route_alpha')),
+    );
+
+    expect(settingsStore.saved?.routes, isEmpty);
+    expect(find.textContaining('已删除规则'), findsOneWidget);
+  });
+
+  testWidgets('system settings save persists auto-forwarding changes', (
+    tester,
+  ) async {
+    final settingsStore = _MemoryForwardingSettingsStore();
+
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages.take(1).toList(),
+        recentEvents: recentEvents.take(1).toList(),
+      ),
+      settingsStore: settingsStore,
+    );
+
+    await _tapVisible(tester, find.text('系统设置'));
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-settings-auto-forward-switch')),
+    );
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-settings-save-button')),
+    );
+
+    expect(settingsStore.saved?.enabled, isTrue);
+    expect(find.textContaining('系统设置已保存'), findsOneWidget);
+  });
+
+  testWidgets('route editor selects source and target groups without manual ids', (
+    tester,
+  ) async {
+    final settingsStore = _MemoryForwardingSettingsStore();
+
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages.take(1).toList(),
+        recentEvents: recentEvents.take(2).toList(),
+      ),
+      settingsStore: settingsStore,
+      loadTargetGroups: () async => <GroupInfo>[
+        GroupInfo(groupNo: 'wk_alpha', name: '悟空 Alpha 群', save: 1, status: 1),
+        GroupInfo(groupNo: 'wk_beta', name: '悟空 Beta 群', save: 1, status: 1),
+      ],
+    );
+
+    await _tapVisible(tester, find.text('转发规则'));
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-add-button')),
+    );
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-editor-source-feed:mm12')),
+    );
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-editor-target-wk_beta')),
+    );
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-editor-save-button')),
+    );
+
+    final saved = settingsStore.saved;
+    expect(saved, isNotNull);
+    expect(saved!.routes, hasLength(1));
+    expect(saved.routes.single.sourceConversationId, 'feed:mm12');
+    expect(saved.routes.single.sourceConversationName, 'MM12 交流群');
+    expect(saved.routes.single.targetGroupId, 'wk_beta');
+    expect(saved.routes.single.targetGroupName, '悟空 Beta 群');
   });
 
   testWidgets('creates forwarding route from Feishu group row', (tester) async {
@@ -591,6 +1040,58 @@ void main() {
       saved.routes.map((route) => route.targetGroupId),
       containsAll(<String>['wk_alpha', 'wk_beta']),
     );
+  });
+
+  testWidgets('assigns newly created routes to deterministic worker shards', (
+    tester,
+  ) async {
+    final settingsStore = _MemoryForwardingSettingsStore(
+      initial: FeishuMonitorForwardingSettings(
+        enabled: true,
+        routes: List<FeishuMonitorForwardingRoute>.generate(
+          20,
+          (index) => _route(
+            id: 'route_$index',
+            sourceConversationId: 'feed:existing:$index',
+            sourceConversationName: 'Existing $index',
+            targetGroupId: 'wk_existing_$index',
+            targetGroupName: 'Existing Target $index',
+            workerId: 'worker-1',
+          ),
+        ),
+      ),
+    );
+
+    await _pumpCenter(
+      tester,
+      status: _onlineStatus(
+        probeObservedAt: probeObservedAt,
+        observedConversations: observedConversations,
+        observedMessages: observedMessages.take(1).toList(),
+        recentEvents: recentEvents.take(2).toList(),
+      ),
+      settingsStore: settingsStore,
+      loadTargetGroups: () async => <GroupInfo>[
+        GroupInfo(
+          groupNo: 'wk_beta',
+          name: 'Worker Beta Target',
+          save: 1,
+          status: 1,
+        ),
+      ],
+    );
+
+    await _tapVisible(tester, find.text('\u98de\u4e66\u7fa4\u7ec4'));
+    await _tapVisible(
+      tester,
+      find.byKey(const ValueKey('feishu-route-configure-feed:mm12')),
+    );
+    await _tapVisible(tester, find.text('Worker Beta Target'));
+
+    final saved = settingsStore.saved;
+    expect(saved, isNotNull);
+    expect(saved!.routes.last.sourceConversationId, 'feed:mm12');
+    expect(saved.routes.last.workerId, 'worker-2');
   });
 
   testWidgets(
@@ -714,6 +1215,8 @@ Future<void> _pumpCenter(
   FeishuMonitorForwardingService? forwardingService,
   _MemoryForwardingSettingsStore? settingsStore,
   Future<List<GroupInfo>> Function()? loadTargetGroups,
+  FeishuMonitorRelayAvatarPicker? pickRelayAvatarImage,
+  FeishuMonitorRelayAvatarUploader? uploadRelayAvatarImage,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -723,6 +1226,8 @@ Future<void> _pumpCenter(
         forwardingSettingsStore:
             settingsStore ?? _MemoryForwardingSettingsStore(),
         loadTargetGroups: loadTargetGroups,
+        pickRelayAvatarImage: pickRelayAvatarImage,
+        uploadRelayAvatarImage: uploadRelayAvatarImage,
       ),
     ),
   );
@@ -741,6 +1246,14 @@ FeishuMonitorShellStatus _onlineStatus({
   required List<FeishuMonitorObservedConversation> observedConversations,
   required List<FeishuMonitorObservedMessage> observedMessages,
   required List<FeishuMonitorMessageEvent> recentEvents,
+  String workerId = 'worker-1',
+  int mediaQueueDepth = 0,
+  int mediaQueueOldestWaitSeconds = 0,
+  int mediaQueueEstimatedNextDelaySeconds = 0,
+  String mediaQueueLastSkipReason = '',
+  int messagesToday = 28,
+  int deliveriesSucceededToday = 26,
+  int deliveriesFailedToday = 2,
 }) {
   return FeishuMonitorShellStatus(
     shellState: 'online',
@@ -753,14 +1266,19 @@ FeishuMonitorShellStatus _onlineStatus({
     webviewAvailable: true,
     shellMode: 'desktop_shell',
     queueDepth: 4,
-    messagesToday: 28,
-    deliveriesSucceededToday: 26,
-    deliveriesFailedToday: 2,
+    messagesToday: messagesToday,
+    deliveriesSucceededToday: deliveriesSucceededToday,
+    deliveriesFailedToday: deliveriesFailedToday,
     lastUpdatedAt: null,
     probeObservedAt: probeObservedAt,
     observedConversations: observedConversations,
     observedMessages: observedMessages,
     recentEvents: recentEvents,
+    workerId: workerId,
+    mediaQueueDepth: mediaQueueDepth,
+    mediaQueueOldestWaitSeconds: mediaQueueOldestWaitSeconds,
+    mediaQueueEstimatedNextDelaySeconds: mediaQueueEstimatedNextDelaySeconds,
+    mediaQueueLastSkipReason: mediaQueueLastSkipReason,
     lastError: '',
   );
 }
@@ -773,6 +1291,7 @@ FeishuMonitorForwardingRoute _route({
   String sourceConversationType = 'group',
   String targetGroupId = 'wk_alpha',
   String targetGroupName = '悟空 Alpha 群',
+  String workerId = '',
 }) {
   return FeishuMonitorForwardingRoute(
     id: id,
@@ -782,6 +1301,7 @@ FeishuMonitorForwardingRoute _route({
     sourceConversationType: sourceConversationType,
     targetGroupId: targetGroupId,
     targetGroupName: targetGroupName,
+    workerId: workerId,
     createdAt: DateTime.parse('2026-05-09T01:00:00Z'),
     updatedAt: DateTime.parse('2026-05-09T01:00:00Z'),
   );
@@ -791,9 +1311,27 @@ class _FakeShellClient extends FeishuMonitorShellClient {
   _FakeShellClient({required this.status});
 
   final FeishuMonitorShellStatus status;
+  int startCaptureCount = 0;
+  int stopCaptureCount = 0;
+  int reloadRuntimeCount = 0;
 
   @override
   Future<FeishuMonitorShellStatus> fetchStatus() async => status;
+
+  @override
+  Future<void> startCapture() async {
+    startCaptureCount += 1;
+  }
+
+  @override
+  Future<void> stopCapture() async {
+    stopCaptureCount += 1;
+  }
+
+  @override
+  Future<void> reloadRuntime() async {
+    reloadRuntimeCount += 1;
+  }
 }
 
 class _MutableFakeShellClient extends FeishuMonitorShellClient {
@@ -867,6 +1405,7 @@ class _NoopTextSender implements FeishuMonitorTextSender {
     required int channelType,
     String? channelName,
     required FeishuMonitorImageAttachment image,
+    FeishuMonitorRelayIdentity? relayIdentity,
   }) async {}
 
   @override
@@ -875,6 +1414,7 @@ class _NoopTextSender implements FeishuMonitorTextSender {
     required int channelType,
     String? channelName,
     required String text,
+    FeishuMonitorRelayIdentity? relayIdentity,
   }) async {}
 }
 

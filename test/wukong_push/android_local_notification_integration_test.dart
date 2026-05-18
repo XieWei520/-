@@ -10,6 +10,7 @@ void main() {
     expect(source, contains('android_message_alert_manager.dart'));
     expect(source, contains('_scheduleAndroidMessageAlert'));
     expect(source, contains('TargetPlatform.android'));
+    expect(source, contains('requireRedDot: _appLifecycleState == AppLifecycleState.resumed'));
     expect(
       source,
       contains('AndroidMessageAlertManager.instance.showNewMessageAlert'),
@@ -31,5 +32,24 @@ void main() {
       ).existsSync(),
       isTrue,
     );
+  });
+
+  test('Android release resources keep notification sound and icon', () {
+    final keepXml = File(
+      'android/app/src/main/res/raw/keep.xml',
+    ).readAsStringSync();
+
+    expect(keepXml, contains('@raw/${NotificationHelper.messageSoundResource}'));
+    expect(keepXml, contains('@mipmap/ic_launcher'));
+  });
+
+  test('Android release keeps local notification Gson metadata signatures', () {
+    final buildGradle = File('android/app/build.gradle.kts').readAsStringSync();
+    final proguardRules = File('android/app/proguard-rules.pro').readAsStringSync();
+
+    expect(buildGradle, contains('proguard-rules.pro'));
+    expect(proguardRules, contains('-keepattributes Signature'));
+    expect(proguardRules, contains('com.google.gson.reflect.TypeToken'));
+    expect(proguardRules, contains('@com.google.gson.annotations.SerializedName'));
   });
 }

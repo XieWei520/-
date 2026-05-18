@@ -56,6 +56,7 @@ services:
     command: ["api"]
     environment:
       WK_CALL_TICKET_SECRET: "${WK_CALL_TICKET_SECRET}"
+      MONITOR_CREDENTIAL_SECRET_KEY: "${MONITOR_CREDENTIAL_SECRET_KEY}"
     depends_on:
       mysql:
         condition: service_healthy

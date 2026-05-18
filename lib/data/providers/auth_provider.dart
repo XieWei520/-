@@ -166,6 +166,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     final userInfo = await loadCurrentUser();
     if (userInfo != null && userInfo.uid.isNotEmpty) {
+      if (StorageUtils.getUid()?.trim() != userInfo.uid) {
+        await StorageUtils.setUid(userInfo.uid);
+      }
       final hasDeviceSession =
           (StorageUtils.getDeviceSessionId()?.trim() ?? '').isNotEmpty;
       if (!hasDeviceSession && restoredToken.isNotEmpty) {

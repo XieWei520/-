@@ -8,6 +8,14 @@ void main() {
       final channel = NotificationHelper.buildAndroidMessageAlertChannel();
 
       expect(channel.id, NotificationHelper.messageAlertChannelId);
+      expect(
+        channel.id,
+        isNot('wk_new_msg_alert_notification'),
+        reason:
+            'Android notification channel settings are immutable after first '
+            'creation; a versioned channel lets upgraded installs recover '
+            'from old low-importance or silent channel settings.',
+      );
       expect(channel.name, NotificationHelper.messageAlertChannelName);
       expect(channel.importance, Importance.high);
       expect(channel.playSound, isTrue);
