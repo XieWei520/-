@@ -35,6 +35,7 @@ import 'chat_conversation_extra_gateway.dart';
 import 'chat_pinned_message_resolver.dart';
 import 'chat_pinned_message_state_service.dart';
 import 'chat_robot_menu_state_service.dart';
+import 'chat_search_coordinator.dart';
 import 'panes/chat_composer_pane.dart';
 import 'panes/chat_header_pane.dart';
 import 'panes/chat_overlay_coordinator.dart';
@@ -854,22 +855,25 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   void _openSceneSearch() {
-    final anchor = ref
-        .read(chatViewportProvider(_chatSession).notifier)
-        .firstVisibleOrderSeq;
-    ref
-        .read(chatSearchModeControllerProvider(_chatSession).notifier)
-        .open(anchorOrderSeq: anchor);
-    ref
-        .read(chatSceneControllerProvider(_chatSession).notifier)
-        .enterSearchMode(anchorOrderSeq: anchor);
+    _buildSearchCoordinator().open();
   }
 
   void _closeSceneSearch() {
-    ref.read(chatSearchModeControllerProvider(_chatSession).notifier).close();
-    ref
-        .read(chatSceneControllerProvider(_chatSession).notifier)
-        .restoreNormal();
+    _buildSearchCoordinator().close();
+  }
+
+  ChatSearchCoordinator _buildSearchCoordinator() {
+    return ChatSearchCoordinator(
+      readFirstVisibleOrderSeq: () => ref
+          .read(chatViewportProvider(_chatSession).notifier)
+          .firstVisibleOrderSeq,
+      searchModeController: ref.read(
+        chatSearchModeControllerProvider(_chatSession).notifier,
+      ),
+      sceneController: ref.read(
+        chatSceneControllerProvider(_chatSession).notifier,
+      ),
+    );
   }
 }
 
