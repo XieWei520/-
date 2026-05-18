@@ -1,9 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/service/api/conversation_draft_api.dart';
+import 'package:wukong_im_app/service/api/im_sync_api.dart';
+import 'package:wukong_im_app/service/api/message_api.dart';
+import 'package:wukong_im_app/service/api/reminder_api.dart';
 import 'package:wukong_im_app/service/im/attachment_upload_pipeline.dart';
 import 'package:wukong_im_app/service/im/im_connection_service.dart';
 import 'package:wukong_im_app/service/im/im_notification_bridge.dart';
+import 'package:wukong_im_app/service/im/im_service.dart';
 import 'package:wukong_im_app/service/im/im_service_providers.dart';
 import 'package:wukong_im_app/service/im/im_sync_orchestrator.dart';
 import 'package:wukong_im_app/service/im/message_delivery_service.dart';
@@ -59,6 +64,40 @@ void main() {
       same(container.read(imNotificationBridgeProvider)),
     );
   });
+
+  test(
+    'imServiceProvider resolves through the extracted sync and attachment providers',
+    () {
+      final androidManager = AndroidMessageAlertManager(
+        presenter: const _NoopAndroidMessageAlertPresenter(),
+        isWeb: () => false,
+        targetPlatform: () => TargetPlatform.android,
+      );
+      final desktopManager = DesktopMessageAlertManager(
+        presenter: const _NoopDesktopMessageAlertPresenter(),
+        isWeb: () => false,
+        targetPlatform: () => TargetPlatform.windows,
+      );
+      final sync = ImSyncOrchestrator(
+        syncApi: IMSyncApi.instance,
+        messageApi: MessageApi.instance,
+        reminderApi: ReminderApi.instance,
+        conversationDraftApi: ConversationDraftApi.instance,
+      );
+      final attachments = AttachmentUploadPipeline();
+      final container = ProviderContainer(
+        overrides: <Override>[
+          androidMessageAlertManagerProvider.overrideWithValue(androidManager),
+          desktopMessageAlertManagerProvider.overrideWithValue(desktopManager),
+          imSyncOrchestratorProvider.overrideWithValue(sync),
+          attachmentUploadPipelineProvider.overrideWithValue(attachments),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(container.read(imServiceProvider.notifier), isA<IMService>());
+    },
+  );
 }
 
 class _NoopAndroidMessageAlertPresenter

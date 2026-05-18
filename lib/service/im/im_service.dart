@@ -73,6 +73,7 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
     invalidateProvider: ref.invalidate,
     readProvider: ref.read,
     notificationBridge: ref.read(imNotificationBridgeProvider),
+    syncOrchestrator: ref.read(imSyncOrchestratorProvider),
     attachmentUploadPipeline: ref.read(attachmentUploadPipelineProvider),
     realtimeRolloutTelemetry: ref.read(realtimeRolloutTelemetryProvider),
   );
