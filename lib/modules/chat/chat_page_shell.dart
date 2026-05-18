@@ -14,7 +14,6 @@ import '../../data/models/chat_session.dart';
 import '../../data/models/friend.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../data/providers/user_provider.dart';
-import '../../service/api/group_api.dart';
 import '../../wukong_uikit/group/group_detail_page.dart';
 import '../search/presentation/chat_search_entry_page.dart';
 import '../search/presentation/message_record_search_page.dart';
@@ -33,6 +32,7 @@ import 'chat_flame_message_runtime.dart';
 import 'chat_frame_jank_monitor.dart';
 import 'chat_conversation_extra_gateway.dart';
 import 'chat_pinned_message_resolver.dart';
+import 'chat_pinned_message_state_service.dart';
 import 'panes/chat_composer_pane.dart';
 import 'panes/chat_header_pane.dart';
 import 'panes/chat_overlay_coordinator.dart';
@@ -153,7 +153,10 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     super.initState();
     _frameJankMonitor = ref.read(chatFrameJankMonitorFactoryProvider)()
       ..start();
-    _canPinMessages = _supportsPinnedMessages();
+    _canPinMessages = supportsPinnedMessages(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+    );
     _bindConversationActivity();
     unawaited(_loadChannel());
     unawaited(_loadRobotMenus());
@@ -323,54 +326,16 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     });
   }
 
-  Future<_PinnedUiSnapshot> _loadPinnedUiSnapshot() async {
-    if (!_supportsPinnedMessages()) {
-      return const _PinnedUiSnapshot(
-        canPin: false,
-        canClearAll: false,
-        messages: <ResolvedPinnedMessage>[],
-      );
-    }
-
-    var canPin = widget.channelType == WKChannelType.personal;
-    var canClearAll = false;
-
-    if (widget.channelType == WKChannelType.group) {
-      try {
-        final group = await GroupApi.instance.getGroupInfo(widget.channelId);
-        final canManage = canManagePinnedMessages(group.role);
-        canPin = canManage || (group.allowMemberPinnedMessage ?? 0) == 1;
-        canClearAll = canManage;
-      } catch (_) {
-        final allowMemberPinned = readChannelExtraInt(
-          _channel?.remoteExtraMap,
-          const ['allow_member_pinned_message'],
-        );
-        canPin = allowMemberPinned == 1;
-        canClearAll = false;
-      }
-    }
-
-    try {
-      final pinnedSnapshot = await ref
+  Future<ChatPinnedUiSnapshot> _loadPinnedUiSnapshot() {
+    return ChatPinnedMessageStateService().loadSnapshot(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+      channel: _channel,
+      syncPinnedMessages: ref
           .read(chatSceneGatewayProvider(_chatSession))
-          .syncPinnedMessages(
-            channelId: widget.channelId,
-            channelType: widget.channelType,
-            version: 0,
-          );
-      return _PinnedUiSnapshot(
-        canPin: canPin,
-        canClearAll: canClearAll,
-        messages: resolvePinnedMessages(pinnedSnapshot),
-      );
-    } catch (_) {
-      return _PinnedUiSnapshot(
-        canPin: canPin,
-        canClearAll: canClearAll,
-        messages: _pinnedMessages,
-      );
-    }
+          .syncPinnedMessages,
+      previousMessages: _pinnedMessages,
+    );
   }
 
   int _readCurrentUserGroupRole() {
@@ -378,16 +343,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       return 0;
     }
     return readChannelExtraInt(_channel?.remoteExtraMap, const ['role']) ?? 0;
-  }
-
-  bool _supportsPinnedMessages() {
-    if (widget.channelType == WKChannelType.group) {
-      return true;
-    }
-    if (widget.channelType != WKChannelType.personal) {
-      return false;
-    }
-    return !isAndroidFixedChat(widget.channelId, widget.channelType);
   }
 
   Future<void> _openPinnedMessageSheet() async {
@@ -479,7 +434,10 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     _bindConversationActivity();
     unawaited(_loadRobotMenus(forceRefresh: true));
     setState(() {
-      _canPinMessages = _supportsPinnedMessages();
+      _canPinMessages = supportsPinnedMessages(
+        channelId: widget.channelId,
+        channelType: widget.channelType,
+      );
       _canClearPinnedMessages = false;
       _pinnedMessages = const <ResolvedPinnedMessage>[];
     });
@@ -950,16 +908,4 @@ class _ChatKeyboardInsetTranslation extends StatelessWidget {
       child: child,
     );
   }
-}
-
-class _PinnedUiSnapshot {
-  const _PinnedUiSnapshot({
-    required this.canPin,
-    required this.canClearAll,
-    required this.messages,
-  });
-
-  final bool canPin;
-  final bool canClearAll;
-  final List<ResolvedPinnedMessage> messages;
 }
