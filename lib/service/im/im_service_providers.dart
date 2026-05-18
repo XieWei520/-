@@ -16,6 +16,7 @@ import 'im_connection_service.dart';
 import 'im_local_database_service.dart';
 import 'im_masked_message_refresh_service.dart';
 import 'im_notification_bridge.dart';
+import 'im_sensitive_tip_persistence_service.dart';
 import 'im_sync_orchestrator.dart';
 import 'im_word_runtime_filter_service.dart';
 import 'im_word_sync_store.dart';
@@ -87,6 +88,15 @@ final imMaskedMessageRefreshServiceProvider =
       );
     });
 
+final imSensitiveTipPersistenceServiceProvider =
+    Provider<ImSensitiveTipPersistenceService>((ref) {
+      return ImSensitiveTipPersistenceService(
+        ensureDatabaseReady: ref
+            .watch(imLocalDatabaseServiceProvider)
+            .ensureReady,
+      );
+    });
+
 final imConversationExtraStoreProvider = Provider<ImConversationExtraStore>((
   ref,
 ) {
@@ -138,6 +148,7 @@ class ImRuntimeServices {
     required this.wordRuntimeFilters,
     required this.maskedMessageRefresh,
     required this.localDatabase,
+    required this.sensitiveTipPersistence,
   });
 
   final ImConnectionService connection;
@@ -148,6 +159,7 @@ class ImRuntimeServices {
   final ImWordRuntimeFilterService wordRuntimeFilters;
   final ImMaskedMessageRefreshService maskedMessageRefresh;
   final ImLocalDatabaseService localDatabase;
+  final ImSensitiveTipPersistenceService sensitiveTipPersistence;
 }
 
 final imRuntimeServicesProvider = Provider<ImRuntimeServices>((ref) {
@@ -160,5 +172,8 @@ final imRuntimeServicesProvider = Provider<ImRuntimeServices>((ref) {
     wordRuntimeFilters: ref.watch(imWordRuntimeFilterServiceProvider),
     maskedMessageRefresh: ref.watch(imMaskedMessageRefreshServiceProvider),
     localDatabase: ref.watch(imLocalDatabaseServiceProvider),
+    sensitiveTipPersistence: ref.watch(
+      imSensitiveTipPersistenceServiceProvider,
+    ),
   );
 });

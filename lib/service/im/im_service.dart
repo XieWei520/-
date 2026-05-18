@@ -41,6 +41,7 @@ import 'im_connection_service.dart';
 import 'im_local_database_service.dart';
 import 'im_masked_message_refresh_service.dart';
 import 'im_notification_bridge.dart';
+import 'im_sensitive_tip_persistence_service.dart';
 import 'im_service_providers.dart';
 import 'im_sync_orchestrator.dart';
 import 'im_word_runtime_filter_service.dart';
@@ -69,6 +70,9 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
     wordSyncStore: ref.read(imWordSyncStoreProvider),
     wordRuntimeFilterService: ref.read(imWordRuntimeFilterServiceProvider),
     localDatabaseService: ref.read(imLocalDatabaseServiceProvider),
+    sensitiveTipPersistenceService: ref.read(
+      imSensitiveTipPersistenceServiceProvider,
+    ),
     attachmentUploadPipeline: ref.read(attachmentUploadPipelineProvider),
     connectionService: ref.read(imConnectionServiceProvider),
     realtimeRolloutTelemetry: ref.read(realtimeRolloutTelemetryProvider),
@@ -295,6 +299,7 @@ class IMService extends StateNotifier<IMServiceState>
     ImWordRuntimeFilterService? wordRuntimeFilterService,
     ImMaskedMessageRefreshService? maskedMessageRefreshService,
     ImLocalDatabaseService? localDatabaseService,
+    ImSensitiveTipPersistenceService? sensitiveTipPersistenceService,
     AttachmentUploadPipeline? attachmentUploadPipeline,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
@@ -337,6 +342,11 @@ class IMService extends StateNotifier<IMServiceState>
         maskedMessageRefreshService ??
         ImMaskedMessageRefreshService(
           wordRuntimeFilterService: _wordRuntimeFilterService,
+          ensureDatabaseReady: _ensureDatabaseReady,
+        );
+    _sensitiveTipPersistenceService =
+        sensitiveTipPersistenceService ??
+        ImSensitiveTipPersistenceService(
           ensureDatabaseReady: _ensureDatabaseReady,
         );
     _syncOrchestrator =
@@ -382,6 +392,7 @@ class IMService extends StateNotifier<IMServiceState>
   late final ImWordRuntimeFilterService _wordRuntimeFilterService;
   late final ImLocalDatabaseService _localDatabaseService;
   late final ImMaskedMessageRefreshService _maskedMessageRefreshService;
+  late final ImSensitiveTipPersistenceService _sensitiveTipPersistenceService;
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
@@ -808,7 +819,9 @@ class IMService extends StateNotifier<IMServiceState>
       }
       final tip = buildSensitiveWordTipMessageIfNeeded(message);
       if (tip != null) {
-        unawaited(_insertSensitiveWordTipMessage(tip));
+        unawaited(
+          _sensitiveTipPersistenceService.insertSensitiveWordTipMessage(tip),
+        );
       }
       _scheduleMessageAlert(message, currentUid: currentUid);
     }
@@ -865,29 +878,6 @@ class IMService extends StateNotifier<IMServiceState>
         ..wkMsgExtra = extra;
       notifier.applyLocalMessageRefresh(refreshMessage);
       conversationNotifier.applyMessageExtraRefresh(refreshMessage);
-    }
-  }
-
-  Future<void> _insertSensitiveWordTipMessage(WKMsg tip) async {
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (!await _ensureDatabaseReady()) {
-      return;
-    }
-
-    final orderSeq = await WKIM.shared.messageManager.getMessageOrderSeq(
-      0,
-      tip.channelID,
-      tip.channelType,
-    );
-    tip.orderSeq = orderSeq + 1;
-    final clientSeq = await WKIM.shared.messageManager.saveMsg(tip);
-    tip.clientSeq = clientSeq;
-    final uiMsg = await WKIM.shared.conversationManager.saveWithLiMMsg(tip, 0);
-    WKIM.shared.messageManager.setOnMsgInserted(tip);
-    if (uiMsg != null) {
-      WKIM.shared.conversationManager.setRefreshUIMsgs(<WKUIConversationMsg>[
-        uiMsg,
-      ]);
     }
   }
 

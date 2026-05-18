@@ -10,6 +10,7 @@ import 'package:wukong_im_app/service/im/im_connection_service.dart';
 import 'package:wukong_im_app/service/im/im_local_database_service.dart';
 import 'package:wukong_im_app/service/im/im_masked_message_refresh_service.dart';
 import 'package:wukong_im_app/service/im/im_notification_bridge.dart';
+import 'package:wukong_im_app/service/im/im_sensitive_tip_persistence_service.dart';
 import 'package:wukong_im_app/service/im/im_service.dart';
 import 'package:wukong_im_app/service/im/im_service_providers.dart';
 import 'package:wukong_im_app/service/im/im_sync_orchestrator.dart';
@@ -53,6 +54,10 @@ void main() {
     expect(runtime.maskedMessageRefresh, isA<ImMaskedMessageRefreshService>());
     expect(runtime.localDatabase, isA<ImLocalDatabaseService>());
     expect(
+      runtime.sensitiveTipPersistence,
+      isA<ImSensitiveTipPersistenceService>(),
+    );
+    expect(
       runtime.connection,
       same(container.read(imConnectionServiceProvider)),
     );
@@ -80,6 +85,10 @@ void main() {
     expect(
       runtime.localDatabase,
       same(container.read(imLocalDatabaseServiceProvider)),
+    );
+    expect(
+      runtime.sensitiveTipPersistence,
+      same(container.read(imSensitiveTipPersistenceServiceProvider)),
     );
   });
 

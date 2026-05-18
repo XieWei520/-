@@ -123,4 +123,18 @@ void main() {
     expect(source, isNot(contains('WKDBHelper.shared.init')));
     expect(source, isNot(contains('WKDBHelper.shared.onUpgrade')));
   });
+
+  test('IMService delegates sensitive-word tip persistence to a service', () {
+    final source = File('lib/service/im/im_service.dart').readAsStringSync();
+
+    expect(source, contains('im_sensitive_tip_persistence_service.dart'));
+    expect(
+      source,
+      contains('_sensitiveTipPersistenceService.insertSensitiveWordTipMessage'),
+    );
+    expect(source, isNot(contains('getMessageOrderSeq')));
+    expect(source, isNot(contains('saveWithLiMMsg')));
+    expect(source, isNot(contains('setOnMsgInserted')));
+    expect(source, isNot(contains('setRefreshUIMsgs')));
+  });
 }
