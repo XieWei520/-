@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/models/chat_session.dart';
+import '../../../modules/vip/vip_badge.dart';
+import '../../../widgets/wk_avatar.dart';
 import '../chat_scene_providers.dart';
 
 @immutable
@@ -161,6 +163,119 @@ class _HeaderIdentity extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class ChatHeaderIdentityPane extends StatelessWidget {
+  const ChatHeaderIdentityPane({
+    super.key,
+    required this.title,
+    required this.avatarSize,
+    required this.primaryColor,
+    required this.secondaryColor,
+    this.subtitle,
+    this.secondarySubtitle,
+    this.avatarUrl,
+    this.isGroup = false,
+    this.vipLevel = 0,
+    this.tags = const <Widget>[],
+    this.animationDuration = const Duration(milliseconds: 180),
+  });
+
+  final String title;
+  final String? subtitle;
+  final String? secondarySubtitle;
+  final String? avatarUrl;
+  final bool isGroup;
+  final double avatarSize;
+  final Color primaryColor;
+  final Color secondaryColor;
+  final int vipLevel;
+  final List<Widget> tags;
+  final Duration animationDuration;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: animationDuration,
+      curve: Curves.easeInOut,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: <Widget>[
+          WKAvatar(
+            url: avatarUrl,
+            name: title,
+            isGroup: isGroup,
+            size: avatarSize,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: primaryColor,
+                        ),
+                      ),
+                    ),
+                    if (vipLevel == 1) ...<Widget>[
+                      const SizedBox(width: 6),
+                      const VipBadge(
+                        key: ValueKey<String>('chat-header-vip-badge'),
+                      ),
+                    ],
+                    if (tags.isNotEmpty) const SizedBox(width: 4),
+                    if (tags.isNotEmpty)
+                      Wrap(spacing: 4, runSpacing: 2, children: tags),
+                  ],
+                ),
+                if (subtitle != null || secondarySubtitle != null)
+                  Row(
+                    children: <Widget>[
+                      if (subtitle != null)
+                        Flexible(
+                          child: Text(
+                            subtitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: secondaryColor,
+                            ),
+                          ),
+                        ),
+                      if (secondarySubtitle != null) ...<Widget>[
+                        if (subtitle != null) const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            secondarySubtitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: secondaryColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

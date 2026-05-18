@@ -41,12 +41,10 @@ import '../customer_service/customer_service_identity.dart';
 import '../location/location_view_page.dart';
 import '../search/presentation/chat_search_entry_page.dart';
 import '../search/presentation/message_record_search_page.dart';
-import '../vip/vip_badge.dart';
 import '../../widgets/chat_background_surface.dart';
 import '../../widgets/liquid_glass_panel.dart';
 import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/message_bubble.dart';
-import '../../widgets/wk_avatar.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_reference_assets.dart';
@@ -80,6 +78,7 @@ import 'chat_message_reaction_mapping.dart';
 import 'chat_message_providers.dart';
 import 'chat_mentions_controller.dart';
 import 'chat_message_view_model.dart';
+import 'panes/chat_header_pane.dart';
 import 'chat_scene_gateway.dart';
 import 'chat_scene_models.dart';
 import 'chat_scene_providers.dart';
@@ -905,92 +904,17 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                   onTap: widget.channelType == WKChannelType.customerService
                       ? null
                       : () {},
-                  child: AnimatedSize(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeInOut,
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        WKAvatar(
-                          url: _channel?.avatar,
-                          name: title,
-                          isGroup: widget.channelType == WKChannelType.group,
-                          size: isMobileWarmStyle ? 48 : 40,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: headerPrimaryColor,
-                                      ),
-                                    ),
-                                  ),
-                                  if (headerVipLevel == 1) ...[
-                                    const SizedBox(width: 6),
-                                    const VipBadge(
-                                      key: ValueKey<String>(
-                                        'chat-header-vip-badge',
-                                      ),
-                                    ),
-                                  ],
-                                  if (tags.isNotEmpty) const SizedBox(width: 4),
-                                  if (tags.isNotEmpty)
-                                    Wrap(
-                                      spacing: 4,
-                                      runSpacing: 2,
-                                      children: tags,
-                                    ),
-                                ],
-                              ),
-                              if (subtitle != null || secondarySubtitle != null)
-                                Row(
-                                  children: [
-                                    if (subtitle != null)
-                                      Flexible(
-                                        child: Text(
-                                          subtitle,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: headerSecondaryColor,
-                                          ),
-                                        ),
-                                      ),
-                                    if (secondarySubtitle != null) ...[
-                                      if (subtitle != null)
-                                        const SizedBox(width: 5),
-                                      Flexible(
-                                        child: Text(
-                                          secondarySubtitle,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: headerSecondaryColor,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                  child: ChatHeaderIdentityPane(
+                    title: title,
+                    subtitle: subtitle,
+                    secondarySubtitle: secondarySubtitle,
+                    avatarUrl: _channel?.avatar,
+                    isGroup: widget.channelType == WKChannelType.group,
+                    avatarSize: isMobileWarmStyle ? 48 : 40,
+                    primaryColor: headerPrimaryColor,
+                    secondaryColor: headerSecondaryColor,
+                    vipLevel: headerVipLevel,
+                    tags: tags,
                   ),
                 ),
           actions: searchMode.isActive
