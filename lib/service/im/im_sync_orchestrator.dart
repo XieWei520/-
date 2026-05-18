@@ -11,6 +11,7 @@ import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'coordinators/message_sync_coordinator.dart';
 import 'im_word_sync_models.dart';
+import 'im_word_sync_store.dart';
 
 typedef ImSyncTaskHandler = Future<void> Function({String? reason});
 typedef ImMessageExtraSyncTask =
@@ -20,6 +21,7 @@ typedef ImMessageExtraSyncTask =
       String? reason,
     });
 typedef ImReminderChannelIdsLoader = Future<List<String>> Function();
+typedef ImRefreshMaskedMessagesTask = Future<void> Function();
 
 abstract interface class ImReminderStore {
   Future<int> getMaxVersion();
@@ -112,10 +114,16 @@ class ImSyncOrchestrator {
     required this.conversationDraftApi,
     ImReminderStore? reminderStore,
     ImReminderChannelIdsLoader? reminderChannelIdsLoader,
+    ImWordSyncStore? wordStore,
+    ImRefreshMaskedMessagesTask? refreshMaskedMessagesAfterProhibitWordSync,
     this.coordinator = const MessageSyncCoordinator(),
   }) : reminderStore = reminderStore ?? const WkImReminderStore(),
        reminderChannelIdsLoader =
-           reminderChannelIdsLoader ?? loadWkImReminderChannelIds;
+           reminderChannelIdsLoader ?? loadWkImReminderChannelIds,
+       wordStore = wordStore ?? WkImWordSyncStore(),
+       refreshMaskedMessagesAfterProhibitWordSync =
+           refreshMaskedMessagesAfterProhibitWordSync ??
+           _noopRefreshMaskedMessages;
 
   final IMSyncApi syncApi;
   final MessageApi messageApi;
@@ -123,6 +131,8 @@ class ImSyncOrchestrator {
   final ConversationDraftRemoteStore conversationDraftApi;
   final ImReminderStore reminderStore;
   final ImReminderChannelIdsLoader reminderChannelIdsLoader;
+  final ImWordSyncStore wordStore;
+  final ImRefreshMaskedMessagesTask refreshMaskedMessagesAfterProhibitWordSync;
   final MessageSyncCoordinator coordinator;
   final Set<ImSyncTaskSlot> _activeTaskSlots = <ImSyncTaskSlot>{};
   final Map<ImSyncTaskSlot, String?> _pendingTaskReasons =
@@ -331,23 +341,62 @@ class ImSyncOrchestrator {
   }
 
   Future<void> syncSensitiveWords({String? reason}) {
-    throw UnimplementedError('Skeleton only: move sensitive-word sync here.');
+    return runExclusiveSyncTask(
+      ImSyncTaskSlot.sensitiveWords,
+      reason: reason,
+      task: ({reason}) async {
+        try {
+          final version = wordStore.loadSensitiveWordsSnapshot().version;
+          final snapshot = await messageApi.syncSensitiveWords(
+            version: version,
+          );
+          if (snapshot.version > 0 || snapshot.tips.trim().isNotEmpty) {
+            await applySensitiveWordsSync(snapshot);
+          }
+        } catch (error, stackTrace) {
+          debugPrint('Sensitive words sync failed($reason): $error');
+          debugPrint('$stackTrace');
+        }
+      },
+    );
   }
 
   Future<void> applySensitiveWordsSync(SensitiveWordsSnapshot snapshot) {
-    throw UnimplementedError(
-      'Skeleton only: move sensitive-word application here.',
-    );
+    return wordStore.applySensitiveWordsSync(snapshot);
   }
 
-  Future<void> syncProhibitWords({String? reason}) {
-    throw UnimplementedError('Skeleton only: move prohibit-word sync here.');
+  Future<void> syncProhibitWords({
+    String? reason,
+    ImRefreshMaskedMessagesTask? refreshMaskedMessagesAfterProhibitWordSync,
+  }) {
+    if (!wordStore.usesLocalPersistence) {
+      return Future<void>.value();
+    }
+
+    final refreshMaskedMessages =
+        refreshMaskedMessagesAfterProhibitWordSync ??
+        this.refreshMaskedMessagesAfterProhibitWordSync;
+    return runExclusiveSyncTask(
+      ImSyncTaskSlot.prohibitWords,
+      reason: reason,
+      task: ({reason}) async {
+        try {
+          final version = await wordStore.getMaxProhibitWordVersion();
+          final words = await messageApi.syncProhibitWords(version: version);
+          if (words.isNotEmpty) {
+            await applyProhibitWordsSync(words);
+            await refreshMaskedMessages();
+          }
+        } catch (error, stackTrace) {
+          debugPrint('Prohibit words sync failed($reason): $error');
+          debugPrint('$stackTrace');
+        }
+      },
+    );
   }
 
   Future<void> applyProhibitWordsSync(List<ProhibitWordEntry> words) {
-    throw UnimplementedError(
-      'Skeleton only: move prohibit-word application here.',
-    );
+    return wordStore.applyProhibitWordsSync(words);
   }
 
   Future<void> syncConversationExtras({String? reason}) {
@@ -386,3 +435,5 @@ Future<List<String>> loadWkImReminderChannelIds() async {
     return const <String>[];
   }
 }
+
+Future<void> _noopRefreshMaskedMessages() async {}

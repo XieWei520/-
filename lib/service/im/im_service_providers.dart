@@ -14,6 +14,7 @@ import 'attachment_upload_pipeline.dart';
 import 'im_connection_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_sync_orchestrator.dart';
+import 'im_word_sync_store.dart';
 import 'message_delivery_service.dart';
 
 final imSdkConnectionPortProvider = Provider<ImSdkConnectionPort>((ref) {
@@ -48,7 +49,12 @@ final imSyncOrchestratorProvider = Provider<ImSyncOrchestrator>((ref) {
     messageApi: MessageApi.instance,
     reminderApi: ReminderApi.instance,
     conversationDraftApi: ConversationDraftApi.instance,
+    wordStore: ref.watch(imWordSyncStoreProvider),
   );
+});
+
+final imWordSyncStoreProvider = Provider<ImWordSyncStore>((ref) {
+  return WkImWordSyncStore();
 });
 
 final attachmentUploadPipelineProvider = Provider<AttachmentUploadPipeline>((

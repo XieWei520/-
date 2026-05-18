@@ -7,9 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
+import 'package:wukong_im_app/service/api/conversation_draft_api.dart';
+import 'package:wukong_im_app/service/api/im_sync_api.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
+import 'package:wukong_im_app/service/api/reminder_api.dart';
 import 'package:wukong_im_app/service/im/im_service.dart';
+import 'package:wukong_im_app/service/im/im_sync_orchestrator.dart';
 import 'package:wukong_im_app/service/im/im_word_sync_models.dart';
+import 'package:wukong_im_app/service/im/im_word_sync_store.dart';
 import 'package:wukong_im_app/wukong_base/db/db_helper.dart';
 import 'package:wukong_im_app/wukong_base/msg/msg_content_type.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -212,6 +217,45 @@ void main() {
         expect((message.messageContent as WKTextContent).content, 'base text');
       },
     );
+
+    test(
+      'custom orchestrator shares word store with runtime filters',
+      () async {
+        final wordStore = _MemoryWordSyncStore();
+        final orchestrator = ImSyncOrchestrator(
+          syncApi: IMSyncApi.instance,
+          messageApi: MessageApi.instance,
+          reminderApi: ReminderApi.instance,
+          conversationDraftApi: ConversationDraftApi.instance,
+          wordStore: wordStore,
+        );
+        final service = IMService(syncOrchestrator: orchestrator);
+        addTearDown(service.dispose);
+
+        await orchestrator.applySensitiveWordsSync(
+          const SensitiveWordsSnapshot(
+            tips: 'local warning',
+            version: 8,
+            list: <String>['blocked'],
+          ),
+        );
+
+        final message = WKMsg()
+          ..channelID = 'group_01'
+          ..channelType = WKChannelType.group
+          ..fromUID = 'u_self'
+          ..contentType = WkMessageContentType.text
+          ..messageContent = WKTextContent('contains blocked text');
+
+        final tip = service.buildSensitiveWordTipMessageIfNeeded(message);
+
+        expect(tip, isNotNull);
+        expect(jsonDecode(tip!.content), <String, dynamic>{
+          'content': 'local warning',
+          'type': MsgContentType.sensitiveWord,
+        });
+      },
+    );
   });
 }
 
@@ -239,4 +283,34 @@ class _RecordingPlainAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+}
+
+class _MemoryWordSyncStore implements ImWordSyncStore {
+  SensitiveWordsSnapshot _snapshot = const SensitiveWordsSnapshot();
+  List<ProhibitWordEntry> _prohibitWords = const <ProhibitWordEntry>[];
+
+  @override
+  bool get usesLocalPersistence => false;
+
+  @override
+  SensitiveWordsSnapshot loadSensitiveWordsSnapshot() => _snapshot;
+
+  @override
+  Future<void> applySensitiveWordsSync(SensitiveWordsSnapshot snapshot) async {
+    _snapshot = snapshot;
+  }
+
+  @override
+  Future<void> loadStoredWordCaches() async {}
+
+  @override
+  Future<int> getMaxProhibitWordVersion() async => 0;
+
+  @override
+  Future<void> applyProhibitWordsSync(List<ProhibitWordEntry> words) async {
+    _prohibitWords = words;
+  }
+
+  @override
+  List<ProhibitWordEntry> resolveProhibitWords() => _prohibitWords;
 }

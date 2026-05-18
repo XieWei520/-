@@ -33,7 +33,6 @@ import '../../realtime/session/session_runtime.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import '../../wukong_base/msg/msg_content_type.dart';
-import '../../wukong_base/db/db_helper.dart';
 import '../../wukong_push/notification/android_message_alert_manager.dart';
 import '../../wukong_push/notification/desktop_message_alert_manager.dart';
 import '../../wukong_push/notification/web_notification_manager.dart';
@@ -51,6 +50,7 @@ import 'im_connection_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_service_providers.dart';
 import 'im_sync_orchestrator.dart';
+import 'im_word_sync_store.dart';
 import 'message_delivery_service.dart';
 import 'message_outbox.dart';
 
@@ -73,14 +73,13 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
     readProvider: ref.read,
     notificationBridge: ref.read(imNotificationBridgeProvider),
     syncOrchestrator: ref.read(imSyncOrchestratorProvider),
+    wordSyncStore: ref.read(imWordSyncStoreProvider),
     attachmentUploadPipeline: ref.read(attachmentUploadPipelineProvider),
     connectionService: ref.read(imConnectionServiceProvider),
     realtimeRolloutTelemetry: ref.read(realtimeRolloutTelemetryProvider),
   );
 });
 
-const String _sensitiveWordsCacheKey = 'wk_sensitive_words';
-const String _sensitiveWordsVersionKey = 'wk_sensitive_words_version';
 const bool _preferProtobufControlProtocol = true;
 const String _protobufControlProtocol = 'protobuf';
 const String _realtimeControlProtocolHeader = 'X-Realtime-Control-Protocol';
@@ -297,6 +296,7 @@ class IMService extends StateNotifier<IMServiceState>
     ImConnectionService? connectionService,
     ImNotificationBridge? notificationBridge,
     ImSyncOrchestrator? syncOrchestrator,
+    ImWordSyncStore? wordSyncStore,
     AttachmentUploadPipeline? attachmentUploadPipeline,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
@@ -324,6 +324,8 @@ class IMService extends StateNotifier<IMServiceState>
           listenerKey: _connectionListenerKey,
         );
     _notificationBridge = notificationBridge;
+    _wordSyncStore =
+        wordSyncStore ?? syncOrchestrator?.wordStore ?? WkImWordSyncStore();
     _syncOrchestrator =
         syncOrchestrator ??
         ImSyncOrchestrator(
@@ -331,6 +333,7 @@ class IMService extends StateNotifier<IMServiceState>
           messageApi: MessageApi.instance,
           reminderApi: ReminderApi.instance,
           conversationDraftApi: ConversationDraftApi.instance,
+          wordStore: _wordSyncStore,
         );
     _attachmentUploadPipeline =
         attachmentUploadPipeline ??
@@ -363,14 +366,12 @@ class IMService extends StateNotifier<IMServiceState>
   String? _initializedToken;
   String? _initializedDeviceSessionId;
   int _lastConversationCmdVersion = 0;
-  SensitiveWordsSnapshot _sensitiveWordsSnapshot =
-      const SensitiveWordsSnapshot();
-  List<ProhibitWordEntry>? _cachedProhibitWords;
   late final RealtimeRolloutTelemetry _realtimeRolloutTelemetry;
   late final SessionRuntime _sessionRuntime;
   late final ImConnectionService _connectionService;
   ImNotificationBridge? _notificationBridge;
   late final ImSyncOrchestrator _syncOrchestrator;
+  late final ImWordSyncStore _wordSyncStore;
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
@@ -487,7 +488,6 @@ class IMService extends StateNotifier<IMServiceState>
         await _loadStoredWordCaches();
       } else {
         _loadSensitiveWordsSnapshot();
-        _cachedProhibitWords = const <ProhibitWordEntry>[];
       }
 
       _registerMessageContents();
@@ -720,11 +720,15 @@ class IMService extends StateNotifier<IMServiceState>
     _syncOrchestrator.runFanOutPlan(
       plan,
       ImSyncTaskHandlers(
-        syncReminders: ({reason}) => _syncOrchestrator.syncReminders(
+        syncReminders: ({reason}) =>
+            _syncOrchestrator.syncReminders(reason: reason),
+        syncSensitiveWords: ({reason}) =>
+            _syncOrchestrator.syncSensitiveWords(reason: reason),
+        syncProhibitWords: ({reason}) => _syncOrchestrator.syncProhibitWords(
           reason: reason,
+          refreshMaskedMessagesAfterProhibitWordSync:
+              _refreshMaskedMessagesAfterProhibitWordSync,
         ),
-        syncSensitiveWords: ({reason}) => _syncSensitiveWords(reason: reason),
-        syncProhibitWords: ({reason}) => _syncProhibitWords(reason: reason),
         syncConversationExtras: ({reason}) =>
             _syncConversationExtras(reason: reason),
         syncOfflineCommandMessages: ({reason}) =>
@@ -784,57 +788,8 @@ class IMService extends StateNotifier<IMServiceState>
     if (effects.contains(
       command_dispatcher.IMCommandSideEffect.syncReminders,
     )) {
-      unawaited(
-        _syncOrchestrator.syncReminders(reason: 'cmd:${cmd.cmd}'),
-      );
+      unawaited(_syncOrchestrator.syncReminders(reason: 'cmd:${cmd.cmd}'));
     }
-  }
-
-  Future<void> _syncSensitiveWords({String? reason}) async {
-    await _syncOrchestrator.runExclusiveSyncTask(
-      ImSyncTaskSlot.sensitiveWords,
-      reason: reason,
-      task: ({reason}) async {
-        try {
-          final version = _loadSensitiveWordsSnapshot().version;
-          final snapshot = await MessageApi.instance.syncSensitiveWords(
-            version: version,
-          );
-          if (snapshot.version > 0 || snapshot.tips.trim().isNotEmpty) {
-            await applySensitiveWordsSync(snapshot);
-          }
-        } catch (error, stackTrace) {
-          debugPrint('Sensitive words sync failed($reason): $error');
-          debugPrint('$stackTrace');
-        }
-      },
-    );
-  }
-
-  Future<void> _syncProhibitWords({String? reason}) async {
-    if (!_usesLocalPersistence) {
-      return;
-    }
-
-    await _syncOrchestrator.runExclusiveSyncTask(
-      ImSyncTaskSlot.prohibitWords,
-      reason: reason,
-      task: ({reason}) async {
-        try {
-          final version = await DBHelper.instance.getMaxProhibitWordVersion();
-          final words = await MessageApi.instance.syncProhibitWords(
-            version: version,
-          );
-          if (words.isNotEmpty) {
-            await applyProhibitWordsSync(words);
-            await _refreshMaskedMessagesAfterProhibitWordSync();
-          }
-        } catch (error, stackTrace) {
-          debugPrint('Prohibit words sync failed($reason): $error');
-          debugPrint('$stackTrace');
-        }
-      },
-    );
   }
 
   Future<void> _syncConversationExtras({String? reason}) async {
@@ -1258,46 +1213,15 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   SensitiveWordsSnapshot _loadSensitiveWordsSnapshot() {
-    if (!_sensitiveWordsSnapshot.isEmpty) {
-      return _sensitiveWordsSnapshot;
-    }
-    final storedVersion = StorageUtils.getInt(_sensitiveWordsVersionKey) ?? 0;
-    final raw = StorageUtils.getString(_sensitiveWordsCacheKey)?.trim() ?? '';
-    if (raw.isEmpty) {
-      if (storedVersion > 0) {
-        _sensitiveWordsSnapshot = SensitiveWordsSnapshot(
-          version: storedVersion,
-        );
-      }
-      return _sensitiveWordsSnapshot;
-    }
-    try {
-      final decoded = jsonDecode(raw);
-      _sensitiveWordsSnapshot = SensitiveWordsSnapshot.fromDynamic(decoded);
-      if (_sensitiveWordsSnapshot.version <= 0 && storedVersion > 0) {
-        _sensitiveWordsSnapshot = SensitiveWordsSnapshot(
-          tips: _sensitiveWordsSnapshot.tips,
-          version: storedVersion,
-          list: _sensitiveWordsSnapshot.list,
-        );
-      }
-    } catch (_) {
-      _sensitiveWordsSnapshot = SensitiveWordsSnapshot(version: storedVersion);
-    }
-    return _sensitiveWordsSnapshot;
+    return _wordSyncStore.loadSensitiveWordsSnapshot();
   }
 
   Future<void> _loadStoredWordCaches() async {
-    _loadSensitiveWordsSnapshot();
-    if (!_usesLocalPersistence) {
-      _cachedProhibitWords = const <ProhibitWordEntry>[];
-      return;
-    }
-    _cachedProhibitWords = await DBHelper.instance.getProhibitWords();
+    await _wordSyncStore.loadStoredWordCaches();
   }
 
   List<ProhibitWordEntry> _resolveProhibitWords() {
-    return _cachedProhibitWords ?? const <ProhibitWordEntry>[];
+    return _wordSyncStore.resolveProhibitWords();
   }
 
   String _maskTextWithProhibitWords(
@@ -1600,15 +1524,7 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   Future<void> applySensitiveWordsSync(SensitiveWordsSnapshot snapshot) async {
-    await StorageUtils.setInt(_sensitiveWordsVersionKey, snapshot.version);
-    if (snapshot.tips.trim().isEmpty) {
-      return;
-    }
-    _sensitiveWordsSnapshot = snapshot;
-    await StorageUtils.setString(
-      _sensitiveWordsCacheKey,
-      jsonEncode(snapshot.toJson()),
-    );
+    await _syncOrchestrator.applySensitiveWordsSync(snapshot);
   }
 
   @visibleForTesting
@@ -1646,12 +1562,7 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   Future<void> applyProhibitWordsSync(List<ProhibitWordEntry> words) async {
-    if (!_usesLocalPersistence) {
-      _cachedProhibitWords = words;
-      return;
-    }
-    await DBHelper.instance.saveProhibitWords(words);
-    _cachedProhibitWords = await DBHelper.instance.getProhibitWords();
+    await _syncOrchestrator.applyProhibitWordsSync(words);
   }
 
   bool get _usesLocalPersistence => shouldUseImLocalPersistence(
