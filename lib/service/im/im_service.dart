@@ -596,7 +596,7 @@ class IMService extends StateNotifier<IMServiceState>
     ) async {
       try {
         final deviceUuid = await _ensureDeviceUuid();
-        final result = await IMSyncApi.instance.syncConversation(
+        final result = await _syncOrchestrator.syncConversation(
           version: version,
           lastMsgSeqs: lastMsgSeqs,
           msgCount: msgCount,
@@ -608,7 +608,7 @@ class IMService extends StateNotifier<IMServiceState>
         );
         back(result);
         unawaited(
-          _ackConversationSync(
+          _syncOrchestrator.acknowledgeConversationSync(
             cmdVersion: result.cmdVersion,
             deviceUuid: deviceUuid,
           ),
@@ -632,7 +632,7 @@ class IMService extends StateNotifier<IMServiceState>
     ) async {
       try {
         final deviceUuid = await _ensureDeviceUuid();
-        final result = await IMSyncApi.instance.syncChannelMessages(
+        final result = await _syncOrchestrator.syncChannelMessages(
           channelId: channelId,
           channelType: channelType,
           startMessageSeq: startMessageSeq,
@@ -643,7 +643,7 @@ class IMService extends StateNotifier<IMServiceState>
         );
         back(result);
         unawaited(
-          _ackConversationSync(
+          _syncOrchestrator.acknowledgeConversationSync(
             cmdVersion: _lastConversationCmdVersion,
             deviceUuid: deviceUuid,
           ),
@@ -1579,21 +1579,6 @@ class IMService extends StateNotifier<IMServiceState>
   Future<String> _resolveConnectAddr(String uid) async {
     final route = await IMSyncApi.instance.fetchUserConnectRoute(uid: uid);
     return selectImConnectAddr(route, fallbackAddr: IMConfig.connectAddr);
-  }
-
-  Future<void> _ackConversationSync({
-    required int cmdVersion,
-    required String deviceUuid,
-  }) async {
-    try {
-      await IMSyncApi.instance.ackConversationSync(
-        cmdVersion: cmdVersion,
-        deviceUuid: deviceUuid,
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Conversation sync ack failed: $error');
-      debugPrint('$stackTrace');
-    }
   }
 
   void _disconnectForBackgroundIfNeeded() {

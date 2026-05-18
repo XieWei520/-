@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/service/api/conversation_draft_api.dart';
 import 'package:wukong_im_app/service/api/im_sync_api.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
@@ -122,6 +126,111 @@ void main() {
       expect(orchestrator.status.activeMessageExtraKeys, isEmpty);
     });
   });
+
+  group('ImSyncOrchestrator transport callbacks', () {
+    test('syncConversation delegates to IMSyncApi with device identity', () async {
+      final adapter = _RecordingPlainAdapter(
+        payload: <String, dynamic>{
+          'data': <String, dynamic>{
+            'uid': 'u_self',
+            'cmd_version': 12,
+            'cmds': const <Map<String, dynamic>>[],
+            'channel_status': const <Map<String, dynamic>>[],
+            'conversations': const <Map<String, dynamic>>[],
+          },
+        },
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+      final orchestrator = _orchestrator();
+
+      final result = await orchestrator.syncConversation(
+        version: 7,
+        lastMsgSeqs: '1:99',
+        msgCount: 200,
+        deviceUuid: 'device-01',
+      );
+
+      expect(result.cmdVersion, 12);
+      expect(adapter.lastRequestOptions?.path, '/v1/conversation/sync');
+      expect(adapter.lastRequestOptions?.data, <String, dynamic>{
+        'version': 7,
+        'last_msg_seqs': '1:99',
+        'msg_count': 200,
+        'device_uuid': 'device-01',
+      });
+    });
+
+    test('syncChannelMessages delegates channel bounds to IMSyncApi', () async {
+      final adapter = _RecordingPlainAdapter(
+        payload: <String, dynamic>{
+          'data': <String, dynamic>{
+            'start_message_seq': 3,
+            'end_message_seq': 9,
+            'more': 0,
+            'messages': const <Map<String, dynamic>>[],
+          },
+        },
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+      final orchestrator = _orchestrator();
+
+      final result = await orchestrator.syncChannelMessages(
+        channelId: 'c1',
+        channelType: 2,
+        startMessageSeq: 3,
+        endMessageSeq: 9,
+        limit: 50,
+        pullMode: 1,
+        deviceUuid: 'device-01',
+      );
+
+      expect(result, isNotNull);
+      expect(result!.startMessageSeq, 3);
+      expect(result.endMessageSeq, 9);
+      expect(adapter.lastRequestOptions?.path, '/v1/message/channel/sync');
+      expect(adapter.lastRequestOptions?.data, <String, dynamic>{
+        'channel_id': 'c1',
+        'channel_type': 2,
+        'start_message_seq': 3,
+        'end_message_seq': 9,
+        'limit': 50,
+        'pull_mode': 1,
+        'device_uuid': 'device-01',
+      });
+    });
+
+    test('acknowledgeConversationSync posts the synced command version', () async {
+      final adapter = _RecordingPlainAdapter(
+        payload: const <String, dynamic>{'code': 0},
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+      final orchestrator = _orchestrator();
+
+      await orchestrator.acknowledgeConversationSync(
+        cmdVersion: 12,
+        deviceUuid: 'device-01',
+      );
+
+      expect(adapter.lastRequestOptions?.path, '/v1/conversation/syncack');
+      expect(adapter.lastRequestOptions?.data, <String, dynamic>{
+        'cmd_version': 12,
+        'device_uuid': 'device-01',
+      });
+    });
+
+    test('acknowledgeConversationSync absorbs transport errors', () async {
+      ApiClient.instance.dio.httpClientAdapter = _ThrowingPlainAdapter();
+      final orchestrator = _orchestrator();
+
+      await expectLater(
+        orchestrator.acknowledgeConversationSync(
+          cmdVersion: 12,
+          deviceUuid: 'device-01',
+        ),
+        completes,
+      );
+    });
+  });
 }
 
 ImSyncOrchestrator _orchestrator() {
@@ -131,4 +240,48 @@ ImSyncOrchestrator _orchestrator() {
     reminderApi: ReminderApi.instance,
     conversationDraftApi: ConversationDraftApi.instance,
   );
+}
+
+class _RecordingPlainAdapter implements HttpClientAdapter {
+  _RecordingPlainAdapter({required this.payload});
+
+  final Object payload;
+  RequestOptions? lastRequestOptions;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    lastRequestOptions = options;
+    return ResponseBody.fromString(
+      jsonEncode(payload),
+      200,
+      headers: <String, List<String>>{
+        Headers.contentTypeHeader: <String>[Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _ThrowingPlainAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) {
+    throw DioException(
+      requestOptions: options,
+      type: DioExceptionType.connectionError,
+      error: 'sync ack failed',
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

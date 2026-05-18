@@ -234,8 +234,11 @@ class ImSyncOrchestrator {
     required int msgCount,
     required String deviceUuid,
   }) {
-    throw UnimplementedError(
-      'Skeleton only: move conversation sync callback here.',
+    return syncApi.syncConversation(
+      version: version,
+      lastMsgSeqs: lastMsgSeqs,
+      msgCount: msgCount,
+      deviceUuid: deviceUuid,
     );
   }
 
@@ -248,14 +251,30 @@ class ImSyncOrchestrator {
     required int pullMode,
     required String deviceUuid,
   }) {
-    throw UnimplementedError('Skeleton only: move channel sync callback here.');
+    return syncApi.syncChannelMessages(
+      channelId: channelId,
+      channelType: channelType,
+      startMessageSeq: startMessageSeq,
+      endMessageSeq: endMessageSeq,
+      limit: limit,
+      pullMode: pullMode,
+      deviceUuid: deviceUuid,
+    );
   }
 
   Future<void> acknowledgeConversationSync({
     required int cmdVersion,
     required String deviceUuid,
-  }) {
-    throw UnimplementedError('Skeleton only: move sync ack here.');
+  }) async {
+    try {
+      await syncApi.ackConversationSync(
+        cmdVersion: cmdVersion,
+        deviceUuid: deviceUuid,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Conversation sync ack failed: $error');
+      debugPrint('$stackTrace');
+    }
   }
 
   Future<void> syncReminders({String? reason}) {
