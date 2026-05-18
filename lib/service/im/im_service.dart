@@ -413,18 +413,6 @@ class IMService extends StateNotifier<IMServiceState>
   String? _initializedToken;
   String? _initializedDeviceSessionId;
   int _lastConversationCmdVersion = 0;
-  bool _isReminderSyncing = false;
-  bool _pendingReminderSync = false;
-  bool _isSensitiveWordSyncing = false;
-  bool _pendingSensitiveWordSync = false;
-  bool _isProhibitWordSyncing = false;
-  bool _pendingProhibitWordSync = false;
-  bool _isConversationExtraSyncing = false;
-  bool _pendingConversationExtraSync = false;
-  bool _isOfflineCmdSyncing = false;
-  bool _pendingOfflineCmdSync = false;
-  final Set<String> _activeMessageExtraSyncKeys = <String>{};
-  final Set<String> _pendingMessageExtraSyncKeys = <String>{};
   SensitiveWordsSnapshot _sensitiveWordsSnapshot =
       const SensitiveWordsSnapshot();
   List<ProhibitWordEntry>? _cachedProhibitWords;
@@ -849,15 +837,10 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   Future<void> _syncReminders({String? reason}) async {
-    if (_isReminderSyncing) {
-      _pendingReminderSync = true;
-      return;
-    }
-
-    _isReminderSyncing = true;
-    try {
-      do {
-        _pendingReminderSync = false;
+    await _syncOrchestrator.runExclusiveSyncTask(
+      ImSyncTaskSlot.reminders,
+      reason: reason,
+      task: ({reason}) async {
         try {
           final version = await WKIM.shared.reminderManager.getMaxVersion();
           final channelIds = await _loadReminderChannelIds();
@@ -865,47 +848,36 @@ class IMService extends StateNotifier<IMServiceState>
             version: version,
             channelIds: channelIds,
           );
-          if (reminders.isEmpty) {
-            continue;
+          if (reminders.isNotEmpty) {
+            await WKIM.shared.reminderManager.saveOrUpdateReminders(reminders);
           }
-          await WKIM.shared.reminderManager.saveOrUpdateReminders(reminders);
         } catch (error, stackTrace) {
           debugPrint('Reminder sync failed($reason): $error');
           debugPrint('$stackTrace');
         }
-      } while (_pendingReminderSync);
-    } finally {
-      _isReminderSyncing = false;
-    }
+      },
+    );
   }
 
   Future<void> _syncSensitiveWords({String? reason}) async {
-    if (_isSensitiveWordSyncing) {
-      _pendingSensitiveWordSync = true;
-      return;
-    }
-
-    _isSensitiveWordSyncing = true;
-    try {
-      do {
-        _pendingSensitiveWordSync = false;
+    await _syncOrchestrator.runExclusiveSyncTask(
+      ImSyncTaskSlot.sensitiveWords,
+      reason: reason,
+      task: ({reason}) async {
         try {
           final version = _loadSensitiveWordsSnapshot().version;
           final snapshot = await MessageApi.instance.syncSensitiveWords(
             version: version,
           );
-          if (snapshot.version <= 0 && snapshot.tips.trim().isEmpty) {
-            continue;
+          if (snapshot.version > 0 || snapshot.tips.trim().isNotEmpty) {
+            await applySensitiveWordsSync(snapshot);
           }
-          await applySensitiveWordsSync(snapshot);
         } catch (error, stackTrace) {
           debugPrint('Sensitive words sync failed($reason): $error');
           debugPrint('$stackTrace');
         }
-      } while (_pendingSensitiveWordSync);
-    } finally {
-      _isSensitiveWordSyncing = false;
-    }
+      },
+    );
   }
 
   Future<void> _syncProhibitWords({String? reason}) async {
@@ -913,65 +885,49 @@ class IMService extends StateNotifier<IMServiceState>
       return;
     }
 
-    if (_isProhibitWordSyncing) {
-      _pendingProhibitWordSync = true;
-      return;
-    }
-
-    _isProhibitWordSyncing = true;
-    try {
-      do {
-        _pendingProhibitWordSync = false;
+    await _syncOrchestrator.runExclusiveSyncTask(
+      ImSyncTaskSlot.prohibitWords,
+      reason: reason,
+      task: ({reason}) async {
         try {
           final version = await DBHelper.instance.getMaxProhibitWordVersion();
           final words = await MessageApi.instance.syncProhibitWords(
             version: version,
           );
-          if (words.isEmpty) {
-            continue;
+          if (words.isNotEmpty) {
+            await applyProhibitWordsSync(words);
+            await _refreshMaskedMessagesAfterProhibitWordSync();
           }
-          await applyProhibitWordsSync(words);
-          await _refreshMaskedMessagesAfterProhibitWordSync();
         } catch (error, stackTrace) {
           debugPrint('Prohibit words sync failed($reason): $error');
           debugPrint('$stackTrace');
         }
-      } while (_pendingProhibitWordSync);
-    } finally {
-      _isProhibitWordSyncing = false;
-    }
+      },
+    );
   }
 
   Future<void> _syncConversationExtras({String? reason}) async {
-    if (_isConversationExtraSyncing) {
-      _pendingConversationExtraSync = true;
-      return;
-    }
-
-    _isConversationExtraSyncing = true;
-    try {
-      do {
-        _pendingConversationExtraSync = false;
+    await _syncOrchestrator.runExclusiveSyncTask(
+      ImSyncTaskSlot.conversationExtras,
+      reason: reason,
+      task: ({reason}) async {
         try {
           final version = await WKIM.shared.conversationManager
               .getMsgExtraMaxVersion();
           final extras = await ConversationDraftApi.instance.syncExtras(
             version: version,
           );
-          if (extras.isEmpty) {
-            continue;
+          if (extras.isNotEmpty) {
+            await WKIM.shared.conversationManager.saveSyncMsgExtras(
+              extras.map(_toSyncConversationExtra).toList(growable: false),
+            );
           }
-          await WKIM.shared.conversationManager.saveSyncMsgExtras(
-            extras.map(_toSyncConversationExtra).toList(growable: false),
-          );
         } catch (error, stackTrace) {
           debugPrint('Conversation extra sync failed($reason): $error');
           debugPrint('$stackTrace');
         }
-      } while (_pendingConversationExtraSync);
-    } finally {
-      _isConversationExtraSyncing = false;
-    }
+      },
+    );
   }
 
   Future<void> _syncMessageExtras({
@@ -979,39 +935,29 @@ class IMService extends StateNotifier<IMServiceState>
     required int channelType,
     String? reason,
   }) async {
-    final normalizedChannelId = channelId.trim();
-    if (normalizedChannelId.isEmpty) {
-      return;
-    }
-
-    final syncKey = _messageExtraSyncKey(normalizedChannelId, channelType);
-    if (_activeMessageExtraSyncKeys.contains(syncKey)) {
-      _pendingMessageExtraSyncKeys.add(syncKey);
-      return;
-    }
-
-    _activeMessageExtraSyncKeys.add(syncKey);
-    try {
-      while (true) {
-        _pendingMessageExtraSyncKeys.remove(syncKey);
+    await _syncOrchestrator.runExclusiveMessageExtraTask(
+      channelId: channelId,
+      channelType: channelType,
+      reason: reason,
+      task: ({required channelId, required channelType, reason}) async {
         try {
           final deviceUuid = await _ensureDeviceUuid();
           final extraVersion = await WKIM.shared.messageManager
-              .getMaxExtraVersionWithChannel(normalizedChannelId, channelType);
+              .getMaxExtraVersionWithChannel(channelId, channelType);
           final extras = await MessageApi.instance.syncMessageExtras(
-            channelId: normalizedChannelId,
+            channelId: channelId,
             channelType: channelType,
             extraVersion: extraVersion,
             deviceUuid: deviceUuid,
             limit: 100,
           );
           if (extras.isEmpty) {
-            break;
+            return;
           }
           final mappedExtras = extras
               .map(
                 (item) => WKIM.shared.messageManager.wkSyncExtraMsg2WKMsgExtra(
-                  normalizedChannelId,
+                  channelId,
                   channelType,
                   item,
                 ),
@@ -1020,50 +966,28 @@ class IMService extends StateNotifier<IMServiceState>
           await WKIM.shared.messageManager.saveRemoteExtraMsg(mappedExtras);
           if (!_usesLocalPersistence) {
             _publishRealtimeMessageExtraRefresh(
-              normalizedChannelId,
+              channelId,
               channelType,
               mappedExtras,
             );
           }
           await Future<void>.delayed(const Duration(milliseconds: 500));
-          continue;
         } catch (error, stackTrace) {
           debugPrint(
-            'Message extra sync failed($reason:$normalizedChannelId/$channelType): $error',
+            'Message extra sync failed($reason:$channelId/$channelType): $error',
           );
           debugPrint('$stackTrace');
-          break;
         }
-      }
-    } finally {
-      _activeMessageExtraSyncKeys.remove(syncKey);
-      if (_pendingMessageExtraSyncKeys.remove(syncKey)) {
-        unawaited(
-          _syncMessageExtras(
-            channelId: normalizedChannelId,
-            channelType: channelType,
-            reason: 'pending',
-          ),
-        );
-      }
-    }
+      },
+    );
   }
 
   Future<void> _syncOfflineCommandMessages({String? reason}) async {
-    if (_isOfflineCmdSyncing) {
-      _pendingOfflineCmdSync = true;
-      return;
-    }
-
-    _isOfflineCmdSyncing = true;
-    try {
-      do {
-        _pendingOfflineCmdSync = false;
-        await _runOfflineCommandSync(reason: reason);
-      } while (_pendingOfflineCmdSync);
-    } finally {
-      _isOfflineCmdSyncing = false;
-    }
+    await _syncOrchestrator.runExclusiveSyncTask(
+      ImSyncTaskSlot.offlineCommands,
+      reason: reason,
+      task: ({reason}) => _runOfflineCommandSync(reason: reason),
+    );
   }
 
   Future<void> _runOfflineCommandSync({String? reason}) async {
@@ -1166,10 +1090,6 @@ class IMService extends StateNotifier<IMServiceState>
       ..keepOffsetY = extra.keepOffsetY
       ..draft = extra.draft
       ..version = extra.version;
-  }
-
-  String _messageExtraSyncKey(String channelId, int channelType) {
-    return _messageSyncCoordinator.messageExtraSyncKey(channelId, channelType);
   }
 
   void _handleNewMessages(List<WKMsg> messages) {

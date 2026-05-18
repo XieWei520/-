@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/service/api/conversation_draft_api.dart';
 import 'package:wukong_im_app/service/api/im_sync_api.dart';
@@ -46,8 +48,7 @@ void main() {
           syncReminders: ({reason}) async => calls.add('reminders:$reason'),
           syncSensitiveWords: ({reason}) async =>
               calls.add('sensitive:$reason'),
-          syncProhibitWords: ({reason}) async =>
-              calls.add('prohibit:$reason'),
+          syncProhibitWords: ({reason}) async => calls.add('prohibit:$reason'),
           syncConversationExtras: ({reason}) async =>
               calls.add('conversation:$reason'),
           syncOfflineCommandMessages: ({reason}) async =>
@@ -56,6 +57,69 @@ void main() {
       );
 
       expect(calls, <String>['reminders:unit', 'conversation:unit']);
+    });
+
+    test(
+      'runExclusiveSyncTask replays a pending trigger after current run',
+      () async {
+        final orchestrator = _orchestrator();
+        final calls = <String>[];
+        final gate = Completer<void>();
+
+        final first = orchestrator.runExclusiveSyncTask(
+          ImSyncTaskSlot.reminders,
+          reason: 'first',
+          task: ({reason}) async {
+            calls.add(reason ?? '');
+            await gate.future;
+          },
+        );
+        final second = orchestrator.runExclusiveSyncTask(
+          ImSyncTaskSlot.reminders,
+          reason: 'second',
+          task: ({reason}) async {
+            calls.add(reason ?? '');
+          },
+        );
+
+        expect(orchestrator.status.isSyncingReminders, isTrue);
+        gate.complete();
+        await Future.wait(<Future<void>>[first, second]);
+
+        expect(calls, <String>['first', 'second']);
+        expect(orchestrator.status.isSyncingReminders, isFalse);
+      },
+    );
+
+    test('runExclusiveMessageExtraTask deduplicates by channel key', () async {
+      final orchestrator = _orchestrator();
+      final calls = <String>[];
+      final gate = Completer<void>();
+
+      final first = orchestrator.runExclusiveMessageExtraTask(
+        channelId: ' c1 ',
+        channelType: 1,
+        reason: 'first',
+        task: ({required channelId, required channelType, reason}) async {
+          calls.add('$channelId/$channelType:$reason');
+          await gate.future;
+        },
+      );
+      final second = orchestrator.runExclusiveMessageExtraTask(
+        channelId: 'c1',
+        channelType: 1,
+        reason: 'second',
+        task: ({required channelId, required channelType, reason}) async {
+          calls.add('$channelId/$channelType:$reason');
+        },
+      );
+
+      expect(orchestrator.status.activeMessageExtraKeys, <String>{'c1:1'});
+      gate.complete();
+      await Future.wait(<Future<void>>[first, second]);
+
+      expect(calls, <String>['c1/1:first', 'c1/1:second']);
+      expect(orchestrator.status.activeMessageExtraKeys, isEmpty);
     });
   });
 }

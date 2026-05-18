@@ -10,6 +10,20 @@ import 'coordinators/message_sync_coordinator.dart';
 import 'im_word_sync_models.dart';
 
 typedef ImSyncTaskHandler = Future<void> Function({String? reason});
+typedef ImMessageExtraSyncTask =
+    Future<void> Function({
+      required String channelId,
+      required int channelType,
+      String? reason,
+    });
+
+enum ImSyncTaskSlot {
+  reminders,
+  sensitiveWords,
+  prohibitWords,
+  conversationExtras,
+  offlineCommands,
+}
 
 @immutable
 class ImSyncStatus {
@@ -80,9 +94,29 @@ class ImSyncOrchestrator {
   final ReminderApi reminderApi;
   final ConversationDraftRemoteStore conversationDraftApi;
   final MessageSyncCoordinator coordinator;
+  final Set<ImSyncTaskSlot> _activeTaskSlots = <ImSyncTaskSlot>{};
+  final Map<ImSyncTaskSlot, String?> _pendingTaskReasons =
+      <ImSyncTaskSlot, String?>{};
+  final Set<String> _activeMessageExtraKeys = <String>{};
+  final Map<String, String?> _pendingMessageExtraReasons = <String, String?>{};
 
   ImSyncStatus get status {
-    throw UnimplementedError('Skeleton only: move sync in-flight state here.');
+    return ImSyncStatus(
+      isSyncingReminders: _activeTaskSlots.contains(ImSyncTaskSlot.reminders),
+      isSyncingSensitiveWords: _activeTaskSlots.contains(
+        ImSyncTaskSlot.sensitiveWords,
+      ),
+      isSyncingProhibitWords: _activeTaskSlots.contains(
+        ImSyncTaskSlot.prohibitWords,
+      ),
+      isSyncingConversationExtras: _activeTaskSlots.contains(
+        ImSyncTaskSlot.conversationExtras,
+      ),
+      isSyncingOfflineCommands: _activeTaskSlots.contains(
+        ImSyncTaskSlot.offlineCommands,
+      ),
+      activeMessageExtraKeys: Set<String>.unmodifiable(_activeMessageExtraKeys),
+    );
   }
 
   Future<void> handleSyncCompleted() {
@@ -106,6 +140,72 @@ class ImSyncOrchestrator {
     }
     if (plan.syncOfflineCommandMessages) {
       handlers.syncOfflineCommandMessages(reason: plan.reason);
+    }
+  }
+
+  Future<void> runExclusiveSyncTask(
+    ImSyncTaskSlot slot, {
+    String? reason,
+    required ImSyncTaskHandler task,
+  }) async {
+    if (_activeTaskSlots.contains(slot)) {
+      _pendingTaskReasons[slot] = reason;
+      return;
+    }
+
+    _activeTaskSlots.add(slot);
+    var currentReason = reason;
+    try {
+      while (true) {
+        _pendingTaskReasons.remove(slot);
+        await task(reason: currentReason);
+        if (!_pendingTaskReasons.containsKey(slot)) {
+          break;
+        }
+        currentReason = _pendingTaskReasons.remove(slot);
+      }
+    } finally {
+      _activeTaskSlots.remove(slot);
+    }
+  }
+
+  Future<void> runExclusiveMessageExtraTask({
+    required String channelId,
+    required int channelType,
+    String? reason,
+    required ImMessageExtraSyncTask task,
+  }) async {
+    final normalizedChannelId = channelId.trim();
+    if (normalizedChannelId.isEmpty) {
+      return;
+    }
+
+    final syncKey = coordinator.messageExtraSyncKey(
+      normalizedChannelId,
+      channelType,
+    );
+    if (_activeMessageExtraKeys.contains(syncKey)) {
+      _pendingMessageExtraReasons[syncKey] = reason;
+      return;
+    }
+
+    _activeMessageExtraKeys.add(syncKey);
+    var currentReason = reason;
+    try {
+      while (true) {
+        _pendingMessageExtraReasons.remove(syncKey);
+        await task(
+          channelId: normalizedChannelId,
+          channelType: channelType,
+          reason: currentReason,
+        );
+        if (!_pendingMessageExtraReasons.containsKey(syncKey)) {
+          break;
+        }
+        currentReason = _pendingMessageExtraReasons.remove(syncKey);
+      }
+    } finally {
+      _activeMessageExtraKeys.remove(syncKey);
     }
   }
 
