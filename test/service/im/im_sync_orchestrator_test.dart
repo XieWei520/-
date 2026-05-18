@@ -10,6 +10,7 @@ import 'package:wukong_im_app/service/api/im_sync_api.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
 import 'package:wukong_im_app/service/api/reminder_api.dart';
 import 'package:wukong_im_app/service/im/im_sync_orchestrator.dart';
+import 'package:wukongimfluttersdk/entity/reminder.dart';
 
 void main() {
   group('ImSyncOrchestrator planning', () {
@@ -231,14 +232,77 @@ void main() {
       );
     });
   });
+
+  group('ImSyncOrchestrator reminder sync', () {
+    test('syncReminders loads version and saves remote reminders', () async {
+      final adapter = _RecordingPlainAdapter(
+        payload: <String, dynamic>{
+          'data': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': 8,
+              'message_id': 'm1',
+              'channel_id': 'g1',
+              'channel_type': 2,
+              'message_seq': 99,
+              'reminder_type': 1,
+              'is_locate': 1,
+              'uid': 'u1',
+              'text': '@you',
+              'version': 6,
+              'done': 0,
+              'publisher': 'u2',
+            },
+          ],
+        },
+      );
+      ApiClient.instance.dio.httpClientAdapter = adapter;
+      final store = _FakeReminderStore(version: 5);
+      final orchestrator = _orchestrator(
+        reminderStore: store,
+        reminderChannelIdsLoader: () async => <String>['g1', 'g2'],
+      );
+
+      await orchestrator.syncReminders(reason: 'unit');
+
+      expect(adapter.lastRequestOptions?.path, '/v1/message/reminder/sync');
+      expect(adapter.lastRequestOptions?.data, <String, dynamic>{
+        'version': 5,
+        'limit': 200,
+        'channel_ids': <String>['g1', 'g2'],
+      });
+      expect(store.saved, hasLength(1));
+      expect(store.saved.single.reminderID, 8);
+      expect(store.saved.single.channelID, 'g1');
+    });
+
+    test('syncReminders completes when remote sync fails', () async {
+      ApiClient.instance.dio.httpClientAdapter = _ThrowingPlainAdapter();
+      final store = _FakeReminderStore(version: 5);
+      final orchestrator = _orchestrator(
+        reminderStore: store,
+        reminderChannelIdsLoader: () async => <String>['g1'],
+      );
+
+      await expectLater(
+        orchestrator.syncReminders(reason: 'unit-failure'),
+        completes,
+      );
+      expect(store.saved, isEmpty);
+    });
+  });
 }
 
-ImSyncOrchestrator _orchestrator() {
+ImSyncOrchestrator _orchestrator({
+  ImReminderStore? reminderStore,
+  ImReminderChannelIdsLoader? reminderChannelIdsLoader,
+}) {
   return ImSyncOrchestrator(
     syncApi: IMSyncApi.instance,
     messageApi: MessageApi.instance,
     reminderApi: ReminderApi.instance,
     conversationDraftApi: ConversationDraftApi.instance,
+    reminderStore: reminderStore,
+    reminderChannelIdsLoader: reminderChannelIdsLoader,
   );
 }
 
@@ -284,4 +348,19 @@ class _ThrowingPlainAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+}
+
+class _FakeReminderStore implements ImReminderStore {
+  _FakeReminderStore({required this.version});
+
+  final int version;
+  final List<WKReminder> saved = <WKReminder>[];
+
+  @override
+  Future<int> getMaxVersion() async => version;
+
+  @override
+  Future<void> saveOrUpdateReminders(List<WKReminder> reminders) async {
+    saved.addAll(reminders);
+  }
 }

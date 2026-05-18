@@ -720,7 +720,9 @@ class IMService extends StateNotifier<IMServiceState>
     _syncOrchestrator.runFanOutPlan(
       plan,
       ImSyncTaskHandlers(
-        syncReminders: ({reason}) => _syncReminders(reason: reason),
+        syncReminders: ({reason}) => _syncOrchestrator.syncReminders(
+          reason: reason,
+        ),
         syncSensitiveWords: ({reason}) => _syncSensitiveWords(reason: reason),
         syncProhibitWords: ({reason}) => _syncProhibitWords(reason: reason),
         syncConversationExtras: ({reason}) =>
@@ -782,31 +784,10 @@ class IMService extends StateNotifier<IMServiceState>
     if (effects.contains(
       command_dispatcher.IMCommandSideEffect.syncReminders,
     )) {
-      unawaited(_syncReminders(reason: 'cmd:${cmd.cmd}'));
+      unawaited(
+        _syncOrchestrator.syncReminders(reason: 'cmd:${cmd.cmd}'),
+      );
     }
-  }
-
-  Future<void> _syncReminders({String? reason}) async {
-    await _syncOrchestrator.runExclusiveSyncTask(
-      ImSyncTaskSlot.reminders,
-      reason: reason,
-      task: ({reason}) async {
-        try {
-          final version = await WKIM.shared.reminderManager.getMaxVersion();
-          final channelIds = await _loadReminderChannelIds();
-          final reminders = await ReminderApi.instance.syncReminders(
-            version: version,
-            channelIds: channelIds,
-          );
-          if (reminders.isNotEmpty) {
-            await WKIM.shared.reminderManager.saveOrUpdateReminders(reminders);
-          }
-        } catch (error, stackTrace) {
-          debugPrint('Reminder sync failed($reason): $error');
-          debugPrint('$stackTrace');
-        }
-      },
-    );
   }
 
   Future<void> _syncSensitiveWords({String? reason}) async {
@@ -1139,22 +1120,6 @@ class IMService extends StateNotifier<IMServiceState>
       WKIM.shared.conversationManager.setRefreshUIMsgs(<WKUIConversationMsg>[
         uiMsg,
       ]);
-    }
-  }
-
-  Future<List<String>> _loadReminderChannelIds() async {
-    try {
-      final conversations = await WKIM.shared.conversationManager.getAll();
-      final ids = <String>{};
-      for (final item in conversations) {
-        if (item.channelType == WKChannelType.group &&
-            item.channelID.trim().isNotEmpty) {
-          ids.add(item.channelID.trim());
-        }
-      }
-      return ids.toList();
-    } catch (_) {
-      return const <String>[];
     }
   }
 

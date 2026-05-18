@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
+import 'package:wukongimfluttersdk/entity/reminder.dart';
+import 'package:wukongimfluttersdk/type/const.dart';
+import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../api/conversation_draft_api.dart';
 import '../api/im_sync_api.dart';
@@ -16,6 +19,27 @@ typedef ImMessageExtraSyncTask =
       required int channelType,
       String? reason,
     });
+typedef ImReminderChannelIdsLoader = Future<List<String>> Function();
+
+abstract interface class ImReminderStore {
+  Future<int> getMaxVersion();
+
+  Future<void> saveOrUpdateReminders(List<WKReminder> reminders);
+}
+
+class WkImReminderStore implements ImReminderStore {
+  const WkImReminderStore();
+
+  @override
+  Future<int> getMaxVersion() {
+    return WKIM.shared.reminderManager.getMaxVersion();
+  }
+
+  @override
+  Future<void> saveOrUpdateReminders(List<WKReminder> reminders) {
+    return WKIM.shared.reminderManager.saveOrUpdateReminders(reminders);
+  }
+}
 
 enum ImSyncTaskSlot {
   reminders,
@@ -86,13 +110,19 @@ class ImSyncOrchestrator {
     required this.messageApi,
     required this.reminderApi,
     required this.conversationDraftApi,
+    ImReminderStore? reminderStore,
+    ImReminderChannelIdsLoader? reminderChannelIdsLoader,
     this.coordinator = const MessageSyncCoordinator(),
-  });
+  }) : reminderStore = reminderStore ?? const WkImReminderStore(),
+       reminderChannelIdsLoader =
+           reminderChannelIdsLoader ?? loadWkImReminderChannelIds;
 
   final IMSyncApi syncApi;
   final MessageApi messageApi;
   final ReminderApi reminderApi;
   final ConversationDraftRemoteStore conversationDraftApi;
+  final ImReminderStore reminderStore;
+  final ImReminderChannelIdsLoader reminderChannelIdsLoader;
   final MessageSyncCoordinator coordinator;
   final Set<ImSyncTaskSlot> _activeTaskSlots = <ImSyncTaskSlot>{};
   final Map<ImSyncTaskSlot, String?> _pendingTaskReasons =
@@ -278,7 +308,26 @@ class ImSyncOrchestrator {
   }
 
   Future<void> syncReminders({String? reason}) {
-    throw UnimplementedError('Skeleton only: move reminder sync here.');
+    return runExclusiveSyncTask(
+      ImSyncTaskSlot.reminders,
+      reason: reason,
+      task: ({reason}) async {
+        try {
+          final version = await reminderStore.getMaxVersion();
+          final channelIds = await reminderChannelIdsLoader();
+          final reminders = await reminderApi.syncReminders(
+            version: version,
+            channelIds: channelIds,
+          );
+          if (reminders.isNotEmpty) {
+            await reminderStore.saveOrUpdateReminders(reminders);
+          }
+        } catch (error, stackTrace) {
+          debugPrint('Reminder sync failed($reason): $error');
+          debugPrint('$stackTrace');
+        }
+      },
+    );
   }
 
   Future<void> syncSensitiveWords({String? reason}) {
@@ -319,5 +368,21 @@ class ImSyncOrchestrator {
     throw UnimplementedError(
       'Skeleton only: move offline command sync and ack here.',
     );
+  }
+}
+
+Future<List<String>> loadWkImReminderChannelIds() async {
+  try {
+    final conversations = await WKIM.shared.conversationManager.getAll();
+    final ids = <String>{};
+    for (final item in conversations) {
+      if (item.channelType == WKChannelType.group &&
+          item.channelID.trim().isNotEmpty) {
+        ids.add(item.channelID.trim());
+      }
+    }
+    return ids.toList();
+  } catch (_) {
+    return const <String>[];
   }
 }
