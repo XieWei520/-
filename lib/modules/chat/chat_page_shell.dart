@@ -30,6 +30,7 @@ import 'chat_channel_settings.dart';
 import 'chat_conversation_activity_binding.dart';
 import 'chat_conversation_restore_service.dart';
 import 'chat_flame_message_runtime.dart';
+import 'chat_forward_selection_collector.dart';
 import 'chat_frame_jank_monitor.dart';
 import 'chat_conversation_extra_gateway.dart';
 import 'chat_pinned_message_resolver.dart';
@@ -632,15 +633,9 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
 
   Future<void> _forwardSelectedMessages() async {
     final selection = ref.read(chatSelectionControllerProvider(_chatSession));
-    final selectedMessages = selection.selectedIdentities
-        .map(
-          (identity) => ref
-              .read(chatViewportProvider(_chatSession).notifier)
-              .itemByIdentity(identity)
-              ?.message,
-        )
-        .whereType<WKMsg>()
-        .toList(growable: false);
+    final selectedMessages = _buildForwardSelectionCollector().collect(
+      selection.selectedIdentities,
+    );
     if (selectedMessages.isEmpty) {
       return;
     }
@@ -681,6 +676,13 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     ref
         .read(chatSceneControllerProvider(_chatSession).notifier)
         .restoreNormal();
+  }
+
+  ChatForwardSelectionCollector _buildForwardSelectionCollector() {
+    final viewport = ref.read(chatViewportProvider(_chatSession).notifier);
+    return ChatForwardSelectionCollector(
+      findMessageByIdentity: viewport.itemByIdentity,
+    );
   }
 
   String _resolveTitle() {
