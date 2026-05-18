@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/models/chat_session.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
+import 'package:wukong_im_app/modules/chat/chat_conversation_extra_gateway.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_mapper.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_gateway.dart';
@@ -19,6 +20,8 @@ import 'package:wukongimfluttersdk/model/wk_message_content.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
+
+import 'fakes/noop_chat_conversation_extra_gateway.dart';
 
 void main() {
   test(
@@ -53,6 +56,9 @@ void main() {
       final gateway = _FakeChatSceneGateway();
       final container = ProviderContainer(
         overrides: [
+          chatConversationExtraGatewayProvider.overrideWithValue(
+            NoopChatConversationExtraGateway(),
+          ),
           realtimeRolloutTelemetryProvider.overrideWith((ref) {
             final telemetry = RealtimeRolloutTelemetry(
               flushInterval: Duration.zero,

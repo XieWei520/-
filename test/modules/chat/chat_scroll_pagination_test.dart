@@ -8,11 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
+import 'package:wukong_im_app/modules/chat/chat_conversation_extra_gateway.dart';
 import 'package:wukong_im_app/modules/chat/chat_page_shell.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
+
+import 'fakes/noop_chat_conversation_extra_gateway.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +41,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          chatConversationExtraGatewayProvider.overrideWithValue(
+            NoopChatConversationExtraGateway(),
+          ),
           chatMarkConversationReadProvider.overrideWithValue(
             (session, messageIds) async {},
           ),
@@ -93,6 +99,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          chatConversationExtraGatewayProvider.overrideWithValue(
+            NoopChatConversationExtraGateway(),
+          ),
           chatMarkConversationReadProvider.overrideWithValue(
             (session, messageIds) async {},
           ),
@@ -149,6 +158,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          chatConversationExtraGatewayProvider.overrideWithValue(
+            NoopChatConversationExtraGateway(),
+          ),
           chatMarkConversationReadProvider.overrideWithValue(
             (session, messageIds) async {},
           ),

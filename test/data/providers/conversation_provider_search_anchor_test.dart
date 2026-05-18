@@ -8,11 +8,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/data/providers/chat_history_gateway.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
+import 'package:wukong_im_app/modules/chat/chat_conversation_extra_gateway.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
+
+import '../../modules/chat/fakes/noop_chat_conversation_extra_gateway.dart';
 
 void main() {
   late HttpClientAdapter originalAdapter;
@@ -126,6 +129,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          chatConversationExtraGatewayProvider.overrideWithValue(
+            NoopChatConversationExtraGateway(),
+          ),
           realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
@@ -156,6 +162,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          chatConversationExtraGatewayProvider.overrideWithValue(
+            NoopChatConversationExtraGateway(),
+          ),
           realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
@@ -189,6 +198,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            chatConversationExtraGatewayProvider.overrideWithValue(
+              NoopChatConversationExtraGateway(),
+            ),
             chatHistoryGatewayProvider.overrideWithValue(gateway),
             realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
           ],
@@ -221,6 +233,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            chatConversationExtraGatewayProvider.overrideWithValue(
+              NoopChatConversationExtraGateway(),
+            ),
             chatHistoryGatewayProvider.overrideWithValue(gateway),
             realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
           ],
@@ -255,6 +270,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          chatConversationExtraGatewayProvider.overrideWithValue(
+            NoopChatConversationExtraGateway(),
+          ),
           chatHistoryGatewayProvider.overrideWithValue(gateway),
           realtimeRolloutTelemetryProvider.overrideWithValue(telemetry),
         ],
