@@ -138,4 +138,15 @@ void main() {
     expect(source, isNot(contains('setOnMsgInserted')));
     expect(source, isNot(contains('setRefreshUIMsgs')));
   });
+
+  test('IMService delegates command side effects to a coordinator', () {
+    final source = File('lib/service/im/im_service.dart').readAsStringSync();
+
+    expect(source, contains('im_command_effect_coordinator.dart'));
+    expect(source, contains('_commandEffectCoordinator.handleCommand(cmd)'));
+    expect(source, isNot(contains('_vipExpiredHandlers')));
+    expect(source, isNot(contains('friendListProvider')));
+    expect(source, isNot(contains('friendRequestListProvider')));
+    expect(source, isNot(contains('CommandDispatcher _commandDispatcher')));
+  });
 }

@@ -15,7 +15,6 @@ import '../../core/config/api_config.dart';
 import '../../core/config/im_config.dart';
 import '../../core/utils/storage_utils.dart';
 import '../../data/models/chat_session.dart';
-import '../../data/providers/user_provider.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../data/models/wk_custom_content.dart';
 import '../../data/models/wk_robot_card_content.dart';
@@ -36,7 +35,7 @@ import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'im_word_sync_models.dart';
 import 'attachment_upload_pipeline.dart';
-import 'coordinators/command_dispatcher.dart' as command_dispatcher;
+import 'im_command_effect_coordinator.dart';
 import 'im_connection_service.dart';
 import 'im_local_database_service.dart';
 import 'im_masked_message_refresh_service.dart';
@@ -300,6 +299,7 @@ class IMService extends StateNotifier<IMServiceState>
     ImMaskedMessageRefreshService? maskedMessageRefreshService,
     ImLocalDatabaseService? localDatabaseService,
     ImSensitiveTipPersistenceService? sensitiveTipPersistenceService,
+    ImCommandEffectCoordinator? commandEffectCoordinator,
     AttachmentUploadPipeline? attachmentUploadPipeline,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
@@ -361,6 +361,20 @@ class IMService extends StateNotifier<IMServiceState>
     _attachmentUploadPipeline =
         attachmentUploadPipeline ??
         AttachmentUploadPipeline(fileApi: FileApi.instance);
+    _commandEffectCoordinator =
+        commandEffectCoordinator ??
+        ImCommandEffectCoordinator(
+          invalidateProvider: _invalidateProvider,
+          currentUidLoader: () =>
+              state.uid ?? StorageUtils.getUid()?.trim() ?? '',
+          channelLookup: (channelId, channelType) =>
+              WKIM.shared.channelManager.getChannel(channelId, channelType),
+          handleConversationActivity:
+              ConversationActivityRegistry.instance.handleCommand,
+          syncConversationExtras: _syncOrchestrator.syncConversationExtras,
+          syncReminders: _syncOrchestrator.syncReminders,
+          syncMessageExtras: _syncMessageExtras,
+        );
     CallCoordinator.instance.setGatewayDegradationReader(
       _sessionRuntime.isGatewayDegradedFor,
     );
@@ -396,11 +410,8 @@ class IMService extends StateNotifier<IMServiceState>
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
-  final Map<String, VoidCallback> _vipExpiredHandlers =
-      <String, VoidCallback>{};
-  final command_dispatcher.CommandDispatcher _commandDispatcher =
-      const command_dispatcher.CommandDispatcher();
   late final AttachmentUploadPipeline _attachmentUploadPipeline;
+  late final ImCommandEffectCoordinator _commandEffectCoordinator;
 
   void registerVipExpiredHandler({
     required String key,
@@ -410,7 +421,10 @@ class IMService extends StateNotifier<IMServiceState>
     if (normalizedKey.isEmpty) {
       return;
     }
-    _vipExpiredHandlers[normalizedKey] = handler;
+    _commandEffectCoordinator.registerVipExpiredHandler(
+      key: normalizedKey,
+      handler: handler,
+    );
   }
 
   void unregisterVipExpiredHandler(String key) {
@@ -418,7 +432,7 @@ class IMService extends StateNotifier<IMServiceState>
     if (normalizedKey.isEmpty) {
       return;
     }
-    _vipExpiredHandlers.remove(normalizedKey);
+    _commandEffectCoordinator.unregisterVipExpiredHandler(normalizedKey);
   }
 
   Future<bool> init() async {
@@ -740,60 +754,7 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   void _handleCmd(WKCMD cmd) {
-    final plan = _commandDispatcher.plan(cmd);
-    final effects = plan.effects;
-    if (plan.shouldNotifyVipExpired) {
-      final vipExpiredHandlersSnapshot = List<VoidCallback>.from(
-        _vipExpiredHandlers.values,
-      );
-      for (final handler in vipExpiredHandlersSnapshot) {
-        handler();
-      }
-    }
-    unawaited(
-      ConversationActivityRegistry.instance.handleCommand(
-        cmd,
-        currentUid: state.uid ?? StorageUtils.getUid()?.trim() ?? '',
-        channelLookup: (channelId, channelType) =>
-            WKIM.shared.channelManager.getChannel(channelId, channelType),
-      ),
-    );
-    if (effects.contains(
-      command_dispatcher.IMCommandSideEffect.refreshFriendList,
-    )) {
-      _invalidateProvider?.call(friendListProvider);
-    }
-    if (effects.contains(
-      command_dispatcher.IMCommandSideEffect.refreshFriendRequests,
-    )) {
-      _invalidateProvider?.call(friendRequestListProvider);
-    }
-    if (effects.contains(
-      command_dispatcher.IMCommandSideEffect.syncConversationExtra,
-    )) {
-      unawaited(
-        _syncOrchestrator.syncConversationExtras(reason: 'cmd:${cmd.cmd}'),
-      );
-    }
-    if (effects.contains(
-      command_dispatcher.IMCommandSideEffect.syncMessageExtra,
-    )) {
-      final target = plan.messageExtraTarget;
-      if (target != null) {
-        unawaited(
-          _syncMessageExtras(
-            channelId: target.channelId,
-            channelType: target.channelType,
-            reason: 'cmd:${cmd.cmd}',
-          ),
-        );
-      }
-    }
-    if (effects.contains(
-      command_dispatcher.IMCommandSideEffect.syncReminders,
-    )) {
-      unawaited(_syncOrchestrator.syncReminders(reason: 'cmd:${cmd.cmd}'));
-    }
+    _commandEffectCoordinator.handleCommand(cmd);
   }
 
   Future<void> _syncMessageExtras({
