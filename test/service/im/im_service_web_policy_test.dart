@@ -76,4 +76,23 @@ void main() {
       expect(source, isNot(contains('_messageSyncCoordinator')));
     },
   );
+
+  test('IMService delegates word runtime filtering to a dedicated service', () {
+    final source = File('lib/service/im/im_service.dart').readAsStringSync();
+
+    expect(source, contains('im_word_runtime_filter_service.dart'));
+    expect(source, contains('_wordRuntimeFilterService'));
+    expect(
+      source,
+      contains('_wordRuntimeFilterService.applyProhibitWordsToMessage'),
+    );
+    expect(
+      source,
+      contains(
+        '_wordRuntimeFilterService.buildSensitiveWordTipMessageIfNeeded',
+      ),
+    );
+    expect(source, isNot(contains('snapshot.list.any(text.contains)')));
+    expect(source, isNot(contains("replaceAll(target, '*' * target.length)")));
+  });
 }

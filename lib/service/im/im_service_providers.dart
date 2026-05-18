@@ -14,6 +14,7 @@ import 'attachment_upload_pipeline.dart';
 import 'im_connection_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_sync_orchestrator.dart';
+import 'im_word_runtime_filter_service.dart';
 import 'im_word_sync_store.dart';
 import 'message_delivery_service.dart';
 
@@ -58,6 +59,14 @@ final imSyncOrchestratorProvider = Provider<ImSyncOrchestrator>((ref) {
 final imWordSyncStoreProvider = Provider<ImWordSyncStore>((ref) {
   return WkImWordSyncStore();
 });
+
+final imWordRuntimeFilterServiceProvider = Provider<ImWordRuntimeFilterService>(
+  (ref) {
+    return ImWordRuntimeFilterService(
+      wordStore: ref.watch(imWordSyncStoreProvider),
+    );
+  },
+);
 
 final imConversationExtraStoreProvider = Provider<ImConversationExtraStore>((
   ref,
@@ -107,6 +116,7 @@ class ImRuntimeServices {
     required this.attachments,
     required this.delivery,
     required this.notifications,
+    required this.wordRuntimeFilters,
   });
 
   final ImConnectionService connection;
@@ -114,6 +124,7 @@ class ImRuntimeServices {
   final AttachmentUploadPipeline attachments;
   final MessageDeliveryService delivery;
   final ImNotificationBridge notifications;
+  final ImWordRuntimeFilterService wordRuntimeFilters;
 }
 
 final imRuntimeServicesProvider = Provider<ImRuntimeServices>((ref) {
@@ -123,5 +134,6 @@ final imRuntimeServicesProvider = Provider<ImRuntimeServices>((ref) {
     attachments: ref.watch(attachmentUploadPipelineProvider),
     delivery: ref.watch(messageDeliveryServiceProvider),
     notifications: ref.watch(imNotificationBridgeProvider),
+    wordRuntimeFilters: ref.watch(imWordRuntimeFilterServiceProvider),
   );
 });

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -46,6 +45,7 @@ import 'im_connection_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_service_providers.dart';
 import 'im_sync_orchestrator.dart';
+import 'im_word_runtime_filter_service.dart';
 import 'im_word_sync_store.dart';
 import 'message_delivery_service.dart';
 import 'message_outbox.dart';
@@ -70,6 +70,7 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
     notificationBridge: ref.read(imNotificationBridgeProvider),
     syncOrchestrator: ref.read(imSyncOrchestratorProvider),
     wordSyncStore: ref.read(imWordSyncStoreProvider),
+    wordRuntimeFilterService: ref.read(imWordRuntimeFilterServiceProvider),
     attachmentUploadPipeline: ref.read(attachmentUploadPipelineProvider),
     connectionService: ref.read(imConnectionServiceProvider),
     realtimeRolloutTelemetry: ref.read(realtimeRolloutTelemetryProvider),
@@ -293,6 +294,7 @@ class IMService extends StateNotifier<IMServiceState>
     ImNotificationBridge? notificationBridge,
     ImSyncOrchestrator? syncOrchestrator,
     ImWordSyncStore? wordSyncStore,
+    ImWordRuntimeFilterService? wordRuntimeFilterService,
     AttachmentUploadPipeline? attachmentUploadPipeline,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
@@ -323,6 +325,9 @@ class IMService extends StateNotifier<IMServiceState>
         notificationBridge ?? ImNotificationBridge.platformDefaults();
     _wordSyncStore =
         wordSyncStore ?? syncOrchestrator?.wordStore ?? WkImWordSyncStore();
+    _wordRuntimeFilterService =
+        wordRuntimeFilterService ??
+        ImWordRuntimeFilterService(wordStore: _wordSyncStore);
     _syncOrchestrator =
         syncOrchestrator ??
         ImSyncOrchestrator(
@@ -369,6 +374,7 @@ class IMService extends StateNotifier<IMServiceState>
   late final ImNotificationBridge _notificationBridge;
   late final ImSyncOrchestrator _syncOrchestrator;
   late final ImWordSyncStore _wordSyncStore;
+  late final ImWordRuntimeFilterService _wordRuntimeFilterService;
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
@@ -479,9 +485,9 @@ class IMService extends StateNotifier<IMServiceState>
         if (!dbReady) {
           throw StateError('IM database schema is not ready.');
         }
-        await _loadStoredWordCaches();
+        await _wordRuntimeFilterService.loadStoredWordCaches();
       } else {
-        _loadSensitiveWordsSnapshot();
+        _wordRuntimeFilterService.loadSensitiveWordsSnapshot();
       }
 
       _registerMessageContents();
@@ -1002,33 +1008,6 @@ class IMService extends StateNotifier<IMServiceState>
     return value?.toString().trim() ?? '';
   }
 
-  SensitiveWordsSnapshot _loadSensitiveWordsSnapshot() {
-    return _wordSyncStore.loadSensitiveWordsSnapshot();
-  }
-
-  Future<void> _loadStoredWordCaches() async {
-    await _wordSyncStore.loadStoredWordCaches();
-  }
-
-  List<ProhibitWordEntry> _resolveProhibitWords() {
-    return _wordSyncStore.resolveProhibitWords();
-  }
-
-  String _maskTextWithProhibitWords(
-    String source,
-    List<ProhibitWordEntry> words,
-  ) {
-    var masked = source;
-    for (final word in words) {
-      final target = word.content.trim();
-      if (target.isEmpty || !masked.contains(target)) {
-        continue;
-      }
-      masked = masked.replaceAll(target, '*' * target.length);
-    }
-    return masked;
-  }
-
   Future<void> _refreshMaskedMessagesAfterProhibitWordSync() async {
     if (!await _ensureDatabaseReady()) {
       return;
@@ -1319,35 +1298,10 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   WKMsg? buildSensitiveWordTipMessageIfNeeded(WKMsg message) {
-    if (message.contentType != WkMessageContentType.text) {
-      return null;
-    }
-    final snapshot = _loadSensitiveWordsSnapshot();
-    if (snapshot.isEmpty) {
-      return null;
-    }
-    final text = message.messageContent?.displayText().trim() ?? '';
-    if (text.isEmpty) {
-      return null;
-    }
-    final containsSensitiveWord = snapshot.list.any(text.contains);
-    if (!containsSensitiveWord) {
-      return null;
-    }
-
-    final tip = WKMsg()
-      ..channelID = message.channelID
-      ..channelType = message.channelType
-      ..fromUID = StorageUtils.getUid()?.trim() ?? state.uid ?? ''
-      ..contentType = MsgContentType.sensitiveWord
-      ..content = jsonEncode(<String, dynamic>{
-        'content': snapshot.tips,
-        'type': MsgContentType.sensitiveWord,
-      })
-      ..status = WKSendMsgResult.sendSuccess
-      ..header.redDot = false;
-    tip.setChannelInfo(message.getChannelInfo());
-    return tip;
+    return _wordRuntimeFilterService.buildSensitiveWordTipMessageIfNeeded(
+      message,
+      currentUid: StorageUtils.getUid()?.trim() ?? state.uid ?? '',
+    );
   }
 
   @visibleForTesting
@@ -1362,37 +1316,6 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   bool applyProhibitWordsToMessage(WKMsg message) {
-    if (message.contentType != WkMessageContentType.text) {
-      return false;
-    }
-    final words = _resolveProhibitWords();
-    if (words.isEmpty) {
-      return false;
-    }
-
-    final editedContent = message.wkMsgExtra?.messageContent;
-    if (editedContent != null &&
-        editedContent.displayText().trim().isNotEmpty) {
-      final masked = _maskTextWithProhibitWords(
-        editedContent.displayText(),
-        words,
-      );
-      if (masked == editedContent.content) {
-        return false;
-      }
-      editedContent.content = masked;
-      return true;
-    }
-
-    final baseContent = message.messageContent;
-    if (baseContent == null || baseContent.displayText().trim().isEmpty) {
-      return false;
-    }
-    final masked = _maskTextWithProhibitWords(baseContent.displayText(), words);
-    if (masked == baseContent.content) {
-      return false;
-    }
-    baseContent.content = masked;
-    return true;
+    return _wordRuntimeFilterService.applyProhibitWordsToMessage(message);
   }
 }

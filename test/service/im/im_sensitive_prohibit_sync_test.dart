@@ -21,6 +21,8 @@ import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
+import '../../fakes/noop_im_notification_bridge.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -104,7 +106,7 @@ void main() {
     test(
       'sensitive word sync caches Android payload and builds local warning message',
       () async {
-        final service = IMService();
+        final service = createTestImService();
         addTearDown(service.dispose);
 
         await service.applySensitiveWordsSync(
@@ -142,7 +144,7 @@ void main() {
     test(
       'prohibit word sync persists Android rows and masks base text with same-length stars',
       () async {
-        final service = IMService();
+        final service = createTestImService();
         addTearDown(service.dispose);
 
         await service.applyProhibitWordsSync(const <ProhibitWordEntry>[
@@ -181,7 +183,7 @@ void main() {
     test(
       'prohibit word masking follows Android edited-content precedence',
       () async {
-        final service = IMService();
+        final service = createTestImService();
         addTearDown(service.dispose);
 
         await service.applyProhibitWordsSync(const <ProhibitWordEntry>[
@@ -229,7 +231,7 @@ void main() {
           conversationDraftApi: ConversationDraftApi.instance,
           wordStore: wordStore,
         );
-        final service = IMService(syncOrchestrator: orchestrator);
+        final service = createTestImService(syncOrchestrator: orchestrator);
         addTearDown(service.dispose);
 
         await orchestrator.applySensitiveWordsSync(
@@ -257,6 +259,13 @@ void main() {
       },
     );
   });
+}
+
+IMService createTestImService({ImSyncOrchestrator? syncOrchestrator}) {
+  return IMService(
+    syncOrchestrator: syncOrchestrator,
+    notificationBridge: createNoopImNotificationBridge(),
+  );
 }
 
 class _RecordingPlainAdapter implements HttpClientAdapter {

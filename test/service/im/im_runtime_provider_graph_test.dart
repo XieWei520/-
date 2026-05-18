@@ -11,6 +11,7 @@ import 'package:wukong_im_app/service/im/im_notification_bridge.dart';
 import 'package:wukong_im_app/service/im/im_service.dart';
 import 'package:wukong_im_app/service/im/im_service_providers.dart';
 import 'package:wukong_im_app/service/im/im_sync_orchestrator.dart';
+import 'package:wukong_im_app/service/im/im_word_runtime_filter_service.dart';
 import 'package:wukong_im_app/service/im/message_delivery_service.dart';
 import 'package:wukong_im_app/wukong_push/notification/android_message_alert_manager.dart';
 import 'package:wukong_im_app/wukong_push/notification/desktop_message_alert_manager.dart';
@@ -46,6 +47,7 @@ void main() {
     expect(runtime.attachments, isA<AttachmentUploadPipeline>());
     expect(runtime.delivery, isA<MessageDeliveryService>());
     expect(runtime.notifications, isA<ImNotificationBridge>());
+    expect(runtime.wordRuntimeFilters, isA<ImWordRuntimeFilterService>());
     expect(
       runtime.connection,
       same(container.read(imConnectionServiceProvider)),
@@ -62,6 +64,10 @@ void main() {
     expect(
       runtime.notifications,
       same(container.read(imNotificationBridgeProvider)),
+    );
+    expect(
+      runtime.wordRuntimeFilters,
+      same(container.read(imWordRuntimeFilterServiceProvider)),
     );
   });
 
