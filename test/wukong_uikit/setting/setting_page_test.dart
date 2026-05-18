@@ -192,7 +192,7 @@ void main() {
     );
     final panel = tester.widget<LiquidGlassPanel>(panelFinder.first);
     expect(panel.shadow, LiquidGlassShadows.md);
-    expect(panel.borderRadius, LiquidGlassRadii.xl);
+    expect(panel.borderRadius, LiquidGlassRadii.lg);
 
     final title = tester.widget<Text>(find.text('General Settings'));
     expect(title.style?.color, LiquidGlassColors.text);
