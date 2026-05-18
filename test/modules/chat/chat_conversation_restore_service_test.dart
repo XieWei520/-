@@ -79,6 +79,21 @@ void main() {
     },
   );
 
+  test('persist skips empty snapshot without draft', () async {
+    final service = ChatConversationRestoreService();
+    final gateway = _FakeConversationExtraGateway();
+
+    await service.persist(
+      gateway: gateway,
+      channelId: 'u_empty',
+      channelType: WKChannelType.personal,
+      draft: '',
+    );
+
+    expect(service.hasPersisted, isFalse);
+    expect(gateway.saveCalls, isEmpty);
+  });
+
   test('recordViewportSnapshot advances browseTo for newer visible seq', () {
     final service = ChatConversationRestoreService()..recordRestoredBrowseTo(8);
 

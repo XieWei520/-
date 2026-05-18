@@ -28,6 +28,7 @@ import 'chat_call_navigation.dart';
 import 'chat_channel_hydration_service.dart';
 import 'chat_channel_identity.dart';
 import 'chat_channel_settings.dart';
+import 'chat_conversation_activity_binding.dart';
 import 'chat_conversation_restore_service.dart';
 import 'chat_flame_message_runtime.dart';
 import 'chat_frame_jank_monitor.dart';
@@ -146,6 +147,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   bool _canClearPinnedMessages = false;
   List<ResolvedPinnedMessage> _pinnedMessages = const <ResolvedPinnedMessage>[];
   ChatFrameJankMonitor? _frameJankMonitor;
+  late final ChatConversationActivityBinding _activityBinding;
 
   ChatSession get _chatSession =>
       ChatSession(channelId: widget.channelId, channelType: widget.channelType);
@@ -155,6 +157,9 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     super.initState();
     _frameJankMonitor = ref.read(chatFrameJankMonitorFactoryProvider)()
       ..start();
+    _activityBinding = ChatConversationActivityBinding(
+      onChanged: _handleConversationActivityChanged,
+    );
     _bindConversationPersistence();
     _canPinMessages = supportsPinnedMessages(
       channelId: widget.channelId,
@@ -434,10 +439,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         oldWidget.channelType == widget.channelType) {
       return;
     }
-    _unbindConversationActivity(
-      channelId: oldWidget.channelId,
-      channelType: oldWidget.channelType,
-    );
+    _unbindConversationActivity();
     setState(() {
       _robotMenus = const <RobotMenu>[];
     });
@@ -615,33 +617,20 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   void _bindConversationActivity() {
-    _activityState = ConversationActivityRegistry.instance.getState(
-      widget.channelId,
-      widget.channelType,
-    );
-    ConversationActivityRegistry.instance.addConversationListener(
-      widget.channelId,
-      widget.channelType,
-      _handleConversationActivityChanged,
+    _activityState = _activityBinding.bind(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
     );
   }
 
-  void _unbindConversationActivity({String? channelId, int? channelType}) {
-    ConversationActivityRegistry.instance.removeConversationListener(
-      channelId ?? widget.channelId,
-      channelType ?? widget.channelType,
-      _handleConversationActivityChanged,
-    );
+  void _unbindConversationActivity() {
+    _activityBinding.unbind();
   }
 
-  void _handleConversationActivityChanged() {
+  void _handleConversationActivityChanged(ConversationActivityState nextState) {
     if (!mounted) {
       return;
     }
-    final nextState = ConversationActivityRegistry.instance.getState(
-      widget.channelId,
-      widget.channelType,
-    );
     setState(() {
       _activityState = nextState;
     });

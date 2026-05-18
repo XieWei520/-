@@ -56,15 +56,22 @@ class ChatConversationRestoreService {
     if (_didPersistConversationExtra) {
       return;
     }
+    final browseTo = _browseTo > _latestViewportSnapshot.maxVisibleMessageSeq
+        ? _browseTo
+        : _latestViewportSnapshot.maxVisibleMessageSeq;
+    if (draft.trim().isEmpty &&
+        browseTo <= 0 &&
+        _latestViewportSnapshot.keepMessageSeq <= 0 &&
+        _latestViewportSnapshot.keepOffsetY == 0) {
+      return;
+    }
     _didPersistConversationExtra = true;
 
     try {
       await gateway.save(
         channelId: channelId,
         channelType: channelType,
-        browseTo: _browseTo > _latestViewportSnapshot.maxVisibleMessageSeq
-            ? _browseTo
-            : _latestViewportSnapshot.maxVisibleMessageSeq,
+        browseTo: browseTo,
         keepMessageSeq: _latestViewportSnapshot.keepMessageSeq,
         keepOffsetY: _latestViewportSnapshot.keepOffsetY,
         draft: draft,
