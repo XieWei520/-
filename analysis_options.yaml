@@ -30,5 +30,14 @@ linter:
 # Standalone Dart tool packages have their own pubspec/analysis context.
 analyzer:
   exclude:
-    - tools/feishu_monitor_shell/**
-    - tools/feishu_monitor_shell_app/**
+    # The root Flutter app should analyze only its app sources. Vendored SDKs,
+    # local package overrides, shell tools, and examples are standalone packages
+    # with their own pubspec/analysis contexts.
+    - packages/**
+    - local_packages/**
+    - tools/**
+    - agent-harness/**
+    - build/**
+    - dist/**
+    - output/**
+    - test-results/**
