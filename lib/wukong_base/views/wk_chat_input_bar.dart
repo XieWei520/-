@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 /// Chat input bar widget
+@Deprecated(
+  'Use ChatComposer with ChatComposerController instead. Will be removed in v2.0',
+)
 class WKChatInputBar extends StatelessWidget {
   final TextEditingController? controller;
   final VoidCallback? onSend;

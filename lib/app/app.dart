@@ -185,16 +185,29 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       if (!mounted) {
         return;
       }
+      final dialogContext = resolveLaunchPolicyDialogContext(
+        appContext: context,
+        router: _boundRouter ?? ref.read(appRouterProvider),
+      );
+      if (dialogContext == null) {
+        return;
+      }
       switch (decision.type) {
         case LaunchPolicyDecisionType.forceUpgrade:
           final policy = decision.versionPolicy;
           if (policy != null) {
-            await showForcedUpgradeDialog(context, policy: policy);
+            if (!dialogContext.mounted) {
+              return;
+            }
+            await showForcedUpgradeDialog(dialogContext, policy: policy);
           }
         case LaunchPolicyDecisionType.showNotice:
           final notice = decision.startupNotice;
           if (notice != null) {
-            await showStartupNoticeDialog(context, notice: notice);
+            if (!dialogContext.mounted) {
+              return;
+            }
+            await showStartupNoticeDialog(dialogContext, notice: notice);
             await _launchPolicyController.markNoticeShown(notice);
           }
         case LaunchPolicyDecisionType.none:
@@ -242,6 +255,29 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
 }
 
 typedef WuKongIMApp = WuKongApp;
+
+BuildContext? resolveLaunchPolicyDialogContext({
+  required BuildContext appContext,
+  required GoRouter router,
+}) {
+  final navigatorContext = router.routerDelegate.navigatorKey.currentContext;
+  if (navigatorContext != null &&
+      Localizations.of<MaterialLocalizations>(
+            navigatorContext,
+            MaterialLocalizations,
+          ) !=
+          null) {
+    return navigatorContext;
+  }
+  if (Localizations.of<MaterialLocalizations>(
+        appContext,
+        MaterialLocalizations,
+      ) !=
+      null) {
+    return appContext;
+  }
+  return null;
+}
 
 List<LocalMonitorAutoForwardRunnerController>
 createLocalMonitorAutoForwardRunners() {

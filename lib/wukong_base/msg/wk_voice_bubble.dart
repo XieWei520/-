@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../entity/message.dart';
 
 /// Voice message bubble widget
+@Deprecated(
+  'Use MessageBubble from lib/widgets/message_bubble.dart or ChatVoiceMessageBubble instead. Will be removed in v2.0',
+)
 class WKVoiceBubble extends StatelessWidget {
   final WKMessage message;
   final bool isMe;

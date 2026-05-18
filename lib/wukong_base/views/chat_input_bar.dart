@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 /// Chat input bar callback interface
+@Deprecated(
+  'Use ChatComposer with ChatComposerController instead. Will be removed in v2.0',
+)
 abstract class ChatInputBarCallback {
   void onTextChanged(String text);
   void onSendText(String text);
@@ -13,6 +16,9 @@ abstract class ChatInputBarCallback {
 }
 
 /// Chat input bar widget
+@Deprecated(
+  'Use ChatComposer with ChatComposerController instead. Will be removed in v2.0',
+)
 class WKChatInputBar extends StatefulWidget {
   final ChatInputBarCallback? callback;
   final String? hintText;

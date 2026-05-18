@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../entity/message.dart';
 
 /// Location message bubble widget
+@Deprecated(
+  'Use MessageBubble from lib/widgets/message_bubble.dart instead. Will be removed in v2.0',
+)
 class WKLocationBubble extends StatelessWidget {
   final WKMessage message;
   final bool isMe;

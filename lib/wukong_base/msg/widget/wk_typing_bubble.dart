@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 /// Typing indicator bubble widget
+@Deprecated(
+  'Use TypingIndicatorBubble or MessageBubble from the current chat widgets instead. Will be removed in v2.0',
+)
 class WKTypingBubble extends StatelessWidget {
   /// Channel ID
   final String channelId;

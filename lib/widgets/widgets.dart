@@ -16,4 +16,3 @@ export 'wk_status_view.dart';
 
 // 业务组件
 export 'wk_conversation_item.dart';
-export 'wk_chat_input_bar.dart';
