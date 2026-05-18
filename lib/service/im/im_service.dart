@@ -55,6 +55,7 @@ import 'coordinators/attachment_pipeline.dart' as attachment_pipeline;
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
 import 'coordinators/connection_coordinator.dart' as connection_coordinator;
 import 'coordinators/message_sync_coordinator.dart' as message_sync_coordinator;
+import 'message_delivery_service.dart';
 import 'message_outbox.dart';
 
 export 'coordinators/attachment_pipeline.dart'
@@ -605,6 +606,14 @@ class IMService extends StateNotifier<IMServiceState>
         );
 
         if (status == WKConnectStatus.syncCompleted) {
+          final read = _readProvider;
+          if (read != null) {
+            unawaited(
+              MessageDeliveryReplayCoordinator(
+                read(messageDeliveryServiceProvider),
+              ).replayForConnectionStatus(status),
+            );
+          }
           unawaited(_syncReminders(reason: 'sync_completed'));
           unawaited(_syncSensitiveWords(reason: 'sync_completed'));
           unawaited(_syncProhibitWords(reason: 'sync_completed'));

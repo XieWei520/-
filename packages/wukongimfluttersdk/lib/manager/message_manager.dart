@@ -17,7 +17,21 @@ import '../entity/channel.dart';
 import '../entity/conversation.dart';
 import '../model/wk_message_content.dart';
 import '../model/wk_unknown_content.dart';
+import '../proto/packet.dart';
 import '../wkim.dart';
+
+typedef WKSendAckListener = void Function(SendAckPacket packet);
+typedef WKSendResultListener = void Function(WKSendResult result);
+
+class WKSendResult {
+  const WKSendResult({
+    required this.message,
+    required this.ack,
+  });
+
+  final WKMsg message;
+  final SendAckPacket ack;
+}
 
 class WKMessageManager {
   WKMessageManager._privateConstructor();
@@ -33,6 +47,8 @@ class WKMessageManager {
   Function(WKMsgExtra)? _iUploadMsgExtraListener;
   HashMap<String, Function(List<WKMsg>)>? _newMsgBack;
   HashMap<String, Function(WKMsg)>? _refreshMsgBack;
+  HashMap<String, WKSendAckListener>? _sendAckBack;
+  HashMap<String, WKSendResultListener>? _sendResultBack;
   HashMap<String, Function(String)>? _deleteMsgBack;
   HashMap<String, Function(String, int)>? _clearChannelMsgBack;
   Function(
@@ -611,6 +627,48 @@ class WKMessageManager {
     }
   }
 
+  addOnSendAckListener(String key, WKSendAckListener back) {
+    _sendAckBack ??= HashMap();
+    if (key != '') {
+      _sendAckBack![key] = back;
+    }
+  }
+
+  removeOnSendAckListener(String key) {
+    if (_sendAckBack != null) {
+      _sendAckBack!.remove(key);
+    }
+  }
+
+  setSendAck(SendAckPacket packet) {
+    if (_sendAckBack != null) {
+      _sendAckBack!.forEach((key, back) {
+        back(packet);
+      });
+    }
+  }
+
+  addOnSendResultListener(String key, WKSendResultListener back) {
+    _sendResultBack ??= HashMap();
+    if (key != '') {
+      _sendResultBack![key] = back;
+    }
+  }
+
+  removeOnSendResultListener(String key) {
+    if (_sendResultBack != null) {
+      _sendResultBack!.remove(key);
+    }
+  }
+
+  setSendResult(WKSendResult result) {
+    if (_sendResultBack != null) {
+      _sendResultBack!.forEach((key, back) {
+        back(result);
+      });
+    }
+  }
+
   setRefreshMsg(WKMsg wkMsg) {
     if (_refreshMsgBack != null) {
       _refreshMsgBack!.forEach((key, back) {
@@ -646,13 +704,35 @@ class WKMessageManager {
     _uploadAttachmentBack = back;
   }
 
-  sendMessage(WKMessageContent messageContent, WKChannel channel) async {
-    sendWithOption(messageContent, channel, WKSendOptions());
+  Future<WKMsg> sendMessage(
+      WKMessageContent messageContent, WKChannel channel) async {
+    return sendWithOption(messageContent, channel, WKSendOptions());
   }
 
-  sendWithOption(WKMessageContent messageContent, WKChannel channel,
+  Future<WKMsg> sendWithOption(WKMessageContent messageContent, WKChannel channel,
       WKSendOptions options) async {
+    return _sendWithOption(
+        WKMsg(), messageContent, channel, options);
+  }
+
+  Future<WKMsg> sendWithClientMsgNo(WKMessageContent messageContent,
+      WKChannel channel, WKSendOptions options, String clientMsgNo) async {
     WKMsg wkMsg = WKMsg();
+    final resolvedClientMsgNo = clientMsgNo.trim();
+    if (resolvedClientMsgNo.isNotEmpty) {
+      wkMsg.clientMsgNO = resolvedClientMsgNo;
+    }
+    return _sendWithOption(
+        wkMsg, messageContent, channel, options);
+  }
+
+  Future<WKMsg> sendWithPreparedMessage(WKMsg wkMsg,
+      WKMessageContent messageContent, WKChannel channel, WKSendOptions options) {
+    return _sendWithOption(wkMsg, messageContent, channel, options);
+  }
+
+  Future<WKMsg> _sendWithOption(WKMsg wkMsg, WKMessageContent messageContent,
+      WKChannel channel, WKSendOptions options) async {
     wkMsg.setting = options.setting;
     wkMsg.header = options.header;
     wkMsg.messageContent = messageContent;
@@ -723,6 +803,7 @@ class WKMessageManager {
     } else {
       WKIM.shared.connectionManager.sendMessage(wkMsg);
     }
+    return wkMsg;
   }
 
   @Deprecated('use sendWithOption')
@@ -785,7 +866,20 @@ class WKMessageManager {
     return jsonEncode(json);
   }
 
-  updateSendResult(
+  Future<WKMsg?> applySendAck(SendAckPacket ack) async {
+    final wkMsg = await updateSendResult(
+      ack.messageID,
+      ack.clientSeq,
+      ack.messageSeq,
+      ack.reasonCode,
+    );
+    if (wkMsg != null) {
+      setSendResult(WKSendResult(message: wkMsg, ack: ack));
+    }
+    return wkMsg;
+  }
+
+  Future<WKMsg?> updateSendResult(
       String messageID, int clientSeq, int messageSeq, int reasonCode) async {
     WKMsg? wkMsg = await MessageDB.shared.queryWithClientSeq(clientSeq);
     if (wkMsg != null) {
@@ -798,13 +892,20 @@ class WKMessageManager {
       map['status'] = reasonCode;
       int orderSeq = await WKIM.shared.messageManager
           .getMessageOrderSeq(messageSeq, wkMsg.channelID, wkMsg.channelType);
+      wkMsg.orderSeq = orderSeq;
       map['order_seq'] = orderSeq;
-      MessageDB.shared.updateMsgWithField(map, clientSeq);
+      await MessageDB.shared.updateMsgWithField(map, clientSeq);
       setRefreshMsg(wkMsg);
 
-      // 更新最近会话
-      WKIM.shared.conversationManager.saveWithLiMMsg(wkMsg, 0);
+      // 更新最近会话失败不应影响已收到的服务端 ACK。
+      try {
+        await WKIM.shared.conversationManager.saveWithLiMMsg(wkMsg, 0);
+      } catch (e) {
+        Logs.error('更新最近会话失败: $e');
+      }
+      return wkMsg;
     }
+    return null;
   }
 
   updateMsgStatusFail(int clientMsgSeq) async {

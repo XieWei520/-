@@ -168,9 +168,9 @@ CREATE TABLE IF NOT EXISTS message_outbox (
   ];
 }
 
-Future<void> ensureMessageOutboxSchema(Database db) async {
+Future<void> ensureMessageOutboxSchema(DatabaseExecutor executor) async {
   for (final statement in MessageOutboxSchema.statements) {
-    await db.execute(statement);
+    await executor.execute(statement);
   }
 }
 

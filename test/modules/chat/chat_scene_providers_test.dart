@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wukong_im_app/data/models/chat_session.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_favorite_registry.dart';
@@ -7,9 +8,10 @@ import 'package:wukong_im_app/modules/chat/chat_scene_models.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_providers.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_gateway.dart';
 import 'package:wukong_im_app/modules/chat/message_forwarding.dart';
+import 'package:wukong_im_app/service/im/message_delivery_service.dart';
+import 'package:wukong_im_app/service/im/message_outbox.dart';
 import 'package:wukong_im_app/wukong_base/msg/reaction_manager.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
-import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/model/wk_image_content.dart';
 import 'package:wukongimfluttersdk/model/wk_message_content.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
@@ -17,6 +19,11 @@ import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
 void main() {
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
+
   test(
     'chatSceneControllerProvider builds a normal scene state for a session',
     () {
@@ -68,7 +75,10 @@ void main() {
   test(
     'chatSceneGatewayProvider sends normal SDK messages with 30 day retention',
     () async {
-      final sentMessages = <_SdkSendCall>[];
+      final db = await openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      await ensureMessageOutboxSchema(db);
+      final sender = _FakeDeliverySender();
       const session = ChatSession(
         channelId: 'u_provider_sdk',
         channelType: WKChannelType.personal,
@@ -76,13 +86,13 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           chatUseDirectWebMessageSendProvider.overrideWithValue(false),
-          chatSdkMessageSenderProvider.overrideWithValue((
-            content,
-            channel,
-            options,
-          ) {
-            sentMessages.add(_SdkSendCall(content, channel, options.expire));
-          }),
+          messageDeliveryServiceProvider.overrideWithValue(
+            MessageDeliveryService(
+              databaseReader: () => db,
+              sender: sender,
+              nowMs: () => 1000,
+            ),
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -95,10 +105,17 @@ void main() {
         channelType: session.channelType,
       );
 
-      expect(sentMessages, hasLength(1));
-      expect(sentMessages.single.content, isA<WKTextContent>());
-      expect(sentMessages.single.channel.channelID, session.channelId);
-      expect(sentMessages.single.expire, defaultChatMessageRetentionSeconds);
+      expect(sender.requests, hasLength(1));
+      expect(sender.requests.single.content, isA<WKTextContent>());
+      expect(sender.requests.single.channel.channelID, session.channelId);
+      expect(
+        sender.requests.single.options.expire,
+        defaultChatMessageRetentionSeconds,
+      );
+      final record = await container
+          .read(messageDeliveryServiceProvider)
+          .getRecord(sender.requests.single.clientMsgNo);
+      expect(record?.state, MessageOutboxState.sent);
     },
   );
 
@@ -341,10 +358,17 @@ class _FakeChatSceneGateway extends ChatSceneGateway {
   }
 }
 
-class _SdkSendCall {
-  const _SdkSendCall(this.content, this.channel, this.expire);
+class _FakeDeliverySender implements MessageDeliverySender {
+  final requests = <MessageDeliveryRequest>[];
 
-  final WKMessageContent content;
-  final WKChannel channel;
-  final int? expire;
+  @override
+  Future<MessageDeliveryAck> send(MessageDeliveryRequest request) async {
+    requests.add(request);
+    return MessageDeliveryAck(
+      clientMsgNo: request.clientMsgNo,
+      serverMsgId: 'provider-server-${requests.length}',
+      messageSeq: requests.length,
+      orderSeq: requests.length * 1000,
+    );
+  }
 }

@@ -13,6 +13,7 @@ import '../../core/utils/storage_utils.dart';
 import '../../data/models/call.dart';
 import '../../data/models/chat_session.dart';
 import '../../data/providers/conversation_provider.dart';
+import '../../service/im/message_delivery_service.dart';
 import '../../wukong_base/views/mention_suggestion.dart';
 import '../video_call/group_call_member_picker_page.dart';
 import '../video_call/video_call_page.dart';
@@ -66,11 +67,18 @@ final chatSceneGatewayProvider = Provider.autoDispose
       return ApiChatSceneGateway(
         sendMessageWithOptions: (content, channel, options) async {
           if (!ref.read(chatUseDirectWebMessageSendProvider)) {
-            await Future<void>.sync(
-              () => ref
-                  .read(chatSdkMessageSenderProvider)
-                  (content, channel, options ?? WKSendOptions()),
-            );
+            final clientMsgNo = WKIM.shared.messageManager
+                .generateClientMsgNo();
+            await ref
+                .read(messageDeliveryServiceProvider)
+                .send(
+                  MessageDeliveryRequest(
+                    clientMsgNo: clientMsgNo,
+                    content: content,
+                    channel: channel,
+                    options: options ?? WKSendOptions(),
+                  ),
+                );
             return;
           }
 
@@ -90,10 +98,9 @@ final chatSceneGatewayProvider = Provider.autoDispose
         },
         retryMessage: (message) async {
           if (!ref.read(chatUseDirectWebMessageSendProvider)) {
-            message.status = WKSendMsgResult.sendLoading;
-            await Future<void>.sync(
-              () => WKIM.shared.connectionManager.sendMessage(message),
-            );
+            await ref
+                .read(messageDeliveryServiceProvider)
+                .replayPending(limit: 50);
             return;
           }
 
