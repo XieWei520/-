@@ -6,6 +6,8 @@ import 'package:wukongimfluttersdk/entity/msg.dart';
 import '../api/file_api.dart';
 import 'coordinators/attachment_pipeline.dart';
 
+typedef LegacyAttachmentUploader = Future<bool> Function(WKMsg message);
+
 enum AttachmentUploadJobState { queued, uploading, uploaded, failed, cancelled }
 
 @immutable
@@ -44,12 +46,14 @@ class AttachmentUploadEvent {
 
 class AttachmentUploadPipeline {
   AttachmentUploadPipeline({
-    required this.fileApi,
+    this.fileApi,
+    this.legacyUploader,
     this.metadataNormalizer = const AttachmentPipeline(),
     this.maxConcurrentUploads = 2,
   });
 
-  final FileApi fileApi;
+  final FileApi? fileApi;
+  final LegacyAttachmentUploader? legacyUploader;
   final AttachmentPipeline metadataNormalizer;
   final int maxConcurrentUploads;
 
@@ -68,9 +72,11 @@ class AttachmentUploadPipeline {
   }
 
   Future<bool> uploadMessageAttachments(WKMsg message) {
-    throw UnimplementedError(
-      'Skeleton only: move WKIM attachment upload callback here.',
-    );
+    final uploader = legacyUploader;
+    if (uploader == null) {
+      return Future<bool>.value(false);
+    }
+    return uploader(message);
   }
 
   Future<String> uploadLocalFile({

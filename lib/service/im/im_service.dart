@@ -51,6 +51,7 @@ import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'im_word_sync_models.dart';
 import 'local_attachment_file.dart';
+import 'attachment_upload_pipeline.dart';
 import 'coordinators/attachment_pipeline.dart' as attachment_pipeline;
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
 import 'coordinators/message_sync_coordinator.dart' as message_sync_coordinator;
@@ -429,6 +430,11 @@ class IMService extends StateNotifier<IMServiceState>
       const message_sync_coordinator.MessageSyncCoordinator();
   final attachment_pipeline.AttachmentPipeline _attachmentPipeline =
       const attachment_pipeline.AttachmentPipeline();
+  late final AttachmentUploadPipeline _attachmentUploadPipeline =
+      AttachmentUploadPipeline(
+        fileApi: FileApi.instance,
+        legacyUploader: _uploadAttachment,
+      );
 
   void registerVipExpiredHandler({
     required String key,
@@ -703,14 +709,16 @@ class IMService extends StateNotifier<IMServiceState>
     });
 
     WKIM.shared.messageManager.addOnUploadAttachmentListener((wkMsg, back) {
-      _uploadAttachment(wkMsg).then(
-        (success) => back(success, wkMsg),
-        onError: (Object error, StackTrace stackTrace) {
-          debugPrint('Attachment upload failed: $error');
-          debugPrint('$stackTrace');
-          back(false, wkMsg);
-        },
-      );
+      _attachmentUploadPipeline
+          .uploadMessageAttachments(wkMsg)
+          .then(
+            (success) => back(success, wkMsg),
+            onError: (Object error, StackTrace stackTrace) {
+              debugPrint('Attachment upload failed: $error');
+              debugPrint('$stackTrace');
+              back(false, wkMsg);
+            },
+          );
     });
 
     WKIM.shared.messageManager.addOnMsgInsertedListener((wkMsg) {
