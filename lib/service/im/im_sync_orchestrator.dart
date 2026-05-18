@@ -9,6 +9,8 @@ import '../api/reminder_api.dart';
 import 'coordinators/message_sync_coordinator.dart';
 import 'im_word_sync_models.dart';
 
+typedef ImSyncTaskHandler = Future<void> Function({String? reason});
+
 @immutable
 class ImSyncStatus {
   const ImSyncStatus({
@@ -47,6 +49,23 @@ class ImSyncFanOutPlan {
   final bool syncOfflineCommandMessages;
 }
 
+@immutable
+class ImSyncTaskHandlers {
+  const ImSyncTaskHandlers({
+    required this.syncReminders,
+    required this.syncSensitiveWords,
+    required this.syncProhibitWords,
+    required this.syncConversationExtras,
+    required this.syncOfflineCommandMessages,
+  });
+
+  final ImSyncTaskHandler syncReminders;
+  final ImSyncTaskHandler syncSensitiveWords;
+  final ImSyncTaskHandler syncProhibitWords;
+  final ImSyncTaskHandler syncConversationExtras;
+  final ImSyncTaskHandler syncOfflineCommandMessages;
+}
+
 class ImSyncOrchestrator {
   ImSyncOrchestrator({
     required this.syncApi,
@@ -70,6 +89,24 @@ class ImSyncOrchestrator {
     throw UnimplementedError(
       'Skeleton only: fan out sync-completed tasks here.',
     );
+  }
+
+  void runFanOutPlan(ImSyncFanOutPlan plan, ImSyncTaskHandlers handlers) {
+    if (plan.syncReminders) {
+      handlers.syncReminders(reason: plan.reason);
+    }
+    if (plan.syncSensitiveWords) {
+      handlers.syncSensitiveWords(reason: plan.reason);
+    }
+    if (plan.syncProhibitWords) {
+      handlers.syncProhibitWords(reason: plan.reason);
+    }
+    if (plan.syncConversationExtras) {
+      handlers.syncConversationExtras(reason: plan.reason);
+    }
+    if (plan.syncOfflineCommandMessages) {
+      handlers.syncOfflineCommandMessages(reason: plan.reason);
+    }
   }
 
   static ImSyncFanOutPlan planForSyncCompleted() {

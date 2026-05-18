@@ -350,6 +350,7 @@ class IMService extends StateNotifier<IMServiceState>
     RealtimeRolloutTelemetry? realtimeRolloutTelemetry,
     ImConnectionService? connectionService,
     ImNotificationBridge? notificationBridge,
+    ImSyncOrchestrator? syncOrchestrator,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
        _ownsRealtimeRolloutTelemetry = realtimeRolloutTelemetry == null,
@@ -375,12 +376,14 @@ class IMService extends StateNotifier<IMServiceState>
           routeResolver: _resolveConnectAddr,
           listenerKey: _connectionListenerKey,
         );
-    _notificationBridge =
-        notificationBridge ??
-        ImNotificationBridge(
-          androidAlerts: AndroidMessageAlertManager.instance,
-          desktopAlerts: DesktopMessageAlertManager.instance,
-          webNotifications: WebNotificationManager.instance,
+    _notificationBridge = notificationBridge;
+    _syncOrchestrator =
+        syncOrchestrator ??
+        ImSyncOrchestrator(
+          syncApi: IMSyncApi.instance,
+          messageApi: MessageApi.instance,
+          reminderApi: ReminderApi.instance,
+          conversationDraftApi: ConversationDraftApi.instance,
         );
     CallCoordinator.instance.setGatewayDegradationReader(
       _sessionRuntime.isGatewayDegradedFor,
@@ -428,7 +431,8 @@ class IMService extends StateNotifier<IMServiceState>
   late final RealtimeRolloutTelemetry _realtimeRolloutTelemetry;
   late final SessionRuntime _sessionRuntime;
   late final ImConnectionService _connectionService;
-  late final ImNotificationBridge _notificationBridge;
+  ImNotificationBridge? _notificationBridge;
+  late final ImSyncOrchestrator _syncOrchestrator;
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
@@ -781,21 +785,18 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   void _runSyncFanOutPlan(ImSyncFanOutPlan plan) {
-    if (plan.syncReminders) {
-      unawaited(_syncReminders(reason: plan.reason));
-    }
-    if (plan.syncSensitiveWords) {
-      unawaited(_syncSensitiveWords(reason: plan.reason));
-    }
-    if (plan.syncProhibitWords) {
-      unawaited(_syncProhibitWords(reason: plan.reason));
-    }
-    if (plan.syncConversationExtras) {
-      unawaited(_syncConversationExtras(reason: plan.reason));
-    }
-    if (plan.syncOfflineCommandMessages) {
-      unawaited(_syncOfflineCommandMessages(reason: plan.reason));
-    }
+    _syncOrchestrator.runFanOutPlan(
+      plan,
+      ImSyncTaskHandlers(
+        syncReminders: ({reason}) => _syncReminders(reason: reason),
+        syncSensitiveWords: ({reason}) => _syncSensitiveWords(reason: reason),
+        syncProhibitWords: ({reason}) => _syncProhibitWords(reason: reason),
+        syncConversationExtras: ({reason}) =>
+            _syncConversationExtras(reason: reason),
+        syncOfflineCommandMessages: ({reason}) =>
+            _syncOfflineCommandMessages(reason: reason),
+      ),
+    );
   }
 
   void _handleCmd(WKCMD cmd) {
@@ -1195,7 +1196,7 @@ class IMService extends StateNotifier<IMServiceState>
   void _scheduleMessageAlert(WKMsg message, {required String currentUid}) {
     try {
       unawaited(
-        _notificationBridge.showMessageAlert(
+        _resolvedNotificationBridge.showMessageAlert(
           message,
           currentUid: currentUid,
           lifecycleState: _appLifecycleState,
@@ -1205,6 +1206,14 @@ class IMService extends StateNotifier<IMServiceState>
       debugPrint('Message alert scheduling failed: $error');
       debugPrint('$stackTrace');
     }
+  }
+
+  ImNotificationBridge get _resolvedNotificationBridge {
+    return _notificationBridge ??= ImNotificationBridge(
+      androidAlerts: AndroidMessageAlertManager.instance,
+      desktopAlerts: DesktopMessageAlertManager.instance,
+      webNotifications: WebNotificationManager.instance,
+    );
   }
 
   void _publishRealtimeConversationMessage(WKMsg message) {
