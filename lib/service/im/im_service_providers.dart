@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../../core/config/im_config.dart';
 import '../../wukong_push/notification/android_message_alert_manager.dart';
@@ -12,6 +13,7 @@ import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'attachment_upload_pipeline.dart';
 import 'im_connection_service.dart';
+import 'im_local_database_service.dart';
 import 'im_masked_message_refresh_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_sync_orchestrator.dart';
@@ -59,6 +61,15 @@ final imSyncOrchestratorProvider = Provider<ImSyncOrchestrator>((ref) {
 
 final imWordSyncStoreProvider = Provider<ImWordSyncStore>((ref) {
   return WkImWordSyncStore();
+});
+
+final imLocalDatabaseServiceProvider = Provider<ImLocalDatabaseService>((ref) {
+  return ImLocalDatabaseService(
+    usesLocalPersistence: () => ImConnectionService.shouldUseLocalPersistence(
+      isWeb: kIsWeb,
+      sdkAppMode: WKIM.shared.isApp(),
+    ),
+  );
 });
 
 final imWordRuntimeFilterServiceProvider = Provider<ImWordRuntimeFilterService>(
@@ -126,6 +137,7 @@ class ImRuntimeServices {
     required this.notifications,
     required this.wordRuntimeFilters,
     required this.maskedMessageRefresh,
+    required this.localDatabase,
   });
 
   final ImConnectionService connection;
@@ -135,6 +147,7 @@ class ImRuntimeServices {
   final ImNotificationBridge notifications;
   final ImWordRuntimeFilterService wordRuntimeFilters;
   final ImMaskedMessageRefreshService maskedMessageRefresh;
+  final ImLocalDatabaseService localDatabase;
 }
 
 final imRuntimeServicesProvider = Provider<ImRuntimeServices>((ref) {
@@ -146,5 +159,6 @@ final imRuntimeServicesProvider = Provider<ImRuntimeServices>((ref) {
     notifications: ref.watch(imNotificationBridgeProvider),
     wordRuntimeFilters: ref.watch(imWordRuntimeFilterServiceProvider),
     maskedMessageRefresh: ref.watch(imMaskedMessageRefreshServiceProvider),
+    localDatabase: ref.watch(imLocalDatabaseServiceProvider),
   );
 });

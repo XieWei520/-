@@ -111,4 +111,16 @@ void main() {
       expect(source, isNot(contains('WKDBConst.tableMessage')));
     },
   );
+
+  test('IMService delegates local database readiness to a service', () {
+    final source = File('lib/service/im/im_service.dart').readAsStringSync();
+
+    expect(source, contains('im_local_database_service.dart'));
+    expect(source, contains('_localDatabaseService.ensureReady()'));
+    expect(source, isNot(contains("import 'package:sqflite/sqflite.dart'")));
+    expect(source, isNot(contains('db/wk_db_helper.dart')));
+    expect(source, isNot(contains('ensureMessageOutboxSchema')));
+    expect(source, isNot(contains('WKDBHelper.shared.init')));
+    expect(source, isNot(contains('WKDBHelper.shared.onUpgrade')));
+  });
 }

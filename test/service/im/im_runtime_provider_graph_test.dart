@@ -7,6 +7,7 @@ import 'package:wukong_im_app/service/api/message_api.dart';
 import 'package:wukong_im_app/service/api/reminder_api.dart';
 import 'package:wukong_im_app/service/im/attachment_upload_pipeline.dart';
 import 'package:wukong_im_app/service/im/im_connection_service.dart';
+import 'package:wukong_im_app/service/im/im_local_database_service.dart';
 import 'package:wukong_im_app/service/im/im_masked_message_refresh_service.dart';
 import 'package:wukong_im_app/service/im/im_notification_bridge.dart';
 import 'package:wukong_im_app/service/im/im_service.dart';
@@ -50,6 +51,7 @@ void main() {
     expect(runtime.notifications, isA<ImNotificationBridge>());
     expect(runtime.wordRuntimeFilters, isA<ImWordRuntimeFilterService>());
     expect(runtime.maskedMessageRefresh, isA<ImMaskedMessageRefreshService>());
+    expect(runtime.localDatabase, isA<ImLocalDatabaseService>());
     expect(
       runtime.connection,
       same(container.read(imConnectionServiceProvider)),
@@ -74,6 +76,10 @@ void main() {
     expect(
       runtime.maskedMessageRefresh,
       same(container.read(imMaskedMessageRefreshServiceProvider)),
+    );
+    expect(
+      runtime.localDatabase,
+      same(container.read(imLocalDatabaseServiceProvider)),
     );
   });
 

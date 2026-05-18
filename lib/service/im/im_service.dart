@@ -3,10 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'package:wukongimfluttersdk/common/mode.dart';
-import 'package:wukongimfluttersdk/db/wk_db_helper.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/cmd.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -40,6 +38,7 @@ import 'im_word_sync_models.dart';
 import 'attachment_upload_pipeline.dart';
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
 import 'im_connection_service.dart';
+import 'im_local_database_service.dart';
 import 'im_masked_message_refresh_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_service_providers.dart';
@@ -47,7 +46,6 @@ import 'im_sync_orchestrator.dart';
 import 'im_word_runtime_filter_service.dart';
 import 'im_word_sync_store.dart';
 import 'message_delivery_service.dart';
-import 'message_outbox.dart';
 
 export 'coordinators/attachment_pipeline.dart'
     show normalizeFileAttachmentMetadata;
@@ -70,6 +68,7 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
     syncOrchestrator: ref.read(imSyncOrchestratorProvider),
     wordSyncStore: ref.read(imWordSyncStoreProvider),
     wordRuntimeFilterService: ref.read(imWordRuntimeFilterServiceProvider),
+    localDatabaseService: ref.read(imLocalDatabaseServiceProvider),
     attachmentUploadPipeline: ref.read(attachmentUploadPipelineProvider),
     connectionService: ref.read(imConnectionServiceProvider),
     realtimeRolloutTelemetry: ref.read(realtimeRolloutTelemetryProvider),
@@ -295,6 +294,7 @@ class IMService extends StateNotifier<IMServiceState>
     ImWordSyncStore? wordSyncStore,
     ImWordRuntimeFilterService? wordRuntimeFilterService,
     ImMaskedMessageRefreshService? maskedMessageRefreshService,
+    ImLocalDatabaseService? localDatabaseService,
     AttachmentUploadPipeline? attachmentUploadPipeline,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
@@ -328,6 +328,11 @@ class IMService extends StateNotifier<IMServiceState>
     _wordRuntimeFilterService =
         wordRuntimeFilterService ??
         ImWordRuntimeFilterService(wordStore: _wordSyncStore);
+    _localDatabaseService =
+        localDatabaseService ??
+        ImLocalDatabaseService(
+          usesLocalPersistence: () => _usesLocalPersistence,
+        );
     _maskedMessageRefreshService =
         maskedMessageRefreshService ??
         ImMaskedMessageRefreshService(
@@ -357,12 +362,6 @@ class IMService extends StateNotifier<IMServiceState>
   static const _connectionListenerKey = 'im_service_connection_listener';
   static const _cmdListenerKey = 'im_service_cmd_listener';
   static const _newMsgListenerKey = 'im_service_new_msg_listener';
-  static const _requiredTables = {
-    'message',
-    'channel',
-    'conversation',
-    'message_extra',
-  };
 
   Completer<bool>? _initCompleter;
   bool _listenersBound = false;
@@ -381,6 +380,7 @@ class IMService extends StateNotifier<IMServiceState>
   late final ImSyncOrchestrator _syncOrchestrator;
   late final ImWordSyncStore _wordSyncStore;
   late final ImWordRuntimeFilterService _wordRuntimeFilterService;
+  late final ImLocalDatabaseService _localDatabaseService;
   late final ImMaskedMessageRefreshService _maskedMessageRefreshService;
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
@@ -911,83 +911,7 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   Future<bool> _ensureDatabaseReady() async {
-    if (!_usesLocalPersistence) {
-      return false;
-    }
-
-    if (WKDBHelper.shared.getDB() == null) {
-      final reopened = await WKDBHelper.shared.init();
-      if (!reopened) {
-        return false;
-      }
-    }
-
-    final db = WKDBHelper.shared.getDB();
-    if (db == null) {
-      return false;
-    }
-
-    if (await _hasRequiredTables(db)) {
-      return _ensureMessageOutboxSchema(db);
-    }
-
-    final migrated = await _applySdkMigrations(db);
-    if (!migrated) {
-      return false;
-    }
-
-    final ready = await _waitForRequiredTables();
-    if (!ready) {
-      return false;
-    }
-    final migratedDb = WKDBHelper.shared.getDB();
-    if (migratedDb == null) {
-      return false;
-    }
-    return _ensureMessageOutboxSchema(migratedDb);
-  }
-
-  Future<bool> _ensureMessageOutboxSchema(Database db) async {
-    try {
-      await ensureMessageOutboxSchema(db);
-      return true;
-    } catch (error, stackTrace) {
-      debugPrint('Ensuring message outbox schema failed: $error');
-      debugPrint('$stackTrace');
-      return false;
-    }
-  }
-
-  Future<bool> _hasRequiredTables(Database db) async {
-    final rows = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='table'",
-    );
-    final names = rows
-        .map((row) => row['name']?.toString() ?? '')
-        .where((name) => name.isNotEmpty)
-        .toSet();
-    return _requiredTables.every(names.contains);
-  }
-
-  Future<bool> _applySdkMigrations(Database db) async {
-    try {
-      return await WKDBHelper.shared.onUpgrade(db);
-    } catch (error, stackTrace) {
-      debugPrint('Applying SDK migrations failed: $error');
-      debugPrint('$stackTrace');
-      return false;
-    }
-  }
-
-  Future<bool> _waitForRequiredTables() async {
-    for (var index = 0; index < 20; index++) {
-      final db = WKDBHelper.shared.getDB();
-      if (db != null && await _hasRequiredTables(db)) {
-        return true;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
-    return false;
+    return _localDatabaseService.ensureReady();
   }
 
   Future<String> _ensureDeviceUuid() async {
