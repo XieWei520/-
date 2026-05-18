@@ -33,9 +33,6 @@ import '../../realtime/session/session_runtime.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import '../../wukong_base/msg/msg_content_type.dart';
-import '../../wukong_push/notification/android_message_alert_manager.dart';
-import '../../wukong_push/notification/desktop_message_alert_manager.dart';
-import '../../wukong_push/notification/web_notification_manager.dart';
 import '../api/conversation_draft_api.dart';
 import '../api/file_api.dart';
 import '../api/im_route_info.dart';
@@ -323,7 +320,8 @@ class IMService extends StateNotifier<IMServiceState>
           routeResolver: _resolveConnectAddr,
           listenerKey: _connectionListenerKey,
         );
-    _notificationBridge = notificationBridge;
+    _notificationBridge =
+        notificationBridge ?? ImNotificationBridge.platformDefaults();
     _wordSyncStore =
         wordSyncStore ?? syncOrchestrator?.wordStore ?? WkImWordSyncStore();
     _syncOrchestrator =
@@ -369,7 +367,7 @@ class IMService extends StateNotifier<IMServiceState>
   late final RealtimeRolloutTelemetry _realtimeRolloutTelemetry;
   late final SessionRuntime _sessionRuntime;
   late final ImConnectionService _connectionService;
-  ImNotificationBridge? _notificationBridge;
+  late final ImNotificationBridge _notificationBridge;
   late final ImSyncOrchestrator _syncOrchestrator;
   late final ImWordSyncStore _wordSyncStore;
   final bool _ownsRealtimeRolloutTelemetry;
@@ -810,7 +808,7 @@ class IMService extends StateNotifier<IMServiceState>
   void _scheduleMessageAlert(WKMsg message, {required String currentUid}) {
     try {
       unawaited(
-        _resolvedNotificationBridge.showMessageAlert(
+        _notificationBridge.showMessageAlert(
           message,
           currentUid: currentUid,
           lifecycleState: _appLifecycleState,
@@ -820,14 +818,6 @@ class IMService extends StateNotifier<IMServiceState>
       debugPrint('Message alert scheduling failed: $error');
       debugPrint('$stackTrace');
     }
-  }
-
-  ImNotificationBridge get _resolvedNotificationBridge {
-    return _notificationBridge ??= ImNotificationBridge(
-      androidAlerts: AndroidMessageAlertManager.instance,
-      desktopAlerts: DesktopMessageAlertManager.instance,
-      webNotifications: WebNotificationManager.instance,
-    );
   }
 
   void _publishRealtimeConversationMessage(WKMsg message) {

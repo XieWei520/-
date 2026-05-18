@@ -13,6 +13,14 @@ class ImNotificationBridge {
     required this.webNotifications,
   });
 
+  factory ImNotificationBridge.platformDefaults() {
+    return ImNotificationBridge(
+      androidAlerts: AndroidMessageAlertManager.instance,
+      desktopAlerts: DesktopMessageAlertManager.instance,
+      webNotifications: WebNotificationManager.instance,
+    );
+  }
+
   final AndroidMessageAlertManager androidAlerts;
   final DesktopMessageAlertManager desktopAlerts;
   final WebNotificationManager webNotifications;

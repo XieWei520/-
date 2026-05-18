@@ -48,4 +48,23 @@ void main() {
 
     expect(source, isNot(contains("import 'dart:io'")));
   });
+
+  test('IMService delegates notifications through the bridge only', () {
+    final source = File('lib/service/im/im_service.dart').readAsStringSync();
+
+    expect(source, contains('im_notification_bridge.dart'));
+    expect(source, contains('_notificationBridge.showMessageAlert'));
+    expect(
+      source,
+      isNot(contains('android_message_alert_manager.dart')),
+    );
+    expect(
+      source,
+      isNot(contains('desktop_message_alert_manager.dart')),
+    );
+    expect(source, isNot(contains('web_notification_manager.dart')));
+    expect(source, isNot(contains('AndroidMessageAlertManager')));
+    expect(source, isNot(contains('DesktopMessageAlertManager')));
+    expect(source, isNot(contains('WebNotificationManager')));
+  });
 }
