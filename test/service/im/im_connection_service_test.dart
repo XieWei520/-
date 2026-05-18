@@ -355,6 +355,39 @@ void main() {
       expect(setupOk, isFalse);
       expect(sdk.connectCount, 0);
     });
+
+    test(
+      'disconnect delegates to SDK port and marks snapshot disconnected',
+      () async {
+        final sdk = _FakeImSdkConnectionPort();
+        final service = ImConnectionService(
+          sdk: sdk,
+          realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+          routeResolver: (_) async => 'wss://route.example/ws',
+        );
+
+        service.bindConnectionStatusListener(
+          onStatus: (status, reasonCode, extra) {},
+        );
+        sdk.emit(
+          status: WKConnectStatus.syncCompleted,
+          reasonCode: null,
+          extra: null,
+        );
+        await service.disconnect(isLogout: true);
+
+        expect(sdk.disconnectCalls, <bool>[true]);
+        expect(
+          service.snapshot,
+          const ImConnectionSnapshot(
+            isInitializing: false,
+            isInitialized: false,
+            isConnected: false,
+            status: WKConnectStatus.fail,
+          ),
+        );
+      },
+    );
   });
 }
 
@@ -365,6 +398,7 @@ class _FakeImSdkConnectionPort implements ImSdkConnectionPort {
   ImSdkSetupOptions? setupOptions;
   bool setupResult = true;
   int connectCount = 0;
+  final disconnectCalls = <bool>[];
 
   @override
   Future<bool> setup(ImSdkSetupOptions options) async {
@@ -378,7 +412,9 @@ class _FakeImSdkConnectionPort implements ImSdkConnectionPort {
   }
 
   @override
-  void disconnect({required bool isLogout}) {}
+  void disconnect({required bool isLogout}) {
+    disconnectCalls.add(isLogout);
+  }
 
   @override
   void bindStatusListener({

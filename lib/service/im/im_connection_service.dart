@@ -422,10 +422,9 @@ class ImConnectionService {
     );
   }
 
-  Future<void> disconnect({bool isLogout = false}) {
-    throw UnimplementedError(
-      'Skeleton only: move SDK/runtime disconnect orchestration here.',
-    );
+  Future<void> disconnect({bool isLogout = false}) async {
+    sdk.disconnect(isLogout: isLogout);
+    _snapshot = ImConnectionSnapshot(uid: isLogout ? null : _snapshot.uid);
   }
 
   Future<void> startRealtimeRuntime(ImConnectionCredentials credentials) {

@@ -271,9 +271,7 @@ class _WkImSdkConnectionPort implements ImSdkConnectionPort {
 
   @override
   void disconnect({required bool isLogout}) {
-    throw UnimplementedError(
-      'SDK disconnect remains owned by IMService until the disconnect slice.',
-    );
+    WKIM.shared.connectionManager.disconnect(isLogout);
   }
 
   @override
@@ -609,7 +607,7 @@ class IMService extends StateNotifier<IMServiceState>
     _completeInit(false);
     unawaited(_sessionRuntime.stop());
     unawaited(_realtimeRolloutTelemetry.flush());
-    WKIM.shared.connectionManager.disconnect(isLogout);
+    unawaited(_connectionService.disconnect(isLogout: isLogout));
     _lifecycleDisconnected = false;
     if (isLogout) {
       _initializedUid = null;
@@ -1706,7 +1704,7 @@ class IMService extends StateNotifier<IMServiceState>
     _lifecycleDisconnected = false;
     _lastConversationCmdVersion = 0;
     applyRecoveredCallingStates(const <WKChannelState>[]);
-    WKIM.shared.connectionManager.disconnect(false);
+    unawaited(_connectionService.disconnect());
     state = state.copyWith(
       isInitializing: false,
       isInitialized: false,
@@ -1884,7 +1882,7 @@ class IMService extends StateNotifier<IMServiceState>
       return;
     }
     _lifecycleDisconnected = true;
-    WKIM.shared.connectionManager.disconnect(false);
+    unawaited(_connectionService.disconnect());
   }
 
   void _resumeAfterLifecycleDisconnect() {
