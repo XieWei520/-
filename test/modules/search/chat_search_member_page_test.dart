@@ -173,7 +173,7 @@ void main() {
         ),
       );
 
-      expect(find.text('No results'), findsNothing);
+      expect(find.text('暂无结果'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     },
   );
@@ -246,7 +246,7 @@ void main() {
         find.byKey(const ValueKey<String>('search-member-result-119')),
         findsOneWidget,
       );
-      expect(find.text('Load more failed'), findsOneWidget);
+      expect(find.text('加载更多失败'), findsOneWidget);
       expect(
         find.byKey(
           const ValueKey<String>('chat-member-search-load-more-retry'),
@@ -300,7 +300,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('Load more failed'), findsOneWidget);
+      expect(find.text('加载更多失败'), findsOneWidget);
 
       final attemptsAfterFailure = repository.loadMoreAttempts;
       await tester.drag(resultsScrollable, const Offset(0, -120));

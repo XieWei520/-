@@ -493,7 +493,7 @@ void main() {
       find.byKey(const ValueKey<String>('search-collection-item-119')),
       findsOneWidget,
     );
-    expect(find.text('Load more failed'), findsOneWidget);
+    expect(find.text('加载更多失败'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('search-collection-load-more-retry')),
       findsOneWidget,
@@ -534,7 +534,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('Load more failed'), findsOneWidget);
+      expect(find.text('加载更多失败'), findsOneWidget);
 
       final attemptsAfterFailure = repository.loadMoreAttempts;
       await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
@@ -591,7 +591,7 @@ void main() {
         find.byKey(const ValueKey<String>('search-collection-item-119')),
         findsOneWidget,
       );
-      expect(find.text('Load more failed'), findsOneWidget);
+      expect(find.text('加载更多失败'), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('search-collection-load-more-retry')),
         findsOneWidget,

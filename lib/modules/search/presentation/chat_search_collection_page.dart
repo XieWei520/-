@@ -171,12 +171,12 @@ class ChatSearchCollectionPage extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Load more failed'),
+            const Text('加载更多失败'),
             const SizedBox(height: 12),
             FilledButton(
               key: const ValueKey<String>('search-collection-load-more-retry'),
               onPressed: () => controller.loadMore(isRetry: true),
-              child: const Text('Retry'),
+              child: const Text('重试'),
             ),
           ],
         ),

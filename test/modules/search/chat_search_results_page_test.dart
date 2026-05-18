@@ -123,7 +123,7 @@ void main() {
       find.byKey(const ValueKey<String>('search-keyword-result-42')),
       findsOneWidget,
     );
-    expect(find.text('Load more failed'), findsOneWidget);
+    expect(find.text('加载更多失败'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('chat-search-load-more-retry')),
     );

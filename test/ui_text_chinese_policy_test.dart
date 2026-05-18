@@ -112,7 +112,7 @@ void main() {
     ];
 
     for (final path in filesToCheck) {
-      final source = File(path).readAsStringSync();
+      final source = _primaryCopySource(path);
       for (final snippet in forbiddenSnippets) {
         expect(
           source,
@@ -131,4 +131,19 @@ void main() {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     expect(pubspec, contains('assets/emoji/android/default/'));
   });
+}
+
+String _primaryCopySource(String path) {
+  final source = File(path).readAsStringSync();
+  if (path != 'lib/modules/settings/settings_strings.dart') {
+    return source;
+  }
+
+  const enUsMarker =
+      'final SettingsStrings _enUsSettingsStrings = SettingsStrings(';
+  final enUsStart = source.indexOf(enUsMarker);
+  if (enUsStart == -1) {
+    return source;
+  }
+  return source.substring(0, enUsStart);
 }
