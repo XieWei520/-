@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukong_im_app/data/models/friend.dart';
 import 'package:wukong_im_app/data/models/chat_session.dart';
+import 'package:wukong_im_app/modules/chat/chat_channel_identity.dart';
 import 'package:wukong_im_app/modules/chat/panes/chat_header_pane.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_providers.dart';
 import 'package:wukong_im_app/modules/chat/widgets/chat_search_mode_bar.dart';

@@ -12,13 +12,11 @@ import '../../core/utils/platform_utils.dart';
 import '../../data/models/call.dart';
 import '../../data/models/chat_session.dart';
 import '../../data/models/friend.dart';
-import '../../data/models/user.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../data/providers/user_provider.dart';
 import '../../service/api/group_api.dart';
 import '../../service/api/user_api.dart';
 import '../../wukong_uikit/group/group_detail_page.dart';
-import '../customer_service/customer_service_identity.dart';
 import '../search/presentation/chat_search_entry_page.dart';
 import '../search/presentation/message_record_search_page.dart';
 import '../../widgets/chat_background_surface.dart';
@@ -29,6 +27,7 @@ import '../../wukong_robot/models/robot.dart';
 import '../../wukong_robot/robot_service.dart';
 import '../../wukong_uikit/setting/setting_preferences.dart';
 import 'chat_call_navigation.dart';
+import 'chat_channel_identity.dart';
 import 'chat_channel_settings.dart';
 import 'chat_flame_message_runtime.dart';
 import 'chat_frame_jank_monitor.dart';
@@ -262,7 +261,10 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   Future<void> _hydrateRemoteFlameSettings() async {
-    if (!_shouldHydrateRemoteFlameSettings()) {
+    if (!shouldHydrateRemoteFlameSettings(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+    )) {
       return;
     }
     final currentChannel = _channel ?? await _loadLocalChannel();
@@ -273,16 +275,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     setState(() {
       _channel = channel;
     });
-  }
-
-  bool _shouldHydrateRemoteFlameSettings() {
-    if (widget.channelType == WKChannelType.group) {
-      return true;
-    }
-    if (widget.channelType != WKChannelType.personal) {
-      return false;
-    }
-    return !isAndroidFixedChat(widget.channelId, widget.channelType);
   }
 
   Future<WKChannel?> _loadLocalChannel() async {
@@ -324,7 +316,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
           widget.channelId,
           cancelToken: cancelToken,
         );
-        _applyChannelUserIdentity(channel, user);
+        applyChannelUserIdentity(channel, user);
         applyChannelFlameSettings(
           channel,
           flame: user.flame ?? 0,
@@ -345,25 +337,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     }
     WKIM.shared.channelManager.addOrUpdateChannel(channel);
     return channel;
-  }
-
-  void _applyChannelUserIdentity(WKChannel channel, UserInfo user) {
-    final displayName = _firstNonEmptyText([
-      user.remark,
-      user.name,
-      user.username,
-    ]);
-    if (displayName.isNotEmpty && displayName != channel.channelID) {
-      channel.channelName = displayName;
-    }
-    final avatar = (user.avatar ?? '').trim();
-    if (avatar.isNotEmpty) {
-      channel.avatar = avatar;
-    }
-    final category = normalizePublicAccountCategory(user.category);
-    if (category != null && category.isNotEmpty) {
-      channel.category = category;
-    }
   }
 
   Future<void> _refreshPinnedUiState() async {
@@ -796,43 +769,23 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   WKChannel? _participantFallbackChannel() {
-    final loadedChannel = _channel;
-    if (loadedChannel != null) {
-      return loadedChannel;
-    }
-    if (widget.channelType != WKChannelType.personal) {
-      return null;
-    }
-
-    final title = _firstNonEmptyText([
-      androidFixedChatTitle(widget.channelId, widget.channelType),
-      widget.channelName,
-    ]);
-    if (title.isEmpty) {
-      return null;
-    }
-    return WKChannel(widget.channelId, widget.channelType)..channelName = title;
-  }
-
-  String _firstNonEmptyText(Iterable<String?> values) {
-    for (final value in values) {
-      final normalized = value?.trim() ?? '';
-      if (normalized.isNotEmpty) {
-        return normalized;
-      }
-    }
-    return '';
+    return buildParticipantFallbackChannel(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+      channelName: widget.channelName,
+      loadedChannel: _channel,
+    );
   }
 
   bool _showCallActions() {
-    if (widget.channelType != WKChannelType.personal) {
-      return false;
-    }
-    return !isAndroidFixedChat(widget.channelId, widget.channelType);
+    return canShowPersonalCallActions(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+    );
   }
 
   bool _showGroupCallAction() {
-    return widget.channelType == WKChannelType.group;
+    return canShowGroupCallAction(widget.channelType);
   }
 
   bool _showSearchAction(BuildContext context) {

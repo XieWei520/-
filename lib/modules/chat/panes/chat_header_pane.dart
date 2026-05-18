@@ -19,12 +19,9 @@ import '../../../widgets/wk_avatar.dart';
 import '../chat_scene_providers.dart';
 import '../chat_search_mode_controller.dart';
 import '../chat_channel_settings.dart';
+import '../chat_channel_identity.dart';
 import '../widgets/chat_search_mode_bar.dart';
 
-const String androidSystemTeamId = 'u_10000';
-const String androidFileHelperId = 'fileHelper';
-const String _fileHelperTitle = '\u6587\u4ef6\u4f20\u8f93\u52a9\u624b';
-const String _systemTitle = '\u7cfb\u7edf\u901a\u77e5';
 const String _officialTag = '\u5b98\u65b9';
 const String _robotTag = '\u673a\u5668\u4eba';
 const String _onlineSuffix = '\u5728\u7ebf';
@@ -120,23 +117,6 @@ String resolveChatHeaderTitle({
     return inputName;
   }
   return channelId;
-}
-
-String? androidFixedChatTitle(String channelId, int channelType) {
-  if (channelType != WKChannelType.personal) {
-    return null;
-  }
-  if (channelId == androidSystemTeamId) {
-    return _systemTitle;
-  }
-  if (channelId == androidFileHelperId) {
-    return _fileHelperTitle;
-  }
-  return null;
-}
-
-bool isAndroidFixedChat(String channelId, int channelType) {
-  return androidFixedChatTitle(channelId, channelType) != null;
 }
 
 int _resolveHeaderVipLevel({
