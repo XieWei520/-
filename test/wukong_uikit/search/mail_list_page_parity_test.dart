@@ -8,6 +8,7 @@ import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/modules/vip/vip_guard.dart';
+import 'package:wukong_im_app/service/api/user_api.dart';
 import 'package:wukong_im_app/service/mail_list/mail_list_service.dart';
 import 'package:wukong_im_app/wukong_uikit/search/add_friends_page.dart';
 import 'package:wukong_im_app/wukong_uikit/search/mail_list_page.dart';
@@ -219,6 +220,7 @@ void main() {
           onApplyContact: (_, _) async {
             applyCallCount += 1;
           },
+          vipCustomerServicesLoader: _fakeCustomerServicesLoader,
         ),
         vipLevel: 0,
       ),
@@ -240,7 +242,26 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      wrapWithAuth(const AddFriendsPage(showMailList: true)),
+      wrapWithAuth(
+        Builder(
+          builder: (context) {
+            return AddFriendsPage(
+              showMailList: true,
+              vipCustomerServicesLoader: _fakeCustomerServicesLoader,
+              onOpenMailList: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => MailListPage(
+                      initialContacts: const <MailListContact>[],
+                      vipCustomerServicesLoader: _fakeCustomerServicesLoader,
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
     );
 
     expect(find.text('手机联系人'), findsOneWidget);
@@ -250,6 +271,12 @@ void main() {
 
     expect(find.byType(MailListPage), findsOneWidget);
   });
+}
+
+Future<List<CustomerServiceAccount>> _fakeCustomerServicesLoader() async {
+  return const <CustomerServiceAccount>[
+    CustomerServiceAccount(uid: 'cs_test', name: 'Test CS'),
+  ];
 }
 
 class _TestAuthNotifier extends AuthNotifier {

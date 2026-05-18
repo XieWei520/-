@@ -35,10 +35,13 @@ Future<CustomerServiceAccount?> resolveVipCustomerService({
   return selectVipCustomerService(services);
 }
 
-Future<void> openVipCustomerServiceChat(BuildContext context) async {
+Future<void> openVipCustomerServiceChat(
+  BuildContext context, {
+  VipCustomerServicesLoader? customerServicesLoader,
+}) async {
   CustomerServiceAccount? service;
   try {
-    service = await resolveVipCustomerService();
+    service = await resolveVipCustomerService(loader: customerServicesLoader);
   } catch (_) {
     service = null;
   }
@@ -61,7 +64,10 @@ Future<void> openVipCustomerServiceChat(BuildContext context) async {
   );
 }
 
-Future<bool> guardVipFeature(BuildContext context) async {
+Future<bool> guardVipFeature(
+  BuildContext context, {
+  VipCustomerServicesLoader? customerServicesLoader,
+}) async {
   if (!context.mounted) {
     return false;
   }
@@ -87,7 +93,10 @@ Future<bool> guardVipFeature(BuildContext context) async {
     ),
   );
   if (shouldContactAdmin == true && context.mounted) {
-    await openVipCustomerServiceChat(context);
+    await openVipCustomerServiceChat(
+      context,
+      customerServicesLoader: customerServicesLoader,
+    );
   }
   return false;
 }

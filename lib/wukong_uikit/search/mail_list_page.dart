@@ -23,6 +23,7 @@ class MailListPage extends StatefulWidget {
   final Future<void> Function(MailListContact contact)? onInviteContact;
   final String? currentUid;
   final MailListLoader? mailListLoader;
+  final VipCustomerServicesLoader? vipCustomerServicesLoader;
 
   const MailListPage({
     super.key,
@@ -32,6 +33,7 @@ class MailListPage extends StatefulWidget {
     this.onInviteContact,
     this.currentUid,
     this.mailListLoader,
+    this.vipCustomerServicesLoader,
   });
 
   @override
@@ -388,7 +390,10 @@ class _MailListPageState extends State<MailListPage> {
   }
 
   Future<void> _applyContact(MailListContact contact) async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      customerServicesLoader: widget.vipCustomerServicesLoader,
+    )) {
       return;
     }
     if (!mounted) {

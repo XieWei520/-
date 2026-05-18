@@ -31,6 +31,7 @@ class AddFriendsPage extends StatefulWidget {
   final VoidCallback? onOpenQrCode;
   final VoidCallback? onOpenMailList;
   final bool showMailList;
+  final VipCustomerServicesLoader? vipCustomerServicesLoader;
 
   const AddFriendsPage({
     super.key,
@@ -43,6 +44,7 @@ class AddFriendsPage extends StatefulWidget {
     this.onOpenQrCode,
     this.onOpenMailList,
     this.showMailList = true,
+    this.vipCustomerServicesLoader,
   });
 
   @override
@@ -331,7 +333,10 @@ class _AddFriendsPageState extends State<AddFriendsPage> {
   }
 
   Future<void> _openMailListPage() async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      customerServicesLoader: widget.vipCustomerServicesLoader,
+    )) {
       return;
     }
     if (!mounted) {
@@ -342,9 +347,13 @@ class _AddFriendsPageState extends State<AddFriendsPage> {
       return;
     }
 
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const MailListPage()));
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MailListPage(
+          vipCustomerServicesLoader: widget.vipCustomerServicesLoader,
+        ),
+      ),
+    );
   }
 }
 
