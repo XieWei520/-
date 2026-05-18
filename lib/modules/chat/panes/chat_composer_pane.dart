@@ -15,6 +15,7 @@ import 'package:wukongimfluttersdk/wkim.dart';
 import '../../../core/utils/platform_utils.dart';
 import '../../../data/models/chat_session.dart';
 import '../../../data/providers/conversation_provider.dart';
+import '../../../platform/desktop_shell_service.dart';
 import '../../../service/api/group_api.dart';
 import '../../../service/api/robot_api.dart';
 import '../../../service/api/user_api.dart';
@@ -394,6 +395,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
         final mobileWarmFocusedBorderColor = isDarkTheme
             ? tokens.borderStrong
             : WKWebColors.action;
+        final desktopShell = ref.watch(desktopShellServiceProvider);
         late final Widget inlineActionButton;
         if (isMobileWarmStyle) {
           inlineActionButton = isDarkTheme
@@ -487,35 +489,11 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
                       },
                     )
                   : CallbackShortcuts(
-                      bindings: <ShortcutActivator, VoidCallback>{
-                        const SingleActivator(
-                          LogicalKeyboardKey.enter,
-                          shift: true,
-                        ): () => _insertTextAtCursor(
-                          '\n',
-                          composerController,
-                          mentionsController,
-                        ),
-                        const SingleActivator(
-                          LogicalKeyboardKey.numpadEnter,
-                          shift: true,
-                        ): () => _insertTextAtCursor(
-                          '\n',
-                          composerController,
-                          mentionsController,
-                        ),
-                        const SingleActivator(LogicalKeyboardKey.enter): () =>
-                            _handleKeyboardSend(
-                              composerController,
-                              mentionsController,
-                            ),
-                        const SingleActivator(
-                          LogicalKeyboardKey.numpadEnter,
-                        ): () => _handleKeyboardSend(
-                          composerController,
-                          mentionsController,
-                        ),
-                      },
+                      bindings: _buildComposerShortcutBindings(
+                        desktopShell,
+                        composerController,
+                        mentionsController,
+                      ),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
                           minHeight: isMobileWarmStyle ? actionExtent : 0,
@@ -617,6 +595,66 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
       return;
     }
     unawaited(_handleSendPressed(composerController, mentionsController));
+  }
+
+  Map<ShortcutActivator, VoidCallback> _buildComposerShortcutBindings(
+    DesktopShellService desktopShell,
+    ChatComposerController composerController,
+    ChatMentionsController mentionsController,
+  ) {
+    return <ShortcutActivator, VoidCallback>{
+      const SingleActivator(LogicalKeyboardKey.enter, shift: true): () =>
+          _applyComposerKeyboardIntent(
+            desktopShell.resolveComposerKeyboardIntent(
+              isEnter: true,
+              isShiftPressed: true,
+            ),
+            composerController,
+            mentionsController,
+          ),
+      const SingleActivator(LogicalKeyboardKey.numpadEnter, shift: true): () =>
+          _applyComposerKeyboardIntent(
+            desktopShell.resolveComposerKeyboardIntent(
+              isEnter: true,
+              isShiftPressed: true,
+            ),
+            composerController,
+            mentionsController,
+          ),
+      const SingleActivator(LogicalKeyboardKey.enter): () =>
+          _applyComposerKeyboardIntent(
+            desktopShell.resolveComposerKeyboardIntent(
+              isEnter: true,
+              isShiftPressed: false,
+            ),
+            composerController,
+            mentionsController,
+          ),
+      const SingleActivator(LogicalKeyboardKey.numpadEnter): () =>
+          _applyComposerKeyboardIntent(
+            desktopShell.resolveComposerKeyboardIntent(
+              isEnter: true,
+              isShiftPressed: false,
+            ),
+            composerController,
+            mentionsController,
+          ),
+    };
+  }
+
+  void _applyComposerKeyboardIntent(
+    ComposerKeyboardIntent intent,
+    ChatComposerController composerController,
+    ChatMentionsController mentionsController,
+  ) {
+    switch (intent) {
+      case ComposerKeyboardIntent.send:
+        _handleKeyboardSend(composerController, mentionsController);
+      case ComposerKeyboardIntent.newline:
+        _insertTextAtCursor('\n', composerController, mentionsController);
+      case ComposerKeyboardIntent.none:
+        break;
+    }
   }
 
   Widget _buildComposerToolbarRow({

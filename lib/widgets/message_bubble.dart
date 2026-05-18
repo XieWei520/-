@@ -8,10 +8,8 @@ import 'package:wukongimfluttersdk/entity/channel_member.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_gif_content.dart';
-import 'package:wukongimfluttersdk/model/wk_image_content.dart';
 import 'package:wukongimfluttersdk/model/wk_rich_text_content.dart';
 import 'package:wukongimfluttersdk/model/wk_sticker_content.dart';
-import 'package:wukongimfluttersdk/model/wk_video_content.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
@@ -31,6 +29,8 @@ import '../wukong_base/msg/widget/wk_message_reaction.dart' as reaction_widget;
 import '../wukong_base/utils/time_utils.dart';
 import 'local_media_image_provider.dart';
 import 'liquid_glass_tokens.dart';
+import 'message_media_helpers.dart';
+import 'message_render_registry.dart';
 import 'robot_message_card.dart';
 import 'wk_avatar.dart';
 import 'wk_colors.dart';
@@ -38,6 +38,12 @@ import 'wk_design_tokens.dart';
 import 'wk_emoji_text.dart';
 import 'wk_reference_assets.dart';
 import 'wk_web_ui_tokens.dart';
+
+export 'message_media_helpers.dart'
+    show
+        MediaDecodeRequest,
+        resolveChatListMediaDecodeRequest,
+        resolveMediaDecodeRequest;
 
 class MessageParticipantInfo {
   final String displayName;
@@ -258,6 +264,7 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onAddReaction;
   final void Function(String emoji)? onReactionTap;
   final MessageVoiceContentBuilder? voiceContentBuilder;
+  final MessageRenderRegistry? renderRegistry;
   final bool webStyle;
 
   const MessageBubble({
@@ -273,6 +280,7 @@ class MessageBubble extends StatelessWidget {
     this.onAddReaction,
     this.onReactionTap,
     this.voiceContentBuilder,
+    this.renderRegistry,
     this.webStyle = false,
   });
 
@@ -478,21 +486,6 @@ class MessageBubble extends StatelessWidget {
     return desiredWidth.clamp(lowerBound, upperBound).toDouble();
   }
 
-  Size _resolveAdaptiveMediaSize(
-    BoxConstraints constraints, {
-    required double preferredWidth,
-    required double preferredHeight,
-  }) {
-    final maxWidth = constraints.maxWidth.isFinite
-        ? constraints.maxWidth
-        : preferredWidth;
-    final width = math.min(preferredWidth, math.max(0.0, maxWidth));
-    if (width <= 0 || preferredWidth <= 0) {
-      return Size.zero;
-    }
-    return Size(width, preferredHeight * (width / preferredWidth));
-  }
-
   EdgeInsets _bubblePaddingFor(int effectiveContentType) {
     if (effectiveContentType == MsgContentType.robotCard) {
       return EdgeInsets.zero;
@@ -535,30 +528,24 @@ class MessageBubble extends StatelessWidget {
     final reply = message.messageContent?.reply;
     final resolvedContentType =
         effectiveContentType ?? _resolveEffectiveContentType();
-    Widget content = switch (resolvedContentType) {
-      MsgContentType.robotCard => _buildRobotCardContent(context),
-      WkMessageContentType.text => _buildTextContent(
+    final renderContext = MessageRenderContext(
+      model: model,
+      effectiveContentType: resolvedContentType,
+      previewText: previewText,
+      isSelf: isSelf,
+      useWarmTextColors: useWarmTextColors,
+    );
+    final fallbackRenderer = DelegatingMessageRenderer(
+      (context, renderContext) => _buildTextContent(
         context,
-        previewText,
-        useWarmTextColors: useWarmTextColors,
+        renderContext.previewText,
+        useWarmTextColors: renderContext.useWarmTextColors,
       ),
-      WkMessageContentType.image => _buildImageContent(context),
-      WkMessageContentType.gif => _buildGifContent(context),
-      WkMessageContentType.sticker => _buildStickerContent(context),
-      WkMessageContentType.voice =>
-        voiceContentBuilder?.call(context, model, isSelf) ??
-            _buildVoiceContent(context),
-      WkMessageContentType.video => _buildVideoContent(context),
-      WkMessageContentType.location => _buildLocationContent(context),
-      WkMessageContentType.file => _buildFileContent(context),
-      WkMessageContentType.card => _buildInteractiveCardContent(),
-      MsgContentType.richText => _buildRichTextContent(context),
-      _ => _buildTextContent(
-        context,
-        previewText,
-        useWarmTextColors: useWarmTextColors,
-      ),
-    };
+    );
+    final registry = _createBubbleRenderRegistry();
+    final renderer =
+        registry.rendererFor(resolvedContentType) ?? fallbackRenderer;
+    Widget content = renderer.build(context, renderContext);
 
     if (reply != null) {
       content = Column(
@@ -591,6 +578,88 @@ class MessageBubble extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  MessageRenderRegistry _createBubbleRenderRegistry() {
+    final registry = MessageRenderRegistry.defaults()
+      ..registerAll(<MessageRendererRegistration>[
+        MessageRendererRegistration(
+          contentType: MsgContentType.robotCard,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildRobotCardContent(context),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: WkMessageContentType.text,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildTextContent(
+              context,
+              renderContext.previewText,
+              useWarmTextColors: renderContext.useWarmTextColors,
+            ),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: WkMessageContentType.unknown,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildTextContent(
+              context,
+              renderContext.previewText,
+              useWarmTextColors: renderContext.useWarmTextColors,
+            ),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: WkMessageContentType.gif,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildGifContent(context),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: WkMessageContentType.sticker,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildStickerContent(context),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: WkMessageContentType.voice,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) =>
+                voiceContentBuilder?.call(context, model, isSelf) ??
+                _buildVoiceContent(context),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: WkMessageContentType.location,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildLocationContent(context),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: WkMessageContentType.file,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildFileContent(context),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: WkMessageContentType.card,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildInteractiveCardContent(),
+          ),
+        ),
+        MessageRendererRegistration(
+          contentType: MsgContentType.richText,
+          renderer: DelegatingMessageRenderer(
+            (context, renderContext) => _buildRichTextContent(context),
+          ),
+        ),
+      ]);
+
+    final externalRegistry = renderRegistry;
+    if (externalRegistry != null) {
+      registry.merge(externalRegistry);
+    }
+    return registry;
   }
 
   int _resolveEffectiveContentType() {
@@ -673,7 +742,7 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  /// P1-T10: Sensitive word message — shown only to sender with warning style.
+  /// P1-T10: Sensitive word message shown only to sender with warning style.
   String _resolveRevokedNoticeText() {
     if (isSelf) {
       return '你撤回了一条消息';
@@ -933,98 +1002,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildImageContent(BuildContext context) {
-    var url = '';
-    var localPath = '';
-    var intrinsicWidth = 0;
-    var intrinsicHeight = 0;
-    if (message.messageContent is WKImageContent) {
-      final content = message.messageContent as WKImageContent;
-      url = ApiConfig.resolveMediaUrl(content.url);
-      localPath = content.localPath.trim();
-      intrinsicWidth = content.width;
-      intrinsicHeight = content.height;
-    }
-    if (url.isEmpty && _isRemoteMediaPath(localPath)) {
-      url = ApiConfig.resolveMediaUrl(localPath);
-      localPath = '';
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final mediaSize = _resolveAdaptiveMediaSize(
-          constraints,
-          preferredWidth: 200,
-          preferredHeight: 200,
-        );
-        if (url.isEmpty && !_isLocalMediaPath(localPath)) {
-          return _mediaFallback(
-            icon: Icons.broken_image_outlined,
-            width: mediaSize.width,
-            height: mediaSize.height,
-          );
-        }
-        final decodeRequest = resolveChatListMediaDecodeRequest(
-          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-          logicalWidth: mediaSize.width,
-          logicalHeight: mediaSize.height,
-          intrinsicWidth: intrinsicWidth,
-          intrinsicHeight: intrinsicHeight,
-        );
-
-        Widget buildRemoteImage() {
-          if (url.isEmpty) {
-            return _mediaFallback(
-              icon: Icons.broken_image_outlined,
-              width: mediaSize.width,
-              height: mediaSize.height,
-            );
-          }
-          return CachedMediaImage(
-            imageUrl: url,
-            cacheKey: url,
-            width: mediaSize.width,
-            height: mediaSize.height,
-            maxWidth: decodeRequest.cacheWidth,
-            maxHeight: decodeRequest.cacheHeight,
-            fit: BoxFit.cover,
-            errorWidget: (context, url, error) => _mediaFallback(
-              icon: Icons.broken_image_outlined,
-              width: mediaSize.width,
-              height: mediaSize.height,
-            ),
-            placeholder: (context, url) => _mediaFallback(
-              width: mediaSize.width,
-              height: mediaSize.height,
-              child: const CircularProgressIndicator(),
-            ),
-          );
-        }
-
-        final localImageProvider = _isLocalMediaPath(localPath)
-            ? resolveLocalMediaImageProvider(localPath)
-            : null;
-
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(WKRadius.md),
-          child: localImageProvider != null
-              ? Image(
-                  image: ResizeImage.resizeIfNeeded(
-                    decodeRequest.cacheWidth,
-                    decodeRequest.cacheHeight,
-                    localImageProvider,
-                  ),
-                  width: mediaSize.width,
-                  height: mediaSize.height,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      buildRemoteImage(),
-                )
-              : buildRemoteImage(),
-        );
-      },
-    );
-  }
-
   Widget _buildGifContent(BuildContext context) {
     var url = '';
     var intrinsicWidth = 0;
@@ -1038,13 +1015,13 @@ class MessageBubble extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final mediaSize = _resolveAdaptiveMediaSize(
+        final mediaSize = resolveAdaptiveMediaSize(
           constraints,
           preferredWidth: 200,
           preferredHeight: 200,
         );
         if (url.isEmpty) {
-          return _mediaFallback(
+          return mediaFallback(
             icon: Icons.gif_box_outlined,
             width: mediaSize.width,
             height: mediaSize.height,
@@ -1071,12 +1048,12 @@ class MessageBubble extends StatelessWidget {
                 maxWidth: decodeRequest.cacheWidth,
                 maxHeight: decodeRequest.cacheHeight,
                 fit: BoxFit.cover,
-                errorWidget: (context, url, error) => _mediaFallback(
+                errorWidget: (context, url, error) => mediaFallback(
                   icon: Icons.gif_box_outlined,
                   width: mediaSize.width,
                   height: mediaSize.height,
                 ),
-                placeholder: (context, url) => _mediaFallback(
+                placeholder: (context, url) => mediaFallback(
                   width: mediaSize.width,
                   height: mediaSize.height,
                   child: const CircularProgressIndicator(),
@@ -1134,7 +1111,7 @@ class MessageBubble extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final mediaSize = _resolveAdaptiveMediaSize(
+        final mediaSize = resolveAdaptiveMediaSize(
           constraints,
           preferredWidth: 160,
           preferredHeight: 160,
@@ -1161,86 +1138,6 @@ class MessageBubble extends StatelessWidget {
               decodeRequest: decodeRequest,
             ),
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildVideoContent(BuildContext context) {
-    var cover = '';
-    var intrinsicWidth = 0;
-    var intrinsicHeight = 0;
-    if (message.messageContent is WKVideoContent) {
-      final content = message.messageContent as WKVideoContent;
-      cover = ApiConfig.resolveMediaUrl(content.cover);
-      intrinsicWidth = content.width;
-      intrinsicHeight = content.height;
-    }
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final mediaSize = _resolveAdaptiveMediaSize(
-          constraints,
-          preferredWidth: 200,
-          preferredHeight: 150,
-        );
-        final decodeRequest = resolveChatListMediaDecodeRequest(
-          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
-          logicalWidth: mediaSize.width,
-          logicalHeight: mediaSize.height,
-          intrinsicWidth: intrinsicWidth,
-          intrinsicHeight: intrinsicHeight,
-        );
-
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(WKRadius.md),
-              child: cover.isNotEmpty
-                  ? CachedMediaImage(
-                      imageUrl: cover,
-                      cacheKey: cover,
-                      width: mediaSize.width,
-                      height: mediaSize.height,
-                      maxWidth: decodeRequest.cacheWidth,
-                      maxHeight: decodeRequest.cacheHeight,
-                      fit: BoxFit.cover,
-                      errorWidget: (context, url, error) => _mediaFallback(
-                        icon: Icons.videocam_rounded,
-                        width: mediaSize.width,
-                        height: mediaSize.height,
-                        backgroundColor: WKColors.textSecondary,
-                        iconColor: WKColors.white.withValues(alpha: 0.72),
-                      ),
-                      placeholder: (context, url) => _mediaFallback(
-                        width: mediaSize.width,
-                        height: mediaSize.height,
-                        backgroundColor: WKColors.textSecondary,
-                        child: const CircularProgressIndicator(),
-                      ),
-                    )
-                  : _mediaFallback(
-                      icon: Icons.videocam_rounded,
-                      width: mediaSize.width,
-                      height: mediaSize.height,
-                      backgroundColor: WKColors.textSecondary,
-                      iconColor: WKColors.white.withValues(alpha: 0.72),
-                    ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: WKColors.black.withValues(alpha: 0.42),
-                borderRadius: BorderRadius.circular(WKRadius.pill),
-              ),
-              child: const Icon(
-                Icons.play_arrow_rounded,
-                color: WKColors.white,
-                size: 24,
-              ),
-            ),
-          ],
         );
       },
     );
@@ -1303,7 +1200,7 @@ class MessageBubble extends StatelessWidget {
       decodeRequest: decodeRequest,
     );
 
-    if (_isBundledAssetPath(source)) {
+    if (isBundledAssetPath(source)) {
       return Image.asset(
         source,
         fit: BoxFit.contain,
@@ -1313,7 +1210,7 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
-    final localImageProvider = _isLocalMediaPath(source)
+    final localImageProvider = isLocalMediaPath(source)
         ? resolveLocalMediaImageProvider(source)
         : null;
     if (localImageProvider != null) {
@@ -1323,7 +1220,7 @@ class MessageBubble extends StatelessWidget {
         errorBuilder: (context, error, stackTrace) => next(),
       );
     }
-    if (_isLocalMediaPath(source)) {
+    if (isLocalMediaPath(source)) {
       return next();
     }
 
@@ -1713,23 +1610,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _mediaFallback({
-    required double width,
-    required double height,
-    Widget? child,
-    IconData icon = Icons.image_not_supported_outlined,
-    Color backgroundColor = WKColors.surfaceMuted,
-    Color iconColor = WKColors.textTertiary,
-  }) {
-    return Container(
-      width: width,
-      height: height,
-      color: backgroundColor,
-      alignment: Alignment.center,
-      child: child ?? Icon(icon, size: 44, color: iconColor),
-    );
-  }
-
   String _formatFileSize(int bytes) {
     if (bytes < 1024) {
       return '$bytes B';
@@ -1771,121 +1651,6 @@ class MessageBubble extends StatelessWidget {
       ),
     );
   }
-}
-
-class MediaDecodeRequest {
-  const MediaDecodeRequest({
-    required this.cacheWidth,
-    required this.cacheHeight,
-  });
-
-  final int? cacheWidth;
-  final int? cacheHeight;
-}
-
-const double _chatListMediaDecodeLogicalLimit = 200;
-
-MediaDecodeRequest resolveChatListMediaDecodeRequest({
-  required double devicePixelRatio,
-  required double logicalWidth,
-  required double logicalHeight,
-  int intrinsicWidth = 0,
-  int intrinsicHeight = 0,
-}) {
-  return resolveMediaDecodeRequest(
-    devicePixelRatio: devicePixelRatio,
-    logicalWidth: logicalWidth > 0
-        ? math.min(logicalWidth, _chatListMediaDecodeLogicalLimit)
-        : 0.0,
-    logicalHeight: logicalHeight > 0
-        ? math.min(logicalHeight, _chatListMediaDecodeLogicalLimit)
-        : 0.0,
-    intrinsicWidth: intrinsicWidth,
-    intrinsicHeight: intrinsicHeight,
-  );
-}
-
-MediaDecodeRequest resolveMediaDecodeRequest({
-  required double devicePixelRatio,
-  required double logicalWidth,
-  required double logicalHeight,
-  int intrinsicWidth = 0,
-  int intrinsicHeight = 0,
-}) {
-  final normalizedRatio = devicePixelRatio > 0 ? devicePixelRatio : 1.0;
-  var cacheWidth = logicalWidth > 0
-      ? (logicalWidth * normalizedRatio).round()
-      : null;
-  var cacheHeight = logicalHeight > 0
-      ? (logicalHeight * normalizedRatio).round()
-      : null;
-
-  if (cacheWidth != null && intrinsicWidth > 0) {
-    cacheWidth = math.min(cacheWidth, intrinsicWidth);
-  }
-  if (cacheHeight != null && intrinsicHeight > 0) {
-    cacheHeight = math.min(cacheHeight, intrinsicHeight);
-  }
-
-  return MediaDecodeRequest(cacheWidth: cacheWidth, cacheHeight: cacheHeight);
-}
-
-bool _isBundledAssetPath(String source) {
-  final normalized = source.replaceAll('\\', '/');
-  return normalized.startsWith('assets/');
-}
-
-bool _isLocalMediaPath(String mediaUrl) {
-  if (mediaUrl.isEmpty) {
-    return false;
-  }
-  if (_isRemoteMediaPath(mediaUrl)) {
-    return false;
-  }
-  final uri = Uri.tryParse(mediaUrl);
-  if (uri != null && uri.scheme == 'file') {
-    return true;
-  }
-  if (mediaUrl.startsWith('/')) {
-    return true;
-  }
-  if (mediaUrl.startsWith(r'\\')) {
-    return true;
-  }
-  return RegExp(r'^[a-zA-Z]:[\\/]').hasMatch(mediaUrl);
-}
-
-bool _isRemoteMediaPath(String mediaUrl) {
-  final value = mediaUrl.trim();
-  if (value.isEmpty) {
-    return false;
-  }
-  final lowerValue = value.toLowerCase().replaceAll('\\', '/');
-  if (lowerValue.startsWith('http://') || lowerValue.startsWith('https://')) {
-    return true;
-  }
-  final normalized = lowerValue.replaceFirst(RegExp(r'^/+'), '');
-  if (normalized.startsWith('v1/file/preview/') ||
-      normalized.startsWith('v1/file/download/') ||
-      normalized.startsWith('minio/')) {
-    return true;
-  }
-  for (final prefix in <String>[
-    'chat/',
-    'common/',
-    'avatar/',
-    'group/',
-    'moment/',
-    'report/',
-    'download/',
-    'sticker/',
-    'chatbg/',
-  ]) {
-    if (normalized.startsWith(prefix)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 class _CompactMessageStatusBadge extends StatelessWidget {
