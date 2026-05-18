@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukong_im_app/data/models/chat_session.dart';
 import 'package:wukong_im_app/modules/chat/panes/chat_overlay_coordinator.dart';
+import 'package:wukong_im_app/modules/chat/chat_scene_providers.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
@@ -47,5 +48,65 @@ void main() {
       find.byKey(const ValueKey<String>('overlay-child-button')),
     );
     expect(taps, 1);
+  });
+
+  testWidgets('switches top chrome between selection and normal status bars', (
+    tester,
+  ) async {
+    late WidgetRef capturedRef;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) {
+                capturedRef = ref;
+                return const ChatOverlayCoordinator(
+                  session: session,
+                  selectionToolbar: SizedBox(
+                    key: ValueKey<String>('test-selection-toolbar'),
+                  ),
+                  topStatusBars: <Widget>[
+                    SizedBox(key: ValueKey<String>('test-calling-bar')),
+                    SizedBox(key: ValueKey<String>('test-pinned-banner')),
+                  ],
+                  child: SizedBox(key: ValueKey<String>('test-chat-body')),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('test-chat-body')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('test-selection-toolbar')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey<String>('test-calling-bar')), findsOne);
+    expect(find.byKey(const ValueKey<String>('test-pinned-banner')), findsOne);
+
+    capturedRef
+        .read(chatSceneControllerProvider(session).notifier)
+        .enterSelectionMode(seedIdentity: 'mid:1');
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('test-selection-toolbar')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('test-calling-bar')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('test-pinned-banner')),
+      findsNothing,
+    );
   });
 }

@@ -41,7 +41,6 @@ import 'panes/chat_composer_pane.dart';
 import 'panes/chat_header_pane.dart';
 import 'panes/chat_overlay_coordinator.dart';
 import 'panes/chat_viewport_pane.dart';
-import 'chat_scene_models.dart';
 import 'chat_scene_providers.dart';
 import 'chat_viewport_controller.dart';
 import 'chat_details_page.dart';
@@ -651,7 +650,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         ),
       ),
     );
-    final scene = ref.watch(chatSceneControllerProvider(_chatSession));
     final selection = ref.watch(chatSelectionControllerProvider(_chatSession));
     final activityState = _activityState;
     final selectedChatBackground =
@@ -738,149 +736,67 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
               ),
             ],
           ),
-          child: _ChatKeyboardInsetTranslation(
-            child: Column(
-              children: [
-                if (scene.mode == ChatSceneMode.selecting)
-                  ChatSelectionToolbar(
-                    selectedCount: selection.selectedCount,
-                    onCancel: () {
-                      ref
-                          .read(
-                            chatSelectionControllerProvider(
-                              _chatSession,
-                            ).notifier,
-                          )
-                          .clear();
-                      ref
-                          .read(
-                            chatSceneControllerProvider(_chatSession).notifier,
-                          )
-                          .restoreNormal();
-                    },
-                    onForward: () async {
-                      final List<WKMsg> selectedMessages = selection
-                          .selectedIdentities
-                          .map(
-                            (identity) => ref
-                                .read(
-                                  chatViewportProvider(_chatSession).notifier,
-                                )
-                                .itemByIdentity(identity)
-                                ?.message,
-                          )
-                          .whereType<WKMsg>()
-                          .toList(growable: false);
-                      if (selectedMessages.isEmpty) {
-                        return;
-                      }
-                      ref
-                          .read(
-                            chatMessageActionControllerProvider(
-                              _chatSession,
-                            ).notifier,
-                          )
-                          .prepareForward(selectedMessages);
-                      final request = ref
-                          .read(
-                            chatMessageActionControllerProvider(_chatSession),
-                          )
-                          .forwardRequest;
-                      if (request == null || request.payloads.isEmpty) {
-                        return;
-                      }
-                      bool? didSubmit;
-                      try {
-                        didSubmit = await Navigator.of(context).push<bool>(
-                          MaterialPageRoute<bool>(
-                            builder: (_) => ForwardMessagePage(
-                              payloads: request.payloads,
-                              channelId: _chatSession.channelId,
-                              channelType: _chatSession.channelType,
-                              gateway: ref.read(
-                                chatSceneGatewayProvider(_chatSession),
-                              ),
-                            ),
-                          ),
-                        );
-                      } finally {
-                        if (mounted) {
-                          ref
-                              .read(
-                                chatMessageActionControllerProvider(
-                                  _chatSession,
-                                ).notifier,
-                              )
-                              .clearTransientState();
-                        }
-                      }
-                      if (!mounted) {
-                        return;
-                      }
-                      if (didSubmit == true) {
-                        ref
-                            .read(
-                              chatSelectionControllerProvider(
-                                _chatSession,
-                              ).notifier,
-                            )
-                            .clear();
-                        ref
-                            .read(
-                              chatSceneControllerProvider(
-                                _chatSession,
-                              ).notifier,
-                            )
-                            .restoreNormal();
-                      }
-                    },
-                  ),
-                if (scene.mode != ChatSceneMode.selecting &&
-                    activityState.isCalling)
-                  ChatCallingParticipantsBar(state: activityState),
-                if (scene.mode != ChatSceneMode.selecting &&
-                    _pinnedMessages.isNotEmpty)
-                  ChatPinnedMessageBanner(
-                    data: ChatPinnedMessageBannerData(
-                      previewText: _pinnedMessages.first.previewText,
-                      count: _pinnedMessages.length,
-                    ),
-                    onTap: _openPinnedMessageSheet,
-                    onClearAll: _canClearPinnedMessages
-                        ? () => unawaited(_clearPinnedMessages())
-                        : null,
-                  ),
-                Expanded(
-                  child: ChatViewportPane(
-                    session: _chatSession,
-                    conversationChannel: _participantFallbackChannel(),
-                    canPinMessages: _canPinMessages,
-                    currentUserGroupRole: _readCurrentUserGroupRole(),
-                    flameRuntime: widget.flameRuntime,
-                    onBuild: widget.onViewportBuild,
-                    onPinnedMessageToggled: _handlePinnedMessageToggled,
-                    restoreAnchor: _restoreAnchor,
-                    webStyle: useWarmWorkbenchStyle,
-                    onPersistenceSnapshotChanged:
-                        _handleViewportPersistenceSnapshotChanged,
-                    onRestoreAnchorApplied: widget.onRestoreAnchorApplied,
-                  ),
+          selectionToolbar: ChatSelectionToolbar(
+            selectedCount: selection.selectedCount,
+            onCancel: () {
+              ref
+                  .read(chatSelectionControllerProvider(_chatSession).notifier)
+                  .clear();
+              ref
+                  .read(chatSceneControllerProvider(_chatSession).notifier)
+                  .restoreNormal();
+            },
+            onForward: _forwardSelectedMessages,
+          ),
+          topStatusBars: <Widget>[
+            if (activityState.isCalling)
+              ChatCallingParticipantsBar(state: activityState),
+            if (_pinnedMessages.isNotEmpty)
+              ChatPinnedMessageBanner(
+                data: ChatPinnedMessageBannerData(
+                  previewText: _pinnedMessages.first.previewText,
+                  count: _pinnedMessages.length,
                 ),
-                ChatComposerPane(
+                onTap: _openPinnedMessageSheet,
+                onClearAll: _canClearPinnedMessages
+                    ? () => unawaited(_clearPinnedMessages())
+                    : null,
+              ),
+          ],
+          contentWrapper: (content) =>
+              _ChatKeyboardInsetTranslation(child: content),
+          child: Column(
+            children: [
+              Expanded(
+                child: ChatViewportPane(
                   session: _chatSession,
-                  channel: _channel,
-                  robotMenus: _robotMenus,
-                  showCallActions: _showCallActions(),
-                  showGroupCallAction: _showGroupCallAction(),
+                  conversationChannel: _participantFallbackChannel(),
+                  canPinMessages: _canPinMessages,
+                  currentUserGroupRole: _readCurrentUserGroupRole(),
+                  flameRuntime: widget.flameRuntime,
+                  onBuild: widget.onViewportBuild,
+                  onPinnedMessageToggled: _handlePinnedMessageToggled,
+                  restoreAnchor: _restoreAnchor,
                   webStyle: useWarmWorkbenchStyle,
-                  onAudioCallTap: () =>
-                      unawaited(_handleCallActionTap(CallType.audio)),
-                  onVideoCallTap: () =>
-                      unawaited(_handleCallActionTap(CallType.video)),
-                  onGroupCallTap: () => unawaited(_openGroupCallPicker()),
+                  onPersistenceSnapshotChanged:
+                      _handleViewportPersistenceSnapshotChanged,
+                  onRestoreAnchorApplied: widget.onRestoreAnchorApplied,
                 ),
-              ],
-            ),
+              ),
+              ChatComposerPane(
+                session: _chatSession,
+                channel: _channel,
+                robotMenus: _robotMenus,
+                showCallActions: _showCallActions(),
+                showGroupCallAction: _showGroupCallAction(),
+                webStyle: useWarmWorkbenchStyle,
+                onAudioCallTap: () =>
+                    unawaited(_handleCallActionTap(CallType.audio)),
+                onVideoCallTap: () =>
+                    unawaited(_handleCallActionTap(CallType.video)),
+                onGroupCallTap: () => unawaited(_openGroupCallPicker()),
+              ),
+            ],
           ),
         ),
       ),
@@ -918,6 +834,59 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     setState(() {
       _activityState = nextState;
     });
+  }
+
+  Future<void> _forwardSelectedMessages() async {
+    final selection = ref.read(chatSelectionControllerProvider(_chatSession));
+    final selectedMessages = selection.selectedIdentities
+        .map(
+          (identity) => ref
+              .read(chatViewportProvider(_chatSession).notifier)
+              .itemByIdentity(identity)
+              ?.message,
+        )
+        .whereType<WKMsg>()
+        .toList(growable: false);
+    if (selectedMessages.isEmpty) {
+      return;
+    }
+    ref
+        .read(chatMessageActionControllerProvider(_chatSession).notifier)
+        .prepareForward(selectedMessages);
+    final request = ref
+        .read(chatMessageActionControllerProvider(_chatSession))
+        .forwardRequest;
+    if (request == null || request.payloads.isEmpty) {
+      return;
+    }
+
+    bool? didSubmit;
+    try {
+      didSubmit = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => ForwardMessagePage(
+            payloads: request.payloads,
+            channelId: _chatSession.channelId,
+            channelType: _chatSession.channelType,
+            gateway: ref.read(chatSceneGatewayProvider(_chatSession)),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        ref
+            .read(chatMessageActionControllerProvider(_chatSession).notifier)
+            .clearTransientState();
+      }
+    }
+
+    if (!mounted || didSubmit != true) {
+      return;
+    }
+    ref.read(chatSelectionControllerProvider(_chatSession).notifier).clear();
+    ref
+        .read(chatSceneControllerProvider(_chatSession).notifier)
+        .restoreNormal();
   }
 
   String _resolveTitle() {
