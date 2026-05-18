@@ -424,6 +424,10 @@ class ImSyncOrchestrator {
     );
   }
 
+  int resolveOfflineCommandAckSequence(Iterable<dynamic> messages) {
+    return coordinator.resolveOfflineCommandAckSequence(messages);
+  }
+
   Future<WKSyncConversation> syncConversation({
     required int version,
     required String lastMsgSeqs,

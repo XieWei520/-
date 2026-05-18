@@ -10,17 +10,21 @@ import 'package:wukong_im_app/wukong_push/notification/web_notification_manager.
 
 Override noopImNotificationBridgeOverride() {
   return imNotificationBridgeProvider.overrideWithValue(
-    ImNotificationBridge(
-      androidAlerts: AndroidMessageAlertManager(
-        presenter: _NoopAndroidMessageAlertPresenter(),
-        targetPlatform: () => TargetPlatform.android,
-      ),
-      desktopAlerts: DesktopMessageAlertManager(
-        presenter: _NoopDesktopMessageAlertPresenter(),
-        targetPlatform: () => TargetPlatform.windows,
-      ),
-      webNotifications: WebNotificationManager(),
+    createNoopImNotificationBridge(),
+  );
+}
+
+ImNotificationBridge createNoopImNotificationBridge() {
+  return ImNotificationBridge(
+    androidAlerts: AndroidMessageAlertManager(
+      presenter: _NoopAndroidMessageAlertPresenter(),
+      targetPlatform: () => TargetPlatform.android,
     ),
+    desktopAlerts: DesktopMessageAlertManager(
+      presenter: _NoopDesktopMessageAlertPresenter(),
+      targetPlatform: () => TargetPlatform.windows,
+    ),
+    webNotifications: WebNotificationManager(),
   );
 }
 

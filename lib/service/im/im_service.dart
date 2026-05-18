@@ -42,7 +42,6 @@ import '../api/reminder_api.dart';
 import 'im_word_sync_models.dart';
 import 'attachment_upload_pipeline.dart';
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
-import 'coordinators/message_sync_coordinator.dart' as message_sync_coordinator;
 import 'im_connection_service.dart';
 import 'im_notification_bridge.dart';
 import 'im_service_providers.dart';
@@ -377,9 +376,6 @@ class IMService extends StateNotifier<IMServiceState>
       <String, VoidCallback>{};
   final command_dispatcher.CommandDispatcher _commandDispatcher =
       const command_dispatcher.CommandDispatcher();
-  final message_sync_coordinator.MessageSyncCoordinator
-  _messageSyncCoordinator =
-      const message_sync_coordinator.MessageSyncCoordinator();
   late final AttachmentUploadPipeline _attachmentUploadPipeline;
 
   void registerVipExpiredHandler({
@@ -1214,7 +1210,7 @@ class IMService extends StateNotifier<IMServiceState>
 
   @visibleForTesting
   int resolveOfflineCommandAckSequence(Iterable<dynamic> messages) {
-    return _messageSyncCoordinator.resolveOfflineCommandAckSequence(messages);
+    return _syncOrchestrator.resolveOfflineCommandAckSequence(messages);
   }
 
   @override

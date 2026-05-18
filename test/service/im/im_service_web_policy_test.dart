@@ -54,17 +54,26 @@ void main() {
 
     expect(source, contains('im_notification_bridge.dart'));
     expect(source, contains('_notificationBridge.showMessageAlert'));
-    expect(
-      source,
-      isNot(contains('android_message_alert_manager.dart')),
-    );
-    expect(
-      source,
-      isNot(contains('desktop_message_alert_manager.dart')),
-    );
+    expect(source, isNot(contains('android_message_alert_manager.dart')));
+    expect(source, isNot(contains('desktop_message_alert_manager.dart')));
     expect(source, isNot(contains('web_notification_manager.dart')));
     expect(source, isNot(contains('AndroidMessageAlertManager')));
     expect(source, isNot(contains('DesktopMessageAlertManager')));
     expect(source, isNot(contains('WebNotificationManager')));
   });
+
+  test(
+    'IMService delegates offline command ack sequencing to sync orchestrator',
+    () {
+      final source = File('lib/service/im/im_service.dart').readAsStringSync();
+
+      expect(
+        source,
+        contains('_syncOrchestrator.resolveOfflineCommandAckSequence'),
+      );
+      expect(source, isNot(contains('message_sync_coordinator.dart')));
+      expect(source, isNot(contains('MessageSyncCoordinator')));
+      expect(source, isNot(contains('_messageSyncCoordinator')));
+    },
+  );
 }

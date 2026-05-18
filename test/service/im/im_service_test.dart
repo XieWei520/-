@@ -10,6 +10,8 @@ import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
+import '../../fakes/noop_im_notification_bridge.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -302,7 +304,7 @@ void main() {
 
   group('Task 2 parity hooks', () {
     test('background keepalive matches Android calling exception', () {
-      final dynamic service = IMService();
+      final dynamic service = createTestImService();
       addTearDown(() => service.dispose());
 
       expect(
@@ -344,7 +346,7 @@ void main() {
     test(
       'recovered channel_status restores current calls and clears stale ones',
       () {
-        final dynamic service = IMService();
+        final dynamic service = createTestImService();
         addTearDown(() => service.dispose());
         final registry = ConversationActivityRegistry.instance;
 
@@ -440,7 +442,7 @@ void main() {
     );
 
     test('offline cmd ack sequence uses the highest synced message_seq', () {
-      final dynamic service = IMService();
+      final dynamic service = createTestImService();
       addTearDown(() => service.dispose());
 
       final ackSeq =
@@ -455,7 +457,7 @@ void main() {
     });
 
     test('vip_expired command triggers registered handler', () {
-      final dynamic service = IMService();
+      final dynamic service = createTestImService();
       addTearDown(() => service.dispose());
       var triggerCount = 0;
 
@@ -473,7 +475,7 @@ void main() {
     });
 
     test('vip_expired command does not trigger handler after unregister', () {
-      final dynamic service = IMService();
+      final dynamic service = createTestImService();
       addTearDown(() => service.dispose());
       var triggerCount = 0;
 
@@ -491,4 +493,8 @@ void main() {
       expect(triggerCount, 0);
     });
   });
+}
+
+IMService createTestImService() {
+  return IMService(notificationBridge: createNoopImNotificationBridge());
 }

@@ -777,6 +777,21 @@ void main() {
 
   group('ImSyncOrchestrator offline command sync', () {
     test(
+      'resolveOfflineCommandAckSequence uses the highest synced sequence',
+      () {
+        final orchestrator = _orchestrator();
+
+        final ackSeq = orchestrator.resolveOfflineCommandAckSequence(<dynamic>[
+          <String, dynamic>{'message_seq': 11},
+          <String, dynamic>{'message_seq': 27},
+          <String, dynamic>{'message_seq': 19},
+        ]);
+
+        expect(ackSeq, 27);
+      },
+    );
+
+    test(
       'syncOfflineCommandMessages pulls pages, acks highest sequence, and dispatches commands',
       () async {
         final adapter = _QueuedPlainAdapter(
