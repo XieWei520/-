@@ -11,6 +11,7 @@ typedef ImConnectionStatusHandler =
     void Function(int status, int? reasonCode, String? extra);
 typedef ImConnectionLogHandler =
     void Function(Object error, StackTrace stackTrace);
+typedef ImConnectionDelay = Future<void> Function(Duration duration);
 
 @immutable
 class ImSdkSetupOptions {
@@ -204,7 +205,8 @@ class ImConnectionService {
     this.backoffPolicy = const ImConnectionBackoffPolicy(),
     this.connectTimeout = const Duration(seconds: 20),
     this.listenerKey = 'im_connection_service_listener',
-  });
+    ImConnectionDelay? delay,
+  }) : _delay = delay ?? Future<void>.delayed;
 
   final ImSdkConnectionPort sdk;
   final ImRealtimeRuntimePort realtimeRuntime;
@@ -212,8 +214,10 @@ class ImConnectionService {
   final ImConnectionBackoffPolicy backoffPolicy;
   final Duration connectTimeout;
   final String listenerKey;
+  final ImConnectionDelay _delay;
   final ConnectionCoordinator _coordinator = const ConnectionCoordinator();
   ImConnectionSnapshot _snapshot = const ImConnectionSnapshot();
+  int _reconnectAttempt = 0;
 
   ImConnectionSnapshot get snapshot {
     return _snapshot;
@@ -416,10 +420,15 @@ class ImConnectionService {
     sdk.connect();
   }
 
-  Future<void> reconnect({String reason = 'manual'}) {
-    throw UnimplementedError(
-      'Skeleton only: move exponential reconnect scheduling here.',
+  Future<void> reconnect({String reason = 'manual'}) async {
+    final nextAttempt = (_reconnectAttempt + 1).clamp(
+      1,
+      backoffPolicy.maxAttempts,
     );
+    _reconnectAttempt = nextAttempt;
+    sdk.disconnect(isLogout: false);
+    await _delay(backoffPolicy.delayForAttempt(nextAttempt));
+    sdk.connect();
   }
 
   Future<void> disconnect({bool isLogout = false}) async {
@@ -428,13 +437,15 @@ class ImConnectionService {
   }
 
   Future<void> startRealtimeRuntime(ImConnectionCredentials credentials) {
-    throw UnimplementedError(
-      'Skeleton only: move SessionRuntime start and resume URI wiring here.',
+    return realtimeRuntime.start(
+      apiToken: credentials.apiToken,
+      deviceSessionId: credentials.deviceSessionId,
+      lastAckedSeq: 0,
     );
   }
 
   Future<void> stopRealtimeRuntime() {
-    throw UnimplementedError('Skeleton only: stop SessionRuntime here.');
+    return realtimeRuntime.stop();
   }
 
   void bindConnectionStatusListener({
@@ -449,6 +460,9 @@ class ImConnectionService {
           status: status,
           reasonCode: reasonCode,
         );
+        if (_snapshot.isConnected) {
+          _reconnectAttempt = 0;
+        }
         onStatus(status, reasonCode, extra);
       },
     );

@@ -182,7 +182,7 @@ void main() {
       final sdk = _FakeImSdkConnectionPort();
       final service = ImConnectionService(
         sdk: sdk,
-        realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+        realtimeRuntime: _FakeImRealtimeRuntimePort(),
         routeResolver: (_) async => '127.0.0.1:5100',
         listenerKey: 'test_listener',
       );
@@ -218,7 +218,7 @@ void main() {
       final sdk = _FakeImSdkConnectionPort();
       final service = ImConnectionService(
         sdk: sdk,
-        realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+        realtimeRuntime: _FakeImRealtimeRuntimePort(),
         routeResolver: (_) async => '127.0.0.1:5100',
       );
       ImConnectionSnapshot? observedSnapshot;
@@ -246,7 +246,7 @@ void main() {
       final sdk = _FakeImSdkConnectionPort();
       final service = ImConnectionService(
         sdk: sdk,
-        realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+        realtimeRuntime: _FakeImRealtimeRuntimePort(),
         routeResolver: (_) async => '127.0.0.1:5100',
         listenerKey: 'owned_listener',
       );
@@ -264,7 +264,7 @@ void main() {
         final sdk = _FakeImSdkConnectionPort();
         final service = ImConnectionService(
           sdk: sdk,
-          realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+          realtimeRuntime: _FakeImRealtimeRuntimePort(),
           routeResolver: (_) async => 'wss://route.example/ws',
         );
         const credentials = ImConnectionCredentials(
@@ -306,7 +306,7 @@ void main() {
         final capturedErrors = <Object>[];
         final service = ImConnectionService(
           sdk: sdk,
-          realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+          realtimeRuntime: _FakeImRealtimeRuntimePort(),
           routeResolver: (_) async => throw StateError('route failed'),
         );
 
@@ -335,7 +335,7 @@ void main() {
       final sdk = _FakeImSdkConnectionPort()..setupResult = false;
       final service = ImConnectionService(
         sdk: sdk,
-        realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+        realtimeRuntime: _FakeImRealtimeRuntimePort(),
         routeResolver: (_) async => 'wss://route.example/ws',
       );
 
@@ -362,7 +362,7 @@ void main() {
         final sdk = _FakeImSdkConnectionPort();
         final service = ImConnectionService(
           sdk: sdk,
-          realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+          realtimeRuntime: _FakeImRealtimeRuntimePort(),
           routeResolver: (_) async => 'wss://route.example/ws',
         );
 
@@ -388,6 +388,91 @@ void main() {
         );
       },
     );
+
+    test('reconnect disconnects, waits with backoff, then connects', () async {
+      final sdk = _FakeImSdkConnectionPort();
+      final delays = <Duration>[];
+      final service = ImConnectionService(
+        sdk: sdk,
+        realtimeRuntime: _FakeImRealtimeRuntimePort(),
+        routeResolver: (_) async => 'wss://route.example/ws',
+        backoffPolicy: const ImConnectionBackoffPolicy(
+          baseDelay: Duration(milliseconds: 10),
+          maxDelay: Duration(milliseconds: 40),
+        ),
+        delay: (duration) async {
+          delays.add(duration);
+        },
+      );
+
+      await service.reconnect(reason: 'unit');
+      await service.reconnect(reason: 'unit');
+
+      expect(sdk.disconnectCalls, <bool>[false, false]);
+      expect(sdk.connectCount, 2);
+      expect(delays, <Duration>[
+        const Duration(milliseconds: 10),
+        const Duration(milliseconds: 20),
+      ]);
+    });
+
+    test('successful connection status resets reconnect attempts', () async {
+      final sdk = _FakeImSdkConnectionPort();
+      final delays = <Duration>[];
+      final service = ImConnectionService(
+        sdk: sdk,
+        realtimeRuntime: _FakeImRealtimeRuntimePort(),
+        routeResolver: (_) async => 'wss://route.example/ws',
+        backoffPolicy: const ImConnectionBackoffPolicy(
+          baseDelay: Duration(milliseconds: 10),
+          maxDelay: Duration(milliseconds: 40),
+        ),
+        delay: (duration) async {
+          delays.add(duration);
+        },
+      );
+
+      await service.reconnect(reason: 'first');
+      service.bindConnectionStatusListener(
+        onStatus: (status, reasonCode, extra) {},
+      );
+      sdk.emit(
+        status: WKConnectStatus.syncCompleted,
+        reasonCode: null,
+        extra: null,
+      );
+      await service.reconnect(reason: 'after-success');
+
+      expect(delays, <Duration>[
+        const Duration(milliseconds: 10),
+        const Duration(milliseconds: 10),
+      ]);
+    });
+
+    test('starts and stops realtime runtime through its port', () async {
+      final runtime = _FakeImRealtimeRuntimePort();
+      final service = ImConnectionService(
+        sdk: _FakeImSdkConnectionPort(),
+        realtimeRuntime: runtime,
+        routeResolver: (_) async => 'wss://route.example/ws',
+      );
+
+      await service.startRealtimeRuntime(
+        const ImConnectionCredentials(
+          uid: 'u1',
+          apiToken: 'api',
+          imToken: 'im',
+          deviceSessionId: 'device',
+        ),
+      );
+      await service.stopRealtimeRuntime();
+
+      expect(runtime.startCalls, hasLength(1));
+      expect(runtime.startCalls.single.apiToken, 'api');
+      expect(runtime.startCalls.single.deviceSessionId, 'device');
+      expect(runtime.startCalls.single.lastAckedSeq, 0);
+      expect(runtime.stopCount, 1);
+    });
   });
 }
 
@@ -444,8 +529,24 @@ class _FakeImSdkConnectionPort implements ImSdkConnectionPort {
   }
 }
 
+class _RealtimeRuntimeStartCall {
+  const _RealtimeRuntimeStartCall({
+    required this.apiToken,
+    required this.deviceSessionId,
+    required this.lastAckedSeq,
+  });
+
+  final String apiToken;
+  final String deviceSessionId;
+  final int lastAckedSeq;
+}
+
 class _FakeImRealtimeRuntimePort implements ImRealtimeRuntimePort {
-  const _FakeImRealtimeRuntimePort();
+  _FakeImRealtimeRuntimePort();
+
+  final List<_RealtimeRuntimeStartCall> startCalls =
+      <_RealtimeRuntimeStartCall>[];
+  int stopCount = 0;
 
   @override
   bool get isRunning => false;
@@ -455,8 +556,18 @@ class _FakeImRealtimeRuntimePort implements ImRealtimeRuntimePort {
     required String apiToken,
     required String deviceSessionId,
     required int lastAckedSeq,
-  }) async {}
+  }) async {
+    startCalls.add(
+      _RealtimeRuntimeStartCall(
+        apiToken: apiToken,
+        deviceSessionId: deviceSessionId,
+        lastAckedSeq: lastAckedSeq,
+      ),
+    );
+  }
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    stopCount++;
+  }
 }
