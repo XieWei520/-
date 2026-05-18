@@ -6,6 +6,7 @@ import 'package:wukongimfluttersdk/entity/msg.dart';
 import '../chat/chat_message_mapper.dart';
 import '../chat/chat_message_view_model.dart';
 import '../chat/chat_viewport_controller.dart';
+import '../chat/chat_viewport_restore_anchor.dart';
 
 class ChatTimelineController extends StateNotifier<ChatViewportState> {
   ChatTimelineController({
@@ -148,15 +149,7 @@ class ChatTimelineController extends StateNotifier<ChatViewportState> {
   ChatViewportRestoreAnchor? resolveConversationRestoreAnchor(
     WKConversationMsgExtra? extra,
   ) {
-    if (extra == null || extra.keepMessageSeq <= 0) {
-      return null;
-    }
-    return ChatViewportRestoreAnchor(
-      aroundOrderSeq:
-          extra.keepMessageSeq * ChatViewportController.orderSeqFactor,
-      keepOffsetY: extra.keepOffsetY,
-      browseTo: extra.browseTo,
-    );
+    return restoreAnchorFromConversationExtra(extra);
   }
 
   void _replace(List<ChatMessageViewModel> items, {bool? isLoadingMore}) {

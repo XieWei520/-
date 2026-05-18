@@ -28,6 +28,7 @@ import 'chat_call_navigation.dart';
 import 'chat_channel_hydration_service.dart';
 import 'chat_channel_identity.dart';
 import 'chat_channel_settings.dart';
+import 'chat_conversation_restore_service.dart';
 import 'chat_flame_message_runtime.dart';
 import 'chat_frame_jank_monitor.dart';
 import 'chat_conversation_extra_gateway.dart';
@@ -133,11 +134,12 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   WKChannel? _channel;
   bool _isOpeningCallPage = false;
   ChatViewportRestoreAnchor? _restoreAnchor;
-  ChatViewportPersistenceSnapshot _latestViewportSnapshot =
-      const ChatViewportPersistenceSnapshot();
-  int _browseTo = 0;
-  bool _didPersistConversationExtra = false;
+  final ChatConversationRestoreService _conversationRestoreService =
+      ChatConversationRestoreService();
   CancelToken? _remoteFlameCancelToken;
+  ChatConversationExtraGateway? _conversationExtraGateway;
+  ProviderSubscription<String>? _draftTextSubscription;
+  String _latestDraftText = '';
   ConversationActivityState _activityState = ConversationActivityState.empty;
   List<RobotMenu> _robotMenus = const <RobotMenu>[];
   bool _canPinMessages = false;
@@ -153,6 +155,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     super.initState();
     _frameJankMonitor = ref.read(chatFrameJankMonitorFactoryProvider)()
       ..start();
+    _bindConversationPersistence();
     _canPinMessages = supportsPinnedMessages(
       channelId: widget.channelId,
       channelType: widget.channelType,
@@ -211,22 +214,27 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   Future<ChatViewportRestoreAnchor?> _resolveConversationRestoreAnchor() async {
-    try {
-      final extra = await ref
-          .read(chatConversationExtraGatewayProvider)
-          .load(channelId: widget.channelId, channelType: widget.channelType);
-      if (extra == null) {
-        return null;
-      }
-      _browseTo = extra.browseTo;
-
-      final viewportController = ref.read(
-        chatViewportProvider(_chatSession).notifier,
-      );
-      return viewportController.resolveConversationRestoreAnchor(extra);
-    } catch (_) {
+    final gateway = _conversationExtraGateway;
+    if (gateway == null) {
       return null;
     }
+    return _conversationRestoreService.resolveRestoreAnchor(
+      gateway: gateway,
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+    );
+  }
+
+  void _bindConversationPersistence() {
+    _conversationExtraGateway = ref.read(chatConversationExtraGatewayProvider);
+    _latestDraftText = ref.read(chatComposerProvider(_chatSession)).text;
+    _draftTextSubscription?.close();
+    _draftTextSubscription = ref.listenManual<String>(
+      chatComposerProvider(_chatSession).select((state) => state.text),
+      (_, next) {
+        _latestDraftText = next;
+      },
+    );
   }
 
   Future<void> _loadChannel() async {
@@ -411,6 +419,8 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     _frameJankMonitor?.stop();
     _frameJankMonitor = null;
     _unbindConversationActivity();
+    _draftTextSubscription?.close();
+    _draftTextSubscription = null;
     _remoteFlameCancelToken?.cancel();
     _remoteFlameCancelToken = null;
     unawaited(_persistConversationExtra());
@@ -432,6 +442,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       _robotMenus = const <RobotMenu>[];
     });
     _bindConversationActivity();
+    _bindConversationPersistence();
     unawaited(_loadRobotMenus(forceRefresh: true));
     setState(() {
       _canPinMessages = supportsPinnedMessages(
@@ -727,36 +738,24 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   void _handleViewportPersistenceSnapshotChanged(
     ChatViewportPersistenceSnapshot snapshot,
   ) {
-    _latestViewportSnapshot = snapshot;
-    if (snapshot.maxVisibleMessageSeq > _browseTo) {
-      _browseTo = snapshot.maxVisibleMessageSeq;
-    }
+    _conversationRestoreService.recordViewportSnapshot(snapshot);
     widget.onViewportPersistenceChanged?.call(snapshot);
   }
 
   Future<void> _persistConversationExtra() async {
-    if (_didPersistConversationExtra) {
+    if (_conversationRestoreService.hasPersisted) {
       return;
     }
-    _didPersistConversationExtra = true;
-
-    try {
-      final composerState = ref.read(chatComposerProvider(_chatSession));
-      await ref
-          .read(chatConversationExtraGatewayProvider)
-          .save(
-            channelId: widget.channelId,
-            channelType: widget.channelType,
-            browseTo: _browseTo > _latestViewportSnapshot.maxVisibleMessageSeq
-                ? _browseTo
-                : _latestViewportSnapshot.maxVisibleMessageSeq,
-            keepMessageSeq: _latestViewportSnapshot.keepMessageSeq,
-            keepOffsetY: _latestViewportSnapshot.keepOffsetY,
-            draft: composerState.text,
-          );
-    } catch (_) {
-      // Conversation extra persistence is best-effort on exit.
+    final gateway = _conversationExtraGateway;
+    if (gateway == null) {
+      return;
     }
+    await _conversationRestoreService.persist(
+      gateway: gateway,
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+      draft: _latestDraftText,
+    );
   }
 
   void _openChatSearch() {

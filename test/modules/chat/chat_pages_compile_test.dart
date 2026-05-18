@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
+import 'package:wukong_im_app/modules/chat/chat_conversation_extra_gateway.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/modules/chat/message_forwarding.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_gateway.dart';
@@ -12,6 +13,7 @@ import 'package:wukong_im_app/modules/search/presentation/message_record_search_
 import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 import 'package:wukong_im_app/wukong_uikit/chat/message_long_press_menu.dart';
 import 'package:wukong_im_app/wukong_uikit/user/user_detail_page.dart';
+import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_message_content.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
@@ -29,6 +31,9 @@ void main() {
           ),
           chatSceneGatewayProvider.overrideWith(
             (ref, session) => _CompileSafeChatSceneGateway(),
+          ),
+          chatConversationExtraGatewayProvider.overrideWithValue(
+            _NoopConversationExtraGateway(),
           ),
         ],
         child: MaterialApp(
@@ -171,6 +176,26 @@ void main() {
       expect(clearCount, 1);
     },
   );
+}
+
+class _NoopConversationExtraGateway implements ChatConversationExtraGateway {
+  @override
+  Future<WKConversationMsgExtra?> load({
+    required String channelId,
+    required int channelType,
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<void> save({
+    required String channelId,
+    required int channelType,
+    required int browseTo,
+    required int keepMessageSeq,
+    required int keepOffsetY,
+    required String draft,
+  }) async {}
 }
 
 class _EmptyMessageListNotifier extends MessageListNotifier {
