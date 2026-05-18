@@ -9,6 +9,27 @@ import 'coordinators/connection_coordinator.dart';
 typedef ImRouteResolver = Future<String> Function(String uid);
 typedef ImConnectionStatusHandler =
     void Function(int status, int? reasonCode, String? extra);
+typedef ImConnectionLogHandler =
+    void Function(Object error, StackTrace stackTrace);
+
+@immutable
+class ImSdkSetupOptions {
+  const ImSdkSetupOptions({
+    required this.credentials,
+    required this.fallbackAddr,
+    required this.resolveAddr,
+    required this.protoVersion,
+    required this.deviceFlag,
+    required this.debug,
+  });
+
+  final ImConnectionCredentials credentials;
+  final String fallbackAddr;
+  final Future<String> Function() resolveAddr;
+  final int protoVersion;
+  final int deviceFlag;
+  final bool debug;
+}
 
 @immutable
 class ImConnectionCredentials {
@@ -149,7 +170,7 @@ class ImConnectionBackoffPolicy {
 }
 
 abstract interface class ImSdkConnectionPort {
-  Future<bool> setup(ImConnectionCredentials credentials);
+  Future<bool> setup(ImSdkSetupOptions options);
 
   void connect();
 
@@ -358,10 +379,41 @@ class ImConnectionService {
     );
   }
 
-  Future<void> connect(ImConnectionCredentials credentials) {
-    throw UnimplementedError(
-      'Skeleton only: move SDK connect and route resolution here.',
+  Future<bool> setupSdk({
+    required ImConnectionCredentials credentials,
+    required String fallbackAddr,
+    required int protoVersion,
+    required int deviceFlag,
+    required bool debug,
+    ImConnectionLogHandler? onRouteResolveError,
+  }) async {
+    _snapshot = _snapshot.copyWith(
+      isInitializing: true,
+      uid: credentials.uid,
+      clearError: true,
+      clearReasonCode: true,
     );
+    return sdk.setup(
+      ImSdkSetupOptions(
+        credentials: credentials,
+        fallbackAddr: fallbackAddr,
+        resolveAddr: () async {
+          try {
+            return await routeResolver(credentials.uid);
+          } catch (error, stackTrace) {
+            onRouteResolveError?.call(error, stackTrace);
+            return fallbackAddr;
+          }
+        },
+        protoVersion: protoVersion,
+        deviceFlag: deviceFlag,
+        debug: debug,
+      ),
+    );
+  }
+
+  void connect() {
+    sdk.connect();
   }
 
   Future<void> reconnect({String reason = 'manual'}) {
@@ -419,7 +471,7 @@ class SkeletonImSdkConnectionPort implements ImSdkConnectionPort {
   const SkeletonImSdkConnectionPort();
 
   @override
-  Future<bool> setup(ImConnectionCredentials credentials) {
+  Future<bool> setup(ImSdkSetupOptions options) {
     throw UnimplementedError('Skeleton only: bind WKIM.setup in migration.');
   }
 

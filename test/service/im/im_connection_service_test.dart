@@ -256,20 +256,126 @@ void main() {
       expect(sdk.unboundKeys, <String>['owned_listener']);
     });
   });
+
+  group('ImConnectionService setup/connect', () {
+    test(
+      'passes SDK setup options and connects through the SDK port',
+      () async {
+        final sdk = _FakeImSdkConnectionPort();
+        final service = ImConnectionService(
+          sdk: sdk,
+          realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+          routeResolver: (_) async => 'wss://route.example/ws',
+        );
+        const credentials = ImConnectionCredentials(
+          uid: 'u1',
+          apiToken: 'api',
+          imToken: 'im',
+          deviceSessionId: 'device',
+        );
+
+        final setupOk = await service.setupSdk(
+          credentials: credentials,
+          fallbackAddr: 'fallback.example:5100',
+          protoVersion: 4,
+          deviceFlag: 7,
+          debug: true,
+        );
+        service.connect();
+
+        expect(setupOk, isTrue);
+        expect(sdk.setupOptions, isNotNull);
+        expect(sdk.setupOptions!.credentials, credentials);
+        expect(sdk.setupOptions!.fallbackAddr, 'fallback.example:5100');
+        expect(sdk.setupOptions!.protoVersion, 4);
+        expect(sdk.setupOptions!.deviceFlag, 7);
+        expect(sdk.setupOptions!.debug, isTrue);
+        expect(await sdk.setupOptions!.resolveAddr(), 'wss://route.example/ws');
+        expect(sdk.connectCount, 1);
+        expect(
+          service.snapshot,
+          const ImConnectionSnapshot(isInitializing: true, uid: 'u1'),
+        );
+      },
+    );
+
+    test(
+      'falls back to the configured address when route resolution fails',
+      () async {
+        final sdk = _FakeImSdkConnectionPort();
+        final capturedErrors = <Object>[];
+        final service = ImConnectionService(
+          sdk: sdk,
+          realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+          routeResolver: (_) async => throw StateError('route failed'),
+        );
+
+        await service.setupSdk(
+          credentials: const ImConnectionCredentials(
+            uid: 'u1',
+            apiToken: 'api',
+            imToken: 'im',
+            deviceSessionId: 'device',
+          ),
+          fallbackAddr: 'fallback.example:5100',
+          protoVersion: 4,
+          deviceFlag: 7,
+          debug: false,
+          onRouteResolveError: (error, stackTrace) {
+            capturedErrors.add(error);
+          },
+        );
+
+        expect(await sdk.setupOptions!.resolveAddr(), 'fallback.example:5100');
+        expect(capturedErrors.single, isA<StateError>());
+      },
+    );
+
+    test('returns false without connecting when SDK setup fails', () async {
+      final sdk = _FakeImSdkConnectionPort()..setupResult = false;
+      final service = ImConnectionService(
+        sdk: sdk,
+        realtimeRuntime: const _FakeImRealtimeRuntimePort(),
+        routeResolver: (_) async => 'wss://route.example/ws',
+      );
+
+      final setupOk = await service.setupSdk(
+        credentials: const ImConnectionCredentials(
+          uid: 'u1',
+          apiToken: 'api',
+          imToken: 'im',
+          deviceSessionId: 'device',
+        ),
+        fallbackAddr: 'fallback.example:5100',
+        protoVersion: 4,
+        deviceFlag: 7,
+        debug: false,
+      );
+
+      expect(setupOk, isFalse);
+      expect(sdk.connectCount, 0);
+    });
+  });
 }
 
 class _FakeImSdkConnectionPort implements ImSdkConnectionPort {
   final boundKeys = <String>[];
   final unboundKeys = <String>[];
   final _listeners = <String, ImConnectionStatusHandler>{};
+  ImSdkSetupOptions? setupOptions;
+  bool setupResult = true;
+  int connectCount = 0;
 
   @override
-  Future<bool> setup(ImConnectionCredentials credentials) async {
-    return true;
+  Future<bool> setup(ImSdkSetupOptions options) async {
+    setupOptions = options;
+    return setupResult;
   }
 
   @override
-  void connect() {}
+  void connect() {
+    connectCount++;
+  }
 
   @override
   void disconnect({required bool isLogout}) {}

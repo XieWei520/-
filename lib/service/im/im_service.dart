@@ -248,17 +248,25 @@ class _WkImSdkConnectionPort implements ImSdkConnectionPort {
   const _WkImSdkConnectionPort();
 
   @override
-  Future<bool> setup(ImConnectionCredentials credentials) async {
-    throw UnimplementedError(
-      'SDK setup remains owned by IMService until the connection init slice.',
-    );
+  Future<bool> setup(ImSdkSetupOptions setupOptions) async {
+    final options =
+        Options.newDefault(
+            setupOptions.credentials.uid,
+            setupOptions.credentials.imToken,
+            addr: setupOptions.fallbackAddr,
+          )
+          ..getAddr = (complete) {
+            setupOptions.resolveAddr().then(complete);
+          }
+          ..protoVersion = setupOptions.protoVersion
+          ..deviceFlag = setupOptions.deviceFlag
+          ..debug = setupOptions.debug;
+    return WKIM.shared.setup(options);
   }
 
   @override
   void connect() {
-    throw UnimplementedError(
-      'SDK connect remains owned by IMService until the connection init slice.',
-    );
+    WKIM.shared.connectionManager.connect();
   }
 
   @override
@@ -499,27 +507,22 @@ class IMService extends StateNotifier<IMServiceState>
     try {
       await _ensureDeviceUuid();
 
-      final options =
-          Options.newDefault(
-              credentials.uid,
-              credentials.imToken,
-              addr: IMConfig.connectAddr,
-            )
-            ..getAddr = (complete) {
-              _resolveConnectAddr(credentials.uid).then(
-                complete,
-                onError: (Object error, StackTrace stackTrace) {
-                  debugPrint('IM route resolve failed: $error');
-                  debugPrint('$stackTrace');
-                  complete(IMConfig.connectAddr);
-                },
-              );
-            }
-            ..protoVersion = IMConfig.protoVersion
-            ..deviceFlag = IMConfig.currentDeviceFlag
-            ..debug = kDebugMode;
-
-      final setupOk = await WKIM.shared.setup(options);
+      final setupOk = await _connectionService.setupSdk(
+        credentials: ImConnectionCredentials(
+          uid: credentials.uid,
+          apiToken: credentials.apiToken,
+          imToken: credentials.imToken,
+          deviceSessionId: credentials.deviceSessionId,
+        ),
+        fallbackAddr: IMConfig.connectAddr,
+        protoVersion: IMConfig.protoVersion,
+        deviceFlag: IMConfig.currentDeviceFlag,
+        debug: kDebugMode,
+        onRouteResolveError: (Object error, StackTrace stackTrace) {
+          debugPrint('IM route resolve failed: $error');
+          debugPrint('$stackTrace');
+        },
+      );
       if (!setupOk) {
         throw StateError('WKIM.setup returned false.');
       }
@@ -555,7 +558,7 @@ class IMService extends StateNotifier<IMServiceState>
         }
       }
 
-      WKIM.shared.connectionManager.connect();
+      _connectionService.connect();
 
       final connected = await _initCompleter!.future.timeout(
         const Duration(seconds: 20),
@@ -1909,7 +1912,7 @@ class IMService extends StateNotifier<IMServiceState>
     unawaited(
       _startSessionRuntime(token: apiToken, deviceSessionId: deviceSessionId),
     );
-    WKIM.shared.connectionManager.connect();
+    _connectionService.connect();
   }
 
   @visibleForTesting

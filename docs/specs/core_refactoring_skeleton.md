@@ -11,7 +11,9 @@ Format: `dart format lib/service/im lib/modules/chat/panes lib/modules/chat/chat
 
 Test: `flutter test test/service/im/im_runtime_provider_graph_test.dart test/modules/chat/chat_page_shell_refactor_preview_test.dart`
 
-Analyze: `flutter analyze lib/service/im/im_connection_service.dart lib/service/im/im_sync_orchestrator.dart lib/service/im/attachment_upload_pipeline.dart lib/service/im/im_notification_bridge.dart lib/service/im/im_service_providers.dart lib/modules/chat/panes lib/modules/chat/chat_page_shell_refactor_preview.dart test/service/im/im_runtime_provider_graph_test.dart test/modules/chat/chat_page_shell_refactor_preview_test.dart`
+Connection migration test: `flutter test test/service/im/im_connection_service_test.dart test/service/im/im_service_test.dart`
+
+Analyze: `flutter analyze lib/service/im/im_connection_service.dart lib/service/im/im_sync_orchestrator.dart lib/service/im/attachment_upload_pipeline.dart lib/service/im/im_notification_bridge.dart lib/service/im/im_service_providers.dart lib/service/im/im_service.dart lib/modules/chat/panes lib/modules/chat/chat_page_shell_refactor_preview.dart test/service/im/im_runtime_provider_graph_test.dart test/service/im/im_connection_service_test.dart test/service/im/im_service_test.dart test/modules/chat/chat_page_shell_refactor_preview_test.dart`
 
 ## Project Structure
 `lib/service/im/` contains the IM runtime service skeletons and Provider Graph.
@@ -56,6 +58,7 @@ Behavioral migration tests come later when production logic moves out of the old
 - Riverpod Provider Graph composes all five services.
 - The preview shell builds with `ChatHeaderPane`, `ChatViewportPane`, `ChatComposerPane`, and `ChatOverlayCoordinator`.
 - Existing production entry points are unchanged.
+- Connection listener registration, SDK setup, route fallback, and connect dispatch can be routed through `ImConnectionService` without moving database readiness, sync callbacks, attachment upload, or notification dispatch.
 
 ## Open Questions
 - After review, decide whether to migrate `IMService` by connection lifecycle first or by SDK callback group first.
