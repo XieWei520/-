@@ -13,6 +13,7 @@ import 'package:wukong_im_app/data/providers/conversation_provider.dart';
 import 'package:wukong_im_app/modules/chat/chat_action_definition.dart';
 import 'package:wukong_im_app/modules/chat/chat_action_dispatcher.dart';
 import 'package:wukong_im_app/modules/chat/chat_composer_controller.dart';
+import 'package:wukong_im_app/modules/chat/chat_conversation_extra_gateway.dart';
 import 'package:wukong_im_app/modules/chat/chat_desktop_drop_target.dart';
 import 'package:wukong_im_app/modules/chat/chat_media_action_service.dart';
 import 'package:wukong_im_app/modules/chat/chat_message_favorite_registry.dart';
@@ -43,12 +44,23 @@ import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
+import 'fakes/noop_chat_conversation_extra_gateway.dart';
+
 Override _realtimeTelemetryNoTimerOverride() {
   return realtimeRolloutTelemetryProvider.overrideWith((ref) {
     final telemetry = RealtimeRolloutTelemetry(flushInterval: Duration.zero);
     ref.onDispose(telemetry.dispose);
     return telemetry;
   });
+}
+
+List<Override> _chatPageTestOverrides() {
+  return <Override>[
+    _realtimeTelemetryNoTimerOverride(),
+    chatConversationExtraGatewayProvider.overrideWithValue(
+      NoopChatConversationExtraGateway(),
+    ),
+  ];
 }
 
 void main() {
@@ -58,7 +70,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -97,7 +109,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -127,7 +139,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            _realtimeTelemetryNoTimerOverride(),
+            ..._chatPageTestOverrides(),
             messageListProvider.overrideWith(
               (ref, session) => _EmptyMessageListNotifier(
                 session.channelId,
@@ -177,7 +189,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -228,7 +240,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -267,7 +279,7 @@ void main() {
     (tester) async {
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -352,7 +364,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -425,7 +437,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            _realtimeTelemetryNoTimerOverride(),
+            ..._chatPageTestOverrides(),
             messageListProvider.overrideWith(
               (ref, session) => _StaticMessageListNotifier(
                 session.channelId,
@@ -511,7 +523,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, providedSession) => providedSession == session
                 ? tracker
@@ -592,7 +604,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, providedSession) => _StaticMessageListNotifier(
               providedSession.channelId,
@@ -686,7 +698,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, providedSession) => _StaticMessageListNotifier(
               providedSession.channelId,
@@ -756,7 +768,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            _realtimeTelemetryNoTimerOverride(),
+            ..._chatPageTestOverrides(),
             messageListProvider.overrideWith(
               (ref, session) => _StaticMessageListNotifier(
                 session.channelId,
@@ -851,7 +863,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            _realtimeTelemetryNoTimerOverride(),
+            ..._chatPageTestOverrides(),
             messageListProvider.overrideWith(
               (ref, session) => _StaticMessageListNotifier(
                 session.channelId,
@@ -937,7 +949,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            _realtimeTelemetryNoTimerOverride(),
+            ..._chatPageTestOverrides(),
             messageListProvider.overrideWith(
               (ref, session) => _StaticMessageListNotifier(
                 session.channelId,
@@ -1023,7 +1035,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -1111,7 +1123,7 @@ void main() {
 
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -1223,7 +1235,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -1313,7 +1325,7 @@ void main() {
   ) async {
     final container = ProviderContainer(
       overrides: [
-        _realtimeTelemetryNoTimerOverride(),
+        ..._chatPageTestOverrides(),
         messageListProvider.overrideWith(
           (ref, session) =>
               _EmptyMessageListNotifier(session.channelId, session.channelType),
@@ -1376,7 +1388,7 @@ void main() {
       addTearDown(gateway.dispose);
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -1463,7 +1475,7 @@ void main() {
     addTearDown(gateway.dispose);
     final container = ProviderContainer(
       overrides: [
-        _realtimeTelemetryNoTimerOverride(),
+        ..._chatPageTestOverrides(),
         messageListProvider.overrideWith(
           (ref, session) => _StaticMessageListNotifier(
             session.channelId,
@@ -1522,7 +1534,7 @@ void main() {
     addTearDown(gateway.dispose);
     final container = ProviderContainer(
       overrides: [
-        _realtimeTelemetryNoTimerOverride(),
+        ..._chatPageTestOverrides(),
         messageListProvider.overrideWith(
           (ref, session) => _StaticMessageListNotifier(
             session.channelId,
@@ -1584,7 +1596,7 @@ void main() {
     addTearDown(gateway.dispose);
     final container = ProviderContainer(
       overrides: [
-        _realtimeTelemetryNoTimerOverride(),
+        ..._chatPageTestOverrides(),
         messageListProvider.overrideWith(
           (ref, session) => _StaticMessageListNotifier(
             session.channelId,
@@ -1639,7 +1651,7 @@ void main() {
     addTearDown(gateway.dispose);
     final container = ProviderContainer(
       overrides: [
-        _realtimeTelemetryNoTimerOverride(),
+        ..._chatPageTestOverrides(),
         messageListProvider.overrideWith(
           (ref, session) => _StaticMessageListNotifier(
             session.channelId,
@@ -1705,7 +1717,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            _realtimeTelemetryNoTimerOverride(),
+            ..._chatPageTestOverrides(),
             messageListProvider.overrideWith(
               (ref, session) => _EmptyMessageListNotifier(
                 session.channelId,
@@ -1772,7 +1784,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            _realtimeTelemetryNoTimerOverride(),
+            ..._chatPageTestOverrides(),
             messageListProvider.overrideWith(
               (ref, session) => _EmptyMessageListNotifier(
                 session.channelId,
@@ -1862,7 +1874,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _EmptyMessageListNotifier(
               session.channelId,
@@ -1934,7 +1946,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            _realtimeTelemetryNoTimerOverride(),
+            ..._chatPageTestOverrides(),
             messageListProvider.overrideWith(
               (ref, session) => _EmptyMessageListNotifier(
                 session.channelId,
@@ -2016,7 +2028,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
-          _realtimeTelemetryNoTimerOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, session) => _StaticMessageListNotifier(
               session.channelId,
@@ -2312,7 +2324,7 @@ Future<void> _pumpVoiceScene(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        _realtimeTelemetryNoTimerOverride(),
+        ..._chatPageTestOverrides(),
         messageListProvider.overrideWith(
           (ref, session) =>
               _EmptyMessageListNotifier(session.channelId, session.channelType),

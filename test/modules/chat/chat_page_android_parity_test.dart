@@ -14,6 +14,7 @@ import 'package:wukong_im_app/data/models/wk_custom_content.dart';
 import 'package:wukong_im_app/data/providers/conversation_provider.dart';
 import 'package:wukong_im_app/data/providers/user_provider.dart';
 import 'package:wukong_im_app/modules/conversation/conversation_activity_registry.dart';
+import 'package:wukong_im_app/modules/chat/chat_conversation_extra_gateway.dart';
 import 'package:wukong_im_app/modules/chat/chat_flame_message_runtime.dart';
 import 'package:wukong_im_app/modules/chat/chat_page.dart';
 import 'package:wukong_im_app/modules/chat/chat_action_dispatcher.dart';
@@ -60,12 +61,23 @@ import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
+import 'fakes/noop_chat_conversation_extra_gateway.dart';
+
 Override _testRealtimeTelemetryOverride() {
   return realtimeRolloutTelemetryProvider.overrideWith((ref) {
     final telemetry = RealtimeRolloutTelemetry(flushInterval: Duration.zero);
     ref.onDispose(telemetry.dispose);
     return telemetry;
   });
+}
+
+List<Override> _chatPageTestOverrides() {
+  return <Override>[
+    _testRealtimeTelemetryOverride(),
+    chatConversationExtraGatewayProvider.overrideWithValue(
+      NoopChatConversationExtraGateway(),
+    ),
+  ];
 }
 
 void main() {
@@ -104,7 +116,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
-        _testRealtimeTelemetryOverride(),
+        ..._chatPageTestOverrides(),
         messageListProvider.overrideWith(
           (ref, session) =>
               _EmptyMessageListNotifier(session.channelId, session.channelType),
@@ -523,7 +535,7 @@ void main() {
         ..messageContent = WKTextContent('hello kernel');
       final container = ProviderContainer(
         overrides: [
-          _testRealtimeTelemetryOverride(),
+          ..._chatPageTestOverrides(),
           conversationPatchTelemetryProvider.overrideWithValue(
             _NoopConversationPatchTelemetry(),
           ),
@@ -591,7 +603,7 @@ void main() {
         ..messageContent = WKTextContent('keyboard rebuild guard');
       final container = ProviderContainer(
         overrides: [
-          _testRealtimeTelemetryOverride(),
+          ..._chatPageTestOverrides(),
           conversationPatchTelemetryProvider.overrideWithValue(
             _NoopConversationPatchTelemetry(),
           ),
@@ -662,7 +674,7 @@ void main() {
       final readCalls = <List<String>>[];
       final container = ProviderContainer(
         overrides: [
-          _testRealtimeTelemetryOverride(),
+          ..._chatPageTestOverrides(),
           conversationPatchTelemetryProvider.overrideWithValue(
             _NoopConversationPatchTelemetry(),
           ),
@@ -723,7 +735,7 @@ void main() {
       final flameRuntime = _SpyChatFlameMessageRuntime();
       final container = ProviderContainer(
         overrides: [
-          _testRealtimeTelemetryOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, providedSession) => _EmptyMessageListNotifier(
               providedSession.channelId,
@@ -771,7 +783,7 @@ void main() {
 
       final container = ProviderContainer(
         overrides: [
-          _testRealtimeTelemetryOverride(),
+          ..._chatPageTestOverrides(),
           messageListProvider.overrideWith(
             (ref, providedSession) => _EmptyMessageListNotifier(
               providedSession.channelId,
@@ -863,7 +875,7 @@ void main() {
         ..messageContent = imageContent;
       final container = ProviderContainer(
         overrides: [
-          _testRealtimeTelemetryOverride(),
+          ..._chatPageTestOverrides(),
           conversationPatchTelemetryProvider.overrideWithValue(
             _NoopConversationPatchTelemetry(),
           ),
