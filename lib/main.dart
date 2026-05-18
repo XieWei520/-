@@ -7,6 +7,7 @@ import 'app/app.dart';
 import 'app/bootstrap/app_startup.dart';
 import 'app/bootstrap/error_reporting.dart';
 import 'app/bootstrap/wkim_runtime_mode.dart';
+import 'core/cache/media_cache_manager.dart';
 import 'core/config/im_config.dart';
 import 'core/utils/storage_utils.dart';
 import 'wk_foundation/logging/app_logger.dart';
@@ -20,6 +21,7 @@ export 'app/app.dart' show WuKongApp, WuKongIMApp;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaCacheManager.instance.initialize();
   final environment = AppEnvironment.detect();
   configureWkImRuntimeMode(environment);
   const debugDeviceFlagOverride = int.fromEnvironment(
