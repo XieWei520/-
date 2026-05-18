@@ -9,7 +9,6 @@ import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
-import '../../core/config/im_config.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../data/models/call.dart';
 import '../../data/models/chat_session.dart';
@@ -21,7 +20,6 @@ import '../../service/api/group_api.dart';
 import '../../service/api/message_api.dart';
 import '../../service/api/user_api.dart';
 import '../../wukong_uikit/group/group_detail_page.dart';
-import '../customer_service/customer_service_badge.dart';
 import '../customer_service/customer_service_identity.dart';
 import '../search/presentation/chat_search_entry_page.dart';
 import '../search/presentation/message_record_search_page.dart';
@@ -73,16 +71,6 @@ bool shouldUseWarmWorkbenchStyle() {
   return PlatformUtils.isWeb || PlatformUtils.isDesktop;
 }
 
-const String _androidSystemTeamId = 'u_10000';
-const String _androidFileHelperId = 'fileHelper';
-const String _fileHelperTitle = '\u6587\u4ef6\u4f20\u8f93\u52a9\u624b';
-const String _systemTitle = '\u7cfb\u7edf\u901a\u77e5';
-const String _officialTag = '\u5b98\u65b9';
-const String _robotTag = '\u673a\u5668\u4eba';
-const String _onlineSuffix = '\u5728\u7ebf';
-const String _recentMinutesSuffix = '\u5206\u949f';
-const String _groupMembersSuffix = '\u4e2a\u6210\u5458';
-const String _groupOnlineSuffix = '\u4eba\u5728\u7ebf';
 const String _emptyMessageText = '\u6682\u65e0\u6d88\u606f';
 
 SnackBar _buildLiquidSnackBar(String message, {EdgeInsetsGeometry? margin}) {
@@ -299,7 +287,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     if (widget.channelType != WKChannelType.personal) {
       return false;
     }
-    return _androidFixedChatTitle(widget.channelId, widget.channelType) == null;
+    return !isAndroidFixedChat(widget.channelId, widget.channelType);
   }
 
   Future<WKChannel?> _loadLocalChannel() async {
@@ -541,7 +529,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     if (widget.channelType != WKChannelType.personal) {
       return false;
     }
-    return _androidFixedChatTitle(widget.channelId, widget.channelType) == null;
+    return !isAndroidFixedChat(widget.channelId, widget.channelType);
   }
 
   Future<void> _openPinnedMessageSheet() async {
@@ -642,13 +630,20 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
 
   @override
   Widget build(BuildContext context) {
-    final title = _resolveTitle();
-    final headerVipLevel = _resolveHeaderVipLevel(
-      ref.watch(
-        friendListProvider.select(
-          (state) => state.valueOrNull ?? const <Friend>[],
-        ),
+    final friends = ref.watch(
+      friendListProvider.select(
+        (state) => state.valueOrNull ?? const <Friend>[],
       ),
+    );
+    final headerState = resolveChatHeaderPaneState(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+      channelName: widget.channelName,
+      channelCategory: widget.channelCategory,
+      channel: _channel,
+      initialVipLevel: widget.initialVipLevel,
+      friends: friends,
+      showSearchAction: _showSearchAction(context),
     );
     final selection = ref.watch(chatSelectionControllerProvider(_chatSession));
     final activityState = _activityState;
@@ -664,8 +659,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     final useWarmWorkbenchStyle = shouldUseWarmWorkbenchStyle();
     final isMobileWarmStyle =
         PlatformUtils.isMobile && MediaQuery.sizeOf(context).width < 420;
-    final showSearchAction =
-        !isMobileWarmStyle || MediaQuery.sizeOf(context).width >= 420;
     final useLiquidShell = useWarmWorkbenchStyle;
     final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final liquidBackgroundColor = isDarkTheme
@@ -691,16 +684,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         resizeToAvoidBottomInset: false,
         appBar: ChatHeaderPane(
           session: _chatSession,
-          state: ChatHeaderPaneState(
-            title: title,
-            subtitle: _primarySubtitle(),
-            secondarySubtitle: _secondarySubtitle(),
-            avatarUrl: _channel?.avatar,
-            vipLevel: headerVipLevel,
-            tagWidgets: _buildTags(),
-            isGroup: widget.channelType == WKChannelType.group,
-            showSearchAction: showSearchAction,
-          ),
+          state: headerState,
           productionChrome: true,
           isMobileWarmStyle: isMobileWarmStyle,
           useLiquidShell: useLiquidShell,
@@ -890,19 +874,12 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   String _resolveTitle() {
-    final fixed = _androidFixedChatTitle(widget.channelId, widget.channelType);
-    if (fixed != null) {
-      return fixed;
-    }
-    final channelName = _channel?.channelName.trim();
-    if (channelName != null && channelName.isNotEmpty) {
-      return channelName;
-    }
-    final inputName = widget.channelName?.trim();
-    if (inputName != null && inputName.isNotEmpty) {
-      return inputName;
-    }
-    return widget.channelId;
+    return resolveChatHeaderTitle(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+      channelName: widget.channelName,
+      channel: _channel,
+    );
   }
 
   WKChannel? _participantFallbackChannel() {
@@ -915,7 +892,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     }
 
     final title = _firstNonEmptyText([
-      _androidFixedChatTitle(widget.channelId, widget.channelType),
+      androidFixedChatTitle(widget.channelId, widget.channelType),
       widget.channelName,
     ]);
     if (title.isEmpty) {
@@ -934,153 +911,21 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     return '';
   }
 
-  int _resolveHeaderVipLevel(List<Friend> friends) {
-    final supportsHeaderVip =
-        widget.channelType == WKChannelType.personal ||
-        widget.channelType == WKChannelType.customerService;
-    if (!supportsHeaderVip) {
-      return 0;
-    }
-    if (_androidFixedChatTitle(widget.channelId, widget.channelType) != null) {
-      return 0;
-    }
-    if (widget.initialVipLevel != 0) {
-      return widget.initialVipLevel;
-    }
-
-    if (widget.channelType == WKChannelType.personal) {
-      final channelId = widget.channelId.trim();
-      for (final friend in friends) {
-        if (friend.uid.trim() == channelId) {
-          return friend.vipLevel;
-        }
-      }
-    }
-
-    return readChannelExtraInt(_channel?.remoteExtraMap, const [
-          'vip_level',
-          'vipLevel',
-        ]) ??
-        readChannelExtraInt(_channel?.localExtra, const [
-          'vip_level',
-          'vipLevel',
-        ]) ??
-        0;
-  }
-
   bool _showCallActions() {
     if (widget.channelType != WKChannelType.personal) {
       return false;
     }
-    return widget.channelId != _androidSystemTeamId &&
-        widget.channelId != _androidFileHelperId;
+    return !isAndroidFixedChat(widget.channelId, widget.channelType);
   }
 
   bool _showGroupCallAction() {
     return widget.channelType == WKChannelType.group;
   }
 
-  List<Widget> _buildTags() {
-    final tags = <Widget>[];
-    final channelCategory = normalizePublicAccountCategory(_channel?.category);
-    final widgetCategory = normalizePublicAccountCategory(
-      widget.channelCategory,
-    );
-    final normalized = (channelCategory?.isNotEmpty ?? false)
-        ? channelCategory!
-        : widgetCategory;
-    if (normalized == 'system') {
-      tags.add(const ChatHeaderTag(label: _officialTag));
-    }
-    if (isCustomerServiceCategory(normalized)) {
-      tags.add(
-        const CustomerServiceBadge(
-          key: ValueKey<String>('chat-header-customer-service-badge'),
-          compact: true,
-        ),
-      );
-    }
-    if ((_channel?.robot ?? 0) == 1) {
-      tags.add(const ChatHeaderTag(label: _robotTag));
-    }
-    return tags;
-  }
-
-  String? _primarySubtitle() {
-    if (_channel == null) {
-      return null;
-    }
-    if (widget.channelType == WKChannelType.personal) {
-      if (_channel!.online == 1) {
-        return '${_deviceLabel(_channel!.deviceFlag)}$_onlineSuffix';
-      }
-      final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final lastOffline = _channel!.lastOffline;
-      if (lastOffline > 0) {
-        final minutes = (nowSeconds - lastOffline) ~/ 60;
-        if (minutes > 0 && minutes <= 60) {
-          return '$minutes$_recentMinutesSuffix';
-        }
-      }
-      return null;
-    }
-
-    if (widget.channelType == WKChannelType.group) {
-      final memberCount = _readExtraInt(_channel!.remoteExtraMap, const [
-        'memberCount',
-        'member_count',
-      ]);
-      if (memberCount != null && memberCount > 0) {
-        return '$memberCount$_groupMembersSuffix';
-      }
-    }
-    return null;
-  }
-
-  String? _secondarySubtitle() {
-    if (_channel == null || widget.channelType != WKChannelType.group) {
-      return null;
-    }
-    final onlineCount = _readExtraInt(_channel!.remoteExtraMap, const [
-      'onlineCount',
-      'online_count',
-    ]);
-    if (onlineCount != null && onlineCount > 0) {
-      return '$onlineCount$_groupOnlineSuffix';
-    }
-    return null;
-  }
-
-  static int? _readExtraInt(dynamic map, List<String> keys) {
-    if (map is! Map) {
-      return null;
-    }
-    for (final key in keys) {
-      final value = map[key];
-      if (value is int) {
-        return value;
-      }
-      if (value is num) {
-        return value.toInt();
-      }
-      if (value is String) {
-        final parsed = int.tryParse(value);
-        if (parsed != null) {
-          return parsed;
-        }
-      }
-    }
-    return null;
-  }
-
-  static String _deviceLabel(int deviceFlag) {
-    if (deviceFlag == IMConfig.deviceFlagWeb) {
-      return 'Web';
-    }
-    if (deviceFlag == IMConfig.deviceFlagPC) {
-      return 'PC';
-    }
-    return '\u624b\u673a';
+  bool _showSearchAction(BuildContext context) {
+    final isMobileWarmStyle =
+        PlatformUtils.isMobile && MediaQuery.sizeOf(context).width < 420;
+    return !isMobileWarmStyle || MediaQuery.sizeOf(context).width >= 420;
   }
 
   void _handleViewportPersistenceSnapshotChanged(
@@ -1291,17 +1136,4 @@ class _ResolvedPinnedMessage {
   final PinnedMessageEntry entry;
   final WKMsg message;
   final String previewText;
-}
-
-String? _androidFixedChatTitle(String channelId, int channelType) {
-  if (channelType != WKChannelType.personal) {
-    return null;
-  }
-  if (channelId == _androidSystemTeamId) {
-    return _systemTitle;
-  }
-  if (channelId == _androidFileHelperId) {
-    return _fileHelperTitle;
-  }
-  return null;
 }

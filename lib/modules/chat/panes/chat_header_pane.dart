@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wukongimfluttersdk/entity/channel.dart';
+import 'package:wukongimfluttersdk/type/const.dart';
 
+import '../../../core/config/im_config.dart';
+import '../../../data/models/friend.dart';
 import '../../../data/models/chat_session.dart';
+import '../../../modules/customer_service/customer_service_badge.dart';
+import '../../../modules/customer_service/customer_service_identity.dart';
 import '../../../widgets/liquid_glass_panel.dart';
 import '../../../widgets/liquid_glass_tokens.dart';
 import '../../../widgets/wk_colors.dart';
@@ -12,7 +18,19 @@ import '../../../modules/vip/vip_badge.dart';
 import '../../../widgets/wk_avatar.dart';
 import '../chat_scene_providers.dart';
 import '../chat_search_mode_controller.dart';
+import '../chat_channel_settings.dart';
 import '../widgets/chat_search_mode_bar.dart';
+
+const String androidSystemTeamId = 'u_10000';
+const String androidFileHelperId = 'fileHelper';
+const String _fileHelperTitle = '\u6587\u4ef6\u4f20\u8f93\u52a9\u624b';
+const String _systemTitle = '\u7cfb\u7edf\u901a\u77e5';
+const String _officialTag = '\u5b98\u65b9';
+const String _robotTag = '\u673a\u5668\u4eba';
+const String _onlineSuffix = '\u5728\u7ebf';
+const String _recentMinutesSuffix = '\u5206\u949f';
+const String _groupMembersSuffix = '\u4e2a\u6210\u5458';
+const String _groupOnlineSuffix = '\u4eba\u5728\u7ebf';
 
 @immutable
 class ChatHeaderPaneState {
@@ -37,6 +55,218 @@ class ChatHeaderPaneState {
   final List<Widget> tagWidgets;
   final bool isGroup;
   final bool showSearchAction;
+}
+
+ChatHeaderPaneState resolveChatHeaderPaneState({
+  required String channelId,
+  required int channelType,
+  String? channelName,
+  String? channelCategory,
+  WKChannel? channel,
+  required int initialVipLevel,
+  required List<Friend> friends,
+  required bool showSearchAction,
+  DateTime? now,
+}) {
+  return ChatHeaderPaneState(
+    title: resolveChatHeaderTitle(
+      channelId: channelId,
+      channelType: channelType,
+      channelName: channelName,
+      channel: channel,
+    ),
+    subtitle: _resolvePrimarySubtitle(
+      channel: channel,
+      channelType: channelType,
+      now: now,
+    ),
+    secondarySubtitle: _resolveSecondarySubtitle(
+      channel: channel,
+      channelType: channelType,
+    ),
+    avatarUrl: channel?.avatar,
+    vipLevel: _resolveHeaderVipLevel(
+      channelId: channelId,
+      channelType: channelType,
+      channel: channel,
+      initialVipLevel: initialVipLevel,
+      friends: friends,
+    ),
+    tagWidgets: _buildHeaderTags(
+      channel: channel,
+      channelCategory: channelCategory,
+    ),
+    isGroup: channelType == WKChannelType.group,
+    showSearchAction: showSearchAction,
+  );
+}
+
+String resolveChatHeaderTitle({
+  required String channelId,
+  required int channelType,
+  String? channelName,
+  WKChannel? channel,
+}) {
+  final fixed = androidFixedChatTitle(channelId, channelType);
+  if (fixed != null) {
+    return fixed;
+  }
+  final loadedName = channel?.channelName.trim();
+  if (loadedName != null && loadedName.isNotEmpty) {
+    return loadedName;
+  }
+  final inputName = channelName?.trim();
+  if (inputName != null && inputName.isNotEmpty) {
+    return inputName;
+  }
+  return channelId;
+}
+
+String? androidFixedChatTitle(String channelId, int channelType) {
+  if (channelType != WKChannelType.personal) {
+    return null;
+  }
+  if (channelId == androidSystemTeamId) {
+    return _systemTitle;
+  }
+  if (channelId == androidFileHelperId) {
+    return _fileHelperTitle;
+  }
+  return null;
+}
+
+bool isAndroidFixedChat(String channelId, int channelType) {
+  return androidFixedChatTitle(channelId, channelType) != null;
+}
+
+int _resolveHeaderVipLevel({
+  required String channelId,
+  required int channelType,
+  required WKChannel? channel,
+  required int initialVipLevel,
+  required List<Friend> friends,
+}) {
+  final supportsHeaderVip =
+      channelType == WKChannelType.personal ||
+      channelType == WKChannelType.customerService;
+  if (!supportsHeaderVip || isAndroidFixedChat(channelId, channelType)) {
+    return 0;
+  }
+  if (initialVipLevel != 0) {
+    return initialVipLevel;
+  }
+
+  if (channelType == WKChannelType.personal) {
+    final normalizedChannelId = channelId.trim();
+    for (final friend in friends) {
+      if (friend.uid.trim() == normalizedChannelId) {
+        return friend.vipLevel;
+      }
+    }
+  }
+
+  return readChannelExtraInt(channel?.remoteExtraMap, const [
+        'vip_level',
+        'vipLevel',
+      ]) ??
+      readChannelExtraInt(channel?.localExtra, const [
+        'vip_level',
+        'vipLevel',
+      ]) ??
+      0;
+}
+
+List<Widget> _buildHeaderTags({
+  required WKChannel? channel,
+  required String? channelCategory,
+}) {
+  final tags = <Widget>[];
+  final channelNormalizedCategory = normalizePublicAccountCategory(
+    channel?.category,
+  );
+  final inputNormalizedCategory = normalizePublicAccountCategory(
+    channelCategory,
+  );
+  final normalized = (channelNormalizedCategory?.isNotEmpty ?? false)
+      ? channelNormalizedCategory!
+      : inputNormalizedCategory;
+  if (normalized == 'system') {
+    tags.add(const ChatHeaderTag(label: _officialTag));
+  }
+  if (isCustomerServiceCategory(normalized)) {
+    tags.add(
+      const CustomerServiceBadge(
+        key: ValueKey<String>('chat-header-customer-service-badge'),
+        compact: true,
+      ),
+    );
+  }
+  if ((channel?.robot ?? 0) == 1) {
+    tags.add(const ChatHeaderTag(label: _robotTag));
+  }
+  return tags;
+}
+
+String? _resolvePrimarySubtitle({
+  required WKChannel? channel,
+  required int channelType,
+  DateTime? now,
+}) {
+  if (channel == null) {
+    return null;
+  }
+  if (channelType == WKChannelType.personal) {
+    if (channel.online == 1) {
+      return '${_deviceLabel(channel.deviceFlag)}$_onlineSuffix';
+    }
+    final nowSeconds = (now ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
+    final lastOffline = channel.lastOffline;
+    if (lastOffline > 0) {
+      final minutes = (nowSeconds - lastOffline) ~/ 60;
+      if (minutes > 0 && minutes <= 60) {
+        return '$minutes$_recentMinutesSuffix';
+      }
+    }
+    return null;
+  }
+
+  if (channelType == WKChannelType.group) {
+    final memberCount = readChannelExtraInt(channel.remoteExtraMap, const [
+      'memberCount',
+      'member_count',
+    ]);
+    if (memberCount != null && memberCount > 0) {
+      return '$memberCount$_groupMembersSuffix';
+    }
+  }
+  return null;
+}
+
+String? _resolveSecondarySubtitle({
+  required WKChannel? channel,
+  required int channelType,
+}) {
+  if (channel == null || channelType != WKChannelType.group) {
+    return null;
+  }
+  final onlineCount = readChannelExtraInt(channel.remoteExtraMap, const [
+    'onlineCount',
+    'online_count',
+  ]);
+  if (onlineCount != null && onlineCount > 0) {
+    return '$onlineCount$_groupOnlineSuffix';
+  }
+  return null;
+}
+
+String _deviceLabel(int deviceFlag) {
+  if (deviceFlag == IMConfig.deviceFlagWeb) {
+    return 'Web';
+  }
+  if (deviceFlag == IMConfig.deviceFlagPC) {
+    return 'PC';
+  }
+  return '\u624b\u673a';
 }
 
 class ChatHeaderPane extends ConsumerWidget implements PreferredSizeWidget {
