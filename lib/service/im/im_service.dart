@@ -14,10 +14,6 @@ import 'package:wukongimfluttersdk/db/wk_db_helper.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/cmd.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
-import 'package:wukongimfluttersdk/model/wk_image_content.dart';
-import 'package:wukongimfluttersdk/model/wk_media_message_content.dart';
-import 'package:wukongimfluttersdk/model/wk_video_content.dart';
-import 'package:wukongimfluttersdk/model/wk_voice_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
@@ -49,9 +45,7 @@ import '../api/im_sync_api.dart';
 import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'im_word_sync_models.dart';
-import 'local_attachment_file.dart';
 import 'attachment_upload_pipeline.dart';
-import 'coordinators/attachment_pipeline.dart' as attachment_pipeline;
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
 import 'coordinators/message_sync_coordinator.dart' as message_sync_coordinator;
 import 'im_connection_service.dart';
@@ -79,6 +73,7 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
     invalidateProvider: ref.invalidate,
     readProvider: ref.read,
     notificationBridge: ref.read(imNotificationBridgeProvider),
+    attachmentUploadPipeline: ref.read(attachmentUploadPipelineProvider),
     realtimeRolloutTelemetry: ref.read(realtimeRolloutTelemetryProvider),
   );
 });
@@ -351,6 +346,7 @@ class IMService extends StateNotifier<IMServiceState>
     ImConnectionService? connectionService,
     ImNotificationBridge? notificationBridge,
     ImSyncOrchestrator? syncOrchestrator,
+    AttachmentUploadPipeline? attachmentUploadPipeline,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
        _ownsRealtimeRolloutTelemetry = realtimeRolloutTelemetry == null,
@@ -385,6 +381,9 @@ class IMService extends StateNotifier<IMServiceState>
           reminderApi: ReminderApi.instance,
           conversationDraftApi: ConversationDraftApi.instance,
         );
+    _attachmentUploadPipeline =
+        attachmentUploadPipeline ??
+        AttachmentUploadPipeline(fileApi: FileApi.instance);
     CallCoordinator.instance.setGatewayDegradationReader(
       _sessionRuntime.isGatewayDegradedFor,
     );
@@ -443,13 +442,7 @@ class IMService extends StateNotifier<IMServiceState>
   final message_sync_coordinator.MessageSyncCoordinator
   _messageSyncCoordinator =
       const message_sync_coordinator.MessageSyncCoordinator();
-  final attachment_pipeline.AttachmentPipeline _attachmentPipeline =
-      const attachment_pipeline.AttachmentPipeline();
-  late final AttachmentUploadPipeline _attachmentUploadPipeline =
-      AttachmentUploadPipeline(
-        fileApi: FileApi.instance,
-        legacyUploader: _uploadAttachment,
-      );
+  late final AttachmentUploadPipeline _attachmentUploadPipeline;
 
   void registerVipExpiredHandler({
     required String key,
@@ -1402,115 +1395,6 @@ class IMService extends StateNotifier<IMServiceState>
     final deviceUuid = const Uuid().v4().replaceAll('-', '');
     await StorageUtils.setDeviceId(deviceUuid);
     return deviceUuid;
-  }
-
-  Future<bool> _uploadAttachment(WKMsg wkMsg) async {
-    final content = wkMsg.messageContent;
-    if (content == null) {
-      return false;
-    }
-
-    if (content is WKVideoContent) {
-      final uploadedVideo = await _ensureMediaContentUploaded(content, wkMsg);
-      if (!uploadedVideo) {
-        return false;
-      }
-      if (content.cover.trim().isEmpty) {
-        final coverLocalPath = content.coverLocalPath.trim();
-        if (coverLocalPath.isNotEmpty) {
-          if (!await localAttachmentFileExists(coverLocalPath)) {
-            return false;
-          }
-          content.cover = await FileApi.instance.uploadChatFile(
-            filePath: coverLocalPath,
-            channelId: wkMsg.channelID,
-            channelType: wkMsg.channelType,
-          );
-        }
-      }
-      wkMsg.messageContent = content;
-      return content.url.trim().isNotEmpty;
-    }
-
-    if (content is WKImageContent || content is WKVoiceContent) {
-      final media = content as WKMediaMessageContent;
-      final uploaded = await _ensureMediaContentUploaded(media, wkMsg);
-      wkMsg.messageContent = media;
-      return uploaded;
-    }
-
-    if (content is WKFileContent) {
-      final uploaded = await _ensureFileContentUploaded(content, wkMsg);
-      wkMsg.messageContent = content;
-      return uploaded;
-    }
-
-    if (content is WKMediaMessageContent) {
-      final uploaded = await _ensureMediaContentUploaded(content, wkMsg);
-      wkMsg.messageContent = content;
-      return uploaded;
-    }
-
-    return true;
-  }
-
-  Future<bool> _ensureMediaContentUploaded(
-    WKMediaMessageContent content,
-    WKMsg wkMsg,
-  ) async {
-    if (content.url.trim().isNotEmpty) {
-      return true;
-    }
-
-    final localPath = content.localPath.trim();
-    if (localPath.isEmpty) {
-      return false;
-    }
-
-    if (!await localAttachmentFileExists(localPath)) {
-      return false;
-    }
-
-    final uploadedUrl = await FileApi.instance.uploadChatFile(
-      filePath: localPath,
-      channelId: wkMsg.channelID,
-      channelType: wkMsg.channelType,
-    );
-    content.url = uploadedUrl;
-    return uploadedUrl.trim().isNotEmpty;
-  }
-
-  Future<bool> _ensureFileContentUploaded(
-    WKFileContent content,
-    WKMsg wkMsg,
-  ) async {
-    if (content.url.trim().isNotEmpty) {
-      return true;
-    }
-
-    final localPath = content.localPath.trim();
-    if (localPath.isEmpty) {
-      return false;
-    }
-
-    if (!await localAttachmentFileExists(localPath)) {
-      return false;
-    }
-
-    final uploadedUrl = await FileApi.instance.uploadChatFile(
-      filePath: localPath,
-      channelId: wkMsg.channelID,
-      channelType: wkMsg.channelType,
-    );
-    content.url = uploadedUrl;
-    _attachmentPipeline.normalizeFileMetadata(
-      content,
-      localPath: localPath,
-      inferredSize: content.size > 0
-          ? content.size
-          : await localAttachmentFileLength(localPath),
-    );
-    return uploadedUrl.trim().isNotEmpty;
   }
 
   Map<String, dynamic> _asMap(dynamic raw) {
