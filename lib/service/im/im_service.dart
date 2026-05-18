@@ -55,6 +55,7 @@ import 'coordinators/attachment_pipeline.dart' as attachment_pipeline;
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
 import 'coordinators/message_sync_coordinator.dart' as message_sync_coordinator;
 import 'im_connection_service.dart';
+import 'im_sync_orchestrator.dart';
 import 'message_delivery_service.dart';
 import 'message_outbox.dart';
 
@@ -659,8 +660,7 @@ class IMService extends StateNotifier<IMServiceState>
             deviceUuid: deviceUuid,
           ),
         );
-        unawaited(_syncConversationExtras(reason: 'conversation_sync'));
-        unawaited(_syncOfflineCommandMessages(reason: 'conversation_sync'));
+        _runSyncFanOutPlan(ImSyncOrchestrator.planForConversationSync());
       } catch (error, stackTrace) {
         debugPrint('Conversation sync failed: $error');
         debugPrint('$stackTrace');
@@ -754,14 +754,28 @@ class IMService extends StateNotifier<IMServiceState>
           ).replayForConnectionStatus(status),
         );
       }
-      unawaited(_syncReminders(reason: 'sync_completed'));
-      unawaited(_syncSensitiveWords(reason: 'sync_completed'));
-      unawaited(_syncProhibitWords(reason: 'sync_completed'));
-      unawaited(_syncConversationExtras(reason: 'sync_completed'));
-      unawaited(_syncOfflineCommandMessages(reason: 'sync_completed'));
+      _runSyncFanOutPlan(ImSyncOrchestrator.planForSyncCompleted());
       _completeInit(true);
     } else if (status == WKConnectStatus.kicked) {
       _completeInit(false);
+    }
+  }
+
+  void _runSyncFanOutPlan(ImSyncFanOutPlan plan) {
+    if (plan.syncReminders) {
+      unawaited(_syncReminders(reason: plan.reason));
+    }
+    if (plan.syncSensitiveWords) {
+      unawaited(_syncSensitiveWords(reason: plan.reason));
+    }
+    if (plan.syncProhibitWords) {
+      unawaited(_syncProhibitWords(reason: plan.reason));
+    }
+    if (plan.syncConversationExtras) {
+      unawaited(_syncConversationExtras(reason: plan.reason));
+    }
+    if (plan.syncOfflineCommandMessages) {
+      unawaited(_syncOfflineCommandMessages(reason: plan.reason));
     }
   }
 

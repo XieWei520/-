@@ -28,6 +28,25 @@ class ImSyncStatus {
   final Set<String> activeMessageExtraKeys;
 }
 
+@immutable
+class ImSyncFanOutPlan {
+  const ImSyncFanOutPlan({
+    required this.reason,
+    this.syncReminders = false,
+    this.syncSensitiveWords = false,
+    this.syncProhibitWords = false,
+    this.syncConversationExtras = false,
+    this.syncOfflineCommandMessages = false,
+  });
+
+  final String reason;
+  final bool syncReminders;
+  final bool syncSensitiveWords;
+  final bool syncProhibitWords;
+  final bool syncConversationExtras;
+  final bool syncOfflineCommandMessages;
+}
+
 class ImSyncOrchestrator {
   ImSyncOrchestrator({
     required this.syncApi,
@@ -50,6 +69,25 @@ class ImSyncOrchestrator {
   Future<void> handleSyncCompleted() {
     throw UnimplementedError(
       'Skeleton only: fan out sync-completed tasks here.',
+    );
+  }
+
+  static ImSyncFanOutPlan planForSyncCompleted() {
+    return const ImSyncFanOutPlan(
+      reason: 'sync_completed',
+      syncReminders: true,
+      syncSensitiveWords: true,
+      syncProhibitWords: true,
+      syncConversationExtras: true,
+      syncOfflineCommandMessages: true,
+    );
+  }
+
+  static ImSyncFanOutPlan planForConversationSync() {
+    return const ImSyncFanOutPlan(
+      reason: 'conversation_sync',
+      syncConversationExtras: true,
+      syncOfflineCommandMessages: true,
     );
   }
 
