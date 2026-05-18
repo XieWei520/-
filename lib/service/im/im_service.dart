@@ -799,50 +799,12 @@ class IMService extends StateNotifier<IMServiceState>
     required int channelType,
     String? reason,
   }) async {
-    await _syncOrchestrator.runExclusiveMessageExtraTask(
+    await _syncOrchestrator.syncMessageExtras(
       channelId: channelId,
       channelType: channelType,
       reason: reason,
-      task: ({required channelId, required channelType, reason}) async {
-        try {
-          final deviceUuid = await _ensureDeviceUuid();
-          final extraVersion = await WKIM.shared.messageManager
-              .getMaxExtraVersionWithChannel(channelId, channelType);
-          final extras = await MessageApi.instance.syncMessageExtras(
-            channelId: channelId,
-            channelType: channelType,
-            extraVersion: extraVersion,
-            deviceUuid: deviceUuid,
-            limit: 100,
-          );
-          if (extras.isEmpty) {
-            return;
-          }
-          final mappedExtras = extras
-              .map(
-                (item) => WKIM.shared.messageManager.wkSyncExtraMsg2WKMsgExtra(
-                  channelId,
-                  channelType,
-                  item,
-                ),
-              )
-              .toList(growable: false);
-          await WKIM.shared.messageManager.saveRemoteExtraMsg(mappedExtras);
-          if (!_usesLocalPersistence) {
-            _publishRealtimeMessageExtraRefresh(
-              channelId,
-              channelType,
-              mappedExtras,
-            );
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 500));
-        } catch (error, stackTrace) {
-          debugPrint(
-            'Message extra sync failed($reason:$channelId/$channelType): $error',
-          );
-          debugPrint('$stackTrace');
-        }
-      },
+      deviceUuidLoader: _ensureDeviceUuid,
+      publishRealtimeMessageExtraRefresh: _publishRealtimeMessageExtraRefresh,
     );
   }
 

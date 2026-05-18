@@ -13,6 +13,7 @@ import 'package:wukong_im_app/service/im/im_sync_orchestrator.dart';
 import 'package:wukong_im_app/service/im/im_word_sync_models.dart';
 import 'package:wukong_im_app/service/im/im_word_sync_store.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
+import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/entity/reminder.dart';
 
 void main() {
@@ -511,6 +512,120 @@ void main() {
       expect(store.savedExtras, isEmpty);
     });
   });
+
+  group('ImSyncOrchestrator message extra sync', () {
+    test(
+      'syncMessageExtras loads local version, saves mapped extras, and refreshes realtime UI',
+      () async {
+        final adapter = _RecordingPlainAdapter(
+          payload: <String, dynamic>{
+            'data': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message_id_str': 'msg_01',
+                'readed': 1,
+                'readed_count': 2,
+                'unread_count': 3,
+                'revoke': 1,
+                'revoker': 'u_01',
+                'extra_version': 18,
+                'is_pinned': 1,
+              },
+            ],
+          },
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        final store = _FakeMessageExtraStore(
+          maxVersions: <String, int>{'group_01:2': 5},
+          useLocalPersistence: false,
+        );
+        final refreshed = <WKMsgExtra>[];
+        final delayDurations = <Duration>[];
+        final orchestrator = _orchestrator(
+          messageExtraStore: store,
+          syncDelay: (duration) async {
+            delayDurations.add(duration);
+          },
+        );
+
+        await orchestrator.syncMessageExtras(
+          channelId: ' group_01 ',
+          channelType: 2,
+          reason: 'unit',
+          deviceUuidLoader: () async => 'device_uuid_01',
+          publishRealtimeMessageExtraRefresh: (channelId, channelType, extras) {
+            refreshed.addAll(extras);
+          },
+        );
+
+        expect(adapter.lastRequestOptions?.path, '/v1/message/extra/sync');
+        expect(adapter.lastRequestOptions?.data, <String, dynamic>{
+          'channel_id': 'group_01',
+          'channel_type': 2,
+          'extra_version': 5,
+          'source': 'device_uuid_01',
+          'limit': 100,
+        });
+        expect(store.savedExtras, hasLength(1));
+        expect(store.savedExtras.single.channelID, 'group_01');
+        expect(store.savedExtras.single.channelType, 2);
+        expect(store.savedExtras.single.messageID, 'msg_01');
+        expect(store.savedExtras.single.revoke, 1);
+        expect(store.savedExtras.single.extraVersion, 18);
+        expect(refreshed, hasLength(1));
+        expect(refreshed.single.messageID, 'msg_01');
+        expect(delayDurations, <Duration>[const Duration(milliseconds: 500)]);
+      },
+    );
+
+    test(
+      'syncMessageExtras skips save and refresh when remote list is empty',
+      () async {
+        final adapter = _RecordingPlainAdapter(
+          payload: const <String, dynamic>{'data': <Map<String, dynamic>>[]},
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        final store = _FakeMessageExtraStore(
+          maxVersions: <String, int>{'group_01:2': 5},
+          useLocalPersistence: false,
+        );
+        var refreshCount = 0;
+        final orchestrator = _orchestrator(messageExtraStore: store);
+
+        await orchestrator.syncMessageExtras(
+          channelId: 'group_01',
+          channelType: 2,
+          reason: 'unit-empty',
+          deviceUuidLoader: () async => 'device_uuid_01',
+          publishRealtimeMessageExtraRefresh: (channelId, channelType, extras) {
+            refreshCount++;
+          },
+        );
+
+        expect(adapter.lastRequestOptions?.path, '/v1/message/extra/sync');
+        expect(store.savedExtras, isEmpty);
+        expect(refreshCount, 0);
+      },
+    );
+
+    test('syncMessageExtras completes when remote sync fails', () async {
+      ApiClient.instance.dio.httpClientAdapter = _ThrowingPlainAdapter();
+      final store = _FakeMessageExtraStore(
+        maxVersions: <String, int>{'group_01:2': 5},
+      );
+      final orchestrator = _orchestrator(messageExtraStore: store);
+
+      await expectLater(
+        orchestrator.syncMessageExtras(
+          channelId: 'group_01',
+          channelType: 2,
+          reason: 'unit-failure',
+          deviceUuidLoader: () async => 'device_uuid_01',
+        ),
+        completes,
+      );
+      expect(store.savedExtras, isEmpty);
+    });
+  });
 }
 
 ImSyncOrchestrator _orchestrator({
@@ -520,6 +635,8 @@ ImSyncOrchestrator _orchestrator({
   Future<void> Function()? refreshMaskedMessagesAfterProhibitWordSync,
   ConversationDraftRemoteStore? conversationDraftApi,
   ImConversationExtraStore? conversationExtraStore,
+  ImMessageExtraStore? messageExtraStore,
+  ImSyncDelay? syncDelay,
 }) {
   return ImSyncOrchestrator(
     syncApi: IMSyncApi.instance,
@@ -532,6 +649,8 @@ ImSyncOrchestrator _orchestrator({
     refreshMaskedMessagesAfterProhibitWordSync:
         refreshMaskedMessagesAfterProhibitWordSync,
     conversationExtraStore: conversationExtraStore,
+    messageExtraStore: messageExtraStore,
+    syncDelay: syncDelay,
   );
 }
 
@@ -651,6 +770,52 @@ class _FakeConversationExtraStore implements ImConversationExtraStore {
   Future<void> saveSyncExtras(List<WKSyncConvMsgExtra> extras) async {
     savedExtras.addAll(extras);
   }
+}
+
+class _FakeMessageExtraStore implements ImMessageExtraStore {
+  _FakeMessageExtraStore({
+    required this.maxVersions,
+    this.useLocalPersistence = true,
+  });
+
+  final Map<String, int> maxVersions;
+  final bool useLocalPersistence;
+  final List<WKMsgExtra> savedExtras = <WKMsgExtra>[];
+
+  @override
+  Future<int> getMaxExtraVersionWithChannel(
+    String channelId,
+    int channelType,
+  ) async {
+    return maxVersions['$channelId:$channelType'] ?? 0;
+  }
+
+  @override
+  WKMsgExtra toMessageExtra(
+    String channelId,
+    int channelType,
+    WKSyncExtraMsg extra,
+  ) {
+    return WKMsgExtra()
+      ..channelID = channelId
+      ..channelType = channelType
+      ..messageID = extra.messageIdStr
+      ..readed = extra.readed
+      ..readedCount = extra.readedCount
+      ..unreadCount = extra.unreadCount
+      ..revoke = extra.revoke
+      ..revoker = extra.revoker
+      ..extraVersion = extra.extraVersion
+      ..isPinned = extra.isPinned;
+  }
+
+  @override
+  Future<void> saveRemoteExtraMsg(List<WKMsgExtra> extras) async {
+    savedExtras.addAll(extras);
+  }
+
+  @override
+  bool get usesLocalPersistence => useLocalPersistence;
 }
 
 class _FakeConversationDraftStore implements ConversationDraftRemoteStore {

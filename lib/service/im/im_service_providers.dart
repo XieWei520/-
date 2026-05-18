@@ -51,6 +51,7 @@ final imSyncOrchestratorProvider = Provider<ImSyncOrchestrator>((ref) {
     conversationDraftApi: ConversationDraftApi.instance,
     wordStore: ref.watch(imWordSyncStoreProvider),
     conversationExtraStore: ref.watch(imConversationExtraStoreProvider),
+    messageExtraStore: ref.watch(imMessageExtraStoreProvider),
   );
 });
 
@@ -62,6 +63,10 @@ final imConversationExtraStoreProvider = Provider<ImConversationExtraStore>((
   ref,
 ) {
   return const WkImConversationExtraStore();
+});
+
+final imMessageExtraStoreProvider = Provider<ImMessageExtraStore>((ref) {
+  return const WkImMessageExtraStore();
 });
 
 final attachmentUploadPipelineProvider = Provider<AttachmentUploadPipeline>((

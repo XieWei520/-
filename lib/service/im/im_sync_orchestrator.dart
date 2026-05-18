@@ -10,6 +10,7 @@ import '../api/im_sync_api.dart';
 import '../api/message_api.dart';
 import '../api/reminder_api.dart';
 import 'coordinators/message_sync_coordinator.dart';
+import 'im_connection_service.dart';
 import 'im_word_sync_models.dart';
 import 'im_word_sync_store.dart';
 
@@ -22,6 +23,66 @@ typedef ImMessageExtraSyncTask =
     });
 typedef ImReminderChannelIdsLoader = Future<List<String>> Function();
 typedef ImRefreshMaskedMessagesTask = Future<void> Function();
+typedef ImDeviceUuidLoader = Future<String> Function();
+typedef ImMessageExtraRefreshPublisher =
+    void Function(
+      String channelId,
+      int channelType,
+      Iterable<WKMsgExtra> extras,
+    );
+typedef ImSyncDelay = Future<void> Function(Duration duration);
+
+abstract interface class ImMessageExtraStore {
+  Future<int> getMaxExtraVersionWithChannel(String channelId, int channelType);
+
+  WKMsgExtra toMessageExtra(
+    String channelId,
+    int channelType,
+    WKSyncExtraMsg extra,
+  );
+
+  Future<void> saveRemoteExtraMsg(List<WKMsgExtra> extras);
+
+  bool get usesLocalPersistence;
+}
+
+class WkImMessageExtraStore implements ImMessageExtraStore {
+  const WkImMessageExtraStore();
+
+  @override
+  Future<int> getMaxExtraVersionWithChannel(String channelId, int channelType) {
+    return WKIM.shared.messageManager.getMaxExtraVersionWithChannel(
+      channelId,
+      channelType,
+    );
+  }
+
+  @override
+  WKMsgExtra toMessageExtra(
+    String channelId,
+    int channelType,
+    WKSyncExtraMsg extra,
+  ) {
+    return WKIM.shared.messageManager.wkSyncExtraMsg2WKMsgExtra(
+      channelId,
+      channelType,
+      extra,
+    );
+  }
+
+  @override
+  Future<void> saveRemoteExtraMsg(List<WKMsgExtra> extras) {
+    return WKIM.shared.messageManager.saveRemoteExtraMsg(extras);
+  }
+
+  @override
+  bool get usesLocalPersistence {
+    return ImConnectionService.shouldUseLocalPersistence(
+      isWeb: kIsWeb,
+      sdkAppMode: WKIM.shared.isApp(),
+    );
+  }
+}
 
 abstract interface class ImConversationExtraStore {
   Future<int> getMaxVersion();
@@ -136,7 +197,9 @@ class ImSyncOrchestrator {
     ImReminderChannelIdsLoader? reminderChannelIdsLoader,
     ImWordSyncStore? wordStore,
     ImConversationExtraStore? conversationExtraStore,
+    ImMessageExtraStore? messageExtraStore,
     ImRefreshMaskedMessagesTask? refreshMaskedMessagesAfterProhibitWordSync,
+    ImSyncDelay? syncDelay,
     this.coordinator = const MessageSyncCoordinator(),
   }) : reminderStore = reminderStore ?? const WkImReminderStore(),
        reminderChannelIdsLoader =
@@ -144,9 +207,11 @@ class ImSyncOrchestrator {
        wordStore = wordStore ?? WkImWordSyncStore(),
        conversationExtraStore =
            conversationExtraStore ?? const WkImConversationExtraStore(),
+       messageExtraStore = messageExtraStore ?? const WkImMessageExtraStore(),
        refreshMaskedMessagesAfterProhibitWordSync =
            refreshMaskedMessagesAfterProhibitWordSync ??
-           _noopRefreshMaskedMessages;
+           _noopRefreshMaskedMessages,
+       _syncDelay = syncDelay ?? Future<void>.delayed;
 
   final IMSyncApi syncApi;
   final MessageApi messageApi;
@@ -156,8 +221,10 @@ class ImSyncOrchestrator {
   final ImReminderChannelIdsLoader reminderChannelIdsLoader;
   final ImWordSyncStore wordStore;
   final ImConversationExtraStore conversationExtraStore;
+  final ImMessageExtraStore messageExtraStore;
   final ImRefreshMaskedMessagesTask refreshMaskedMessagesAfterProhibitWordSync;
   final MessageSyncCoordinator coordinator;
+  final ImSyncDelay _syncDelay;
   final Set<ImSyncTaskSlot> _activeTaskSlots = <ImSyncTaskSlot>{};
   final Map<ImSyncTaskSlot, String?> _pendingTaskReasons =
       <ImSyncTaskSlot, String?>{};
@@ -461,8 +528,54 @@ class ImSyncOrchestrator {
     required String channelId,
     required int channelType,
     String? reason,
+    required ImDeviceUuidLoader deviceUuidLoader,
+    ImMessageExtraRefreshPublisher? publishRealtimeMessageExtraRefresh,
   }) {
-    throw UnimplementedError('Skeleton only: move message-extra sync here.');
+    return runExclusiveMessageExtraTask(
+      channelId: channelId,
+      channelType: channelType,
+      reason: reason,
+      task: ({required channelId, required channelType, reason}) async {
+        try {
+          final deviceUuid = await deviceUuidLoader();
+          final extraVersion = await messageExtraStore
+              .getMaxExtraVersionWithChannel(channelId, channelType);
+          final extras = await messageApi.syncMessageExtras(
+            channelId: channelId,
+            channelType: channelType,
+            extraVersion: extraVersion,
+            deviceUuid: deviceUuid,
+            limit: 100,
+          );
+          if (extras.isEmpty) {
+            return;
+          }
+          final mappedExtras = extras
+              .map(
+                (item) => messageExtraStore.toMessageExtra(
+                  channelId,
+                  channelType,
+                  item,
+                ),
+              )
+              .toList(growable: false);
+          await messageExtraStore.saveRemoteExtraMsg(mappedExtras);
+          if (!messageExtraStore.usesLocalPersistence) {
+            publishRealtimeMessageExtraRefresh?.call(
+              channelId,
+              channelType,
+              mappedExtras,
+            );
+          }
+          await _syncDelay(const Duration(milliseconds: 500));
+        } catch (error, stackTrace) {
+          debugPrint(
+            'Message extra sync failed($reason:$channelId/$channelType): $error',
+          );
+          debugPrint('$stackTrace');
+        }
+      },
+    );
   }
 
   Future<void> syncOfflineCommandMessages({String? reason}) {
