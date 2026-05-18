@@ -50,11 +50,18 @@ final imSyncOrchestratorProvider = Provider<ImSyncOrchestrator>((ref) {
     reminderApi: ReminderApi.instance,
     conversationDraftApi: ConversationDraftApi.instance,
     wordStore: ref.watch(imWordSyncStoreProvider),
+    conversationExtraStore: ref.watch(imConversationExtraStoreProvider),
   );
 });
 
 final imWordSyncStoreProvider = Provider<ImWordSyncStore>((ref) {
   return WkImWordSyncStore();
+});
+
+final imConversationExtraStoreProvider = Provider<ImConversationExtraStore>((
+  ref,
+) {
+  return const WkImConversationExtraStore();
 });
 
 final attachmentUploadPipelineProvider = Provider<AttachmentUploadPipeline>((

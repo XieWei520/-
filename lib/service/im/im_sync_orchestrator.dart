@@ -23,6 +23,26 @@ typedef ImMessageExtraSyncTask =
 typedef ImReminderChannelIdsLoader = Future<List<String>> Function();
 typedef ImRefreshMaskedMessagesTask = Future<void> Function();
 
+abstract interface class ImConversationExtraStore {
+  Future<int> getMaxVersion();
+
+  Future<void> saveSyncExtras(List<WKSyncConvMsgExtra> extras);
+}
+
+class WkImConversationExtraStore implements ImConversationExtraStore {
+  const WkImConversationExtraStore();
+
+  @override
+  Future<int> getMaxVersion() {
+    return WKIM.shared.conversationManager.getMsgExtraMaxVersion();
+  }
+
+  @override
+  Future<void> saveSyncExtras(List<WKSyncConvMsgExtra> extras) {
+    return WKIM.shared.conversationManager.saveSyncMsgExtras(extras);
+  }
+}
+
 abstract interface class ImReminderStore {
   Future<int> getMaxVersion();
 
@@ -115,12 +135,15 @@ class ImSyncOrchestrator {
     ImReminderStore? reminderStore,
     ImReminderChannelIdsLoader? reminderChannelIdsLoader,
     ImWordSyncStore? wordStore,
+    ImConversationExtraStore? conversationExtraStore,
     ImRefreshMaskedMessagesTask? refreshMaskedMessagesAfterProhibitWordSync,
     this.coordinator = const MessageSyncCoordinator(),
   }) : reminderStore = reminderStore ?? const WkImReminderStore(),
        reminderChannelIdsLoader =
            reminderChannelIdsLoader ?? loadWkImReminderChannelIds,
        wordStore = wordStore ?? WkImWordSyncStore(),
+       conversationExtraStore =
+           conversationExtraStore ?? const WkImConversationExtraStore(),
        refreshMaskedMessagesAfterProhibitWordSync =
            refreshMaskedMessagesAfterProhibitWordSync ??
            _noopRefreshMaskedMessages;
@@ -132,6 +155,7 @@ class ImSyncOrchestrator {
   final ImReminderStore reminderStore;
   final ImReminderChannelIdsLoader reminderChannelIdsLoader;
   final ImWordSyncStore wordStore;
+  final ImConversationExtraStore conversationExtraStore;
   final ImRefreshMaskedMessagesTask refreshMaskedMessagesAfterProhibitWordSync;
   final MessageSyncCoordinator coordinator;
   final Set<ImSyncTaskSlot> _activeTaskSlots = <ImSyncTaskSlot>{};
@@ -400,9 +424,37 @@ class ImSyncOrchestrator {
   }
 
   Future<void> syncConversationExtras({String? reason}) {
-    throw UnimplementedError(
-      'Skeleton only: move conversation-extra sync here.',
+    return runExclusiveSyncTask(
+      ImSyncTaskSlot.conversationExtras,
+      reason: reason,
+      task: ({reason}) async {
+        try {
+          final version = await conversationExtraStore.getMaxVersion();
+          final extras = await conversationDraftApi.syncExtras(
+            version: version,
+          );
+          if (extras.isNotEmpty) {
+            await conversationExtraStore.saveSyncExtras(
+              extras.map(toSyncConversationExtra).toList(growable: false),
+            );
+          }
+        } catch (error, stackTrace) {
+          debugPrint('Conversation extra sync failed($reason): $error');
+          debugPrint('$stackTrace');
+        }
+      },
     );
+  }
+
+  WKSyncConvMsgExtra toSyncConversationExtra(RemoteConversationDraft extra) {
+    return WKSyncConvMsgExtra()
+      ..channelID = extra.channelId
+      ..channelType = extra.channelType
+      ..browseTo = extra.browseTo
+      ..keepMessageSeq = extra.keepMessageSeq
+      ..keepOffsetY = extra.keepOffsetY
+      ..draft = extra.draft
+      ..version = extra.version;
   }
 
   Future<void> syncMessageExtras({

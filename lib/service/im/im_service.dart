@@ -36,8 +36,8 @@ import '../../wukong_base/msg/msg_content_type.dart';
 import '../../wukong_push/notification/android_message_alert_manager.dart';
 import '../../wukong_push/notification/desktop_message_alert_manager.dart';
 import '../../wukong_push/notification/web_notification_manager.dart';
-import '../api/file_api.dart';
 import '../api/conversation_draft_api.dart';
+import '../api/file_api.dart';
 import '../api/im_route_info.dart';
 import '../api/im_sync_api.dart';
 import '../api/message_api.dart';
@@ -730,7 +730,7 @@ class IMService extends StateNotifier<IMServiceState>
               _refreshMaskedMessagesAfterProhibitWordSync,
         ),
         syncConversationExtras: ({reason}) =>
-            _syncConversationExtras(reason: reason),
+            _syncOrchestrator.syncConversationExtras(reason: reason),
         syncOfflineCommandMessages: ({reason}) =>
             _syncOfflineCommandMessages(reason: reason),
       ),
@@ -769,7 +769,9 @@ class IMService extends StateNotifier<IMServiceState>
     if (effects.contains(
       command_dispatcher.IMCommandSideEffect.syncConversationExtra,
     )) {
-      unawaited(_syncConversationExtras(reason: 'cmd:${cmd.cmd}'));
+      unawaited(
+        _syncOrchestrator.syncConversationExtras(reason: 'cmd:${cmd.cmd}'),
+      );
     }
     if (effects.contains(
       command_dispatcher.IMCommandSideEffect.syncMessageExtra,
@@ -790,30 +792,6 @@ class IMService extends StateNotifier<IMServiceState>
     )) {
       unawaited(_syncOrchestrator.syncReminders(reason: 'cmd:${cmd.cmd}'));
     }
-  }
-
-  Future<void> _syncConversationExtras({String? reason}) async {
-    await _syncOrchestrator.runExclusiveSyncTask(
-      ImSyncTaskSlot.conversationExtras,
-      reason: reason,
-      task: ({reason}) async {
-        try {
-          final version = await WKIM.shared.conversationManager
-              .getMsgExtraMaxVersion();
-          final extras = await ConversationDraftApi.instance.syncExtras(
-            version: version,
-          );
-          if (extras.isNotEmpty) {
-            await WKIM.shared.conversationManager.saveSyncMsgExtras(
-              extras.map(_toSyncConversationExtra).toList(growable: false),
-            );
-          }
-        } catch (error, stackTrace) {
-          debugPrint('Conversation extra sync failed($reason): $error');
-          debugPrint('$stackTrace');
-        }
-      },
-    );
   }
 
   Future<void> _syncMessageExtras({
@@ -965,17 +943,6 @@ class IMService extends StateNotifier<IMServiceState>
     }
 
     return null;
-  }
-
-  WKSyncConvMsgExtra _toSyncConversationExtra(RemoteConversationDraft extra) {
-    return WKSyncConvMsgExtra()
-      ..channelID = extra.channelId
-      ..channelType = extra.channelType
-      ..browseTo = extra.browseTo
-      ..keepMessageSeq = extra.keepMessageSeq
-      ..keepOffsetY = extra.keepOffsetY
-      ..draft = extra.draft
-      ..version = extra.version;
   }
 
   void _handleNewMessages(List<WKMsg> messages) {

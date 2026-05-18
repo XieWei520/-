@@ -12,6 +12,7 @@ import 'package:wukong_im_app/service/api/reminder_api.dart';
 import 'package:wukong_im_app/service/im/im_sync_orchestrator.dart';
 import 'package:wukong_im_app/service/im/im_word_sync_models.dart';
 import 'package:wukong_im_app/service/im/im_word_sync_store.dart';
+import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/reminder.dart';
 
 void main() {
@@ -437,6 +438,79 @@ void main() {
       expect(wordStore.savedProhibitWords, isEmpty);
     });
   });
+
+  group('ImSyncOrchestrator conversation extra sync', () {
+    test(
+      'syncConversationExtras loads version and saves mapped extras',
+      () async {
+        final conversationDraftApi = _FakeConversationDraftStore(
+          syncedExtras: const <RemoteConversationDraft>[
+            RemoteConversationDraft(
+              channelId: 'group_01',
+              channelType: 2,
+              browseTo: 1,
+              keepMessageSeq: 88,
+              keepOffsetY: 420,
+              draft: 'draft_text',
+              version: 12,
+            ),
+          ],
+        );
+        final store = _FakeConversationExtraStore(maxVersion: 9);
+        final orchestrator = _orchestrator(
+          conversationDraftApi: conversationDraftApi,
+          conversationExtraStore: store,
+        );
+
+        await orchestrator.syncConversationExtras(reason: 'unit');
+
+        expect(conversationDraftApi.syncExtraVersions, <int>[9]);
+        expect(store.savedExtras, hasLength(1));
+        final saved = store.savedExtras.single;
+        expect(saved.channelID, 'group_01');
+        expect(saved.channelType, 2);
+        expect(saved.browseTo, 1);
+        expect(saved.keepMessageSeq, 88);
+        expect(saved.keepOffsetY, 420);
+        expect(saved.draft, 'draft_text');
+        expect(saved.version, 12);
+      },
+    );
+
+    test(
+      'syncConversationExtras skips save when remote list is empty',
+      () async {
+        final conversationDraftApi = _FakeConversationDraftStore(
+          syncedExtras: const <RemoteConversationDraft>[],
+        );
+        final store = _FakeConversationExtraStore(maxVersion: 9);
+        final orchestrator = _orchestrator(
+          conversationDraftApi: conversationDraftApi,
+          conversationExtraStore: store,
+        );
+
+        await orchestrator.syncConversationExtras(reason: 'unit-empty');
+
+        expect(conversationDraftApi.syncExtraVersions, <int>[9]);
+        expect(store.savedExtras, isEmpty);
+      },
+    );
+
+    test('syncConversationExtras completes when remote sync fails', () async {
+      final conversationDraftApi = _ThrowingConversationDraftStore();
+      final store = _FakeConversationExtraStore(maxVersion: 9);
+      final orchestrator = _orchestrator(
+        conversationDraftApi: conversationDraftApi,
+        conversationExtraStore: store,
+      );
+
+      await expectLater(
+        orchestrator.syncConversationExtras(reason: 'unit-failure'),
+        completes,
+      );
+      expect(store.savedExtras, isEmpty);
+    });
+  });
 }
 
 ImSyncOrchestrator _orchestrator({
@@ -444,17 +518,20 @@ ImSyncOrchestrator _orchestrator({
   ImReminderChannelIdsLoader? reminderChannelIdsLoader,
   ImWordSyncStore? wordStore,
   Future<void> Function()? refreshMaskedMessagesAfterProhibitWordSync,
+  ConversationDraftRemoteStore? conversationDraftApi,
+  ImConversationExtraStore? conversationExtraStore,
 }) {
   return ImSyncOrchestrator(
     syncApi: IMSyncApi.instance,
     messageApi: MessageApi.instance,
     reminderApi: ReminderApi.instance,
-    conversationDraftApi: ConversationDraftApi.instance,
+    conversationDraftApi: conversationDraftApi ?? ConversationDraftApi.instance,
     reminderStore: reminderStore,
     reminderChannelIdsLoader: reminderChannelIdsLoader,
     wordStore: wordStore,
     refreshMaskedMessagesAfterProhibitWordSync:
         refreshMaskedMessagesAfterProhibitWordSync,
+    conversationExtraStore: conversationExtraStore,
   );
 }
 
@@ -559,4 +636,97 @@ class _FakeWordSyncStore implements ImWordSyncStore {
 
   @override
   bool get usesLocalPersistence => useLocalPersistence;
+}
+
+class _FakeConversationExtraStore implements ImConversationExtraStore {
+  _FakeConversationExtraStore({required this.maxVersion});
+
+  final int maxVersion;
+  final List<WKSyncConvMsgExtra> savedExtras = <WKSyncConvMsgExtra>[];
+
+  @override
+  Future<int> getMaxVersion() async => maxVersion;
+
+  @override
+  Future<void> saveSyncExtras(List<WKSyncConvMsgExtra> extras) async {
+    savedExtras.addAll(extras);
+  }
+}
+
+class _FakeConversationDraftStore implements ConversationDraftRemoteStore {
+  _FakeConversationDraftStore({required this.syncedExtras});
+
+  final List<RemoteConversationDraft> syncedExtras;
+  final List<int> syncExtraVersions = <int>[];
+
+  @override
+  Future<List<RemoteConversationDraft>> syncExtras({
+    required int version,
+  }) async {
+    syncExtraVersions.add(version);
+    return syncedExtras;
+  }
+
+  @override
+  Future<int?> updateExtra({
+    required String channelId,
+    required int channelType,
+    int? browseTo,
+    int? keepMessageSeq,
+    int? keepOffsetY,
+    String? draft,
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<List<RemoteConversationDraft>> syncDrafts({
+    required int version,
+  }) async {
+    return const <RemoteConversationDraft>[];
+  }
+
+  @override
+  Future<int?> updateDraft({
+    required String channelId,
+    required int channelType,
+    required String draft,
+  }) async {
+    return null;
+  }
+}
+
+class _ThrowingConversationDraftStore implements ConversationDraftRemoteStore {
+  @override
+  Future<List<RemoteConversationDraft>> syncExtras({required int version}) {
+    throw StateError('conversation extra sync failed');
+  }
+
+  @override
+  Future<int?> updateExtra({
+    required String channelId,
+    required int channelType,
+    int? browseTo,
+    int? keepMessageSeq,
+    int? keepOffsetY,
+    String? draft,
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<List<RemoteConversationDraft>> syncDrafts({
+    required int version,
+  }) async {
+    return const <RemoteConversationDraft>[];
+  }
+
+  @override
+  Future<int?> updateDraft({
+    required String channelId,
+    required int channelType,
+    required String draft,
+  }) async {
+    return null;
+  }
 }
