@@ -18,6 +18,8 @@ import 'package:wukong_im_app/realtime/device/device_store.dart';
 import 'package:wukong_im_app/service/api/auth_api.dart';
 import 'package:wukong_im_app/service/im/im_service.dart';
 
+import '../../fakes/noop_im_notification_bridge.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -306,6 +308,9 @@ void main() {
 }
 
 class _NoopIMService extends IMService {
+  _NoopIMService()
+    : super(notificationBridge: createNoopImNotificationBridge());
+
   final Map<String, void Function()> _vipExpiredHandlers =
       <String, void Function()>{};
 

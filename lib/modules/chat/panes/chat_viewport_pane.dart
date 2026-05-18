@@ -45,8 +45,8 @@ import '../widgets/chat_message_engagement_bubble.dart';
 import '../widgets/chat_message_list_item.dart';
 import '../widgets/chat_message_viewport.dart';
 import '../widgets/chat_reaction_picker_popup.dart';
+import 'chat_viewport_support.dart';
 
-const String _emptyMessageText = '\u6682\u65e0\u6d88\u606f';
 const String _retrySendFailureFeedback =
     '\u91cd\u53d1\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u518d\u8bd5';
 
@@ -58,25 +58,6 @@ SnackBar _buildLiquidSnackBar(String message, {EdgeInsetsGeometry? margin}) {
     backgroundColor: LiquidGlassColors.darkSurfaceSolid,
     margin: margin,
   );
-}
-
-class _OlderMessagesLoadingIndicator extends StatelessWidget {
-  const _OlderMessagesLoadingIndicator()
-    : super(key: const ValueKey<String>('chat-older-loading-indicator'));
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 14),
-      child: Center(
-        child: SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      ),
-    );
-  }
 }
 
 class ChatViewportPane extends ConsumerStatefulWidget {
@@ -246,7 +227,7 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
           children: [
             Positioned.fill(
               child: identities.isEmpty
-                  ? const Center(child: Text(_emptyMessageText))
+                  ? const Center(child: Text(emptyMessageText))
                   : ListView.builder(
                       key: _listKey,
                       controller: _scrollController,
@@ -330,7 +311,11 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
                 top: 8,
                 left: 0,
                 right: 0,
-                child: IgnorePointer(child: _OlderMessagesLoadingIndicator()),
+                child: IgnorePointer(
+                  child: OlderMessagesLoadingIndicator(
+                    key: ValueKey<String>('chat-older-loading-indicator'),
+                  ),
+                ),
               ),
           ],
         ),
@@ -469,8 +454,8 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
     }
 
     final previewItems = isFlame
-        ? <_ChatImagePreviewItem>[
-            _ChatImagePreviewItem(
+        ? <ChatImagePreviewItem>[
+            ChatImagePreviewItem(
               identity: model.identity,
               message: model.message,
               url: previewUrl,
@@ -681,10 +666,10 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
     return null;
   }
 
-  List<_ChatImagePreviewItem> _buildImagePreviewItems(
+  List<ChatImagePreviewItem> _buildImagePreviewItems(
     ChatViewportState viewport,
   ) {
-    final items = <_ChatImagePreviewItem>[];
+    final items = <ChatImagePreviewItem>[];
     for (final item in viewport.items) {
       if (item.message.contentType != WkMessageContentType.image) {
         continue;
@@ -700,7 +685,7 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
         continue;
       }
       items.add(
-        _ChatImagePreviewItem(
+        ChatImagePreviewItem(
           identity: item.identity,
           message: item.message,
           url: previewUrl,
@@ -711,7 +696,7 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
   }
 
   List<ImageViewerAction> _imageViewerActions(
-    List<_ChatImagePreviewItem> previewItems,
+    List<ChatImagePreviewItem> previewItems,
   ) {
     final actions = <ImageViewerAction>[
       ImageViewerAction(
@@ -857,7 +842,7 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
     }
 
     final viewportHeight = listRenderObject.size.height;
-    _VisibleViewportItem? firstVisible;
+    VisibleViewportItem? firstVisible;
     var maxVisibleMessageSeq = 0;
 
     for (final item in viewport.items) {
@@ -878,7 +863,7 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
         maxVisibleMessageSeq = messageSeq;
       }
       if (firstVisible == null || top < firstVisible.top) {
-        firstVisible = _VisibleViewportItem(
+        firstVisible = VisibleViewportItem(
           messageSeq: messageSeq,
           top: top,
           identity: item.identity,
@@ -1271,29 +1256,4 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
         return;
     }
   }
-}
-
-class _ChatImagePreviewItem {
-  const _ChatImagePreviewItem({
-    required this.identity,
-    required this.message,
-    required this.url,
-  });
-
-  final String identity;
-  final WKMsg message;
-  final String url;
-}
-
-@immutable
-class _VisibleViewportItem {
-  const _VisibleViewportItem({
-    required this.messageSeq,
-    required this.top,
-    required this.identity,
-  });
-
-  final int messageSeq;
-  final double top;
-  final String identity;
 }

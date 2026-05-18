@@ -1,12 +1,10 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
-import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../../core/utils/platform_utils.dart';
 import '../../data/models/call.dart';
@@ -21,35 +19,25 @@ import '../../widgets/chat_background_surface.dart';
 import '../../widgets/liquid_glass_panel.dart';
 import '../../widgets/liquid_glass_tokens.dart';
 import '../../widgets/wk_colors.dart';
-import '../../wukong_robot/models/robot.dart';
 import '../../wukong_uikit/setting/setting_preferences.dart';
 import 'chat_call_entry_coordinator.dart';
 import 'chat_call_navigation.dart';
-import 'chat_channel_hydration_service.dart';
 import 'chat_channel_identity.dart';
-import 'chat_channel_settings.dart';
-import 'chat_conversation_activity_binding.dart';
-import 'chat_conversation_restore_service.dart';
 import 'chat_flame_message_runtime.dart';
 import 'chat_forward_selection_collector.dart';
 import 'chat_frame_jank_monitor.dart';
-import 'chat_conversation_extra_gateway.dart';
-import 'chat_pinned_message_resolver.dart';
-import 'chat_pinned_message_state_service.dart';
-import 'chat_robot_menu_state_service.dart';
 import 'chat_search_coordinator.dart';
+import 'chat_shell_controller.dart';
 import 'panes/chat_composer_pane.dart';
 import 'panes/chat_header_pane.dart';
 import 'panes/chat_overlay_coordinator.dart';
 import 'panes/chat_viewport_pane.dart';
 import 'chat_scene_providers.dart';
-import 'chat_viewport_controller.dart';
 import 'chat_details_page.dart';
 import 'forward_message_page.dart';
 import 'widgets/chat_pinned_message_banner.dart';
 import 'widgets/chat_pinned_message_sheet.dart';
 import 'widgets/chat_selection_toolbar.dart';
-import '../conversation/conversation_activity_registry.dart';
 import '../video_call/widgets/chat_calling_participants_bar.dart';
 
 export 'chat_viewport_models.dart'
@@ -59,7 +47,7 @@ export 'chat_viewport_models.dart'
         chatListCacheExtent,
         olderMessageLoadExtentAfterThreshold,
         shouldTriggerOlderMessageLoad;
-export 'panes/chat_composer_pane.dart'
+export 'panes/chat_composer_controls.dart'
     show
         buildComposerCallToolbarButtonForTesting,
         buildComposerSendButtonForTesting,
@@ -135,233 +123,35 @@ class ChatPageShell extends ConsumerStatefulWidget {
 }
 
 class _ChatPageShellState extends ConsumerState<ChatPageShell> {
-  WKChannel? _channel;
   ChatCallEntryCoordinator? _callEntryCoordinator;
-  ChatViewportRestoreAnchor? _restoreAnchor;
-  final ChatConversationRestoreService _conversationRestoreService =
-      ChatConversationRestoreService();
-  final ChatRobotMenuStateService _robotMenuStateService =
-      ChatRobotMenuStateService();
-  CancelToken? _remoteFlameCancelToken;
-  ChatConversationExtraGateway? _conversationExtraGateway;
-  ProviderSubscription<String>? _draftTextSubscription;
-  String _latestDraftText = '';
-  ConversationActivityState _activityState = ConversationActivityState.empty;
-  List<RobotMenu> _robotMenus = const <RobotMenu>[];
-  bool _canPinMessages = false;
-  bool _canClearPinnedMessages = false;
-  List<ResolvedPinnedMessage> _pinnedMessages = const <ResolvedPinnedMessage>[];
   ChatFrameJankMonitor? _frameJankMonitor;
-  late final ChatConversationActivityBinding _activityBinding;
 
   ChatSession get _chatSession =>
       ChatSession(channelId: widget.channelId, channelType: widget.channelType);
+
+  ChatShellControllerArgs get _controllerArgs => ChatShellControllerArgs(
+    channelId: widget.channelId,
+    channelType: widget.channelType,
+    initialAroundOrderSeq: widget.initialAroundOrderSeq,
+    initialLocateMessageSeq: widget.initialLocateMessageSeq,
+  );
 
   @override
   void initState() {
     super.initState();
     _frameJankMonitor = ref.read(chatFrameJankMonitorFactoryProvider)()
       ..start();
-    _activityBinding = ChatConversationActivityBinding(
-      onChanged: _handleConversationActivityChanged,
-    );
-    _bindConversationPersistence();
-    _canPinMessages = supportsPinnedMessages(
-      channelId: widget.channelId,
-      channelType: widget.channelType,
-    );
-    _bindConversationActivity();
-    unawaited(_loadChannel());
-    unawaited(_loadRobotMenus());
-    unawaited(_refreshPinnedUiState());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
-          return;
-        }
-        unawaited(_hydrateRemoteFlameSettings());
-      });
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_loadInitialMessages());
-    });
-  }
-
-  Future<void> _loadInitialMessages() async {
-    if (!mounted) {
-      return;
-    }
-    final notifier = ref.read(messageListProvider(_chatSession).notifier);
-    if (widget.initialAroundOrderSeq != null &&
-        widget.initialAroundOrderSeq! > 0) {
-      final locateMessageSeq = widget.initialLocateMessageSeq;
-      if (locateMessageSeq != null && locateMessageSeq > 0 && mounted) {
-        setState(() {
-          _restoreAnchor = ChatViewportRestoreAnchor(
-            aroundOrderSeq:
-                locateMessageSeq * ChatViewportController.orderSeqFactor,
-            keepOffsetY: 0,
-            browseTo: 0,
-          );
-        });
-      }
-      await notifier.loadAroundOrderSeq(widget.initialAroundOrderSeq!);
-      return;
-    }
-
-    final restoreAnchor = await _resolveConversationRestoreAnchor();
-    if (!mounted) {
-      return;
-    }
-    if (restoreAnchor != null) {
-      setState(() {
-        _restoreAnchor = restoreAnchor;
-      });
-      await notifier.loadAroundOrderSeq(restoreAnchor.aroundOrderSeq);
-      return;
-    }
-    await notifier.loadMessages();
-  }
-
-  Future<ChatViewportRestoreAnchor?> _resolveConversationRestoreAnchor() async {
-    final gateway = _conversationExtraGateway;
-    if (gateway == null) {
-      return null;
-    }
-    return _conversationRestoreService.resolveRestoreAnchor(
-      gateway: gateway,
-      channelId: widget.channelId,
-      channelType: widget.channelType,
-    );
-  }
-
-  void _bindConversationPersistence() {
-    _conversationExtraGateway = ref.read(chatConversationExtraGatewayProvider);
-    _latestDraftText = ref.read(chatComposerProvider(_chatSession)).text;
-    _draftTextSubscription?.close();
-    _draftTextSubscription = ref.listenManual<String>(
-      chatComposerProvider(_chatSession).select((state) => state.text),
-      (_, next) {
-        _latestDraftText = next;
-      },
-    );
-  }
-
-  Future<void> _loadChannel() async {
-    final channel = await _loadLocalChannel();
-    if (!mounted || channel == null) {
-      return;
-    }
-    setState(() {
-      _channel = channel;
-    });
-    unawaited(_loadRobotMenus(forceRefresh: true));
-  }
-
-  Future<void> _loadRobotMenus({bool forceRefresh = false}) async {
-    final menus = await _robotMenuStateService.loadMenus(
-      channelId: widget.channelId,
-      channelType: widget.channelType,
-      forceRefresh: forceRefresh,
-    );
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _robotMenus = menus;
-    });
-  }
-
-  Future<void> _hydrateRemoteFlameSettings() async {
-    if (!shouldHydrateRemoteFlameSettings(
-      channelId: widget.channelId,
-      channelType: widget.channelType,
-    )) {
-      return;
-    }
-    final currentChannel = _channel ?? await _loadLocalChannel();
-    final channel = await _loadRemoteFlameSettings(currentChannel);
-    if (!mounted || channel == null) {
-      return;
-    }
-    setState(() {
-      _channel = channel;
-    });
-  }
-
-  Future<WKChannel?> _loadLocalChannel() async {
-    WKChannel? channel;
-    try {
-      channel = await WKIM.shared.channelManager.getChannel(
-        widget.channelId,
-        widget.channelType,
-      );
-    } catch (_) {
-      // Keep rendering with widget arguments when channel lookup fails.
-    }
-
-    return channel;
-  }
-
-  Future<WKChannel?> _loadRemoteFlameSettings(WKChannel? currentChannel) async {
-    final cancelToken = _remoteFlameCancelToken = CancelToken();
-    try {
-      final result = await ChatChannelHydrationService().hydrateRemoteChannel(
-        channelId: widget.channelId,
-        channelType: widget.channelType,
-        currentChannel: currentChannel,
-        cancelToken: cancelToken,
-      );
-      if (result.didHydrate && result.channel != null) {
-        WKIM.shared.channelManager.addOrUpdateChannel(result.channel!);
-      }
-      return result.channel;
-    } finally {
-      if (identical(_remoteFlameCancelToken, cancelToken)) {
-        _remoteFlameCancelToken = null;
-      }
-    }
-  }
-
-  Future<void> _refreshPinnedUiState() async {
-    final snapshot = await _loadPinnedUiSnapshot();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _canPinMessages = snapshot.canPin;
-      _canClearPinnedMessages = snapshot.canClearAll;
-      _pinnedMessages = snapshot.messages;
-    });
-  }
-
-  Future<ChatPinnedUiSnapshot> _loadPinnedUiSnapshot() {
-    return ChatPinnedMessageStateService().loadSnapshot(
-      channelId: widget.channelId,
-      channelType: widget.channelType,
-      channel: _channel,
-      syncPinnedMessages: ref
-          .read(chatSceneGatewayProvider(_chatSession))
-          .syncPinnedMessages,
-      previousMessages: _pinnedMessages,
-    );
-  }
-
-  int _readCurrentUserGroupRole() {
-    if (widget.channelType != WKChannelType.group) {
-      return 0;
-    }
-    return readChannelExtraInt(_channel?.remoteExtraMap, const ['role']) ?? 0;
   }
 
   Future<void> _openPinnedMessageSheet() async {
-    if (_pinnedMessages.isEmpty) {
+    final shellState = ref.read(chatShellControllerProvider(_controllerArgs));
+    if (shellState.pinnedMessages.isEmpty) {
       return;
     }
     await showModalBottomSheet<void>(
       context: context,
       builder: (_) => ChatPinnedMessageSheet(
-        items: _pinnedMessages
+        items: shellState.pinnedMessages
             .map(
               (item) => ChatPinnedMessageSheetItemData(
                 messageId: item.entry.messageId,
@@ -372,59 +162,41 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
               ),
             )
             .toList(growable: false),
-        canClearAll: _canClearPinnedMessages,
+        canClearAll: shellState.canClearPinnedMessages,
         onSelected: (item) {
-          final matched = _pinnedMessages.firstWhere(
+          final currentState = ref.read(
+            chatShellControllerProvider(_controllerArgs),
+          );
+          final matched = currentState.pinnedMessages.firstWhere(
             (candidate) => candidate.entry.messageId == item.messageId,
           );
-          unawaited(_jumpToPinnedMessage(matched));
+          unawaited(
+            ref
+                .read(chatShellControllerProvider(_controllerArgs).notifier)
+                .jumpToPinnedMessage(matched),
+          );
         },
-        onClearAll: _canClearPinnedMessages
-            ? () => unawaited(_clearPinnedMessages())
+        onClearAll: shellState.canClearPinnedMessages
+            ? () => unawaited(
+                ref
+                    .read(chatShellControllerProvider(_controllerArgs).notifier)
+                    .clearPinnedMessages(),
+              )
             : null,
       ),
     );
   }
 
-  Future<void> _jumpToPinnedMessage(ResolvedPinnedMessage item) async {
-    await ref
-        .read(messageListProvider(_chatSession).notifier)
-        .loadAroundOrderSeq(item.message.orderSeq);
-  }
-
-  Future<void> _clearPinnedMessages() async {
-    await ref
-        .read(chatSceneGatewayProvider(_chatSession))
-        .clearPinnedMessages(
-          channelId: widget.channelId,
-          channelType: widget.channelType,
-        );
-    await _refreshPinnedUiState();
-  }
-
-  void _toggleLocalPinnedState(WKMsg message) {
-    final extra = message.wkMsgExtra ??= WKMsgExtra();
-    extra.isPinned = extra.isPinned == 1 ? 0 : 1;
-  }
-
   Future<void> _handlePinnedMessageToggled(WKMsg message) async {
-    _toggleLocalPinnedState(message);
-    await _refreshPinnedUiState();
-    if (mounted) {
-      setState(() {});
-    }
+    await ref
+        .read(chatShellControllerProvider(_controllerArgs).notifier)
+        .handlePinnedMessageToggled(message);
   }
 
   @override
   void dispose() {
     _frameJankMonitor?.stop();
     _frameJankMonitor = null;
-    _unbindConversationActivity();
-    _draftTextSubscription?.close();
-    _draftTextSubscription = null;
-    _remoteFlameCancelToken?.cancel();
-    _remoteFlameCancelToken = null;
-    unawaited(_persistConversationExtra());
     super.dispose();
   }
 
@@ -435,22 +207,7 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         oldWidget.channelType == widget.channelType) {
       return;
     }
-    _unbindConversationActivity();
-    setState(() {
-      _robotMenus = const <RobotMenu>[];
-    });
-    _bindConversationActivity();
-    _bindConversationPersistence();
-    unawaited(_loadRobotMenus(forceRefresh: true));
-    setState(() {
-      _canPinMessages = supportsPinnedMessages(
-        channelId: widget.channelId,
-        channelType: widget.channelType,
-      );
-      _canClearPinnedMessages = false;
-      _pinnedMessages = const <ResolvedPinnedMessage>[];
-    });
-    unawaited(_refreshPinnedUiState());
+    ref.read(chatShellControllerProvider(_controllerArgs).notifier).start();
   }
 
   @override
@@ -460,18 +217,19 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         (state) => state.valueOrNull ?? const <Friend>[],
       ),
     );
+    final shellState = ref.watch(chatShellControllerProvider(_controllerArgs));
     final headerState = resolveChatHeaderPaneState(
       channelId: widget.channelId,
       channelType: widget.channelType,
       channelName: widget.channelName,
       channelCategory: widget.channelCategory,
-      channel: _channel,
+      channel: shellState.channel,
       initialVipLevel: widget.initialVipLevel,
       friends: friends,
       showSearchAction: _showSearchAction(context),
     );
     final selection = ref.watch(chatSelectionControllerProvider(_chatSession));
-    final activityState = _activityState;
+    final activityState = shellState.activityState;
     final selectedChatBackground =
         WKSettingPreferences.getSelectedChatBackground(
           channelId: widget.channelId,
@@ -560,15 +318,23 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
           topStatusBars: <Widget>[
             if (activityState.isCalling)
               ChatCallingParticipantsBar(state: activityState),
-            if (_pinnedMessages.isNotEmpty)
+            if (shellState.pinnedMessages.isNotEmpty)
               ChatPinnedMessageBanner(
                 data: ChatPinnedMessageBannerData(
-                  previewText: _pinnedMessages.first.previewText,
-                  count: _pinnedMessages.length,
+                  previewText: shellState.pinnedMessages.first.previewText,
+                  count: shellState.pinnedMessages.length,
                 ),
                 onTap: _openPinnedMessageSheet,
-                onClearAll: _canClearPinnedMessages
-                    ? () => unawaited(_clearPinnedMessages())
+                onClearAll: shellState.canClearPinnedMessages
+                    ? () => unawaited(
+                        ref
+                            .read(
+                              chatShellControllerProvider(
+                                _controllerArgs,
+                              ).notifier,
+                            )
+                            .clearPinnedMessages(),
+                      )
                     : null,
               ),
           ],
@@ -580,12 +346,14 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
                 child: ChatViewportPane(
                   session: _chatSession,
                   conversationChannel: _participantFallbackChannel(),
-                  canPinMessages: _canPinMessages,
-                  currentUserGroupRole: _readCurrentUserGroupRole(),
+                  canPinMessages: shellState.canPinMessages,
+                  currentUserGroupRole: shellState.currentUserGroupRole(
+                    channelType: widget.channelType,
+                  ),
                   flameRuntime: widget.flameRuntime,
                   onBuild: widget.onViewportBuild,
                   onPinnedMessageToggled: _handlePinnedMessageToggled,
-                  restoreAnchor: _restoreAnchor,
+                  restoreAnchor: shellState.restoreAnchor,
                   webStyle: useWarmWorkbenchStyle,
                   onPersistenceSnapshotChanged:
                       _handleViewportPersistenceSnapshotChanged,
@@ -594,8 +362,8 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
               ),
               ChatComposerPane(
                 session: _chatSession,
-                channel: _channel,
-                robotMenus: _robotMenus,
+                channel: shellState.channel,
+                robotMenus: shellState.robotMenus,
                 showCallActions: _showCallActions(),
                 showGroupCallAction: _showGroupCallAction(),
                 webStyle: useWarmWorkbenchStyle,
@@ -610,26 +378,6 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
         ),
       ),
     );
-  }
-
-  void _bindConversationActivity() {
-    _activityState = _activityBinding.bind(
-      channelId: widget.channelId,
-      channelType: widget.channelType,
-    );
-  }
-
-  void _unbindConversationActivity() {
-    _activityBinding.unbind();
-  }
-
-  void _handleConversationActivityChanged(ConversationActivityState nextState) {
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _activityState = nextState;
-    });
   }
 
   Future<void> _forwardSelectedMessages() async {
@@ -691,17 +439,18 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
       channelId: widget.channelId,
       channelType: widget.channelType,
       channelName: widget.channelName,
-      channel: _channel,
+      channel: ref.read(chatShellControllerProvider(_controllerArgs)).channel,
     );
   }
 
   WKChannel? _participantFallbackChannel() {
-    return buildParticipantFallbackChannel(
-      channelId: widget.channelId,
-      channelType: widget.channelType,
-      channelName: widget.channelName,
-      loadedChannel: _channel,
-    );
+    return ref
+        .read(chatShellControllerProvider(_controllerArgs))
+        .participantFallbackChannel(
+          channelId: widget.channelId,
+          channelType: widget.channelType,
+          channelName: widget.channelName,
+        );
   }
 
   bool _showCallActions() {
@@ -724,24 +473,16 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   void _handleViewportPersistenceSnapshotChanged(
     ChatViewportPersistenceSnapshot snapshot,
   ) {
-    _conversationRestoreService.recordViewportSnapshot(snapshot);
+    ref
+        .read(chatShellControllerProvider(_controllerArgs).notifier)
+        .recordViewportPersistenceSnapshot(snapshot);
     widget.onViewportPersistenceChanged?.call(snapshot);
   }
 
   Future<void> _persistConversationExtra() async {
-    if (_conversationRestoreService.hasPersisted) {
-      return;
-    }
-    final gateway = _conversationExtraGateway;
-    if (gateway == null) {
-      return;
-    }
-    await _conversationRestoreService.persist(
-      gateway: gateway,
-      channelId: widget.channelId,
-      channelType: widget.channelType,
-      draft: _latestDraftText,
-    );
+    await ref
+        .read(chatShellControllerProvider(_controllerArgs).notifier)
+        .persistConversationExtra();
   }
 
   void _openChatSearch() {
@@ -845,7 +586,9 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
     if (!mounted) {
       return;
     }
-    await _loadChannel();
+    await ref
+        .read(chatShellControllerProvider(_controllerArgs).notifier)
+        .loadChannel();
     ref.read(conversationProvider.notifier).refresh();
   }
 

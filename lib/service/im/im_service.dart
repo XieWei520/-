@@ -16,8 +16,6 @@ import '../../core/config/im_config.dart';
 import '../../core/utils/storage_utils.dart';
 import '../../data/models/chat_session.dart';
 import '../../data/providers/conversation_provider.dart';
-import '../../data/models/wk_custom_content.dart';
-import '../../data/models/wk_robot_card_content.dart';
 import '../../modules/conversation/conversation_activity_registry.dart';
 import '../../modules/video_call/call_coordinator.dart';
 import '../../modules/video_call/video_call_service.dart';
@@ -26,7 +24,6 @@ import '../../realtime/session/session_event_gateway.dart';
 import '../../realtime/session/session_runtime.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry_provider.dart';
-import '../../wukong_base/msg/msg_content_type.dart';
 import '../api/conversation_draft_api.dart';
 import '../api/file_api.dart';
 import '../api/im_route_info.dart';
@@ -39,8 +36,10 @@ import 'im_command_effect_coordinator.dart';
 import 'im_connection_service.dart';
 import 'im_local_database_service.dart';
 import 'im_masked_message_refresh_service.dart';
+import 'im_message_content_registry.dart';
 import 'im_notification_bridge.dart';
 import 'im_realtime_event_coordinator.dart';
+import 'im_sdk_callback_binder.dart';
 import 'im_sensitive_tip_persistence_service.dart';
 import 'im_service_providers.dart';
 import 'im_sync_orchestrator.dart';
@@ -278,6 +277,8 @@ class IMService extends StateNotifier<IMServiceState>
     ImCommandEffectCoordinator? commandEffectCoordinator,
     ImRealtimeEventCoordinator? realtimeEventCoordinator,
     AttachmentUploadPipeline? attachmentUploadPipeline,
+    ImSdkCallbackBinder? sdkCallbackBinder,
+    ImMessageContentRegistry? messageContentRegistry,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
        _ownsRealtimeRolloutTelemetry = realtimeRolloutTelemetry == null,
@@ -338,6 +339,15 @@ class IMService extends StateNotifier<IMServiceState>
     _attachmentUploadPipeline =
         attachmentUploadPipeline ??
         AttachmentUploadPipeline(fileApi: FileApi.instance);
+    _sdkCallbackBinder =
+        sdkCallbackBinder ??
+        ImSdkCallbackBinder(
+          connectionService: _connectionService,
+          syncOrchestrator: _syncOrchestrator,
+          attachmentUploadPipeline: _attachmentUploadPipeline,
+        );
+    _messageContentRegistry =
+        messageContentRegistry ?? const ImMessageContentRegistry();
     _commandEffectCoordinator =
         commandEffectCoordinator ??
         ImCommandEffectCoordinator(
@@ -367,11 +377,8 @@ class IMService extends StateNotifier<IMServiceState>
   }
 
   static const _connectionListenerKey = 'im_service_connection_listener';
-  static const _cmdListenerKey = 'im_service_cmd_listener';
-  static const _newMsgListenerKey = 'im_service_new_msg_listener';
 
   Completer<bool>? _initCompleter;
-  bool _listenersBound = false;
   bool _lifecycleObserverBound = false;
   bool _lifecycleDisconnected = false;
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
@@ -396,6 +403,8 @@ class IMService extends StateNotifier<IMServiceState>
   late final AttachmentUploadPipeline _attachmentUploadPipeline;
   late final ImCommandEffectCoordinator _commandEffectCoordinator;
   late final ImRealtimeEventCoordinator _realtimeEventCoordinator;
+  late final ImSdkCallbackBinder _sdkCallbackBinder;
+  late final ImMessageContentRegistry _messageContentRegistry;
 
   void registerVipExpiredHandler({
     required String key,
@@ -506,8 +515,8 @@ class IMService extends StateNotifier<IMServiceState>
         _wordRuntimeFilterService.loadSensitiveWordsSnapshot();
       }
 
-      _registerMessageContents();
-      _bindSdkCallbacks();
+      _messageContentRegistry.registerDefaults();
+      _bindRuntimeCallbacks();
       if (shouldStartNativeSessionRuntime(isWeb: kIsWeb)) {
         final sessionRuntimeStarted = await startSessionRuntimeForInit(
           start: () => _startSessionRuntime(
@@ -593,108 +602,18 @@ class IMService extends StateNotifier<IMServiceState>
     );
   }
 
-  void _bindSdkCallbacks() {
-    if (_listenersBound) {
-      return;
-    }
-
-    _connectionService.bindConnectionStatusListener(
-      onStatus: _handleConnectionStatus,
+  void _bindRuntimeCallbacks() {
+    _sdkCallbackBinder.bind(
+      onConnectionStatus: _handleConnectionStatus,
+      deviceUuidLoader: _ensureDeviceUuid,
+      readConversationCmdVersion: () => _lastConversationCmdVersion,
+      writeConversationCmdVersion: (version) {
+        _lastConversationCmdVersion = version;
+      },
+      applyRecoveredCallingStates: applyRecoveredCallingStates,
+      onNewMessages: _handleNewMessages,
+      onCommand: _handleCmd,
     );
-    WKIM.shared.cmdManager.removeCmdListener(_cmdListenerKey);
-    WKIM.shared.messageManager.removeNewMsgListener(_newMsgListenerKey);
-
-    WKIM.shared.conversationManager.addOnSyncConversationListener((
-      lastMsgSeqs,
-      msgCount,
-      version,
-      back,
-    ) async {
-      try {
-        final deviceUuid = await _ensureDeviceUuid();
-        final result = await _syncOrchestrator.syncConversation(
-          version: version,
-          lastMsgSeqs: lastMsgSeqs,
-          msgCount: msgCount,
-          deviceUuid: deviceUuid,
-        );
-        _lastConversationCmdVersion = result.cmdVersion;
-        applyRecoveredCallingStates(
-          result.channelStatus ?? const <WKChannelState>[],
-        );
-        back(result);
-        unawaited(
-          _syncOrchestrator.acknowledgeConversationSync(
-            cmdVersion: result.cmdVersion,
-            deviceUuid: deviceUuid,
-          ),
-        );
-        unawaited(_syncOrchestrator.handleConversationSyncCompleted());
-      } catch (error, stackTrace) {
-        debugPrint('Conversation sync failed: $error');
-        debugPrint('$stackTrace');
-        back(WKSyncConversation()..conversations = []);
-      }
-    });
-
-    WKIM.shared.messageManager.addOnSyncChannelMsgListener((
-      channelId,
-      channelType,
-      startMessageSeq,
-      endMessageSeq,
-      limit,
-      pullMode,
-      back,
-    ) async {
-      try {
-        final deviceUuid = await _ensureDeviceUuid();
-        final result = await _syncOrchestrator.syncChannelMessages(
-          channelId: channelId,
-          channelType: channelType,
-          startMessageSeq: startMessageSeq,
-          endMessageSeq: endMessageSeq,
-          limit: limit,
-          pullMode: pullMode,
-          deviceUuid: deviceUuid,
-        );
-        back(result);
-        unawaited(
-          _syncOrchestrator.acknowledgeConversationSync(
-            cmdVersion: _lastConversationCmdVersion,
-            deviceUuid: deviceUuid,
-          ),
-        );
-      } catch (error, stackTrace) {
-        debugPrint('Channel sync failed: $error');
-        debugPrint('$stackTrace');
-        back(null);
-      }
-    });
-
-    WKIM.shared.messageManager.addOnUploadAttachmentListener((wkMsg, back) {
-      _attachmentUploadPipeline
-          .uploadMessageAttachments(wkMsg)
-          .then(
-            (success) => back(success, wkMsg),
-            onError: (Object error, StackTrace stackTrace) {
-              debugPrint('Attachment upload failed: $error');
-              debugPrint('$stackTrace');
-              back(false, wkMsg);
-            },
-          );
-    });
-
-    WKIM.shared.messageManager.addOnMsgInsertedListener((wkMsg) {
-      WKIM.shared.messageManager.pushNewMsg([wkMsg]);
-    });
-    WKIM.shared.messageManager.addOnNewMsgListener(
-      _newMsgListenerKey,
-      _handleNewMessages,
-    );
-
-    WKIM.shared.cmdManager.addOnCmdListener(_cmdListenerKey, _handleCmd);
-
-    _listenersBound = true;
   }
 
   void _handleConnectionStatus(int status, int? reasonCode, String? _) {
@@ -815,25 +734,6 @@ class IMService extends StateNotifier<IMServiceState>
     }
   }
 
-  void _registerMessageContents() {
-    WKIM.shared.messageManager.registerMsgContent(
-      WkMessageContentType.location,
-      (data) => WKLocationContent().decodeJson(_asMap(data)),
-    );
-    WKIM.shared.messageManager.registerMsgContent(
-      WkMessageContentType.file,
-      (data) => WKFileContent().decodeJson(_asMap(data)),
-    );
-    WKIM.shared.messageManager.registerMsgContent(
-      WkMessageContentType.card,
-      (data) => WKCardContent('', '').decodeJson(_asMap(data)),
-    );
-    WKIM.shared.messageManager.registerMsgContent(
-      MsgContentType.robotCard,
-      (data) => WKRobotCardContent().decodeJson(_asMap(data)),
-    );
-  }
-
   Future<bool> _ensureDatabaseReady() async {
     return _localDatabaseService.ensureReady();
   }
@@ -847,16 +747,6 @@ class IMService extends StateNotifier<IMServiceState>
     final deviceUuid = const Uuid().v4().replaceAll('-', '');
     await StorageUtils.setDeviceId(deviceUuid);
     return deviceUuid;
-  }
-
-  Map<String, dynamic> _asMap(dynamic raw) {
-    if (raw is Map<String, dynamic>) {
-      return raw;
-    }
-    if (raw is Map) {
-      return Map<String, dynamic>.from(raw);
-    }
-    return <String, dynamic>{};
   }
 
   String? _resolveConnectionError(int status, int? reasonCode) {
@@ -993,9 +883,7 @@ class IMService extends StateNotifier<IMServiceState>
     if (_ownsRealtimeRolloutTelemetry) {
       _realtimeRolloutTelemetry.dispose();
     }
-    WKIM.shared.messageManager.removeNewMsgListener(_newMsgListenerKey);
-    WKIM.shared.cmdManager.removeCmdListener(_cmdListenerKey);
-    _connectionService.unbindConnectionStatusListener();
+    _sdkCallbackBinder.unbind();
     super.dispose();
   }
 

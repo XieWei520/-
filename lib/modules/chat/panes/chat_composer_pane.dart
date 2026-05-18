@@ -12,7 +12,6 @@ import 'package:wukongimfluttersdk/model/wk_text_content.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
-import '../../../core/motion/chat_motion.dart';
 import '../../../core/utils/platform_utils.dart';
 import '../../../data/models/chat_session.dart';
 import '../../../data/providers/conversation_provider.dart';
@@ -54,6 +53,7 @@ import '../widgets/chat_expression_panel.dart';
 import '../widgets/chat_reply_preview_strip.dart';
 import '../widgets/chat_voice_press_hold_button.dart';
 import '../widgets/chat_voice_record_overlay.dart';
+import 'chat_composer_controls.dart';
 
 const String _voiceTooltip = '\u8bed\u97f3\u901a\u8bdd';
 const String _videoTooltip = '\u89c6\u9891\u901a\u8bdd';
@@ -369,17 +369,17 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
             constraints.maxWidth.isFinite && constraints.maxWidth < 360;
         final gap = compact ? 6.0 : 8.0;
         final actionExtent = isMobileWarmStyle
-            ? _mobileComposerActionButtonExtent
+            ? mobileComposerActionButtonExtent
             : compact
             ? 42.0
-            : _composerActionButtonExtent;
+            : composerActionButtonExtent;
         final iconExtent = isMobileWarmStyle
-            ? _mobileComposerActionIconExtent
+            ? mobileComposerActionIconExtent
             : compact
             ? 22.0
-            : _composerActionIconExtent;
+            : composerActionIconExtent;
         final sendWidth = isMobileWarmStyle
-            ? _mobileComposerSendButtonWidth
+            ? mobileComposerSendButtonWidth
             : actionExtent;
         final sendHeight = actionExtent;
         final inputRadius = BorderRadius.circular(isMobileWarmStyle ? 14 : 24);
@@ -428,7 +428,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
                     ),
                   ),
                 )
-              : _ComposerToolbarButton(
+              : ComposerToolbarButton(
                   key: const ValueKey<String>('chat-compose-plus-button'),
                   asset: WKReferenceAssets.chatAdd,
                   extent: actionExtent,
@@ -438,7 +438,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
                   onTap: composerController.toggleFunctionPanel,
                 );
         } else if (flameEnabled) {
-          inlineActionButton = _ComposerToolbarButton(
+          inlineActionButton = ComposerToolbarButton(
             key: const ValueKey<String>('chat-flame-toggle-button'),
             asset: WKReferenceAssets.flameSmall,
             extent: actionExtent,
@@ -447,7 +447,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
             onTap: composerController.toggleFlamePanel,
           );
         } else {
-          inlineActionButton = _ComposerToolbarButton(
+          inlineActionButton = ComposerToolbarButton(
             key: const ValueKey<String>('chat-compose-rich-text-button'),
             asset: WKReferenceAssets.chatRichEdit,
             extent: actionExtent,
@@ -588,7 +588,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
             inlineActionButton,
             if (!composerState.showVoiceInput) ...[
               SizedBox(width: gap),
-              _ComposerSendButton(
+              ComposerSendButton(
                 enabled: canSend,
                 width: sendWidth,
                 height: sendHeight,
@@ -644,7 +644,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
           widget.onAudioCallTap != null &&
           widget.onVideoCallTap != null) {
         addButton(
-          _ComposerCallToolbarButton(
+          ComposerCallToolbarButton(
             key: const ValueKey<String>('chat-call-audio-button'),
             decorationKey: const ValueKey<String>('chat-call-audio-decoration'),
             tooltip: _voiceTooltip,
@@ -658,7 +658,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
           ),
         );
         addButton(
-          _ComposerCallToolbarButton(
+          ComposerCallToolbarButton(
             key: const ValueKey<String>('chat-call-video-button'),
             decorationKey: const ValueKey<String>('chat-call-video-decoration'),
             tooltip: _videoTooltip,
@@ -674,7 +674,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
       }
       if (widget.showGroupCallAction && widget.onGroupCallTap != null) {
         addButton(
-          _ComposerCallToolbarButton(
+          ComposerCallToolbarButton(
             key: const ValueKey<String>('chat-group-call-button'),
             decorationKey: const ValueKey<String>('chat-call-group-decoration'),
             tooltip: _groupCallTooltip,
@@ -696,7 +696,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
         addCallButtons();
       }
       addButton(
-        _ComposerToolbarButton(
+        ComposerToolbarButton(
           key: ValueKey<String>('chat-toolbar-${item.sid}'),
           asset: item.icon ?? '',
           onTap: () => unawaited(
@@ -713,7 +713,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
 
     if (widget.robotMenus.isNotEmpty) {
       addButton(
-        _ComposerToolbarButton(
+        ComposerToolbarButton(
           key: const ValueKey<String>('chat-robot-menu-button'),
           asset: composerState.showRobotMenuPanel
               ? WKReferenceAssets.chatMenuClose
@@ -2001,7 +2001,7 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
         runSpacing: 16,
         children: [
           for (final item in items)
-            _FunctionItem(
+            ComposerFunctionItem(
               key: ValueKey<String>('chat-function-${item.sid}'),
               sid: item.sid,
               asset: item.icon ?? '',
@@ -2073,606 +2073,5 @@ class _RobotInlineDirective {
       query: query,
       hasSeparator: firstSpaceIndex >= 0,
     );
-  }
-}
-
-const double _composerActionButtonExtent = 48;
-const double _composerActionIconExtent = 24;
-const double _composerToolbarArtworkExtent = 38;
-const double _composerCallIconExtent = 22;
-const double _mobileComposerActionButtonExtent = 48;
-const double _mobileComposerActionIconExtent = 24;
-const double _mobileComposerSendButtonWidth = 60;
-
-@visibleForTesting
-Widget buildComposerSendButtonForTesting({
-  required bool enabled,
-  bool webStyle = false,
-  bool mobileWarmStyle = false,
-  VoidCallback? onTap,
-}) {
-  return _ComposerSendButton(
-    enabled: enabled,
-    liquidStyle: webStyle || mobileWarmStyle,
-    onTap: onTap,
-  );
-}
-
-@visibleForTesting
-Widget buildComposerToolbarButtonForTesting({
-  Key? key,
-  required String asset,
-  VoidCallback? onTap,
-}) {
-  return _ComposerToolbarButton(key: key, asset: asset, onTap: onTap);
-}
-
-@visibleForTesting
-Widget buildComposerCallToolbarButtonForTesting({
-  Key? key,
-  required VoidCallback onTap,
-  String asset = '',
-}) {
-  return _ComposerCallToolbarButton(
-    key: key,
-    decorationKey: const ValueKey<String>('chat-call-test-decoration'),
-    tooltip: 'Call',
-    asset: asset,
-    gradient: const LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [Color(0xFF36E6B3), Color(0xFF16A76C)],
-    ),
-    onTap: onTap,
-  );
-}
-
-@visibleForTesting
-Widget buildFunctionItemForTesting({
-  required String sid,
-  required String asset,
-  required String label,
-  VoidCallback? onTap,
-}) {
-  return _FunctionItem(
-    sid: sid,
-    asset: asset,
-    label: label,
-    textColor: WKWebColors.textPrimary,
-    onTap: onTap,
-  );
-}
-
-Key _chatIconMotionKeyFor(Key? widgetKey, String fallback) {
-  if (widgetKey is ValueKey<String>) {
-    final value = widgetKey.value;
-    return ValueKey<String>(
-      value.startsWith('chat-') ? '$value-motion' : 'chat-$value-motion',
-    );
-  }
-  return ValueKey<String>(fallback);
-}
-
-class _ChatIconInteraction extends StatefulWidget {
-  const _ChatIconInteraction({
-    required this.motionKey,
-    required this.child,
-    this.enabled = true,
-    this.disabledScale = 1.0,
-  });
-
-  static const double _hoverScale = 1.06;
-  static const double _pressedScale = 0.92;
-
-  final Key motionKey;
-  final Widget child;
-  final bool enabled;
-  final double disabledScale;
-
-  @override
-  State<_ChatIconInteraction> createState() => _ChatIconInteractionState();
-}
-
-class _ChatIconInteractionState extends State<_ChatIconInteraction> {
-  bool _hovered = false;
-  bool _pressed = false;
-
-  void _setHovered(bool value) {
-    if (!widget.enabled || _hovered == value) {
-      return;
-    }
-    setState(() {
-      _hovered = value;
-      if (!value) {
-        _pressed = false;
-      }
-    });
-  }
-
-  void _setPressed(bool value) {
-    if (!widget.enabled || _pressed == value) {
-      return;
-    }
-    setState(() {
-      _pressed = value;
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _ChatIconInteraction oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!widget.enabled && (_hovered || _pressed)) {
-      _hovered = false;
-      _pressed = false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final scale = !widget.enabled
-        ? widget.disabledScale
-        : _pressed
-        ? _ChatIconInteraction._pressedScale
-        : _hovered
-        ? _ChatIconInteraction._hoverScale
-        : 1.0;
-
-    return MouseRegion(
-      cursor: widget.enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => _setHovered(true),
-      onExit: (_) => _setHovered(false),
-      child: Listener(
-        onPointerDown: widget.enabled ? (_) => _setPressed(true) : null,
-        onPointerUp: widget.enabled ? (_) => _setPressed(false) : null,
-        onPointerCancel: widget.enabled ? (_) => _setPressed(false) : null,
-        child: AnimatedScale(
-          key: widget.motionKey,
-          scale: scale,
-          duration: ChatMotionDurations.pressedScale.resolve(
-            disableAnimations: reduceMotion,
-          ),
-          curve: Curves.easeOutCubic,
-          child: widget.child,
-        ),
-      ),
-    );
-  }
-}
-
-class _ComposerToolbarButton extends StatelessWidget {
-  const _ComposerToolbarButton({
-    super.key,
-    required this.asset,
-    this.onTap,
-    this.extent = _composerActionButtonExtent,
-    this.artworkExtent = _composerToolbarArtworkExtent,
-    this.fit = BoxFit.fill,
-    this.warmStyle = false,
-  });
-
-  final String asset;
-  final VoidCallback? onTap;
-  final double extent;
-  final double artworkExtent;
-  final BoxFit fit;
-  final bool warmStyle;
-
-  @override
-  Widget build(BuildContext context) {
-    final motionKey = _chatIconMotionKeyFor(
-      key,
-      'chat-composer-toolbar-button-motion',
-    );
-    final icon = IconButton(
-      padding: EdgeInsets.zero,
-      constraints: BoxConstraints.tightFor(width: extent, height: extent),
-      onPressed: onTap ?? () {},
-      icon: asset.trim().isEmpty
-          ? SizedBox(width: artworkExtent, height: artworkExtent)
-          : WKReferenceAssets.image(
-              asset,
-              width: artworkExtent,
-              height: artworkExtent,
-              fit: fit,
-            ),
-    );
-
-    if (!warmStyle) {
-      return _ChatIconInteraction(
-        motionKey: motionKey,
-        child: SizedBox(width: extent, height: extent, child: icon),
-      );
-    }
-
-    return _ChatIconInteraction(
-      motionKey: motionKey,
-      child: SizedBox(
-        width: extent,
-        height: extent,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(WKWebRadius.control),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x08111827),
-                blurRadius: 5,
-                offset: Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Center(child: icon),
-        ),
-      ),
-    );
-  }
-}
-
-class _ComposerCallToolbarButton extends StatelessWidget {
-  const _ComposerCallToolbarButton({
-    super.key,
-    required this.decorationKey,
-    required this.tooltip,
-    required this.asset,
-    required this.gradient,
-    required this.onTap,
-  });
-
-  final Key decorationKey;
-  final String tooltip;
-  final String asset;
-  final Gradient gradient;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final motionKey = _chatIconMotionKeyFor(
-      key,
-      'chat-composer-call-button-motion',
-    );
-    return _ChatIconInteraction(
-      motionKey: motionKey,
-      child: SizedBox(
-        width: _composerActionButtonExtent,
-        height: _composerActionButtonExtent,
-        child: Tooltip(
-          message: tooltip,
-          child: Material(
-            color: Colors.transparent,
-            child: InkResponse(
-              onTap: onTap,
-              radius: _composerActionButtonExtent / 2,
-              containedInkWell: true,
-              borderRadius: BorderRadius.circular(18),
-              child: Center(
-                child: DecoratedBox(
-                  key: decorationKey,
-                  decoration: BoxDecoration(
-                    gradient: gradient,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x22000000),
-                        blurRadius: 8,
-                        offset: Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: SizedBox(
-                    width: 38,
-                    height: 38,
-                    child: Center(
-                      child: asset.trim().isEmpty
-                          ? const SizedBox(
-                              width: _composerCallIconExtent,
-                              height: _composerCallIconExtent,
-                            )
-                          : WKReferenceAssets.image(
-                              asset,
-                              width: _composerCallIconExtent,
-                              height: _composerCallIconExtent,
-                              tint: Colors.white,
-                            ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ComposerSendButton extends StatefulWidget {
-  const _ComposerSendButton({
-    required this.enabled,
-    this.onTap,
-    this.width = _composerActionButtonExtent,
-    this.height = _composerActionButtonExtent,
-    this.iconExtent = _composerActionIconExtent,
-    this.warmStyle = false,
-    this.liquidStyle = false,
-  });
-
-  final bool enabled;
-  final VoidCallback? onTap;
-  final double width;
-  final double height;
-  final double iconExtent;
-  final bool warmStyle;
-  final bool liquidStyle;
-
-  @override
-  State<_ComposerSendButton> createState() => _ComposerSendButtonState();
-}
-
-class _ComposerSendButtonState extends State<_ComposerSendButton> {
-  @override
-  Widget build(BuildContext context) {
-    final tokens = LiquidGlassTokens.of(context);
-    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-    final liquidDisabledIconColor = isDarkTheme
-        ? LiquidGlassColors.darkPrimary
-        : const Color(0xFF64748B);
-    final iconColor = widget.liquidStyle
-        ? (widget.enabled ? Colors.white : liquidDisabledIconColor)
-        : widget.enabled
-        ? WKColors.brand500
-        : WKColors.popupText;
-
-    return _ChatIconInteraction(
-      motionKey: const ValueKey<String>('chat-send-button-motion'),
-      enabled: widget.enabled,
-      disabledScale: 0.88,
-      child: SizedBox(
-        width: widget.width,
-        height: widget.height,
-        child: widget.liquidStyle
-            ? DecoratedBox(
-                decoration: BoxDecoration(
-                  color: widget.enabled
-                      ? null
-                      : (isDarkTheme ? tokens.surface : Colors.white),
-                  gradient: widget.enabled
-                      ? const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFF2F80ED), Color(0xFF2563D9)],
-                        )
-                      : null,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: widget.enabled
-                        ? Colors.transparent
-                        : const Color(0xFFE2E8F0),
-                  ),
-                  boxShadow: widget.enabled
-                      ? const <BoxShadow>[
-                          BoxShadow(
-                            color: Color(0x1A2563D9),
-                            blurRadius: 6,
-                            offset: Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: IconButton(
-                  key: const ValueKey<String>('chat-send-button'),
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints.tightFor(
-                    width: widget.width,
-                    height: widget.height,
-                  ),
-                  onPressed: widget.enabled ? widget.onTap : null,
-                  icon: WKReferenceAssets.image(
-                    WKReferenceAssets.chatSend,
-                    width: widget.iconExtent,
-                    height: widget.iconExtent,
-                    tint: iconColor,
-                  ),
-                ),
-              )
-            : IconButton(
-                key: const ValueKey<String>('chat-send-button'),
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints.tightFor(
-                  width: widget.width,
-                  height: widget.height,
-                ),
-                onPressed: widget.enabled ? widget.onTap : null,
-                icon: WKReferenceAssets.image(
-                  WKReferenceAssets.chatSend,
-                  width: widget.iconExtent,
-                  height: widget.iconExtent,
-                  tint: iconColor,
-                ),
-              ),
-      ),
-    );
-  }
-}
-
-class _FunctionItem extends StatelessWidget {
-  const _FunctionItem({
-    super.key,
-    required this.sid,
-    required this.asset,
-    required this.label,
-    required this.textColor,
-    this.onTap,
-  });
-
-  final String sid;
-  final String asset;
-  final String label;
-  final Color textColor;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 72,
-      child: _ChatIconInteraction(
-        motionKey: ValueKey<String>('chat-function-$sid-motion'),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _FunctionIcon(sid: sid, asset: asset),
-                  const SizedBox(height: 8),
-                  Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: textColor),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FunctionIcon extends StatelessWidget {
-  const _FunctionIcon({required this.sid, required this.asset});
-
-  final String sid;
-  final String asset;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = _functionIconStyleForSid(sid);
-    if (style == null) {
-      return asset.trim().isEmpty
-          ? const SizedBox(width: 40, height: 40)
-          : WKReferenceAssets.image(asset, width: 40, height: 40);
-    }
-
-    return DecoratedBox(
-      key: ValueKey<String>('chat-function-$sid-icon'),
-      decoration: BoxDecoration(
-        gradient: style.gradient,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: style.shadowColor.withValues(alpha: 0.28),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: SizedBox(
-        width: 52,
-        height: 52,
-        child: Stack(
-          children: [
-            Positioned(
-              right: -8,
-              top: -10,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  shape: BoxShape.circle,
-                ),
-                child: const SizedBox(width: 32, height: 32),
-              ),
-            ),
-            Positioned(
-              left: -6,
-              bottom: -8,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const SizedBox(width: 28, height: 28),
-              ),
-            ),
-            Center(child: Icon(style.icon, size: 26, color: Colors.white)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FunctionIconStyle {
-  const _FunctionIconStyle({
-    required this.icon,
-    required this.gradient,
-    required this.shadowColor,
-  });
-
-  final IconData icon;
-  final Gradient gradient;
-  final Color shadowColor;
-}
-
-_FunctionIconStyle? _functionIconStyleForSid(String sid) {
-  switch (sid) {
-    case 'chooseImg':
-      return const _FunctionIconStyle(
-        icon: Icons.photo_library_rounded,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF41D8FF), Color(0xFF4E6BFF)],
-        ),
-        shadowColor: Color(0xFF4E6BFF),
-      );
-    case 'captureImg':
-      return const _FunctionIconStyle(
-        icon: Icons.photo_camera_rounded,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFCB5F), Color(0xFFFF6B8A)],
-        ),
-        shadowColor: Color(0xFFFF7A45),
-      );
-    case 'chooseFile':
-      return const _FunctionIconStyle(
-        icon: Icons.description_rounded,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFB86B), Color(0xFFFF7A45)],
-        ),
-        shadowColor: Color(0xFFFF7A45),
-      );
-    case 'sendLocation':
-      return const _FunctionIconStyle(
-        icon: Icons.location_on_rounded,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF36E6B3), Color(0xFF16A76C)],
-        ),
-        shadowColor: Color(0xFF16A76C),
-      );
-    case 'chooseCard':
-      return const _FunctionIconStyle(
-        icon: Icons.badge_rounded,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFB576FF), Color(0xFF7A5CFF)],
-        ),
-        shadowColor: Color(0xFF7A5CFF),
-      );
-    default:
-      return null;
   }
 }
