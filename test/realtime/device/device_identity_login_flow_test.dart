@@ -10,6 +10,8 @@ import 'package:wukong_im_app/realtime/device/device_identity_service.dart';
 import 'package:wukong_im_app/realtime/device/device_store.dart';
 import 'package:wukong_im_app/service/api/auth_api.dart';
 
+import '../../fakes/noop_im_notification_bridge.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -32,6 +34,8 @@ void main() {
     );
     final container = ProviderContainer(
       overrides: [
+        noopImNotificationBridgeOverride(),
+        authProvider.overrideWith((ref) => _TestAuthNotifier(ref)),
         deviceIdentityAuthorityProvider.overrideWithValue(authority),
         authCurrentUserLoaderProvider.overrideWithValue(
           () async => UserInfo(uid: 'u_login_01', token: 'token_login_01'),
@@ -57,12 +61,15 @@ void main() {
     () async {
       await StorageUtils.setUid('u_restore_01');
       await StorageUtils.setToken('token_restore_01');
+      await StorageUtils.setImToken('im_token_restore_01');
 
       final authority = _FakeDeviceIdentityAuthority(
         deviceSessionId: 'session_restore_01',
       );
       final container = ProviderContainer(
         overrides: [
+          noopImNotificationBridgeOverride(),
+          authProvider.overrideWith((ref) => _TestAuthNotifier(ref)),
           deviceIdentityAuthorityProvider.overrideWithValue(authority),
           authCurrentUserLoaderProvider.overrideWithValue(
             () async =>
@@ -82,6 +89,13 @@ void main() {
       expect(container.read(authProvider).isLoggedIn, isTrue);
     },
   );
+}
+
+class _TestAuthNotifier extends AuthNotifier {
+  _TestAuthNotifier(super.ref);
+
+  @override
+  Future<void> registerPushAfterLogin() async {}
 }
 
 class _BindCall {

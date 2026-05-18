@@ -18,6 +18,8 @@ import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry_provider.dart';
 import 'package:wukong_im_app/service/api/login_bridge_api.dart';
 
+import '../../fakes/noop_im_notification_bridge.dart';
+
 class _RecordingAuthRepository implements AuthRepository {
   AuthCredentialResult loginWithPhoneResult =
       const AuthCredentialResult.failure('login failed');
@@ -197,6 +199,7 @@ _RecordingAuthNotifier _buildAuthNotifier() {
   addTearDown(telemetry.dispose);
   final container = ProviderContainer(
     overrides: [
+      noopImNotificationBridgeOverride(),
       authProvider.overrideWith((ref) => _RecordingAuthNotifier(ref)),
       authCurrentUserLoaderProvider.overrideWithValue(() async => null),
       authDraftSyncProvider.overrideWithValue(() async {}),
