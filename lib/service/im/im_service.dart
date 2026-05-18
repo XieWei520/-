@@ -732,7 +732,7 @@ class IMService extends StateNotifier<IMServiceState>
         syncConversationExtras: ({reason}) =>
             _syncOrchestrator.syncConversationExtras(reason: reason),
         syncOfflineCommandMessages: ({reason}) =>
-            _syncOfflineCommandMessages(reason: reason),
+            _syncOrchestrator.syncOfflineCommandMessages(reason: reason),
       ),
     );
   }
@@ -806,105 +806,6 @@ class IMService extends StateNotifier<IMServiceState>
       deviceUuidLoader: _ensureDeviceUuid,
       publishRealtimeMessageExtraRefresh: _publishRealtimeMessageExtraRefresh,
     );
-  }
-
-  Future<void> _syncOfflineCommandMessages({String? reason}) async {
-    await _syncOrchestrator.runExclusiveSyncTask(
-      ImSyncTaskSlot.offlineCommands,
-      reason: reason,
-      task: ({reason}) => _runOfflineCommandSync(reason: reason),
-    );
-  }
-
-  Future<void> _runOfflineCommandSync({String? reason}) async {
-    final pendingCommands = <Map<String, dynamic>>[];
-    var nextMaxMessageSeq = 0;
-
-    try {
-      while (true) {
-        final response = await MessageApi.instance.syncCommandMessages(
-          maxMessageSeq: nextMaxMessageSeq,
-          limit: 500,
-        );
-        final messages = response.messages ?? const <dynamic>[];
-        if (messages.isEmpty) {
-          break;
-        }
-
-        pendingCommands.addAll(_extractOfflineCommands(messages));
-        final ackSequence = resolveOfflineCommandAckSequence(messages);
-        if (ackSequence <= 0) {
-          break;
-        }
-        await MessageApi.instance.syncAck(lastMessageSeq: ackSequence);
-        nextMaxMessageSeq = ackSequence;
-        await Future<void>.delayed(const Duration(seconds: 1));
-      }
-    } catch (error, stackTrace) {
-      debugPrint('Offline cmd sync failed($reason): $error');
-      debugPrint('$stackTrace');
-    } finally {
-      for (final command in pendingCommands) {
-        WKIM.shared.cmdManager.handleCMD(command);
-      }
-    }
-  }
-
-  List<Map<String, dynamic>> _extractOfflineCommands(
-    Iterable<dynamic> messages,
-  ) {
-    final commands = <Map<String, dynamic>>[];
-    for (final message in messages) {
-      final raw = _asMap(message);
-      if (raw.isEmpty) {
-        continue;
-      }
-      final payload = _extractOfflineCommandPayload(raw);
-      if (payload == null) {
-        continue;
-      }
-      payload['channel_id'] = payload['channel_id'] ?? raw['channel_id'];
-      payload['channel_type'] = payload['channel_type'] ?? raw['channel_type'];
-      final command = _readDynamicString(payload['cmd']);
-      if (command.isEmpty) {
-        continue;
-      }
-      commands.add(payload);
-    }
-    return commands;
-  }
-
-  Map<String, dynamic>? _extractOfflineCommandPayload(
-    Map<String, dynamic> raw,
-  ) {
-    final payload = raw['payload'];
-    if (payload is Map) {
-      final payloadMap = Map<String, dynamic>.from(payload);
-      final type = _readDynamicInt(payloadMap['type'] ?? raw['type']);
-      if (payloadMap.containsKey('cmd') ||
-          type == WkMessageContentType.insideMsg) {
-        return payloadMap;
-      }
-    }
-
-    final content = raw['content'];
-    if (content is String && content.trim().isNotEmpty) {
-      try {
-        final decoded = jsonDecode(content);
-        if (decoded is Map) {
-          final payloadMap = Map<String, dynamic>.from(decoded);
-          final type = _readDynamicInt(payloadMap['type'] ?? raw['type']);
-          if (payloadMap.containsKey('cmd') ||
-              type == WkMessageContentType.insideMsg) {
-            return payloadMap;
-          }
-        }
-      } catch (_) {
-        return null;
-      }
-    }
-
-    return null;
   }
 
   void _handleNewMessages(List<WKMsg> messages) {
@@ -1125,16 +1026,6 @@ class IMService extends StateNotifier<IMServiceState>
       return Map<String, dynamic>.from(raw);
     }
     return <String, dynamic>{};
-  }
-
-  int _readDynamicInt(dynamic value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.toInt();
-    }
-    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   String _readDynamicString(dynamic value) {

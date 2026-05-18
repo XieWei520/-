@@ -15,6 +15,7 @@ import 'package:wukong_im_app/service/im/im_word_sync_store.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/entity/reminder.dart';
+import 'package:wukongimfluttersdk/type/const.dart';
 
 void main() {
   group('ImSyncOrchestrator planning', () {
@@ -626,6 +627,149 @@ void main() {
       expect(store.savedExtras, isEmpty);
     });
   });
+
+  group('ImSyncOrchestrator offline command sync', () {
+    test(
+      'syncOfflineCommandMessages pulls pages, acks highest sequence, and dispatches commands',
+      () async {
+        final adapter = _QueuedPlainAdapter(
+          payloads: <Object>[
+            <String, dynamic>{
+              'messages': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'message_seq': 11,
+                  'channel_id': 'group_01',
+                  'channel_type': 2,
+                  'payload': <String, dynamic>{'cmd': 'syncMessageExtra'},
+                },
+                <String, dynamic>{
+                  'message_seq': 27,
+                  'channel_id': 'group_02',
+                  'channel_type': 2,
+                  'content': jsonEncode(<String, dynamic>{
+                    'type': WkMessageContentType.insideMsg,
+                    'cmd': 'wk_sync_conversation_extra',
+                  }),
+                },
+                <String, dynamic>{
+                  'message_seq': 19,
+                  'payload': <String, dynamic>{
+                    'type': WkMessageContentType.insideMsg,
+                  },
+                },
+              ],
+            },
+            const <String, dynamic>{'code': 0},
+            const <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+          ],
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        final dispatched = <Map<String, dynamic>>[];
+        final delayDurations = <Duration>[];
+        final orchestrator = _orchestrator(
+          syncDelay: (duration) async {
+            delayDurations.add(duration);
+          },
+        );
+
+        await orchestrator.syncOfflineCommandMessages(
+          reason: 'unit',
+          dispatchOfflineCommand: dispatched.add,
+        );
+
+        expect(adapter.requests.map((request) => request.path), <String>[
+          '/v1/message/sync',
+          '/v1/message/syncack/27',
+          '/v1/message/sync',
+        ]);
+        expect(adapter.requests.first.data, <String, dynamic>{
+          'max_message_seq': 0,
+          'limit': 500,
+        });
+        expect(adapter.requests.last.data, <String, dynamic>{
+          'max_message_seq': 27,
+          'limit': 500,
+        });
+        expect(dispatched, hasLength(2));
+        expect(dispatched.first['cmd'], 'syncMessageExtra');
+        expect(dispatched.first['channel_id'], 'group_01');
+        expect(dispatched.first['channel_type'], 2);
+        expect(dispatched.last['cmd'], 'wk_sync_conversation_extra');
+        expect(dispatched.last['channel_id'], 'group_02');
+        expect(dispatched.last['channel_type'], 2);
+        expect(delayDurations, <Duration>[const Duration(seconds: 1)]);
+      },
+    );
+
+    test(
+      'syncOfflineCommandMessages skips ack when remote list is empty',
+      () async {
+        final adapter = _QueuedPlainAdapter(
+          payloads: const <Object>[
+            <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+          ],
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        final dispatched = <Map<String, dynamic>>[];
+        final orchestrator = _orchestrator();
+
+        await orchestrator.syncOfflineCommandMessages(
+          reason: 'unit-empty',
+          dispatchOfflineCommand: dispatched.add,
+        );
+
+        expect(adapter.requests.map((request) => request.path), <String>[
+          '/v1/message/sync',
+        ]);
+        expect(dispatched, isEmpty);
+      },
+    );
+
+    test(
+      'syncOfflineCommandMessages dispatches pulled commands even when ack fails',
+      () async {
+        final adapter = _QueuedPlainAdapter(
+          payloads: <Object>[
+            <String, dynamic>{
+              'messages': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'message_seq': 11,
+                  'channel_id': 'group_01',
+                  'channel_type': 2,
+                  'payload': <String, dynamic>{'cmd': 'syncMessageExtra'},
+                },
+              ],
+            },
+          ],
+          throwingRequestIndexes: const <int>{1},
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        final dispatched = <Map<String, dynamic>>[];
+        final delayDurations = <Duration>[];
+        final orchestrator = _orchestrator(
+          syncDelay: (duration) async {
+            delayDurations.add(duration);
+          },
+        );
+
+        await expectLater(
+          orchestrator.syncOfflineCommandMessages(
+            reason: 'unit-ack-failure',
+            dispatchOfflineCommand: dispatched.add,
+          ),
+          completes,
+        );
+
+        expect(adapter.requests.map((request) => request.path), <String>[
+          '/v1/message/sync',
+          '/v1/message/syncack/11',
+        ]);
+        expect(dispatched, hasLength(1));
+        expect(dispatched.single['cmd'], 'syncMessageExtra');
+        expect(delayDurations, isEmpty);
+      },
+    );
+  });
 }
 
 ImSyncOrchestrator _orchestrator({
@@ -691,6 +835,47 @@ class _ThrowingPlainAdapter implements HttpClientAdapter {
       requestOptions: options,
       type: DioExceptionType.connectionError,
       error: 'sync ack failed',
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _QueuedPlainAdapter implements HttpClientAdapter {
+  _QueuedPlainAdapter({
+    required List<Object> payloads,
+    this.throwingRequestIndexes = const <int>{},
+  }) : _payloads = List<Object>.from(payloads);
+
+  final List<Object> _payloads;
+  final Set<int> throwingRequestIndexes;
+  final List<RequestOptions> requests = <RequestOptions>[];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    final requestIndex = requests.length;
+    requests.add(options);
+    if (throwingRequestIndexes.contains(requestIndex)) {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+        error: 'queued request failed',
+      );
+    }
+    if (_payloads.isEmpty) {
+      throw StateError('No queued payload for ${options.path}');
+    }
+    return ResponseBody.fromString(
+      jsonEncode(_payloads.removeAt(0)),
+      200,
+      headers: <String, List<String>>{
+        Headers.contentTypeHeader: <String>[Headers.jsonContentType],
+      },
     );
   }
 

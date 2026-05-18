@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
@@ -31,6 +33,8 @@ typedef ImMessageExtraRefreshPublisher =
       Iterable<WKMsgExtra> extras,
     );
 typedef ImSyncDelay = Future<void> Function(Duration duration);
+typedef ImOfflineCommandDispatcher =
+    void Function(Map<String, dynamic> command);
 
 abstract interface class ImMessageExtraStore {
   Future<int> getMaxExtraVersionWithChannel(String channelId, int channelType);
@@ -578,10 +582,143 @@ class ImSyncOrchestrator {
     );
   }
 
-  Future<void> syncOfflineCommandMessages({String? reason}) {
-    throw UnimplementedError(
-      'Skeleton only: move offline command sync and ack here.',
+  Future<void> syncOfflineCommandMessages({
+    String? reason,
+    ImOfflineCommandDispatcher? dispatchOfflineCommand,
+  }) {
+    final dispatcher =
+        dispatchOfflineCommand ??
+        (command) {
+          WKIM.shared.cmdManager.handleCMD(command);
+        };
+    return runExclusiveSyncTask(
+      ImSyncTaskSlot.offlineCommands,
+      reason: reason,
+      task: ({reason}) => _runOfflineCommandSync(
+        reason: reason,
+        dispatchOfflineCommand: dispatcher,
+      ),
     );
+  }
+
+  Future<void> _runOfflineCommandSync({
+    String? reason,
+    required ImOfflineCommandDispatcher dispatchOfflineCommand,
+  }) async {
+    final pendingCommands = <Map<String, dynamic>>[];
+    var nextMaxMessageSeq = 0;
+
+    try {
+      while (true) {
+        final response = await messageApi.syncCommandMessages(
+          maxMessageSeq: nextMaxMessageSeq,
+          limit: 500,
+        );
+        final messages = response.messages ?? const <dynamic>[];
+        if (messages.isEmpty) {
+          break;
+        }
+
+        pendingCommands.addAll(extractOfflineCommands(messages));
+        final ackSequence = coordinator.resolveOfflineCommandAckSequence(
+          messages,
+        );
+        if (ackSequence <= 0) {
+          break;
+        }
+        await messageApi.syncAck(lastMessageSeq: ackSequence);
+        nextMaxMessageSeq = ackSequence;
+        await _syncDelay(const Duration(seconds: 1));
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Offline cmd sync failed($reason): $error');
+      debugPrint('$stackTrace');
+    } finally {
+      for (final command in pendingCommands) {
+        dispatchOfflineCommand(command);
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> extractOfflineCommands(
+    Iterable<dynamic> messages,
+  ) {
+    final commands = <Map<String, dynamic>>[];
+    for (final message in messages) {
+      final raw = _asMap(message);
+      if (raw.isEmpty) {
+        continue;
+      }
+      final payload = _extractOfflineCommandPayload(raw);
+      if (payload == null) {
+        continue;
+      }
+      payload['channel_id'] = payload['channel_id'] ?? raw['channel_id'];
+      payload['channel_type'] = payload['channel_type'] ?? raw['channel_type'];
+      final command = _readDynamicString(payload['cmd']);
+      if (command.isEmpty) {
+        continue;
+      }
+      commands.add(payload);
+    }
+    return commands;
+  }
+
+  Map<String, dynamic>? _extractOfflineCommandPayload(
+    Map<String, dynamic> raw,
+  ) {
+    final payload = raw['payload'];
+    if (payload is Map) {
+      final payloadMap = Map<String, dynamic>.from(payload);
+      final type = _readDynamicInt(payloadMap['type'] ?? raw['type']);
+      if (payloadMap.containsKey('cmd') ||
+          type == WkMessageContentType.insideMsg) {
+        return payloadMap;
+      }
+    }
+
+    final content = raw['content'];
+    if (content is String && content.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(content);
+        if (decoded is Map) {
+          final payloadMap = Map<String, dynamic>.from(decoded);
+          final type = _readDynamicInt(payloadMap['type'] ?? raw['type']);
+          if (payloadMap.containsKey('cmd') ||
+              type == WkMessageContentType.insideMsg) {
+            return payloadMap;
+          }
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic> _asMap(dynamic raw) {
+    if (raw is Map<String, dynamic>) {
+      return raw;
+    }
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+    return <String, dynamic>{};
+  }
+
+  int _readDynamicInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _readDynamicString(dynamic value) {
+    return value?.toString().trim() ?? '';
   }
 }
 
