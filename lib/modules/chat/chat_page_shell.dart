@@ -15,7 +15,6 @@ import '../../data/models/friend.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../data/providers/user_provider.dart';
 import '../../service/api/group_api.dart';
-import '../../service/api/user_api.dart';
 import '../../wukong_uikit/group/group_detail_page.dart';
 import '../search/presentation/chat_search_entry_page.dart';
 import '../search/presentation/message_record_search_page.dart';
@@ -27,6 +26,7 @@ import '../../wukong_robot/models/robot.dart';
 import '../../wukong_robot/robot_service.dart';
 import '../../wukong_uikit/setting/setting_preferences.dart';
 import 'chat_call_navigation.dart';
+import 'chat_channel_hydration_service.dart';
 import 'chat_channel_identity.dart';
 import 'chat_channel_settings.dart';
 import 'chat_flame_message_runtime.dart';
@@ -292,51 +292,23 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   Future<WKChannel?> _loadRemoteFlameSettings(WKChannel? currentChannel) async {
-    final channel =
-        currentChannel ?? WKChannel(widget.channelId, widget.channelType);
     final cancelToken = _remoteFlameCancelToken = CancelToken();
     try {
-      if (widget.channelType == WKChannelType.group) {
-        final group = await GroupApi.instance.getGroupInfo(
-          widget.channelId,
-          cancelToken: cancelToken,
-        );
-        applyChannelFlameSettings(
-          channel,
-          flame: group.flame ?? 0,
-          flameSecond: group.flameSecond ?? 0,
-        );
-        if ((group.memberCount ?? 0) > 0) {
-          final remoteExtra = mutableChannelExtraMap(channel.remoteExtraMap);
-          remoteExtra['member_count'] = group.memberCount ?? 0;
-          channel.remoteExtraMap = remoteExtra;
-        }
-      } else if (widget.channelType == WKChannelType.personal) {
-        final user = await UserApi.instance.getUserInfo(
-          widget.channelId,
-          cancelToken: cancelToken,
-        );
-        applyChannelUserIdentity(channel, user);
-        applyChannelFlameSettings(
-          channel,
-          flame: user.flame ?? 0,
-          flameSecond: user.flameSecond ?? 0,
-        );
+      final result = await ChatChannelHydrationService().hydrateRemoteChannel(
+        channelId: widget.channelId,
+        channelType: widget.channelType,
+        currentChannel: currentChannel,
+        cancelToken: cancelToken,
+      );
+      if (result.didHydrate && result.channel != null) {
+        WKIM.shared.channelManager.addOrUpdateChannel(result.channel!);
       }
-    } on DioException catch (error) {
-      if (CancelToken.isCancel(error)) {
-        return currentChannel;
-      }
-      return currentChannel;
-    } catch (_) {
-      return currentChannel;
+      return result.channel;
     } finally {
       if (identical(_remoteFlameCancelToken, cancelToken)) {
         _remoteFlameCancelToken = null;
       }
     }
-    WKIM.shared.channelManager.addOrUpdateChannel(channel);
-    return channel;
   }
 
   Future<void> _refreshPinnedUiState() async {
