@@ -7,12 +7,17 @@ void main() {
     'IMService forwards incoming messages to the shared web alert contract',
     () {
       final source = File('lib/service/im/im_service.dart').readAsStringSync();
+      final bridgeSource = File(
+        'lib/service/im/im_notification_bridge.dart',
+      ).readAsStringSync();
 
-      expect(source, contains('web_notification_manager.dart'));
-      expect(source, contains('buildMessageAlertPlan'));
-      expect(source, contains('WebNotificationManager.instance.showNewMessageAlert'));
-      expect(source, contains('plan: plan'));
+      expect(source, contains('im_notification_bridge.dart'));
+      expect(source, contains('_notificationBridge.showMessageAlert'));
       expect(source, contains('lifecycleState: _appLifecycleState'));
+      expect(bridgeSource, contains('web_notification_manager.dart'));
+      expect(bridgeSource, contains('buildMessageAlertPlan'));
+      expect(bridgeSource, contains('webNotifications.showNewMessageAlert'));
+      expect(bridgeSource, contains('plan: plan'));
     },
   );
 

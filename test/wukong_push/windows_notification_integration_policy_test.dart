@@ -7,14 +7,17 @@ void main() {
     'IMService forwards Windows incoming messages to desktop alert manager',
     () {
       final source = File('lib/service/im/im_service.dart').readAsStringSync();
+      final bridgeSource = File(
+        'lib/service/im/im_notification_bridge.dart',
+      ).readAsStringSync();
 
-      expect(source, contains('desktop_message_alert_manager.dart'));
-      expect(source, contains('message_alert_plan.dart'));
-      expect(source, contains('_scheduleDesktopMessageAlert'));
-      expect(source, contains('TargetPlatform.windows'));
+      expect(source, contains('im_notification_bridge.dart'));
+      expect(source, contains('_notificationBridge.showMessageAlert'));
+      expect(bridgeSource, contains('desktop_message_alert_manager.dart'));
+      expect(bridgeSource, contains('message_alert_plan.dart'));
       expect(
-        source,
-        contains('DesktopMessageAlertManager.instance.showNewMessageAlert'),
+        bridgeSource,
+        contains('desktopAlerts.showNewMessageAlert'),
       );
     },
   );

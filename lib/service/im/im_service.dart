@@ -41,7 +41,6 @@ import '../../wukong_base/msg/msg_content_type.dart';
 import '../../wukong_base/db/db_helper.dart';
 import '../../wukong_push/notification/android_message_alert_manager.dart';
 import '../../wukong_push/notification/desktop_message_alert_manager.dart';
-import '../../wukong_push/notification/message_alert_plan.dart';
 import '../../wukong_push/notification/web_notification_manager.dart';
 import '../api/file_api.dart';
 import '../api/conversation_draft_api.dart';
@@ -56,6 +55,8 @@ import 'coordinators/attachment_pipeline.dart' as attachment_pipeline;
 import 'coordinators/command_dispatcher.dart' as command_dispatcher;
 import 'coordinators/message_sync_coordinator.dart' as message_sync_coordinator;
 import 'im_connection_service.dart';
+import 'im_notification_bridge.dart';
+import 'im_service_providers.dart';
 import 'im_sync_orchestrator.dart';
 import 'message_delivery_service.dart';
 import 'message_outbox.dart';
@@ -77,6 +78,7 @@ final imServiceProvider = StateNotifierProvider<IMService, IMServiceState>((
   return IMService(
     invalidateProvider: ref.invalidate,
     readProvider: ref.read,
+    notificationBridge: ref.read(imNotificationBridgeProvider),
     realtimeRolloutTelemetry: ref.read(realtimeRolloutTelemetryProvider),
   );
 });
@@ -347,6 +349,7 @@ class IMService extends StateNotifier<IMServiceState>
     T Function<T>(ProviderListenable<T> provider)? readProvider,
     RealtimeRolloutTelemetry? realtimeRolloutTelemetry,
     ImConnectionService? connectionService,
+    ImNotificationBridge? notificationBridge,
   }) : _invalidateProvider = invalidateProvider,
        _readProvider = readProvider,
        _ownsRealtimeRolloutTelemetry = realtimeRolloutTelemetry == null,
@@ -371,6 +374,13 @@ class IMService extends StateNotifier<IMServiceState>
           realtimeRuntime: const SkeletonImRealtimeRuntimePort(),
           routeResolver: _resolveConnectAddr,
           listenerKey: _connectionListenerKey,
+        );
+    _notificationBridge =
+        notificationBridge ??
+        ImNotificationBridge(
+          androidAlerts: AndroidMessageAlertManager.instance,
+          desktopAlerts: DesktopMessageAlertManager.instance,
+          webNotifications: WebNotificationManager.instance,
         );
     CallCoordinator.instance.setGatewayDegradationReader(
       _sessionRuntime.isGatewayDegradedFor,
@@ -418,6 +428,7 @@ class IMService extends StateNotifier<IMServiceState>
   late final RealtimeRolloutTelemetry _realtimeRolloutTelemetry;
   late final SessionRuntime _sessionRuntime;
   late final ImConnectionService _connectionService;
+  late final ImNotificationBridge _notificationBridge;
   final bool _ownsRealtimeRolloutTelemetry;
   final void Function(ProviderOrFamily provider)? _invalidateProvider;
   final T Function<T>(ProviderListenable<T> provider)? _readProvider;
@@ -1177,83 +1188,21 @@ class IMService extends StateNotifier<IMServiceState>
       if (tip != null) {
         unawaited(_insertSensitiveWordTipMessage(tip));
       }
-      if (kIsWeb) {
-        _scheduleWebMessageAlert(message, currentUid: currentUid);
-      } else if (defaultTargetPlatform == TargetPlatform.android) {
-        _scheduleAndroidMessageAlert(message, currentUid: currentUid);
-      } else if (defaultTargetPlatform == TargetPlatform.windows) {
-        _scheduleDesktopMessageAlert(message, currentUid: currentUid);
-      }
+      _scheduleMessageAlert(message, currentUid: currentUid);
     }
   }
 
-  void _scheduleWebMessageAlert(WKMsg message, {required String currentUid}) {
+  void _scheduleMessageAlert(WKMsg message, {required String currentUid}) {
     try {
-      final plan = buildMessageAlertPlan(message, currentUid: currentUid);
-      if (plan == null) {
-        return;
-      }
       unawaited(
-        WebNotificationManager.instance.showNewMessageAlert(
-          plan: plan,
+        _notificationBridge.showMessageAlert(
+          message,
+          currentUid: currentUid,
           lifecycleState: _appLifecycleState,
         ),
       );
     } catch (error, stackTrace) {
-      debugPrint('Web message alert scheduling failed: $error');
-      debugPrint('$stackTrace');
-    }
-  }
-
-  void _scheduleAndroidMessageAlert(
-    WKMsg message, {
-    required String currentUid,
-  }) {
-    try {
-      final plan = buildMessageAlertPlan(
-        message,
-        currentUid: currentUid,
-        requireRedDot: _appLifecycleState == AppLifecycleState.resumed,
-      );
-      if (plan == null) {
-        debugPrint(
-          'Android message alert skipped by plan: '
-          'lifecycle=$_appLifecycleState, redDot=${message.header.redDot}, '
-          'from=${message.fromUID}, channel=${message.channelType}:'
-          '${message.channelID}, type=${message.contentType}, '
-          'deleted=${message.isDeleted}',
-        );
-        return;
-      }
-      unawaited(
-        AndroidMessageAlertManager.instance.showNewMessageAlert(
-          plan: plan,
-          lifecycleState: _appLifecycleState,
-        ),
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Android message alert scheduling failed: $error');
-      debugPrint('$stackTrace');
-    }
-  }
-
-  void _scheduleDesktopMessageAlert(
-    WKMsg message, {
-    required String currentUid,
-  }) {
-    try {
-      final plan = buildMessageAlertPlan(message, currentUid: currentUid);
-      if (plan == null) {
-        return;
-      }
-      unawaited(
-        DesktopMessageAlertManager.instance.showNewMessageAlert(
-          plan: plan,
-          lifecycleState: _appLifecycleState,
-        ),
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Desktop message alert scheduling failed: $error');
+      debugPrint('Message alert scheduling failed: $error');
       debugPrint('$stackTrace');
     }
   }

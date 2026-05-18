@@ -6,14 +6,17 @@ import 'package:wukong_im_app/wukong_push/notification/notification_helper.dart'
 void main() {
   test('IMService wires Android local message alerts without FCM', () {
     final source = File('lib/service/im/im_service.dart').readAsStringSync();
+    final bridgeSource = File(
+      'lib/service/im/im_notification_bridge.dart',
+    ).readAsStringSync();
 
-    expect(source, contains('android_message_alert_manager.dart'));
-    expect(source, contains('_scheduleAndroidMessageAlert'));
-    expect(source, contains('TargetPlatform.android'));
-    expect(source, contains('requireRedDot: _appLifecycleState == AppLifecycleState.resumed'));
+    expect(source, contains('im_notification_bridge.dart'));
+    expect(source, contains('_notificationBridge.showMessageAlert'));
+    expect(bridgeSource, contains('android_message_alert_manager.dart'));
+    expect(bridgeSource, contains('_shouldRequireRedDot'));
     expect(
-      source,
-      contains('AndroidMessageAlertManager.instance.showNewMessageAlert'),
+      bridgeSource,
+      contains('androidAlerts.showNewMessageAlert'),
     );
   });
 

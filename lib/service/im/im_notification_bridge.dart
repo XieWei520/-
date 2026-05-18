@@ -17,20 +17,24 @@ class ImNotificationBridge {
   final DesktopMessageAlertManager desktopAlerts;
   final WebNotificationManager webNotifications;
 
-  Future<void> initialize() {
-    throw UnimplementedError(
-      'Skeleton only: initialize platform notification channels here.',
-    );
+  Future<void> initialize() async {
+    // Web notification permission/audio unlock must still be triggered from a
+    // user gesture, so the bridge only keeps a single platform-facing entry
+    // point instead of forcing initialization here.
   }
 
   Future<void> handleIncomingMessages(
     List<WKMsg> messages, {
     required String currentUid,
     required AppLifecycleState lifecycleState,
-  }) {
-    throw UnimplementedError(
-      'Skeleton only: move new-message notification dispatch here.',
-    );
+  }) async {
+    for (final message in messages) {
+      await showMessageAlert(
+        message,
+        currentUid: currentUid,
+        lifecycleState: lifecycleState,
+      );
+    }
   }
 
   Future<void> showMessageAlert(
@@ -38,24 +42,89 @@ class ImNotificationBridge {
     required String currentUid,
     required AppLifecycleState lifecycleState,
     bool requireRedDot = true,
-  }) {
-    throw UnimplementedError(
-      'Skeleton only: build MessageAlertPlan and fan out by platform here.',
+  }) async {
+    final standardPlan = buildMessageAlertPlan(
+      message,
+      currentUid: currentUid,
+      requireRedDot: requireRedDot,
+    );
+    final androidPlan = buildMessageAlertPlan(
+      message,
+      currentUid: currentUid,
+      requireRedDot: _shouldRequireRedDotForAndroid(
+        lifecycleState: lifecycleState,
+        requested: requireRedDot,
+      ),
+    );
+    if (standardPlan == null && androidPlan == null) {
+      return;
+    }
+    await _dispatchPlatformPlans(
+      androidPlan: androidPlan,
+      standardPlan: standardPlan,
+      lifecycleState: lifecycleState,
     );
   }
 
   Future<void> dispatchPlan(
     MessageAlertPlan plan, {
     required AppLifecycleState lifecycleState,
-  }) {
-    throw UnimplementedError(
-      'Skeleton only: call Android, desktop, and web alert managers here.',
-    );
+  }) async {
+    await Future.wait(<Future<void>>[
+      androidAlerts.showNewMessageAlert(
+        plan: plan,
+        lifecycleState: lifecycleState,
+      ),
+      desktopAlerts.showNewMessageAlert(
+        plan: plan,
+        lifecycleState: lifecycleState,
+      ),
+      webNotifications.showNewMessageAlert(
+        plan: plan,
+        lifecycleState: lifecycleState,
+      ),
+    ]);
   }
 
-  Future<void> dispose() {
-    throw UnimplementedError(
-      'Skeleton only: dispose owned notification resources here.',
-    );
+  Future<void> dispose() async {
+    await Future.wait(<Future<void>>[
+      androidAlerts.dispose(),
+      desktopAlerts.dispose(),
+      webNotifications.dispose(),
+    ]);
+  }
+
+  Future<void> _dispatchPlatformPlans({
+    required MessageAlertPlan? androidPlan,
+    required MessageAlertPlan? standardPlan,
+    required AppLifecycleState lifecycleState,
+  }) async {
+    await Future.wait(<Future<void>>[
+      if (androidPlan != null)
+        androidAlerts.showNewMessageAlert(
+          plan: androidPlan,
+          lifecycleState: lifecycleState,
+        ),
+      if (standardPlan != null) ...<Future<void>>[
+        desktopAlerts.showNewMessageAlert(
+          plan: standardPlan,
+          lifecycleState: lifecycleState,
+        ),
+        webNotifications.showNewMessageAlert(
+          plan: standardPlan,
+          lifecycleState: lifecycleState,
+        ),
+      ],
+    ]);
+  }
+
+  bool _shouldRequireRedDotForAndroid({
+    required AppLifecycleState lifecycleState,
+    required bool requested,
+  }) {
+    if (!requested) {
+      return false;
+    }
+    return lifecycleState == AppLifecycleState.resumed;
   }
 }
