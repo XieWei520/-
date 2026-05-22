@@ -48,9 +48,7 @@ ON message(message_id)
   });
 
   test('SDK migration path creates real native message table indexes', () {
-    final sdkRoot = Directory(
-      p.join('..', 'TangSengDaoDao', 'WuKongIMFlutterSDK-master'),
-    );
+    final sdkRoot = Directory(p.join('packages', 'wukongimfluttersdk'));
     final migrationAsset = File(
       p.join(sdkRoot.path, 'assets', '202604251100.sql'),
     ).readAsStringSync();

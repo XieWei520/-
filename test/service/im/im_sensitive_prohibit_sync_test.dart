@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -25,10 +26,15 @@ import '../../fakes/noop_im_notification_bridge.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  late final Directory testDatabaseRoot;
 
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    testDatabaseRoot = await Directory.systemTemp.createTemp(
+      'wukong_im_sensitive_prohibit_sync_',
+    );
+    (databaseFactory as dynamic).setDatabasesPathOrNull(testDatabaseRoot.path);
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await StorageUtils.init();
   });
@@ -38,6 +44,12 @@ void main() {
     await StorageUtils.setUid('u_self');
     final dynamic dbHelper = DBHelper.instance;
     await dbHelper.deleteDatabaseForTesting();
+  });
+
+  tearDownAll(() async {
+    await DBHelper.instance.deleteDatabaseForTesting();
+    (databaseFactory as dynamic).setDatabasesPathOrNull(null);
+    await testDatabaseRoot.delete(recursive: true);
   });
 
   group('MessageApi Android word sync parity', () {

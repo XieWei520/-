@@ -10,6 +10,7 @@ import 'package:wukongimfluttersdk/wkim.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  final sdkAssetsRoot = p.join('packages', 'wukongimfluttersdk', 'assets');
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -32,10 +33,7 @@ void main() {
         await db.close();
       });
 
-      await _applySqlFile(
-        db,
-        '../TangSengDaoDao/WuKongIMFlutterSDK-master/assets/202008292051.sql',
-      );
+      await _applySqlFile(db, p.join(sdkAssetsRoot, '202008292051.sql'));
 
       await expectLater(WKDBHelper.shared.onUpgrade(db), completes);
 
@@ -82,10 +80,7 @@ void main() {
       await db.close();
     });
 
-    await _applySqlFile(
-      db,
-      '../TangSengDaoDao/WuKongIMFlutterSDK-master/assets/202008292051.sql',
-    );
+    await _applySqlFile(db, p.join(sdkAssetsRoot, '202008292051.sql'));
     await db.insert('message', <String, Object>{
       'message_id': 'm100',
       'channel_id': 'ch1',
@@ -127,10 +122,7 @@ void main() {
         await db.close();
       });
 
-      await _applySqlFile(
-        db,
-        '../TangSengDaoDao/WuKongIMFlutterSDK-master/assets/202008292051.sql',
-      );
+      await _applySqlFile(db, p.join(sdkAssetsRoot, '202008292051.sql'));
 
       await db.insert('message', <String, Object>{
         'message_id': 'm-dup',
@@ -234,10 +226,7 @@ LIMIT 1
         await db.close();
       });
 
-      await _applySqlFile(
-        db,
-        '../TangSengDaoDao/WuKongIMFlutterSDK-master/assets/202008292051.sql',
-      );
+      await _applySqlFile(db, p.join(sdkAssetsRoot, '202008292051.sql'));
 
       await expectLater(WKDBHelper.shared.onUpgrade(db), completes);
 

@@ -5,10 +5,19 @@ import 'package:wukong_im_app/data/models/group.dart';
 import 'package:wukong_im_app/data/models/user.dart';
 import 'package:wukong_im_app/data/providers/auth_provider.dart';
 import 'package:wukong_im_app/modules/vip/vip_guard.dart';
+import 'package:wukong_im_app/widgets/wk_avatar.dart';
 import 'package:wukong_im_app/widgets/wk_sub_page_scaffold.dart';
 import 'package:wukong_im_app/wukong_uikit/group/saved_groups_page.dart';
 
 void main() {
+  setUp(() {
+    WKAvatar.setBytesLoaderForTesting((_) async => null);
+  });
+
+  tearDown(() {
+    WKAvatar.setBytesLoaderForTesting(null);
+  });
+
   Widget wrapWithApp(Widget child, {int vipLevel = 1}) {
     return ProviderScope(
       overrides: [
