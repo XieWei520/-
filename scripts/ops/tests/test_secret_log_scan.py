@@ -104,6 +104,69 @@ class SecretLogScanTests(unittest.TestCase):
         self.assertEqual(result.finding_count, 0)
         self.assertEqual(result.redacted_report, "")
 
+    def test_ignores_safe_placeholders_and_secret_file_paths(self) -> None:
+        safe_lines = [
+            "WUKONGIM_METRICS_TOKEN=CHANGE_ME_METRICS_TOKEN",
+            'WUKONGIM_METRICS_TOKEN: "${WUKONGIM_METRICS_TOKEN}"',
+            r'WUKONGIM_METRICS_TOKEN: "\${WUKONGIM_METRICS_TOKEN}"',
+            "WUKONGIM_METRICS_TOKEN=${WUKONGIM_METRICS_TOKEN}",
+            "Set `WUKONGIM_METRICS_TOKEN=<metrics-token>` before rollout",
+            "credentials_file: /run/secrets/wukongim_metrics_token",
+            "`credentials_file: /run/secrets/wukongim_metrics_token`. Before starting",
+            "./secrets/wukongim_metrics_token:/run/secrets/wukongim_metrics_token:ro",
+            "printf '%s' '<metrics-token>' > ./secrets/wukongim_metrics_token",
+            "`Authorization: Bearer <metrics-token>`",
+            'curl -H "Authorization: Bearer <metrics-token>" http://127.0.0.1:8080/metrics',
+            'contains(\'WUKONGIM_METRICS_TOKEN: "${WUKONGIM_METRICS_TOKEN}"\')',
+            "RegExp(r'WUKONGIM_METRICS_TOKEN=(?!CHANGE_ME_METRICS_TOKEN)\\S+')",
+            "_AUTHORIZATION_ASSIGNMENT_RE = re.compile(",
+            "_SAFE_SECRET_FILE_VALUE_RE = re.compile(",
+        ]
+
+        for text in safe_lines:
+            with self.subTest(text=text):
+                result = scan_text(text, source="safe-config")
+
+                self.assertEqual(result.finding_count, 0)
+                self.assertEqual(result.redacted_report, "")
+
+    def test_ignores_source_syntax_that_is_not_secret_assignment(self) -> None:
+        safe_lines = [
+            'if token == "" {',
+            'if token != "" {',
+            "localWithoutToken := httptest.NewRecorder()",
+            "token = _trim_literal_wrappers(stripped[len(\"bearer \") :].split()[0])",
+            'throw "RemoteHost must be a single safe ssh host token: $Value"',
+        ]
+
+        for text in safe_lines:
+            with self.subTest(text=text):
+                result = scan_text(text, source="source")
+
+                self.assertEqual(result.finding_count, 0)
+                self.assertEqual(result.redacted_report, "")
+
+    def test_ignores_dummy_test_fixture_secret_values(self) -> None:
+        safe_lines = [
+            'req := httptest.NewRequest(http.MethodGet, "/v1/users/alice?token=secret", nil)',
+            'strings.NewReader(`{"token":"secret"}`)',
+            'req.Header.Set("Authorization", "Bearer expected-token")',
+        ]
+
+        for text in safe_lines:
+            with self.subTest(text=text):
+                result = scan_text(text, source="test-fixture")
+
+                self.assertEqual(result.finding_count, 0)
+                self.assertEqual(result.redacted_report, "")
+
+    def test_detects_real_metrics_token_values(self) -> None:
+        result = scan_text("WUKONGIM_METRICS_TOKEN=raw-secret-value", source="config")
+
+        self.assertEqual(result.finding_count, 1)
+        self.assertIn("WUKONGIM_METRICS_TOKEN=<redacted>", result.redacted_report)
+        self.assertNotIn("raw-secret-value", result.redacted_report)
+
     def test_redacts_multiple_secret_fields_on_same_line(self) -> None:
         text = '{"actToken":"raw1","password":"raw2"}'
 

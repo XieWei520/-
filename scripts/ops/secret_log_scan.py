@@ -47,15 +47,33 @@ _FIELD_ASSIGNMENT_RE = re.compile(
         (?P<field_quote>["']?)
         (?P<field>[A-Za-z_][A-Za-z0-9_-]*)
         (?P=field_quote)
-        \s*[:=]\s*
+        \s*(?::(?!=)|=(?!=))\s*
     )
     (?P<value>
         "(?:\\.|[^"\\])*"
         |'(?:\\.|[^'\\])*'
+        |\$\{[A-Za-z_][A-Za-z0-9_]*\}
         |(?:Bearer\s+)?[^\s,}}\]]+
     )
     """,
     re.IGNORECASE | re.VERBOSE,
+)
+
+_SAFE_PLACEHOLDER_VALUE_RE = re.compile(
+    r"""^['"]?(?:CHANGE_ME[A-Z0-9_]*|<[^>\r\n]+>|\\?\$\{[A-Za-z_][A-Za-z0-9_]*\})['"]?$"""
+)
+
+_SAFE_SECRET_FILE_VALUE_RE = re.compile(
+    r"""^['"]?(?:\.?/)?(?:run/secrets|\.?/secrets|ops/monitoring/secrets|deploy/production/secrets)/[A-Za-z0-9_.-]+(?::ro)?['"]?$"""
+)
+
+_SAFE_SOURCE_EXPRESSION_RE = re.compile(
+    r"""^(?:[A-Za-z_][A-Za-z0-9_]*\(|\$[A-Za-z_][A-Za-z0-9_]*|[^'"`\s]*\(\?![^'"`\s]*)"""
+)
+
+_SAFE_TEST_FIXTURE_VALUE_RE = re.compile(
+    r"""^(?:secret|expected-token|test-token|dummy-token)$""",
+    re.IGNORECASE,
 )
 
 _AUTHORIZATION_ASSIGNMENT_RE = re.compile(
@@ -70,6 +88,7 @@ _AUTHORIZATION_ASSIGNMENT_RE = re.compile(
     (?P<value>
         "(?:\\.|[^"\\])*"
         |'(?:\\.|[^'\\])*'
+        |\$\{[A-Za-z_][A-Za-z0-9_]*\}
         |[^\r\n]*
     )
     """,
@@ -77,6 +96,12 @@ _AUTHORIZATION_ASSIGNMENT_RE = re.compile(
 )
 
 _STRUCTURED_FIELD_BOUNDARY_RE = re.compile(r"\s+[A-Za-z_][A-Za-z0-9_-]*\s*[:=]")
+
+_TEST_FIXTURE_MARKERS = (
+    "httptest.NewRequest(",
+    "strings.NewReader(",
+    ".Header.Set(",
+)
 
 
 class _InputReadError(Exception):
@@ -109,6 +134,38 @@ def _redacted_value(value: str) -> str:
     return "<redacted>"
 
 
+def _trim_literal_wrappers(value: str) -> str:
+    return value.strip().strip("'\"`").rstrip("'\"`.,);")
+
+
+def _is_safe_placeholder_or_secret_file(value: str) -> bool:
+    stripped = _trim_literal_wrappers(value)
+    if not stripped:
+        return True
+    if stripped.startswith("re.compile("):
+        return True
+    if stripped.startswith("RegExp("):
+        return True
+    if stripped.lower().startswith("bearer "):
+        token = _trim_literal_wrappers(stripped[len("bearer ") :].split()[0])
+        return bool(_SAFE_PLACEHOLDER_VALUE_RE.match(token))
+    return bool(
+        _SAFE_PLACEHOLDER_VALUE_RE.match(stripped)
+        or _SAFE_SECRET_FILE_VALUE_RE.match(stripped)
+        or _SAFE_SOURCE_EXPRESSION_RE.match(stripped)
+    )
+
+
+def _is_safe_test_fixture_value(line: str, value: str) -> bool:
+    if not any(marker in line for marker in _TEST_FIXTURE_MARKERS):
+        return False
+
+    stripped = _trim_literal_wrappers(value)
+    if stripped.lower().startswith("bearer "):
+        stripped = _trim_literal_wrappers(stripped[len("bearer ") :].split()[0])
+    return bool(_SAFE_TEST_FIXTURE_VALUE_RE.match(stripped))
+
+
 def _split_unquoted_authorization_value(value: str) -> tuple[str, str]:
     boundary = _STRUCTURED_FIELD_BOUNDARY_RE.search(value)
     if boundary is None:
@@ -132,6 +189,8 @@ def _redact_line(line: str) -> tuple[int, str]:
 
         if not value.strip():
             return match.group(0)
+        if _is_safe_placeholder_or_secret_file(value) or _is_safe_test_fixture_value(line, value):
+            return match.group(0)
 
         line_findings += 1
         return f"{match.group('prefix')}{_redacted_value(value)}{trailing_text}"
@@ -140,6 +199,10 @@ def _redact_line(line: str) -> tuple[int, str]:
         nonlocal line_findings
         field = match.group("field")
         if _is_authorization_field(field) or not _is_secret_field(field):
+            return match.group(0)
+        if _is_safe_placeholder_or_secret_file(match.group("value")) or _is_safe_test_fixture_value(
+            line, match.group("value")
+        ):
             return match.group(0)
 
         line_findings += 1

@@ -19,6 +19,10 @@ scrape_configs:
           - host.docker.internal:5300
 
   - job_name: wukongim_api
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/wukongim_metrics_token
     static_configs:
       - targets:
           - host.docker.internal:8080

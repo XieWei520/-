@@ -1,0 +1,1 @@
+deploy/production/backend-metrics/patches/*.patch whitespace=-space-before-tab,-blank-at-eof,-trailing-space
