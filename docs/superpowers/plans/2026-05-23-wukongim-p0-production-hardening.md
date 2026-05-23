@@ -40,8 +40,8 @@ Production state from Task 4 P0 gate:
 - [x] `/ws` handshake returns `101 Switching Protocols`.
 - [x] Recent backup evidence exists under `/opt/wukongim-prod/backups`.
 - [x] Sysctl backup evidence exists under `/var/backups/wukongim-sysctl`.
-- [ ] Observability stack missing on production.
-- [ ] `scripts/ops/p0_observability_preflight.ps1 -Run` now checks remote `data/prometheus` and `data/grafana` directory ownership/writeability against the container UIDs before any rollout.
+- [x] Observability stack running on production.
+- [x] `scripts/ops/p0_observability_preflight.ps1 -Run` now checks remote `data/prometheus` and `data/grafana` directory ownership/writeability against the container UIDs before any rollout.
 
 ---
 
@@ -604,7 +604,7 @@ Expected: one documentation-only commit.
   - `deploy/production/monitoring/prometheus.yml`
 - Remote files need to be copied to `/opt/wukongim-prod/src/deploy/production`.
 
-- [ ] **Step 1: Confirm explicit observability deployment approval**
+- [x] **Step 1: Confirm explicit observability deployment approval**
 
 Ask the user:
 
@@ -614,7 +614,7 @@ Ask the user:
 
 Required answer before continuing: explicit approval.
 
-- [ ] **Step 2: Copy observability files to production**
+- [x] **Step 2: Copy observability files to production**
 
 Run:
 
@@ -629,7 +629,7 @@ Expected:
 - Files exist remotely.
 - No services restarted yet.
 
-- [ ] **Step 3: Run remote observability preflight**
+- [x] **Step 3: Run remote observability preflight**
 
 Run:
 
@@ -642,7 +642,7 @@ Expected:
 - `remote_observability_compose_config=ok`.
 - No `0.0.0.0:9090` or `0.0.0.0:3000` listener.
 
-- [ ] **Step 4: Start observability stack**
+- [x] **Step 4: Start observability stack**
 
 Run:
 
@@ -655,7 +655,7 @@ Expected:
 - Four observability containers are running.
 - Existing IM/API/MySQL/Redis/MinIO/LiveKit/Coturn containers are not recreated.
 
-- [ ] **Step 5: Verify private listeners**
+- [x] **Step 5: Verify private listeners**
 
 Run:
 
@@ -668,7 +668,7 @@ Expected:
 - Prometheus and Grafana listen on `127.0.0.1:9090` and `127.0.0.1:3000`.
 - They do not listen on `0.0.0.0`.
 
-- [ ] **Step 6: Re-run P0 readiness gate**
+- [x] **Step 6: Re-run P0 readiness gate**
 
 Run:
 
@@ -681,7 +681,7 @@ Expected after Tasks 4 and 5:
 - `p0_readiness=pass`.
 - `failed-gates.txt` contains `PASS`.
 
-- [ ] **Step 7: Record evidence and commit docs**
+- [x] **Step 7: Record evidence and commit docs**
 
 Update this file under "Execution Evidence" with:
 
@@ -711,6 +711,13 @@ Expected: one documentation-only commit.
 - 2026-05-23: Production backup evidence generated at `/opt/wukongim-prod/backups/p0-readiness-20260523T111507Z/backup_manifest.txt`.
 - 2026-05-23: Task 4 P0 gate evidence directory: `C:\Users\COLORFUL\Desktop\WuKong\build\p0-production-readiness\20260523-192039`.
 - 2026-05-23: Task 4 P0 gate remaining failed gates: `remote_observability_inventory`; `remote_backup_artifact_audit` no longer failed.
+- 2026-05-23: cAdvisor image source fixed in commit `fd40f0fc` to use `ghcr.io/google/cadvisor:0.55.1` after production could not pull the old `gcr.io/cadvisor/cadvisor:v0.49.1` image.
+- 2026-05-23: Observability stack started at `2026-05-23T12:40:21Z` with `prometheus`, `grafana`, `node-exporter`, and `cadvisor`.
+- 2026-05-23: Prometheus/Grafana bind-mount ownership corrected on production: `data/prometheus owner=65534 group=65534 mode=755`, `data/grafana owner=472 group=0 mode=755`.
+- 2026-05-23: Observability data permission preflight hardened in commit `1ff28e78`; remote preflight reported `remote_observability_compose_config=ok`, `remote_observability_data_permissions=prometheus:ok`, `remote_observability_data_permissions=grafana:ok`, and `remote_observability_data_permissions=ok`.
+- 2026-05-23: Private listener evidence: `127.0.0.1:9090` and `127.0.0.1:3000`; no public `0.0.0.0:9090` or `0.0.0.0:3000` listener.
+- 2026-05-23: Final P0 gate result: `p0_readiness=pass`.
+- 2026-05-23: Final P0 gate evidence directory: `C:\Users\COLORFUL\Desktop\WuKong\build\p0-production-readiness\20260523-230039`.
 - 2026-05-23: Earlier read-only P0 gate evidence showed remaining failed gates: `remote_backup_artifact_audit`, `remote_observability_inventory`.
 
 ---
