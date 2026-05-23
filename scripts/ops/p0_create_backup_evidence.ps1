@@ -150,6 +150,7 @@ echo "mysql_backup_start=true"
 docker compose --env-file .env exec -T mysql sh -lc \
   'exec mysqldump --single-transaction --quick --routines --events --triggers --set-gtid-purged=OFF -uroot -p"`$MYSQL_ROOT_PASSWORD" "`$1"' \
   sh "`$MYSQL_DATABASE" \
+  </dev/null \
   | gzip -c > "`$target_dir/mysql-`$MYSQL_DATABASE.sql.gz"
 test -s "`$target_dir/mysql-`$MYSQL_DATABASE.sql.gz"
 sha256sum "`$target_dir/mysql-`$MYSQL_DATABASE.sql.gz" > "`$target_dir/mysql-`$MYSQL_DATABASE.sql.gz.sha256"
@@ -158,6 +159,7 @@ echo "mysql_backup_done=`$target_dir/mysql-`$MYSQL_DATABASE.sql.gz"
 echo "redis_backup_start=true"
 docker compose --env-file .env exec -T redis sh -lc \
   'if [ -n "`$REDIS_PASSWORD" ]; then REDISCLI_AUTH="`$REDIS_PASSWORD" exec redis-cli --rdb -; else exec redis-cli --rdb -; fi' \
+  </dev/null \
   > "`$target_dir/redis.rdb"
 test -s "`$target_dir/redis.rdb"
 sha256sum "`$target_dir/redis.rdb" > "`$target_dir/redis.rdb.sha256"

@@ -135,6 +135,25 @@ void main() {
     expect(output, isNot(contains('redis-cli -a')));
   });
 
+  test('p0 backup evidence docker exec commands do not consume remote script stdin', () {
+    final result = Process.runSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        'scripts/ops/p0_create_backup_evidence.ps1',
+      ],
+    );
+
+    expect(result.exitCode, 0);
+    final output = '${result.stdout}\n${result.stderr}';
+    expect('</dev/null'.allMatches(output), hasLength(2));
+    expect(output, contains(r'sh "$MYSQL_DATABASE" \'));
+    expect(output, contains(r'> "$target_dir/redis.rdb"'));
+  });
+
   test('p0 observability stack config is private and preflighted', () {
     final compose = File('deploy/production/docker-compose.observability.yaml');
     final prometheus = File('deploy/production/monitoring/prometheus.yml');
