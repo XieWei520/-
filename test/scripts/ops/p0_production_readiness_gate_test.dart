@@ -198,6 +198,22 @@ void main() {
     expect(scriptContent, contains('config'));
     expect(scriptContent, contains('local_docker_cli_missing=true'));
     expect(scriptContent, contains('local_compose_config_skipped=true'));
+    expect(scriptContent, contains('remote_observability_data_permissions=ok'));
+    expect(scriptContent, contains('data/prometheus'));
+    expect(scriptContent, contains('data/grafana'));
+    expect(scriptContent, contains("stat -c '%u %g %a'"));
+    expect(scriptContent, contains('65534'));
+    expect(scriptContent, contains('472'));
+    expect(scriptContent, contains('remote_observability_data_permissions_skipped=true'));
+    expect(scriptContent, contains('0100'));
+    expect(scriptContent, contains('0010'));
+    expect(scriptContent, contains('0001'));
+    expect(scriptContent, contains(r'elif [ "$owner_gid" -eq "$target_gid" ]; then'));
+    expect(
+      scriptContent,
+      isNot(contains(r'if [ "$owner_gid" -eq "$target_gid" ] &&')),
+    );
+    expect(scriptContent, isNot(contains("if [ \"\$permission_checked\" -eq 1 ]; then")));
     expect(scriptContent, contains('StrictHostKeyChecking=accept-new'));
     expect(scriptContent, contains('Validate-RemoteHostToken'));
     expect(scriptContent, isNot(contains('docker compose up')));

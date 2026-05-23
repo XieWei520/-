@@ -41,6 +41,7 @@ Production state from Task 4 P0 gate:
 - [x] Recent backup evidence exists under `/opt/wukongim-prod/backups`.
 - [x] Sysctl backup evidence exists under `/var/backups/wukongim-sysctl`.
 - [ ] Observability stack missing on production.
+- [ ] `scripts/ops/p0_observability_preflight.ps1 -Run` now checks remote `data/prometheus` and `data/grafana` directory ownership/writeability against the container UIDs before any rollout.
 
 ---
 
@@ -501,6 +502,13 @@ Expected:
 - Remote `-Run` reports `remote_observability_compose_missing=true` until deployment files are copied.
 - Flutter test PASS.
 
+Observed after permission-risk hardening:
+
+- `-Run` also checks `data/prometheus` for UID/GID `65534:65534` and `data/grafana` for UID/GID `472:0` using `stat -c '%u %g %a'`.
+- The directory check is for actual writeability: it uses POSIX owner/group/other precedence, and the selected class must have write + execute/search permission before the path is treated as usable.
+- If either directory exists and is not writable by the target container identity, the preflight exits non-zero and prints a readable `remote_observability_data_permissions=...:fail` reason.
+- If both directories do not exist yet, the preflight may additionally print `remote_observability_data_permissions_skipped=true`, but it still prints the unified success marker `remote_observability_data_permissions=ok`.
+
 - [x] **Step 7: Commit local config and tests**
 
 Run:
@@ -712,5 +720,7 @@ Expected: one documentation-only commit.
 **Spec coverage:** Covers the P0 items from the optimization blueprint: release gate, backup evidence, observability baseline, read-only production inspection, and explicit production approval boundaries.
 
 **Red-flag scan:** No implementation task relies on empty future-fill markers. Tasks 4 and 5 are intentionally pending because they require explicit production write/deployment approval.
+
+**Production permission note:** The immediate remediation for the current Prometheus/Grafana bind-mount mismatch is a minimal ownership fix on the remote host: `data/prometheus -> 65534:65534` and `data/grafana -> 472:0`. The preflight now catches this drift before rollout by checking permissions according to POSIX owner/group/other precedence, including the directory execute/search bits needed for actual writes.
 
 **Type and command consistency:** Script names, file paths, and test commands match files already present in the workspace. PowerShell commands use Windows path separators where run locally. Remote commands use Linux paths.
