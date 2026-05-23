@@ -48,7 +48,9 @@ printf '%s' '<metrics-token>' > ./secrets/wukongim_metrics_token
 Set the same value in production `.env` as `WUKONGIM_METRICS_TOKEN=<metrics-token>`
 so `tsdd-api` and Prometheus agree.
 
-For the local `ops/monitoring` compose stack, create
+For the production `deploy/production` compose stack, Prometheus scrapes
+`tsdd-api:8090` inside the shared Docker Compose network. For the local
+`ops/monitoring` compose stack, create
 `ops/monitoring/secrets/wukongim_metrics_token` with the same token used when
 starting the local backend. The file may be empty only when Prometheus scrapes
 from the same loopback network namespace as the backend; the provided Docker
@@ -113,15 +115,15 @@ loopback. If the token is intentionally unset, only loopback requests are
 accepted.
 
 ```bash
-curl -fsS http://127.0.0.1:8080/v1/ping
-curl -fsS -H "Authorization: Bearer <metrics-token>" http://127.0.0.1:8080/metrics | head
+curl -fsS https://infoequity.cn/v1/ping
+docker exec wukongim_prod-tsdd-api-1 wget --header="Authorization: Bearer <metrics-token>" -q -O - http://127.0.0.1:8090/metrics | head
 ```
 
 If `WUKONGIM_METRICS_TOKEN` is intentionally unset for a loopback-only scrape,
 the metrics smoke check is:
 
 ```bash
-curl -fsS http://127.0.0.1:8080/metrics | head
+docker exec wukongim_prod-tsdd-api-1 wget -q -O - http://127.0.0.1:8090/metrics | head
 ```
 
 If the external release URL is already routed through nginx, also check:
@@ -131,7 +133,7 @@ curl -fsS https://infoequity.cn/v1/ping
 ```
 
 In Prometheus, confirm the `wukongim_api` target is up and scraping
-`host.docker.internal:8080` with `metrics_path: /metrics`.
+`tsdd-api:8090` with `metrics_path: /metrics`.
 
 ## Rollback
 

@@ -4,17 +4,20 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('monitoring configs scrape protected backend metrics endpoint', () {
-    for (final path in [
-      'ops/monitoring/prometheus/prometheus.yml',
-      'deploy/production/monitoring/prometheus.yml',
-    ]) {
+    final expectedTargets = {
+      'ops/monitoring/prometheus/prometheus.yml': 'host.docker.internal:8080',
+      'deploy/production/monitoring/prometheus.yml': 'tsdd-api:8090',
+    };
+
+    for (final entry in expectedTargets.entries) {
+      final path = entry.key;
       final file = File(path);
       expect(file.existsSync(), isTrue, reason: path);
 
       final content = file.readAsStringSync();
       final block = _jobBlock(content, 'wukongim_api');
       expect(block, contains('metrics_path: /metrics'), reason: path);
-      expect(block, contains('host.docker.internal:8080'), reason: path);
+      expect(block, contains(entry.value), reason: path);
       expect(block, isNot(contains(RegExp(r'bearer_token\s*:'))), reason: path);
       expect(block, isNot(contains(RegExp(r'credentials\s*:'))), reason: path);
       expect(block, isNot(contains('expected-token')), reason: path);
@@ -72,10 +75,11 @@ void main() {
       '-Run',
       '-AllowProductionServiceSwitch',
       '/v1/ping',
-      'curl -fsS http://127.0.0.1:8080/metrics',
+      'docker exec wukongim_prod-tsdd-api-1 wget --header="Authorization: Bearer <metrics-token>" -q -O - http://127.0.0.1:8090/metrics',
       'Authorization: Bearer <metrics-token>',
       'Prometheus',
       'target is up',
+      'tsdd-api:8090',
       'credentials_file: /run/secrets/wukongim_metrics_token',
       './secrets/wukongim_metrics_token',
       'WUKONGIM_METRICS_TOKEN',

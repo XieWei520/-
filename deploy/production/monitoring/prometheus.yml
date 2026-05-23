@@ -37,4 +37,4 @@ scrape_configs:
       credentials_file: /run/secrets/wukongim_metrics_token
     static_configs:
       - targets:
-          - host.docker.internal:8080
+          - tsdd-api:8090
