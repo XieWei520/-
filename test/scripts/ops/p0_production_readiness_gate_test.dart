@@ -76,4 +76,99 @@ void main() {
     expect(content, contains('prometheus'));
     expect(content, contains('grafana'));
   });
+
+  test('p0 backup evidence script is explicit, scoped, and checksummed', () {
+    final script = File('scripts/ops/p0_create_backup_evidence.ps1');
+
+    expect(script.existsSync(), isTrue);
+
+    final content = script.readAsStringSync();
+    expect(content, contains(r'[switch]$Run'));
+    expect(content, contains(r'[switch]$AllowProductionWrites'));
+    expect(content, contains('Dry run only.'));
+    expect(content, contains('Refusing to write production backups without -AllowProductionWrites'));
+    expect(content, contains('/opt/wukongim-prod/backups'));
+    expect(content, contains('/var/backups/wukongim-sysctl'));
+    expect(content, contains('backup_manifest.txt'));
+    expect(content, contains('sha256sum'));
+    expect(content, contains('mysqldump'));
+    expect(content, contains('redis-cli'));
+    expect(content, contains('tar'));
+    expect(content, contains('docker compose --env-file .env exec -T mysql'));
+    expect(content, contains('docker compose --env-file .env exec -T redis'));
+    expect(content, contains(r'"`$1"'));
+    expect(content, contains(r'sh "`$MYSQL_DATABASE"'));
+    expect(content, contains(r'sh -lc'));
+    expect(content, contains(r'REDISCLI_AUTH="`$REDIS_PASSWORD"'));
+    expect(content, isNot(contains('redis-cli -a')));
+    expect(content, contains('Validate-RemoteHostToken'));
+    expect(content, contains('Quote-Bash'));
+    expect(content, contains('BatchMode=yes'));
+
+    expect(content, isNot(contains('DROP ')));
+    expect(content, isNot(contains('DELETE ')));
+    expect(content, isNot(contains('UPDATE ')));
+    expect(content, isNot(contains('INSERT ')));
+    expect(content, isNot(contains('ALTER ')));
+    expect(content, isNot(contains('CREATE DATABASE')));
+    expect(content, isNot(contains('TRUNCATE ')));
+  });
+
+  test('p0 backup evidence dry run preserves remote shell parameters', () {
+    final result = Process.runSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        'scripts/ops/p0_create_backup_evidence.ps1',
+      ],
+    );
+
+    expect(result.exitCode, 0);
+    final output = '${result.stdout}\n${result.stderr}';
+    expect(output, contains(r'"$1"'));
+    expect(output, isNot(contains(r'-p"$MYSQL_ROOT_PASSWORD" ""')));
+    expect(output, contains(r'REDISCLI_AUTH="$REDIS_PASSWORD"'));
+    expect(output, isNot(contains('redis-cli -a')));
+  });
+
+  test('p0 observability stack config is private and preflighted', () {
+    final compose = File('deploy/production/docker-compose.observability.yaml');
+    final prometheus = File('deploy/production/monitoring/prometheus.yml');
+    final script = File('scripts/ops/p0_observability_preflight.ps1');
+
+    expect(compose.existsSync(), isTrue);
+    expect(prometheus.existsSync(), isTrue);
+    expect(script.existsSync(), isTrue);
+
+    final composeContent = compose.readAsStringSync();
+    expect(composeContent, contains('prometheus'));
+    expect(composeContent, contains('grafana'));
+    expect(composeContent, contains('node-exporter'));
+    expect(composeContent, contains('cadvisor'));
+    expect(composeContent, contains('127.0.0.1:9090:9090'));
+    expect(composeContent, contains('127.0.0.1:3000:3000'));
+    expect(composeContent, isNot(contains('0.0.0.0:9090')));
+    expect(composeContent, isNot(contains('0.0.0.0:3000')));
+
+    final prometheusContent = prometheus.readAsStringSync();
+    expect(prometheusContent, contains('host.docker.internal:5001'));
+    expect(prometheusContent, contains('cadvisor:8080'));
+    expect(prometheusContent, contains('node-exporter:9100'));
+
+    final scriptContent = script.readAsStringSync();
+    expect(scriptContent, contains(r'[switch]$Run'));
+    expect(scriptContent, contains('Dry run only.'));
+    expect(scriptContent, contains('docker compose'));
+    expect(scriptContent, contains('config'));
+    expect(scriptContent, contains('local_docker_cli_missing=true'));
+    expect(scriptContent, contains('local_compose_config_skipped=true'));
+    expect(scriptContent, contains('StrictHostKeyChecking=accept-new'));
+    expect(scriptContent, contains('Validate-RemoteHostToken'));
+    expect(scriptContent, isNot(contains('docker compose up')));
+    expect(scriptContent, isNot(contains('docker compose restart')));
+    expect(scriptContent, isNot(contains('systemctl restart')));
+  });
 }
