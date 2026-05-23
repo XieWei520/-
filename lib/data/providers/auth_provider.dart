@@ -169,9 +169,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (StorageUtils.getUid()?.trim() != userInfo.uid) {
         await StorageUtils.setUid(userInfo.uid);
       }
-      final hasDeviceSession =
-          (StorageUtils.getDeviceSessionId()?.trim() ?? '').isNotEmpty;
-      if (!hasDeviceSession && restoredToken.isNotEmpty) {
+      if (restoredToken.isNotEmpty) {
         await bindDeviceIdentity(uid: userInfo.uid, token: restoredToken);
       }
       await syncDraftScope();

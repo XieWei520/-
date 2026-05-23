@@ -31,7 +31,9 @@ void main() {
     expect(index, contains('content="信息平权"'));
     expect(index, contains('apple-mobile-web-app-title" content="信息平权"'));
 
-    const mojibakeSnippets = <String>['淇℃伅骞虫潈', '娣団剝浼?', '楠炶櫕娼?', '閻ц缍?'];
+    final mojibakeSnippets = <String>[
+      String.fromCharCodes([0x6DC7, 0x2103, 0x4F05, 0x9A9E, 0x866B, 0x6F48]),
+    ];
     for (final snippet in mojibakeSnippets) {
       expect(manifest.toString(), isNot(contains(snippet)));
       expect(index, isNot(contains(snippet)));
@@ -44,9 +46,13 @@ void main() {
       final index = File('web/index.html').readAsStringSync();
       final bootstrap = File('web/flutter_bootstrap.js').readAsStringSync();
 
-      expect(index, contains('wkMaybeClearLegacyFlutterServiceWorkers'));
+      expect(index, contains('wkInstallStartupRecovery'));
+      expect(index, contains('wkRecoverFromStartupFailure'));
       expect(index, contains('wk_reset_sw'));
+      expect(index, contains('wk_sw_recovery_attempted'));
+      expect(index, contains("return Promise.resolve(false);"));
       expect(index, contains('loadBootstrap();'));
+      expect(index, contains('window.location.reload();'));
       expect(index, contains('navigator.serviceWorker.getRegistrations'));
       expect(index, contains('caches.keys'));
       expect(index, contains('!shouldResetLegacyWorkers'));

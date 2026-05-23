@@ -4,7 +4,7 @@ import '../../core/utils/storage_utils.dart';
 import '../../data/models/group.dart';
 import '../../service/api/group_api.dart';
 
-/// 缇ょ粍淇℃伅Provider
+/// 群信息 Provider
 final groupInfoProvider = FutureProvider.family<GroupInfo?, String>((
   ref,
   groupNo,
@@ -12,13 +12,13 @@ final groupInfoProvider = FutureProvider.family<GroupInfo?, String>((
   return await GroupApi.instance.getGroupInfo(groupNo);
 });
 
-/// 缇ゆ垚鍛樺垪琛≒rovider
+/// 群成员列表 Provider
 final groupMemberListProvider =
     FutureProvider.family<List<GroupMember>, String>((ref, groupNo) async {
       return await GroupApi.instance.getGroupMembers(groupNo);
     });
 
-/// 鎴戝姞鍏ョ殑缇ゅ垪琛≒rovider
+/// 我加入的群列表 Provider
 final myGroupListProvider =
     StateNotifierProvider<MyGroupListNotifier, AsyncValue<List<GroupInfo>>>((
       ref,
@@ -44,7 +44,7 @@ class MyGroupListNotifier extends StateNotifier<AsyncValue<List<GroupInfo>>> {
   final GroupApi _groupApi;
   final FetchGroups? _fetchGroups;
 
-  /// 鍔犺浇缇ゅ垪琛?
+  /// 加载群列表
   Future<void> loadGroups() async {
     if (!StorageUtils.isLoggedIn()) {
       state = const AsyncValue.data(<GroupInfo>[]);
@@ -68,7 +68,7 @@ class MyGroupListNotifier extends StateNotifier<AsyncValue<List<GroupInfo>>> {
     }
   }
 
-  /// 鍒涘缓缇よ亰
+  /// 创建群聊
   Future<GroupInfo?> createGroup(List<String> memberIds, {String? name}) async {
     try {
       final group = await _groupApi.createGroup(memberIds, name: name);
@@ -79,7 +79,7 @@ class MyGroupListNotifier extends StateNotifier<AsyncValue<List<GroupInfo>>> {
     }
   }
 
-  /// 閫€鍑虹兢鑱?
+  /// 退出群聊
   Future<bool> quitGroup(String groupNo) async {
     try {
       await _groupApi.quitGroup(groupNo);
@@ -90,7 +90,7 @@ class MyGroupListNotifier extends StateNotifier<AsyncValue<List<GroupInfo>>> {
     }
   }
 
-  /// 瑙ｆ暎缇よ亰
+  /// 解散群聊
   Future<bool> dismissGroup(String groupNo) async {
     try {
       await _groupApi.dismissGroup(groupNo);

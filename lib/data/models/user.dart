@@ -3,6 +3,24 @@ import 'dart:convert';
 import '../../core/utils/avatar_utils.dart';
 import '../../modules/customer_service/customer_service_identity.dart';
 
+enum VipStatus { none, active, expired }
+
+class VipEntitlement {
+  const VipEntitlement._();
+
+  static const String addFriend = 'add_friend';
+  static const String createGroup = 'create_group';
+  static const String inviteGroupMember = 'invite_group_member';
+  static const String systemManagement = 'system_management';
+
+  static const Set<String> merchantDefaults = <String>{
+    addFriend,
+    createGroup,
+    inviteGroupMember,
+    systemManagement,
+  };
+}
+
 class UserInfo {
   final String uid;
   final String? name;
@@ -34,9 +52,43 @@ class UserInfo {
   final String? chatPwd;
   final int? chatPwdOn;
   final int vipLevel;
+  final DateTime? vipExpireTime;
+  final VipStatus? explicitVipStatus;
+  final Set<String>? vipEntitlements;
 
-  bool get isVip => vipLevel == 1;
+  VipStatus get vipStatus {
+    if (explicitVipStatus != null) {
+      return explicitVipStatus!;
+    }
+    if (vipLevel != 1) {
+      return VipStatus.none;
+    }
+    final expireTime = vipExpireTime;
+    if (expireTime != null && !expireTime.isAfter(DateTime.now())) {
+      return VipStatus.expired;
+    }
+    return VipStatus.active;
+  }
+
+  bool get isVip => vipStatus == VipStatus.active;
   bool get isCustomerService => isCustomerServiceCategory(category);
+  bool get canAddFriend => hasVipEntitlement(VipEntitlement.addFriend);
+  bool get canCreateGroup => hasVipEntitlement(VipEntitlement.createGroup);
+  bool get canInviteGroupMember =>
+      hasVipEntitlement(VipEntitlement.inviteGroupMember);
+  bool get canUseSystemManagement =>
+      hasVipEntitlement(VipEntitlement.systemManagement);
+
+  bool hasVipEntitlement(String entitlement) {
+    if (!isVip) {
+      return false;
+    }
+    final explicitEntitlements = vipEntitlements;
+    if (explicitEntitlements == null) {
+      return VipEntitlement.merchantDefaults.contains(entitlement);
+    }
+    return explicitEntitlements.contains(entitlement);
+  }
 
   UserInfo({
     required this.uid,
@@ -69,7 +121,14 @@ class UserInfo {
     this.chatPwd,
     this.chatPwdOn,
     this.vipLevel = 0,
-  }) : category = normalizePublicAccountCategory(category);
+    this.vipExpireTime,
+    VipStatus? vipStatus,
+    Set<String>? vipEntitlements,
+  }) : category = normalizePublicAccountCategory(category),
+       explicitVipStatus = vipStatus,
+       vipEntitlements = vipEntitlements == null
+           ? null
+           : Set<String>.unmodifiable(vipEntitlements);
 
   factory UserInfo.fromJson(Map<String, dynamic> json) {
     final uid = json['uid']?.toString() ?? '';
@@ -109,6 +168,16 @@ class UserInfo {
       chatPwdOn: _parseInt(json['chat_pwd_on']),
       category: normalizeCustomerServiceCategory(json['category']?.toString()),
       vipLevel: _parseInt(json['vip_level']) ?? 0,
+      vipExpireTime: _parseDateTime(
+        json['vip_expire_time'] ?? json['vip_expire_at'],
+      ),
+      vipStatus: _parseVipStatus(json['vip_status']),
+      vipEntitlements: _parseVipEntitlements(
+        json['entitlements'] ??
+            json['vip_entitlements'] ??
+            json['permissions'] ??
+            json['vip_permissions'],
+      ),
     );
   }
 
@@ -144,6 +213,11 @@ class UserInfo {
       'chat_pwd': chatPwd,
       'chat_pwd_on': chatPwdOn,
       'vip_level': vipLevel,
+      'vip_expire_time': vipExpireTime == null
+          ? null
+          : _formatVipExpireTime(vipExpireTime!),
+      'vip_status': vipStatus.name,
+      'entitlements': vipEntitlements?.toList(growable: false),
     };
   }
 
@@ -184,6 +258,9 @@ class UserInfo {
     String? chatPwd,
     int? chatPwdOn,
     int? vipLevel,
+    DateTime? vipExpireTime,
+    VipStatus? vipStatus,
+    Set<String>? vipEntitlements,
   }) {
     return UserInfo(
       uid: uid ?? this.uid,
@@ -218,6 +295,9 @@ class UserInfo {
       chatPwd: chatPwd ?? this.chatPwd,
       chatPwdOn: chatPwdOn ?? this.chatPwdOn,
       vipLevel: vipLevel ?? this.vipLevel,
+      vipExpireTime: vipExpireTime ?? this.vipExpireTime,
+      vipStatus: vipStatus ?? explicitVipStatus,
+      vipEntitlements: vipEntitlements ?? this.vipEntitlements,
     );
   }
 }
@@ -237,4 +317,79 @@ int? _parseInt(dynamic value) {
     return value;
   }
   return int.tryParse(value.toString());
+}
+
+DateTime? _parseDateTime(dynamic value) {
+  final text = value?.toString().trim();
+  if (text == null || text.isEmpty) {
+    return null;
+  }
+  final unixSeconds = int.tryParse(text);
+  if (unixSeconds != null) {
+    return DateTime.fromMillisecondsSinceEpoch(unixSeconds * 1000);
+  }
+  return DateTime.tryParse(text.replaceFirst(' ', 'T'));
+}
+
+VipStatus? _parseVipStatus(dynamic value) {
+  final text = value?.toString().trim().toLowerCase();
+  if (text == null || text.isEmpty) {
+    return null;
+  }
+  switch (text) {
+    case 'active':
+    case 'valid':
+    case '1':
+      return VipStatus.active;
+    case 'expired':
+    case 'expire':
+    case '2':
+      return VipStatus.expired;
+    case 'none':
+    case 'normal':
+    case '0':
+      return VipStatus.none;
+    default:
+      return null;
+  }
+}
+
+Set<String>? _parseVipEntitlements(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  final entitlements = <String>{};
+  if (value is Iterable) {
+    for (final item in value) {
+      final entitlement = item?.toString().trim();
+      if (entitlement != null && entitlement.isNotEmpty) {
+        entitlements.add(entitlement);
+      }
+    }
+    return entitlements;
+  }
+  if (value is Map) {
+    for (final entry in value.entries) {
+      final enabled =
+          entry.value == true ||
+          entry.value == 1 ||
+          entry.value?.toString().toLowerCase() == 'true';
+      final entitlement = entry.key.toString().trim();
+      if (enabled && entitlement.isNotEmpty) {
+        entitlements.add(entitlement);
+      }
+    }
+    return entitlements;
+  }
+  return null;
+}
+
+String _formatVipExpireTime(DateTime value) {
+  String twoDigits(int number) => number.toString().padLeft(2, '0');
+  return '${value.year.toString().padLeft(4, '0')}-'
+      '${twoDigits(value.month)}-'
+      '${twoDigits(value.day)} '
+      '${twoDigits(value.hour)}:'
+      '${twoDigits(value.minute)}:'
+      '${twoDigits(value.second)}';
 }

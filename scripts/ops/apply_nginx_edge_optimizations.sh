@@ -105,7 +105,6 @@ upstream wukongim_ws {
 
 limit_req_zone $binary_remote_addr zone=login_limit:10m rate=20r/m;
 limit_req_zone $binary_remote_addr zone=edge_noise_limit:10m rate=120r/m;
-limit_req_zone $binary_remote_addr zone=ws_limit:10m rate=60r/m;
 
 server {
     listen 80;
@@ -174,8 +173,8 @@ server {
     gzip_min_length 1024;
     gzip_vary on;
     gzip_proxied any;
-    gzip_comp_level 5;
-    gzip_types application/json text/plain text/css application/javascript application/wasm image/svg+xml font/woff font/woff2;
+    gzip_comp_level 6;
+    gzip_types application/json text/plain text/css application/javascript application/wasm application/octet-stream image/svg+xml font/woff font/woff2 font/ttf font/otf;
 
     location ~ /\.(?!well-known/acme-challenge/) {
         access_log off;
@@ -189,7 +188,6 @@ server {
     }
 
     location = /ws {
-        limit_req zone=ws_limit burst=30 nodelay;
         proxy_pass http://wukongim_ws/;
         proxy_http_version 1.1;
         proxy_read_timeout 3600s;
@@ -335,7 +333,7 @@ server {
     location = /main.dart.js {
         root /usr/share/nginx/html;
         add_header Strict-Transport-Security "max-age=31536000" always;
-        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
+        add_header Cache-Control "public, no-cache, must-revalidate" always;
         try_files /main.dart.js =404;
     }
 

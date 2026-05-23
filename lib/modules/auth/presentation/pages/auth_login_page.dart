@@ -398,9 +398,9 @@ class _AuthLoginPageState extends ConsumerState<AuthLoginPage> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           foregroundColor: AuthExperienceTokens.brandMuted,
-          textStyle: const TextStyle(
-            fontFamily: WKFontFamily.chinese,
-            fontFamilyFallback: WKTypography.nativeFontFamilyFallback,
+          textStyle: TextStyle(
+            fontFamily: WKFontFamily.primary,
+            fontFamilyFallback: WKTypography.fontFamilyFallback,
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),

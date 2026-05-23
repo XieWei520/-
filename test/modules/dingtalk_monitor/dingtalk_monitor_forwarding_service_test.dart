@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wukong_im_app/modules/dingtalk_monitor/dingtalk_monitor_forwarding_service.dart';
 import 'package:wukong_im_app/modules/dingtalk_monitor/dingtalk_monitor_shell_models.dart';
+import 'package:wukong_im_app/modules/local_monitor/local_monitor_forwarding.dart';
 
 void main() {
   setUp(() {
@@ -159,6 +160,46 @@ void main() {
       expect(result.skippedDuplicate, 0);
       expect(sender.targetGroupIds, <String>['wk_alpha']);
       expect(sender.sentTexts, <String>['hello']);
+      expect(sender.relayProviders, <String>['dingtalk']);
+    },
+  );
+
+  test(
+    'forwardRoutedRecentEvents sends local DingTalk image as image content',
+    () async {
+      final sender = _RecordingSender();
+      final service = DingTalkMonitorForwardingService(sender: sender);
+      final settings = DingTalkMonitorForwardingSettings(
+        enabled: true,
+        routes: <DingTalkMonitorForwardingRoute>[
+          _route(
+            sourceConversationId: 'windows:alpha',
+            targetGroupId: 'wk_alpha',
+          ),
+        ],
+      );
+
+      final result = await service.forwardRoutedRecentEvents(
+        settings: settings,
+        events: <DingTalkMonitorMessageEvent>[
+          _event(
+            eventId: 'image-event-1',
+            sourceConversationId: 'windows:alpha',
+            text: 'https://example.com/dingtalk-image.png',
+            localImagePath: r'C:\tmp\dingtalk-image.png',
+            captureSource: DingTalkMonitorCaptureSource.uiaImageMetadata,
+            contentHash: 'image-hash-1',
+          ),
+        ],
+      );
+
+      expect(result.sent, 1);
+      expect(result.failed, 0);
+      expect(sender.targetGroupIds, <String>['wk_alpha']);
+      expect(sender.sentTexts, isEmpty);
+      expect(sender.sentImages, hasLength(1));
+      expect(sender.sentImages.single.localPath, r'C:\tmp\dingtalk-image.png');
+      expect(sender.sentImages.single.sourceUrl, isEmpty);
       expect(sender.relayProviders, <String>['dingtalk']);
     },
   );
@@ -529,6 +570,7 @@ DingTalkMonitorMessageEvent _event({
   String embeddedSourceName = '',
   String senderName = 'Alice',
   String text = 'hello from DingTalk',
+  String localImagePath = '',
   String contentHash = 'hash-1',
   DingTalkMonitorCaptureSource captureSource =
       DingTalkMonitorCaptureSource.uiaText,
@@ -541,7 +583,7 @@ DingTalkMonitorMessageEvent _event({
     senderName: senderName,
     observedAt: DateTime.parse('2026-05-16T01:33:16Z'),
     text: text,
-    localImagePath: '',
+    localImagePath: localImagePath,
     captureSource: captureSource,
     contentHash: contentHash,
   );
@@ -575,6 +617,7 @@ DingTalkMonitorForwardingRoute _route({
 
 class _RecordingSender implements DingTalkMonitorTextSender {
   final sentTexts = <String>[];
+  final sentImages = <_RecordedImageSend>[];
   final targetGroupIds = <String>[];
   final relayProviders = <String>[];
 
@@ -590,6 +633,46 @@ class _RecordingSender implements DingTalkMonitorTextSender {
     sentTexts.add(text);
     relayProviders.add(relayIdentity?.provider ?? '');
   }
+
+  @override
+  Future<void> sendImage({
+    required String channelId,
+    required int channelType,
+    String? channelName,
+    required LocalMonitorForwardableImage image,
+    DingTalkMonitorRelayIdentity? relayIdentity,
+  }) async {
+    targetGroupIds.add(channelId);
+    sentImages.add(
+      _RecordedImageSend(
+        channelId: channelId,
+        channelType: channelType,
+        sourceUrl: image.sourceUrl,
+        localPath: image.localPath,
+        width: image.width,
+        height: image.height,
+      ),
+    );
+    relayProviders.add(relayIdentity?.provider ?? '');
+  }
+}
+
+class _RecordedImageSend {
+  const _RecordedImageSend({
+    required this.channelId,
+    required this.channelType,
+    required this.sourceUrl,
+    required this.localPath,
+    required this.width,
+    required this.height,
+  });
+
+  final String channelId;
+  final int channelType;
+  final String sourceUrl;
+  final String localPath;
+  final int width;
+  final int height;
 }
 
 class _MemoryDedupeStore implements DingTalkMonitorForwardingDedupeStore {

@@ -130,7 +130,7 @@ class GroupApi {
     final channel = WKChannel(groupNo, WKChannelType.group)
       ..channelName = (group.name ?? '').trim()
       ..channelRemark = (group.remark ?? '').trim()
-      ..avatar = (group.avatar ?? '').trim()
+      ..avatar = resolveGroupAvatarUrl(group.avatar, groupNo) ?? ''
       ..mute = group.mute ?? 0
       ..top = group.top ?? 0
       ..showNick = group.showNick ?? 1
@@ -451,6 +451,7 @@ class GroupApi {
   Future<List<GroupMember>> getGroupMembers(String groupNo) async {
     final response = await _client.get(
       '${ApiConfig.groups}/$groupNo${ApiConfig.groupMembers}',
+      queryParameters: const <String, dynamic>{'page': 1, 'limit': 100000},
     );
     _ensureSuccess(response, fallback: 'Load group members failed');
 

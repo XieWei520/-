@@ -133,6 +133,11 @@ class HomeBootstrapController extends Notifier<HomeBootstrapState> {
         state = const HomeBootstrapState.ready();
         return;
       }
+      if (StorageUtils.isLoggedIn()) {
+        await _refreshHomeDataBestEffort();
+        state = const HomeBootstrapState.ready();
+        return;
+      }
       state = HomeBootstrapState.failed(
         StateError('IM initialization failed.'),
       );
@@ -140,6 +145,21 @@ class HomeBootstrapController extends Notifier<HomeBootstrapState> {
       state = HomeBootstrapState.failed(error);
     } finally {
       _inFlight = null;
+    }
+  }
+
+  Future<void> _refreshHomeDataBestEffort() async {
+    try {
+      await ref.read(homeConversationBootstrapRefresherProvider).call();
+    } catch (error, stackTrace) {
+      debugPrint('Home degraded conversation refresh failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+    try {
+      await ref.read(homeContactsBootstrapRefresherProvider).call();
+    } catch (error, stackTrace) {
+      debugPrint('Home degraded contacts refresh failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 

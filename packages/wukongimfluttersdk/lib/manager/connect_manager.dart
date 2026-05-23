@@ -78,9 +78,12 @@ class _WKSocket {
   void listen(void Function(Uint8List data) onData, void Function() error) {
     if (!_isListening && _transport != null) {
       _transport!.listen(onData, onError: (err, stackTrace) {
-        Logs.debug('socket断开了${err.toString()}');
+        Logs.debug('socket disconnected: ${err.toString()}');
         error();
-      }, onDone: error);
+      }, onDone: () {
+        Logs.debug('socket closed by peer');
+        error();
+      });
       _isListening = true;
     }
   }
@@ -220,6 +223,7 @@ class WKConnectionManager {
   }
 
   _connectFail(error) {
+    Logs.error('connect failed: $error');
     _scheduleReconnect();
   }
 
@@ -384,7 +388,14 @@ class WKConnectionManager {
 
   _sendConnectPacket() async {
     CryptoUtils.init();
-    var deviceID = await _getDeviceID();
+    var deviceID = await resolveConnectDeviceID();
+    Logs.debug(
+      'send connect packet uid=${WKIM.shared.options.uid} '
+      'deviceIDLength=${deviceID.length} '
+      'deviceFlag=${WKIM.shared.deviceFlagApp} '
+      'protoVersion=${WKIM.shared.options.protoVersion} '
+      'tokenLength=${WKIM.shared.options.token?.length ?? 0}',
+    );
     var connectPacket = ConnectPacket(
         uid: WKIM.shared.options.uid!,
         token: WKIM.shared.options.token!,
@@ -662,7 +673,12 @@ class WKConnectionManager {
   }
 }
 
-Future<String> _getDeviceID() async {
+Future<String> resolveConnectDeviceID() async {
+  final explicitDeviceID = WKIM.shared.options.deviceID?.trim() ?? '';
+  if (explicitDeviceID.isNotEmpty) {
+    return explicitDeviceID;
+  }
+
   SharedPreferences preferences = await SharedPreferences.getInstance();
   String wkUid = WKIM.shared.options.uid!;
   String key = "${wkUid}_device_id";

@@ -63,6 +63,29 @@ void main() {
       expect(group.remark, 'Pinned Alpha');
     });
 
+    test('fromJson supports avatar aliases from group payloads', () {
+      final snakeAliasGroup = GroupInfo.fromJson({
+        'group_no': 'g-avatar-snake',
+        'avatar': '',
+        'group_avatar': 'groups/g-avatar-snake/avatar.png',
+      });
+      final camelAliasGroup = GroupInfo.fromJson({
+        'groupNo': 'g-avatar-camel',
+        'channelAvatar': 'groups/g-avatar-camel/avatar.png',
+      });
+      final urlAliasGroup = GroupInfo.fromJson({
+        'channel_id': 'g-avatar-url',
+        'avatar_url': 'https://example.com/groups/g-avatar-url.png',
+      });
+
+      expect(snakeAliasGroup.avatar, 'groups/g-avatar-snake/avatar.png');
+      expect(camelAliasGroup.avatar, 'groups/g-avatar-camel/avatar.png');
+      expect(
+        urlAliasGroup.avatar,
+        'https://example.com/groups/g-avatar-url.png',
+      );
+    });
+
     test('toJson serializes server-backed group detail settings', () {
       final group = GroupInfo(
         groupNo: 'g-10001',

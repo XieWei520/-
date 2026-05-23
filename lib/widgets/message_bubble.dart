@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/entity/channel_member.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_gif_content.dart';
 import 'package:wukongimfluttersdk/model/wk_rich_text_content.dart';
@@ -26,6 +28,7 @@ import '../modules/chat/robot_card_message.dart';
 import '../modules/chat/robot_message_identity.dart';
 import '../wukong_base/msg/msg_content_type.dart';
 import '../wukong_base/msg/widget/wk_message_reaction.dart' as reaction_widget;
+import '../wukong_base/utils/audio_record_manager.dart';
 import '../wukong_base/utils/time_utils.dart';
 import 'local_media_image_provider.dart';
 import 'liquid_glass_tokens.dart';
@@ -251,6 +254,8 @@ typedef MessageVoiceContentBuilder =
     );
 
 const Color _warmWebBubbleMetaColor = Color(0xB3FFFFFF);
+const double _textBubbleWidthRatio = 0.86;
+const double _attachmentBubbleWidthRatio = 0.68;
 
 class MessageBubble extends StatelessWidget {
   final ChatMessageViewModel model;
@@ -478,12 +483,23 @@ class MessageBubble extends StatelessWidget {
             availableWidth,
             webStyle ? WKWebSizes.messageBubbleMaxWidth : availableWidth,
           );
-    final widthRatio = webStyle ? WKWebSizes.messageBubbleWidthRatio : 0.68;
+    final widthRatio = _bubbleWidthRatio(effectiveContentType);
     final desiredWidth = effectiveContentType == MsgContentType.robotCard
         ? upperBound
         : availableWidth * widthRatio;
     final lowerBound = math.min(WKWebSizes.messageBubbleMinWidth, upperBound);
     return desiredWidth.clamp(lowerBound, upperBound).toDouble();
+  }
+
+  double _bubbleWidthRatio(int effectiveContentType) {
+    if (_isTextLikeContent(effectiveContentType) ||
+        effectiveContentType == MsgContentType.richText) {
+      return _textBubbleWidthRatio;
+    }
+    if (webStyle) {
+      return WKWebSizes.messageBubbleWidthRatio;
+    }
+    return _attachmentBubbleWidthRatio;
   }
 
   EdgeInsets _bubblePaddingFor(int effectiveContentType) {
@@ -932,10 +948,10 @@ class MessageBubble extends StatelessWidget {
     final brightness = Theme.of(context).brightness;
     final textStyle = TextStyle(
       color: ChatBubbleTheme.textColor(isSelf: isSelf, brightness: brightness),
-      fontSize: 16.5,
-      height: 1.45,
-      fontWeight: FontWeight.w500,
-      letterSpacing: 0.1,
+      fontSize: 16,
+      height: 1.38,
+      fontWeight: FontWeight.w400,
+      letterSpacing: 0,
     );
     final previewUrl = LinkPreviewService.extractFirstUrl(text);
     final textWidget = WKEmojiText.containsAndroidEmoji(text)
@@ -946,15 +962,24 @@ class MessageBubble extends StatelessWidget {
     if (previewUrl == null) {
       return textWidget;
     }
+    final mediaType = LinkPreviewService.classifyDirectMediaUrl(previewUrl);
+    final Widget previewCard;
+    switch (mediaType) {
+      case DirectMediaType.audio:
+        previewCard = _InlineAudioLinkCard(url: previewUrl, isSelf: isSelf);
+        break;
+      case DirectMediaType.video:
+        previewCard = _InlineVideoLinkCard(url: previewUrl, isSelf: isSelf);
+        break;
+      case DirectMediaType.none:
+        previewCard = _LinkPreviewCard(url: previewUrl, isSelf: isSelf);
+        break;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
-      children: [
-        textWidget,
-        const SizedBox(height: 8),
-        _LinkPreviewCard(url: previewUrl, isSelf: isSelf),
-      ],
+      children: [textWidget, const SizedBox(height: 8), previewCard],
     );
   }
 
@@ -1944,6 +1969,14 @@ String? _resolveParticipantAvatarUrl(String? rawAvatar, String? uid) {
   return resolveUserAvatarUrl(rawAvatar, uid);
 }
 
+Future<void> _openExternalHttpLink(String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null || !(uri.isScheme('http') || uri.isScheme('https'))) {
+    return;
+  }
+  await launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
 String _firstNonEmpty(List<String?> candidates) {
   for (final candidate in candidates) {
     final value = candidate?.trim() ?? '';
@@ -1952,6 +1985,592 @@ String _firstNonEmpty(List<String?> candidates) {
     }
   }
   return '';
+}
+
+class _InlineAudioLinkCard extends StatefulWidget {
+  final String url;
+  final bool isSelf;
+
+  const _InlineAudioLinkCard({required this.url, required this.isSelf});
+
+  @override
+  State<_InlineAudioLinkCard> createState() => _InlineAudioLinkCardState();
+}
+
+class _InlineAudioLinkCardState extends State<_InlineAudioLinkCard> {
+  late final AudioPlayManager _playManager;
+  StreamSubscription<PlaybackUpdate>? _playbackSubscription;
+  bool _isPlaying = false;
+  bool _isLoading = false;
+  bool _hasFailed = false;
+  int _positionMs = 0;
+  int _durationMs = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _playManager = AudioPlayManager();
+    _playbackSubscription = _playManager.playbackStream.listen(
+      _handlePlaybackUpdate,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineAudioLinkCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url == widget.url) {
+      return;
+    }
+    unawaited(_playManager.stop());
+    setState(() {
+      _isPlaying = false;
+      _isLoading = false;
+      _hasFailed = false;
+      _positionMs = 0;
+      _durationMs = 0;
+    });
+  }
+
+  void _handlePlaybackUpdate(PlaybackUpdate update) {
+    if (!mounted) {
+      return;
+    }
+    final updateSource = update.source;
+    if (updateSource != null && updateSource.value != widget.url) {
+      return;
+    }
+    setState(() {
+      switch (update.type) {
+        case PlaybackUpdateType.start:
+        case PlaybackUpdateType.resume:
+        case PlaybackUpdateType.progress:
+        case PlaybackUpdateType.seek:
+          _isPlaying = true;
+          _isLoading = false;
+          _hasFailed = false;
+          break;
+        case PlaybackUpdateType.pause:
+          _isPlaying = false;
+          _isLoading = false;
+          _hasFailed = false;
+          break;
+        case PlaybackUpdateType.stop:
+          _isPlaying = false;
+          _isLoading = false;
+          _hasFailed = false;
+          _positionMs = 0;
+          break;
+        case PlaybackUpdateType.error:
+          _isPlaying = false;
+          _isLoading = false;
+          _hasFailed = true;
+          break;
+      }
+      _positionMs = update.position ?? _positionMs;
+      _durationMs = update.duration ?? _durationMs;
+    });
+  }
+
+  Future<void> _togglePlayback() async {
+    setState(() {
+      _isLoading = true;
+      _hasFailed = false;
+    });
+    try {
+      await _playManager.toggle(AudioPlaybackSource.network(widget.url));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+        _hasFailed = true;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_playbackSubscription?.cancel());
+    _playManager.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _InlineMediaCardColors.resolve(
+      isSelf: widget.isSelf,
+      context: context,
+    );
+    final displayUrl = _displayUrlFor(widget.url);
+    final statusText = _hasFailed
+        ? '\u64ad\u653e\u5931\u8d25'
+        : _durationMs > 0
+        ? '${_formatMediaClock(_positionMs)} / ${_formatMediaClock(_durationMs)}'
+        : '\u70b9\u51fb\u64ad\u653e\u97f3\u9891';
+    final playIcon = _hasFailed
+        ? Icons.refresh_rounded
+        : _isPlaying
+        ? Icons.pause_rounded
+        : Icons.play_arrow_rounded;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const ValueKey<String>('inline-audio-link-card'),
+        borderRadius: BorderRadius.circular(WKRadius.md),
+        onTap: _togglePlayback,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 260),
+          decoration: BoxDecoration(
+            color: colors.backgroundColor,
+            borderRadius: BorderRadius.circular(WKRadius.md),
+            border: Border.all(color: colors.borderColor),
+          ),
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.controlBackgroundColor,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: _isLoading
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            colors.primaryColor,
+                          ),
+                        ),
+                      )
+                    : Icon(playIcon, size: 24, color: colors.primaryColor),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.audiotrack_rounded,
+                          size: 16,
+                          color: colors.primaryColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '\u97f3\u9891',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.textColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      statusText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.secondaryColor,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      displayUrl,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.secondaryColor,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => _openExternalHttpLink(widget.url),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.open_in_new_rounded,
+                    size: 16,
+                    color: colors.secondaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineVideoLinkCard extends StatelessWidget {
+  final String url;
+  final bool isSelf;
+
+  const _InlineVideoLinkCard({required this.url, required this.isSelf});
+
+  Future<void> _openVideoDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _InlineVideoPlayerDialog(url: url),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _InlineMediaCardColors.resolve(
+      isSelf: isSelf,
+      context: context,
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const ValueKey<String>('inline-video-link-card'),
+        borderRadius: BorderRadius.circular(WKRadius.md),
+        onTap: () => _openVideoDialog(context),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 260),
+          decoration: BoxDecoration(
+            color: colors.backgroundColor,
+            borderRadius: BorderRadius.circular(WKRadius.md),
+            border: Border.all(color: colors.borderColor),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.82),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.play_circle_fill_rounded,
+                      size: 48,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.videocam_rounded,
+                      size: 16,
+                      color: colors.primaryColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _displayUrlFor(url),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => _openExternalHttpLink(url),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4),
+                        child: Icon(
+                          Icons.open_in_new_rounded,
+                          size: 16,
+                          color: colors.secondaryColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineVideoPlayerDialog extends StatefulWidget {
+  final String url;
+
+  const _InlineVideoPlayerDialog({required this.url});
+
+  @override
+  State<_InlineVideoPlayerDialog> createState() =>
+      _InlineVideoPlayerDialogState();
+}
+
+class _InlineVideoPlayerDialogState extends State<_InlineVideoPlayerDialog> {
+  VideoPlayerController? _controller;
+  bool _isInitializing = false;
+  bool _hasStarted = false;
+  String? _errorText;
+
+  Future<void> _startPlayback() async {
+    if (_isInitializing) {
+      return;
+    }
+    setState(() {
+      _isInitializing = true;
+      _errorText = null;
+    });
+    final controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _controller = controller;
+    final future = controller
+        .initialize()
+        .then((_) async {
+          await controller.setLooping(false);
+          await controller.play();
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _hasStarted = true;
+            _isInitializing = false;
+          });
+        })
+        .catchError((Object error) {
+          controller.dispose();
+          if (identical(_controller, controller)) {
+            _controller = null;
+          }
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _isInitializing = false;
+            _errorText = '\u89c6\u9891\u52a0\u8f7d\u5931\u8d25';
+          });
+        });
+    await future;
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    return Dialog(
+      key: const ValueKey<String>('inline-video-player-dialog'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(WKRadius.lg),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _displayUrlFor(widget.url),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '\u5173\u95ed',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            AspectRatio(
+              aspectRatio: controller?.value.isInitialized == true
+                  ? controller!.value.aspectRatio
+                  : 16 / 9,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(color: Colors.black),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (controller?.value.isInitialized == true)
+                      VideoPlayer(controller!)
+                    else
+                      Icon(
+                        Icons.play_circle_fill_rounded,
+                        size: 64,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    if (_isInitializing)
+                      const CircularProgressIndicator(color: Colors.white),
+                    if (_errorText != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.62),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _errorText!,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    if (!_hasStarted && !_isInitializing)
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          key: const ValueKey<String>(
+                            'inline-video-dialog-play-button',
+                          ),
+                          customBorder: const CircleBorder(),
+                          onTap: _startPlayback,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Icon(
+                              Icons.play_circle_fill_rounded,
+                              size: 72,
+                              color: Colors.white.withValues(alpha: 0.94),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _hasStarted
+                          ? '\u6b63\u5728\u64ad\u653e'
+                          : '\u70b9\u51fb\u64ad\u653e\u89c6\u9891',
+                      style: const TextStyle(
+                        color: WKColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _openExternalHttpLink(widget.url),
+                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                    label: const Text('\u5916\u90e8\u6253\u5f00'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineMediaCardColors {
+  const _InlineMediaCardColors({
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.controlBackgroundColor,
+    required this.primaryColor,
+    required this.textColor,
+    required this.secondaryColor,
+  });
+
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color controlBackgroundColor;
+  final Color primaryColor;
+  final Color textColor;
+  final Color secondaryColor;
+
+  static _InlineMediaCardColors resolve({
+    required bool isSelf,
+    required BuildContext context,
+  }) {
+    if (isSelf) {
+      return _InlineMediaCardColors(
+        backgroundColor: WKColors.chatOutgoingPressed,
+        borderColor: Colors.transparent,
+        controlBackgroundColor: Colors.white.withValues(alpha: 0.20),
+        primaryColor: WKColors.sendText,
+        textColor: WKColors.sendText,
+        secondaryColor: WKColors.white.withValues(alpha: 0.75),
+      );
+    }
+    return _InlineMediaCardColors(
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? WKColors.surfaceSoft
+          : WKColors.surface,
+      borderColor: WKColors.outline,
+      controlBackgroundColor: WKColors.brand50,
+      primaryColor: WKColors.brand500,
+      textColor: WKColors.receiveText,
+      secondaryColor: WKColors.textSecondary,
+    );
+  }
+}
+
+String _displayUrlFor(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) {
+    return url;
+  }
+  final path = uri.path.trim();
+  if (path.isEmpty || path == '/') {
+    return uri.host;
+  }
+  return '${uri.host}$path';
+}
+
+String _formatMediaClock(int milliseconds) {
+  final duration = Duration(milliseconds: math.max(milliseconds, 0));
+  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
 }
 
 class _LinkPreviewCard extends StatefulWidget {
@@ -1980,14 +2599,6 @@ class _LinkPreviewCardState extends State<_LinkPreviewCard> {
       return;
     }
     _previewFuture = LinkPreviewService.instance.getPreview(widget.url);
-  }
-
-  Future<void> _openLink(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
-      return;
-    }
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -2022,7 +2633,7 @@ class _LinkPreviewCardState extends State<_LinkPreviewCard> {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(WKRadius.md),
-            onTap: () => _openLink(preview.url),
+            onTap: () => _openExternalHttpLink(preview.url),
             child: Container(
               constraints: const BoxConstraints(maxWidth: 260),
               decoration: BoxDecoration(

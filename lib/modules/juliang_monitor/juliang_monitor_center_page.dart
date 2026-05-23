@@ -361,7 +361,7 @@ class _ObservedSourcesCard extends StatelessWidget {
     return _SectionCard(
       title: '已观察来源',
       children: [
-        if (conversations.isEmpty) const Text('鏆傛棤鏉ユ簮'),
+        if (conversations.isEmpty) const Text('暂无来源'),
         for (final conversation in conversations)
           ListTile(
             key: ValueKey('juliang-observed-source:${conversation.id}'),
@@ -371,7 +371,7 @@ class _ObservedSourcesCard extends StatelessWidget {
             onTap: () => onConfigureRoute(conversation),
             trailing: TextButton(
               onPressed: () => onConfigureRoute(conversation),
-              child: const Text('閰嶇疆'),
+              child: const Text('配置'),
             ),
           ),
       ],

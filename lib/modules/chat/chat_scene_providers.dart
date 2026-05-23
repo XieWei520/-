@@ -15,8 +15,7 @@ import '../../data/models/chat_session.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../service/im/message_delivery_service.dart';
 import '../../wukong_base/views/mention_suggestion.dart';
-import '../video_call/group_call_member_picker_page.dart';
-import '../video_call/video_call_page.dart';
+import '../video_call/deferred_video_call_pages.dart';
 import 'chat_action_dispatcher.dart';
 import 'chat_call_entry_service.dart';
 import 'chat_gif_panel_service.dart';
@@ -264,7 +263,7 @@ final chatCallPageBuilderProvider = Provider.autoDispose<ChatCallPageBuilder>((
     String? channelName,
     required CallType callType,
   }) {
-    return VideoCallPage(
+    return DeferredVideoCallPage(
       channelId: channelId,
       channelName: channelName,
       callType: callType,
@@ -286,7 +285,7 @@ final chatGroupCallPageBuilderProvider =
         required int channelType,
         String? channelName,
       }) {
-        return GroupCallMemberPickerPage(
+        return DeferredGroupCallMemberPickerPage(
           channelId: channelId,
           channelType: channelType,
           channelName: channelName,

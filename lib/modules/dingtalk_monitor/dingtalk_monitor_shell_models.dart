@@ -98,6 +98,22 @@ class DingTalkMonitorMessageEvent {
       captureSource == DingTalkMonitorCaptureSource.uiaText &&
       !_isDiagnosticUiaTextSource;
 
+  bool get isForwardableImage =>
+      localImagePath.trim().isNotEmpty && _isImageCaptureSource;
+
+  bool get isForwardablePayload => isForwardableText || isForwardableImage;
+
+  bool get _isImageCaptureSource {
+    return switch (captureSource) {
+      DingTalkMonitorCaptureSource.uiaImageMetadata ||
+      DingTalkMonitorCaptureSource.previewSave ||
+      DingTalkMonitorCaptureSource.chatAreaScreenshot => true,
+      DingTalkMonitorCaptureSource.uiaText ||
+      DingTalkMonitorCaptureSource.chatAreaScreenshotOcr ||
+      DingTalkMonitorCaptureSource.unknown => false,
+    };
+  }
+
   bool get _isDiagnosticUiaTextSource {
     final sourceId = sourceConversationId.trim().toLowerCase();
     final sourceName = _normalizeDingTalkMonitorShellText(

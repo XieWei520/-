@@ -406,7 +406,7 @@ void main() {
         .style
         ?.textStyle
         ?.resolve(<WidgetState>{});
-    expect(textStyle?.fontFamily, WKFontFamily.chinese);
+    expect(textStyle?.fontFamily, WKFontFamily.primary);
     expect(textStyle?.fontFamilyFallback, contains('Microsoft YaHei UI'));
   });
 

@@ -202,7 +202,7 @@ Map<String, ConversationPreferredInfo> buildPreferredGroupConversationInfoMap(
     }
     infos[groupNo] = ConversationPreferredInfo(
       title: _resolveGroupTitle(group),
-      avatarUrl: _resolveConversationAvatar(group.avatar),
+      avatarUrl: resolveGroupAvatarUrl(group.avatar, groupNo),
     );
   }
   return infos;
@@ -658,7 +658,10 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
   }
 
   Future<void> _openCreateGroupPage() async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.createGroup,
+    )) {
       return;
     }
     if (!mounted) {
@@ -682,7 +685,10 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
   }
 
   Future<void> _openAddFriendPage() async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.addFriend,
+    )) {
       return;
     }
     if (!mounted) {
@@ -1559,6 +1565,9 @@ Future<WKConversationItemData> resolveConversationListItemData(
   if (avatarUrl.isEmpty && conversation.channelType == WKChannelType.personal) {
     avatarUrl = buildUserAvatarUrl(conversation.channelID) ?? '';
   }
+  if (avatarUrl.isEmpty && conversation.channelType == WKChannelType.group) {
+    avatarUrl = buildGroupAvatarUrl(conversation.channelID) ?? '';
+  }
   if (title.isEmpty) {
     title = conversation.channelID;
   }
@@ -1632,9 +1641,9 @@ Future<WKConversationItemData> resolveConversationListItemData(
     if (resolvedName.isNotEmpty) {
       title = resolvedName;
     }
-    if (resolvedAvatar.isNotEmpty) {
-      avatarUrl = _resolveConversationAvatar(resolvedAvatar) ?? avatarUrl;
-    }
+    avatarUrl =
+        resolveGroupAvatarUrl(resolvedAvatar, conversation.channelID) ??
+        avatarUrl;
   }
   final personalInfo = await personalInfoFuture;
   if (personalInfo != null) {

@@ -12,7 +12,7 @@ import '../../data/models/user.dart';
 import '../../service/api/friend_api.dart';
 import '../../service/api/user_api.dart';
 import '../../wukong_base/utils/permission_utils.dart';
-import '../video_call/video_call_service.dart';
+import '../video_call/video_call_runtime_bridge.dart';
 
 const String chatCallAlreadyActiveMessage = '当前已有通话进行中';
 const String chatCallForbiddenMessage = '当前会话已被禁言，无法发起音视频通话';
@@ -177,7 +177,7 @@ class PlatformChatCallEntryService implements ChatCallEntryService {
   }
 
   static bool _defaultHasActiveCallOrPendingSetup() {
-    return VideoCallService.instance.hasActiveCallOrPendingSetup;
+    return VideoCallRuntimeBridge.instance.hasActiveCallOrPendingSetupSync();
   }
 
   static Future<WKChannel?> _defaultChannelLoader({
@@ -265,8 +265,11 @@ class PlatformChatCallEntryService implements ChatCallEntryService {
     required WKChannelMember? member,
   }) {
     final channelForbidden = (channel?.forbidden ?? 0) == 1;
-    final memberForbidden = (member?.forbiddenExpirationTime ?? 0) > 0;
-    if (!channelForbidden && !memberForbidden) {
+    final memberForbidden = _isMemberMuted(member);
+    if (memberForbidden) {
+      return ChatCallEntryDecision.blocked(chatCallForbiddenMessage);
+    }
+    if (!channelForbidden || _isGroupManagerOrOwner(member)) {
       return null;
     }
     return ChatCallEntryDecision.blocked(chatCallForbiddenMessage);
@@ -363,6 +366,19 @@ class PlatformChatCallEntryService implements ChatCallEntryService {
 
   static bool _isGroupBlacklisted(WKChannelMember? member) {
     return (member?.status ?? 1) == 2;
+  }
+
+  static bool _isGroupManagerOrOwner(WKChannelMember? member) {
+    final role = member?.role ?? 0;
+    return role == 1 || role == 2;
+  }
+
+  static bool _isMemberMuted(WKChannelMember? member) {
+    final expiresAt = member?.forbiddenExpirationTime ?? 0;
+    if (expiresAt <= 0) {
+      return false;
+    }
+    return expiresAt > DateTime.now().millisecondsSinceEpoch ~/ 1000;
   }
 
   static int _readExtraFlag(dynamic map, List<String> keys) {

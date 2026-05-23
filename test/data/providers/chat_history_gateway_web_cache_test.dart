@@ -102,6 +102,53 @@ void main() {
       expect(messages.single.messageID, 'cached');
     },
   );
+
+  test(
+    'web direct older history fallback reads cached messages before the oldest visible message',
+    () async {
+      await StorageUtils.setUid('uid-a');
+      final cache = MemoryWebChatCacheStore();
+      await cache.upsertMessages(
+        uid: 'uid-a',
+        channelId: 'c1',
+        channelType: WKChannelType.personal,
+        messages: [
+          for (final seq in <int>[48, 49, 50, 51])
+            WKMsg()
+              ..messageID = 'm$seq'
+              ..channelID = 'c1'
+              ..channelType = WKChannelType.personal
+              ..messageSeq = seq
+              ..orderSeq = seq * 1000
+              ..contentType = 1,
+        ],
+      );
+      final gateway = WkImChatHistoryGateway(
+        useDirectRemoteSync: true,
+        webCacheStore: cache,
+        authTokenProvider: () => 'token',
+        syncChannelMessages:
+            ({
+              required channelId,
+              required channelType,
+              required startMessageSeq,
+              required endMessageSeq,
+              required limit,
+              required pullMode,
+              required deviceUuid,
+            }) async => throw StateError('network down'),
+      );
+
+      final messages = await gateway.loadMore(
+        channelId: 'c1',
+        channelType: WKChannelType.personal,
+        oldestOrderSeq: 50000,
+        limit: 20,
+      );
+
+      expect(messages.map((message) => message.messageSeq), [48, 49]);
+    },
+  );
 }
 
 WKSyncChannelMsg _syncResult(String messageId, int messageSeq) {

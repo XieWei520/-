@@ -1748,7 +1748,6 @@ bool _isDomFallbackCaptureSource(String captureSource) {
 bool _isFeishuMonitorMediaPlaceholderText(String value) {
   final normalized = value.trim();
   return normalized == '[图片]' ||
-      normalized == '[鍥剧墖]' ||
       normalized == '[Image]' ||
       normalized == '[Video]' ||
       normalized == '[File]' ||

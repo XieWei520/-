@@ -171,40 +171,111 @@ void main() {
       expect(decision.feedbackMessage, chatAudioPermissionSettingsMessage);
     });
 
-    test('blocks forbidden chats before requesting permissions', () async {
-      var microphoneRequestCount = 0;
+    test(
+      'blocks forbidden personal chats before requesting permissions',
+      () async {
+        var microphoneRequestCount = 0;
 
+        final service = PlatformChatCallEntryService(
+          hasActiveCallOrPendingSetup: () => false,
+          requestMicrophone: () async {
+            microphoneRequestCount += 1;
+            return true;
+          },
+          requestCameraAndMicrophone: () async => true,
+          isMicrophonePermanentlyDenied: () async => false,
+          isCameraPermanentlyDenied: () async => false,
+          channelLoader:
+              ({required String channelId, required int channelType}) async {
+                return WKChannel(channelId, channelType)..forbidden = 1;
+              },
+          memberLoader:
+              ({
+                required String channelId,
+                required int channelType,
+                required String uid,
+              }) async => null,
+          currentUidReader: () => 'u_self',
+        );
+
+        final decision = await service.prepareOutgoingCall(
+          CallType.audio,
+          channelId: 'u_forbidden',
+          channelType: WKChannelType.personal,
+        );
+
+        expect(decision.shouldStart, isFalse);
+        expect(decision.feedbackMessage, chatCallForbiddenMessage);
+        expect(microphoneRequestCount, 0);
+      },
+    );
+
+    test(
+      'blocks normal members from group calls when the group is muted',
+      () async {
+        var microphoneRequestCount = 0;
+
+        final service = PlatformChatCallEntryService(
+          hasActiveCallOrPendingSetup: () => false,
+          requestMicrophone: () async {
+            microphoneRequestCount += 1;
+            return true;
+          },
+          requestCameraAndMicrophone: () async => true,
+          isMicrophonePermanentlyDenied: () async => false,
+          isCameraPermanentlyDenied: () async => false,
+          currentUidReader: () => 'u_member',
+          channelLoader:
+              ({required String channelId, required int channelType}) async =>
+                  WKChannel(channelId, channelType)..forbidden = 1,
+          memberLoader:
+              ({
+                required String channelId,
+                required int channelType,
+                required String uid,
+              }) async => WKChannelMember()..role = 0,
+        );
+
+        final decision = await service.prepareOutgoingCall(
+          CallType.audio,
+          channelId: 'g_muted',
+          channelType: WKChannelType.group,
+        );
+
+        expect(decision.shouldStart, isFalse);
+        expect(decision.feedbackMessage, chatCallForbiddenMessage);
+        expect(microphoneRequestCount, 0);
+      },
+    );
+
+    test('allows group admins to call when the group is muted', () async {
       final service = PlatformChatCallEntryService(
         hasActiveCallOrPendingSetup: () => false,
-        requestMicrophone: () async {
-          microphoneRequestCount += 1;
-          return true;
-        },
+        requestMicrophone: () async => true,
         requestCameraAndMicrophone: () async => true,
         isMicrophonePermanentlyDenied: () async => false,
         isCameraPermanentlyDenied: () async => false,
+        currentUidReader: () => 'u_admin',
         channelLoader:
-            ({required String channelId, required int channelType}) async {
-              return WKChannel(channelId, channelType)..forbidden = 1;
-            },
+            ({required String channelId, required int channelType}) async =>
+                WKChannel(channelId, channelType)..forbidden = 1,
         memberLoader:
             ({
               required String channelId,
               required int channelType,
               required String uid,
-            }) async => null,
-        currentUidReader: () => 'u_self',
+            }) async => WKChannelMember()..role = 2,
       );
 
       final decision = await service.prepareOutgoingCall(
-        CallType.audio,
-        channelId: 'u_forbidden',
-        channelType: WKChannelType.personal,
+        CallType.video,
+        channelId: 'g_muted',
+        channelType: WKChannelType.group,
       );
 
-      expect(decision.shouldStart, isFalse);
-      expect(decision.feedbackMessage, chatCallForbiddenMessage);
-      expect(microphoneRequestCount, 0);
+      expect(decision.shouldStart, isTrue);
+      expect(decision.callType, CallType.video);
+      expect(decision.feedbackMessage, isNull);
     });
 
     test(

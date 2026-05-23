@@ -173,6 +173,11 @@ docker compose --env-file .env up -d --no-deps tsdd-api callgateway
 wait_for_health tsdd-api 180
 wait_for_health callgateway 180
 
+echo "== refresh edge =="
+docker compose --env-file .env up -d --no-deps --force-recreate nginx
+container_id="$(docker compose --env-file .env ps -q nginx)"
+docker exec "${container_id}" nginx -t
+
 echo "== smoke (${RELEASE_BASE_URL}) =="
 python3 scripts/smoke_test.py --base-url "${RELEASE_BASE_URL}" --timeout 10
 

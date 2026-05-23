@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wukong_im_app/modules/chat/chat_scene_gateway.dart';
 import 'package:wukong_im_app/modules/local_monitor/local_monitor_forwarding.dart';
+import 'package:wukong_im_app/service/api/file_api.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
 import 'dingtalk_monitor_shell_models.dart';
@@ -200,13 +201,27 @@ typedef DingTalkMonitorRelayIdentity = LocalMonitorRelayIdentity;
 typedef DingTalkMonitorForwardingDedupeStore =
     LocalMonitorForwardingDedupeStore;
 
-abstract class DingTalkMonitorTextSender implements LocalMonitorTextSender {}
+abstract class DingTalkMonitorTextSender implements LocalMonitorTextSender {
+  Future<void> sendImage({
+    required String channelId,
+    required int channelType,
+    String? channelName,
+    required LocalMonitorForwardableImage image,
+    DingTalkMonitorRelayIdentity? relayIdentity,
+  });
+}
 
 class WkImDingTalkMonitorTextSender implements DingTalkMonitorTextSender {
   WkImDingTalkMonitorTextSender({ChatSceneGateway? gateway})
-    : _sender = WkImLocalMonitorTextSender(gateway: gateway);
+    : _textSender = WkImLocalMonitorTextSender(gateway: gateway),
+      _imageSender = WkImLocalMonitorImageSender(
+        gateway: gateway,
+        prepareImage: _identityDingTalkMonitorImagePreparer,
+        uploadImage: _uploadDingTalkMonitorImageForWk,
+      );
 
-  final LocalMonitorTextSender _sender;
+  final LocalMonitorTextSender _textSender;
+  final LocalMonitorImageSender _imageSender;
 
   @override
   Future<void> sendText({
@@ -216,7 +231,7 @@ class WkImDingTalkMonitorTextSender implements DingTalkMonitorTextSender {
     required String text,
     DingTalkMonitorRelayIdentity? relayIdentity,
   }) {
-    return _sender.sendText(
+    return _textSender.sendText(
       channelId: channelId,
       channelType: channelType,
       channelName: channelName,
@@ -224,6 +239,41 @@ class WkImDingTalkMonitorTextSender implements DingTalkMonitorTextSender {
       relayIdentity: relayIdentity,
     );
   }
+
+  @override
+  Future<void> sendImage({
+    required String channelId,
+    required int channelType,
+    String? channelName,
+    required LocalMonitorForwardableImage image,
+    DingTalkMonitorRelayIdentity? relayIdentity,
+  }) {
+    return _imageSender.sendImage(
+      channelId: channelId,
+      channelType: channelType,
+      channelName: channelName,
+      image: image,
+      relayIdentity: relayIdentity,
+    );
+  }
+}
+
+Future<LocalMonitorForwardableImage> _identityDingTalkMonitorImagePreparer(
+  LocalMonitorForwardableImage image,
+) async {
+  return image;
+}
+
+Future<String> _uploadDingTalkMonitorImageForWk({
+  required String filePath,
+  required String channelId,
+  required int channelType,
+}) {
+  return FileApi.instance.uploadChatFile(
+    filePath: filePath,
+    channelId: channelId,
+    channelType: channelType,
+  );
 }
 
 class SharedPreferencesDingTalkMonitorForwardingDedupeStore
@@ -337,7 +387,7 @@ class DingTalkMonitorForwardingService {
       if (route == null ||
           !route.enabled ||
           route.targetGroupId.trim().isEmpty ||
-          !event.isForwardableText ||
+          !event.isForwardablePayload ||
           !_hasExplicitRouteSourceMatch(route, event)) {
         continue;
       }
@@ -395,7 +445,7 @@ class DingTalkMonitorForwardingService {
         skippedDisabled += 1;
         continue;
       }
-      if (!event.isForwardableText ||
+      if (!event.isForwardablePayload ||
           !_hasAllowedRouteSourceMatch(settings.routes, route, event)) {
         skippedDuplicate += 1;
         continue;
@@ -412,11 +462,11 @@ class DingTalkMonitorForwardingService {
       }
 
       try {
-        await _sender.sendText(
+        await _sendEventToTarget(
+          event: event,
           channelId: targetGroupId,
           channelType: WKChannelType.group,
           channelName: route.targetGroupName,
-          text: formatDingTalkMonitorEventForForward(event),
           relayIdentity: route.relayIdentity(),
         );
         _sentKeys.add(key);
@@ -461,6 +511,32 @@ class DingTalkMonitorForwardingService {
     }
   }
 
+  Future<void> _sendEventToTarget({
+    required DingTalkMonitorMessageEvent event,
+    required String channelId,
+    required int channelType,
+    required String channelName,
+    DingTalkMonitorRelayIdentity? relayIdentity,
+  }) {
+    final image = _forwardableImageForEvent(event);
+    if (image != null) {
+      return _sender.sendImage(
+        channelId: channelId,
+        channelType: channelType,
+        channelName: channelName,
+        image: image,
+        relayIdentity: relayIdentity,
+      );
+    }
+    return _sender.sendText(
+      channelId: channelId,
+      channelType: channelType,
+      channelName: channelName,
+      text: formatDingTalkMonitorEventForForward(event),
+      relayIdentity: relayIdentity,
+    );
+  }
+
   Future<void> _persistSentKeys() {
     final keys = _sentKeys.toList(growable: false);
     final capped = keys.length <= _maxPersistedSentKeys
@@ -468,6 +544,20 @@ class DingTalkMonitorForwardingService {
         : keys.sublist(keys.length - _maxPersistedSentKeys);
     return _dedupeStore.saveSentKeys(capped);
   }
+}
+
+LocalMonitorForwardableImage? _forwardableImageForEvent(
+  DingTalkMonitorMessageEvent event,
+) {
+  if (!event.isForwardableImage) {
+    return null;
+  }
+  return LocalMonitorForwardableImage(
+    sourceUrl: '',
+    localPath: event.localImagePath.trim(),
+    width: 0,
+    height: 0,
+  );
 }
 
 DingTalkMonitorForwardingRoute? findDingTalkMonitorRouteForEvent({

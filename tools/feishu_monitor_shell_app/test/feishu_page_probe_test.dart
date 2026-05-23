@@ -138,7 +138,7 @@ void main() {
           'conversation_name': 'Alpha Group',
           'sender_name': 'Alice',
           'message_type': 'image',
-          'text': '[鍥剧墖]',
+          'text': '[图片]',
           'observed_at': '2026-05-09T12:00:00Z',
           'capture_source': 'dom_probe',
           'image_attachments': <Map<String, dynamic>>[
@@ -626,7 +626,7 @@ void main() {
             'conversation_name': 'Alpha Group',
             'sender_name': 'Alice',
             'message_type': 'image',
-            'text': '[鍥剧墖]',
+            'text': '[图片]',
             'observed_at': '2026-05-09T11:59:00Z',
             'capture_source': 'dom_probe',
             'image_attachments': <Map<String, dynamic>>[
@@ -642,7 +642,7 @@ void main() {
         'feed_cards': <Map<String, dynamic>>[
           <String, dynamic>{
             'id': 'feed_card_new_image',
-            'text': 'Alpha Group 12:00 Alice: [鍥剧墖]',
+            'text': 'Alpha Group 12:00 Alice: [图片]',
           },
         ],
       });

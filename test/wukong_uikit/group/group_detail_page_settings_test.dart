@@ -146,6 +146,50 @@ void main() {
   );
 
   testWidgets(
+    'small groups still expose all members entry and owner group mute switch',
+    (tester) async {
+      final adapter = _GroupDetailRoutingAdapter(
+        groupNo: _groupNo,
+        group: _buildGroupJson(role: 1, invite: 0, forbidden: 0),
+        members: _buildMembersJson(currentUid: 'u_owner', currentRole: 1),
+        friends: const <Map<String, dynamic>>[],
+      );
+
+      await _pumpGroupDetailPage(
+        tester,
+        adapter: adapter,
+        currentUid: 'u_owner',
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('group-all-members-entry')),
+        findsOneWidget,
+      );
+      await _scrollToFinder(
+        tester,
+        find.byKey(const ValueKey<String>('group_setting_forbidden_switch')),
+      );
+      expect(
+        find.byKey(const ValueKey<String>('group_setting_forbidden_switch')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('group_setting_forbidden_switch')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        adapter.requestCount(
+          'POST',
+          '${ApiConfig.groups}/$_groupNo/forbidden/1',
+        ),
+        1,
+      );
+    },
+  );
+
+  testWidgets(
     'live Android settings section renders chat password and message auto-delete from confirmed server values',
     (tester) async {
       final adapter = _GroupDetailRoutingAdapter(
@@ -315,6 +359,28 @@ void main() {
     },
   );
 
+  testWidgets('owner action sheet uses readable transfer-owner label', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final adapter = _GroupDetailRoutingAdapter(
+      groupNo: _groupNo,
+      group: _buildGroupJson(role: 1, invite: 0),
+      members: _buildMembersJson(currentUid: 'u_owner', currentRole: 1),
+      friends: const <Map<String, dynamic>>[],
+    );
+
+    await _pumpGroupDetailPage(tester, adapter: adapter, currentUid: 'u_owner');
+
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('转让群主'), findsOneWidget);
+    expect(find.text('杞缇や富'), findsNothing);
+  });
+
   testWidgets(
     'group detail updates chat password switch and auto-delete cache through confirmed routes',
     (tester) async {
@@ -434,7 +500,10 @@ void main() {
         const ValueKey<String>('group-detail-avatar-button'),
       );
       await _scrollToFinder(tester, avatarTile);
-      expect(_avatarUrlInTile(tester, avatarTile), oldAvatar);
+      expect(
+        _avatarUrlInTile(tester, avatarTile),
+        ApiConfig.resolveMediaUrl(oldAvatar),
+      );
 
       await tester.tap(avatarTile);
       await tester.pumpAndSettle();
@@ -727,6 +796,7 @@ Map<String, dynamic> _buildGroupJson({
   int joinGroupRemind = 1,
   int allowMemberPinnedMessage = 0,
   int chatPwdOn = 0,
+  int forbidden = 0,
 }) {
   return <String, dynamic>{
     'group_no': _groupNo,
@@ -736,6 +806,7 @@ Map<String, dynamic> _buildGroupJson({
     'member_count': 2,
     'role': role,
     'invite': invite,
+    'forbidden': forbidden,
     'mute': 0,
     'top': 0,
     'save': 1,
@@ -865,6 +936,10 @@ class _GroupDetailRoutingAdapter implements HttpClientAdapter {
     if (method == 'PUT' && path == settingPath) {
       _applyGroupSettings(options.data);
       lastSettingRequestData = _asMap(options.data);
+      return _jsonResponse(const <String, dynamic>{'code': 0});
+    }
+    if (method == 'POST' && path.startsWith('$groupPath/forbidden/')) {
+      _group['forbidden'] = path.endsWith('/1') ? 1 : 0;
       return _jsonResponse(const <String, dynamic>{'code': 0});
     }
     if (method == 'POST' && path == autoDeletePath) {

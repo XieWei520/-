@@ -8,11 +8,17 @@ import '../../service/api/user_api.dart';
 import '../chat/chat_page.dart';
 import '../customer_service/customer_service_identity.dart';
 
+export '../../data/models/user.dart' show VipEntitlement;
+
 const String vipCustomerServiceUid = 'system_kefu';
 const String vipRequiredMessage =
     '\u8BE5\u529F\u80FD\u4EC5\u9650\u5546\u5BB6\u53EF\u7528\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458';
 
-bool isVipUser(UserInfo? user) => user?.vipLevel == 1;
+bool isVipUser(UserInfo? user) => user?.isVip == true;
+
+bool hasVipEntitlement(UserInfo? user, String entitlement) {
+  return user?.hasVipEntitlement(entitlement) == true;
+}
 
 typedef VipCustomerServicesLoader =
     Future<List<CustomerServiceAccount>> Function();
@@ -66,6 +72,7 @@ Future<void> openVipCustomerServiceChat(
 
 Future<bool> guardVipFeature(
   BuildContext context, {
+  String entitlement = VipEntitlement.systemManagement,
   VipCustomerServicesLoader? customerServicesLoader,
 }) async {
   if (!context.mounted) {
@@ -73,7 +80,7 @@ Future<bool> guardVipFeature(
   }
   final container = ProviderScope.containerOf(context, listen: false);
   final user = container.read(authProvider).userInfo;
-  if (isVipUser(user)) {
+  if (hasVipEntitlement(user, entitlement)) {
     return true;
   }
   final shouldContactAdmin = await showDialog<bool>(

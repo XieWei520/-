@@ -167,12 +167,6 @@ class AuthCopy {
     return null;
   }
 
-  /*
-
-  static const String registerNicknameHint = '璇疯緭鍏ユ樀绉帮紙閫夊～锛?;
-  static const String registerNicknameHelper = '鏄电ず鐢ㄦ樀绉帮紝涓嶄綔涓虹櫥褰曡处鍙枫€?;
-
-  */
   static const String registerNicknameHint = '请输入昵称（选填）';
   static const String registerNicknameHelper = '显示用昵称，不作为登录账号。';
 

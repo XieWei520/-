@@ -12,7 +12,7 @@ import '../../widgets/wk_reference_assets.dart';
 import '../../widgets/wk_sub_page_scaffold.dart';
 
 const String _androidSystemTeamId = 'u_10000';
-const String _androidSystemTeamName = '绯荤粺閫氱煡';
+const String _androidSystemTeamName = '系统通知';
 
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});

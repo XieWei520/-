@@ -3,9 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wukong_im_app/core/utils/storage_utils.dart';
 import 'package:wukong_im_app/modules/home/home_shell_page.dart';
 import 'package:wukong_im_app/modules/home/home_badge_snapshot.dart';
 import 'package:wukong_im_app/modules/home/home_surface_kernel.dart';
+import 'package:wukong_im_app/platform/browser_startup_recovery_service.dart';
+import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
 import 'package:wukong_im_app/service/im/im_service.dart';
 import 'package:wukong_im_app/widgets/wk_tab_shell.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
@@ -22,7 +26,12 @@ class _FailedBootstrapController extends HomeBootstrapController {
 }
 
 class _FakeIMService extends IMService {
-  _FakeIMService(this._initHandler);
+  _FakeIMService(this._initHandler)
+    : super(
+        realtimeRolloutTelemetry: RealtimeRolloutTelemetry(
+          flushInterval: Duration.zero,
+        ),
+      );
 
   Future<bool> Function() _initHandler;
   int initCalls = 0;
@@ -42,7 +51,41 @@ class _FakeIMService extends IMService {
   }
 }
 
+class _FakeBrowserStartupRecoveryService
+    implements BrowserStartupRecoveryService {
+  _FakeBrowserStartupRecoveryService({
+    required this.recoveryStarted,
+    this.hasRecoveredStartupFailure = false,
+  });
+
+  final bool recoveryStarted;
+  @override
+  final bool hasRecoveredStartupFailure;
+  int calls = 0;
+  int resetDamagedSessionCalls = 0;
+
+  @override
+  Future<bool> recoverFromStartupFailure() async {
+    calls += 1;
+    return recoveryStarted;
+  }
+
+  @override
+  Future<bool> resetDamagedSession() async {
+    resetDamagedSessionCalls += 1;
+    return true;
+  }
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await StorageUtils.init();
+    await StorageUtils.clear();
+  });
+
   testWidgets('home shell shows retry state when bootstrap fails', (
     tester,
   ) async {
@@ -190,6 +233,110 @@ void main() {
   });
 
   testWidgets(
+    'home shell opens with connection banner when authenticated IM bootstrap fails',
+    (tester) async {
+      await StorageUtils.setUid('u_offline');
+      await StorageUtils.setToken('token_offline');
+      final service = _FakeIMService(() async => false)
+        ..setConnectionState(
+          const IMServiceState(
+            isInitialized: false,
+            isConnected: false,
+            connectionStatus: WKConnectStatus.fail,
+            error: 'IM connection timed out.',
+          ),
+        );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            imServiceProvider.overrideWith((ref) => service),
+            homeBadgeSnapshotProvider.overrideWith((ref) {
+              return HomeBadgeSnapshot();
+            }),
+            homeConversationBootstrapRefresherProvider.overrideWith(
+              (ref) => () async {},
+            ),
+            homeContactsBootstrapRefresherProvider.overrideWith(
+              (ref) => () async {},
+            ),
+          ],
+          child: const MaterialApp(
+            home: HomeShellPage(
+              pagesOverride: <Widget>[
+                Text('conversation body'),
+                SizedBox(),
+                SizedBox(),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      expect(service.initCalls, 1);
+      expect(find.byKey(_homeBootstrapRetryButtonKey), findsNothing);
+      expect(find.byType(WKTabShell), findsOneWidget);
+      expect(find.text('conversation body'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('home-im-connection-banner')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('home shell alert overlays do not block tab body taps', (
+    tester,
+  ) async {
+    var taps = 0;
+    final service = _FakeIMService(() async => true)
+      ..setConnectionState(
+        const IMServiceState(
+          isInitialized: true,
+          isConnected: false,
+          connectionStatus: WKConnectStatus.connecting,
+        ),
+      );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          imServiceProvider.overrideWith((ref) => service),
+          homeBadgeSnapshotProvider.overrideWith((ref) {
+            return HomeBadgeSnapshot();
+          }),
+        ],
+        child: MaterialApp(
+          home: HomeShellPage(
+            autoInitializeIM: false,
+            pagesOverride: <Widget>[
+              Center(
+                child: TextButton(
+                  key: const ValueKey<String>('home-body-tap-target'),
+                  onPressed: () => taps += 1,
+                  child: const Text('tap body'),
+                ),
+              ),
+              const SizedBox(),
+              const SizedBox(),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('home-body-tap-target')),
+    );
+    await tester.pump();
+
+    expect(taps, 1);
+  });
+
+  testWidgets(
     'home shell logs initial visibility when autoInitializeIM is false',
     (tester) async {
       final events = <String>[];
@@ -252,6 +399,80 @@ void main() {
     expect(events, contains('surface_healthy:conversations'));
     expect(events, contains('surface_healthy:contacts'));
   });
+
+  testWidgets('home shell retry lets browser recovery reload stale web state', (
+    tester,
+  ) async {
+    final events = <String>[];
+    final kernel = HomeSurfaceKernel(logEvent: events.add);
+    final recovery = _FakeBrowserStartupRecoveryService(recoveryStarted: true);
+    final service = _FakeIMService(() async => true);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          browserStartupRecoveryServiceProvider.overrideWithValue(recovery),
+          homeBootstrapStateProvider.overrideWith(
+            _FailedBootstrapController.new,
+          ),
+          homeSurfaceKernelProvider.overrideWith((ref) => kernel),
+          imServiceProvider.overrideWith((ref) => service),
+        ],
+        child: const MaterialApp(
+          home: HomeShellPage(
+            pagesOverride: <Widget>[SizedBox(), SizedBox(), SizedBox()],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(_homeBootstrapRetryButtonKey));
+    await tester.pump();
+
+    expect(recovery.calls, 1);
+    expect(service.initCalls, 0);
+    expect(events, isNot(contains('home_bootstrap_start')));
+  });
+
+  testWidgets(
+    'home shell retry clears damaged web session when retry still fails after recovery',
+    (tester) async {
+      final events = <String>[];
+      final kernel = HomeSurfaceKernel(logEvent: events.add);
+      final recovery = _FakeBrowserStartupRecoveryService(
+        recoveryStarted: false,
+        hasRecoveredStartupFailure: true,
+      );
+      final service = _FakeIMService(() async => false);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            browserStartupRecoveryServiceProvider.overrideWithValue(recovery),
+            homeBootstrapStateProvider.overrideWith(
+              _FailedBootstrapController.new,
+            ),
+            homeSurfaceKernelProvider.overrideWith((ref) => kernel),
+            imServiceProvider.overrideWith((ref) => service),
+          ],
+          child: const MaterialApp(
+            home: HomeShellPage(
+              pagesOverride: <Widget>[SizedBox(), SizedBox(), SizedBox()],
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(_homeBootstrapRetryButtonKey));
+      await tester.pump();
+      await tester.pump();
+
+      expect(recovery.calls, 1);
+      expect(service.initCalls, 1);
+      expect(recovery.resetDamagedSessionCalls, 1);
+      expect(events, contains('home_bootstrap_start'));
+    },
+  );
 
   test(
     'initialize ends in failed when init throws and clears loading',
@@ -374,6 +595,43 @@ void main() {
       await controller.initialize();
 
       expect(refreshCalls, 1);
+    },
+  );
+
+  test(
+    'initialize marks authenticated home ready when IM init returns false',
+    () async {
+      await StorageUtils.setUid('u_degraded');
+      await StorageUtils.setToken('token_degraded');
+      final service = _FakeIMService(() async => false);
+      var conversationRefreshCalls = 0;
+      var contactsRefreshCalls = 0;
+      final container = ProviderContainer(
+        overrides: [
+          imServiceProvider.overrideWith((ref) => service),
+          homeConversationBootstrapRefresherProvider.overrideWith(
+            (ref) => () async {
+              conversationRefreshCalls += 1;
+            },
+          ),
+          homeContactsBootstrapRefresherProvider.overrideWith(
+            (ref) => () async {
+              contactsRefreshCalls += 1;
+            },
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(homeBootstrapStateProvider.notifier);
+      await controller.initialize();
+
+      final state = container.read(homeBootstrapStateProvider);
+      expect(state.isLoading, isFalse);
+      expect(state.isReady, isTrue);
+      expect(state.error, isNull);
+      expect(conversationRefreshCalls, 1);
+      expect(contactsRefreshCalls, 1);
     },
   );
 }

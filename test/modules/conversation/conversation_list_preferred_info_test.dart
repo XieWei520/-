@@ -95,6 +95,16 @@ void main() {
       expect(info!.title, 'Core Team');
       expect(info.avatarUrl, contains('media/group.png'));
     });
+
+    test('uses canonical group avatar when group payload has empty avatar', () {
+      final infos = buildPreferredGroupConversationInfoMap([
+        GroupInfo(groupNo: 'g_restart', name: 'Restart Group'),
+      ]);
+
+      final info = infos['g_restart'];
+      expect(info, isNotNull);
+      expect(info!.avatarUrl, contains('/v1/groups/g_restart/avatar'));
+    });
   });
 
   group('personal conversation metadata fallback', () {

@@ -1,0 +1,5 @@
+9e3fc9c48bdfc6603be83dd0e3b57b74fd45df1c84c5c614b9d21c733cd4090a  InfoEquity-Android-arm64-v8a-1.0.0+1.apk
+85be38afb6066ae45096e41cdbbb2053ef0b3989e1c372c8e82c83c4d6da8581  InfoEquity-Android-armeabi-v7a-1.0.0+1.apk
+c0b4fcb5995db3412d6624049d4d41b5e80c9c9bbd77d699a50a8bc7e6d47894  InfoEquity-Web-1.0.0+1.zip
+f8594f47a734536cb63c1031d74a0ccd531b7dacd532dbcccfe1704fdde05f5e  InfoEquity-Windows-x64-1.0.0+1.zip
+113817c1bd3b8e4af6bc3beb40cb50490ac6033d79b7634aea1c97eb56a4a05f  README.txt

@@ -992,6 +992,134 @@ void main() {
       expect(decoration.gradient, isNotNull);
     });
 
+    testWidgets('mobile long text bubble uses a wider readable lane', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      const text = '这是一段用于验证手机聊天气泡宽度的长消息，应该接近微信的阅读宽度，而不是被压成很窄的一列。';
+      final message = WKMsg()
+        ..fromUID = 'u_peer'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent(text)
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              child: MessageBubble(
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final bubbleWidth = tester
+          .getSize(find.byKey(const ValueKey<String>('message-bubble-body')))
+          .width;
+      expect(bubbleWidth, greaterThanOrEqualTo(214));
+      expect(bubbleWidth, lessThanOrEqualTo(230));
+
+      final contentText = tester.widget<SelectableText>(
+        find.byWidgetPredicate(
+          (widget) => widget is SelectableText && widget.data == text,
+        ),
+      );
+      expect(contentText.style?.fontSize, 16);
+      expect(contentText.style?.height, 1.38);
+      expect(contentText.style?.fontWeight, FontWeight.w400);
+      expect(contentText.style?.letterSpacing, 0);
+    });
+
+    testWidgets(
+      'Windows and Web long text bubbles use the readable desktop lane',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(620, 720);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const text =
+            'This is a deliberately long desktop message used to verify that Windows and Web chat bubbles use a comfortable readable lane instead of the old narrow column.';
+        final message = WKMsg()
+          ..fromUID = 'u_peer'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.text
+          ..messageContent = WKTextContent(text)
+          ..status = WKSendMsgResult.sendSuccess;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 620,
+                child: MessageBubble(
+                  webStyle: true,
+                  model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        final bubbleWidth = tester
+            .getSize(find.byKey(const ValueKey<String>('message-bubble-body')))
+            .width;
+        expect(bubbleWidth, greaterThanOrEqualTo(450));
+        expect(
+          bubbleWidth,
+          lessThanOrEqualTo(WKWebSizes.messageBubbleMaxWidth),
+        );
+      },
+    );
+
+    testWidgets('Windows and Web media bubbles remain compact', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(620, 720);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.image
+        ..messageContent = (WKImageContent(918, 352)
+          ..url = '/uploads/desktop-panel.png')
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 620,
+              child: MessageBubble(
+                webStyle: true,
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final bubbleWidth = tester
+          .getSize(find.byKey(const ValueKey<String>('message-bubble-body')))
+          .width;
+      final cachedMedia = tester.widget<CachedMediaImage>(
+        find.byType(CachedMediaImage),
+      );
+      expect(bubbleWidth, lessThanOrEqualTo(320));
+      expect(cachedMedia.width, 200);
+      expect(cachedMedia.width, lessThanOrEqualTo(bubbleWidth - 20 + 0.1));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('outgoing text bubble uses restrained blue gradient', (
       tester,
     ) async {
@@ -1155,6 +1283,81 @@ void main() {
         expect(find.byIcon(Icons.open_in_new_rounded), findsOneWidget);
 
         await tester.pump(const Duration(seconds: 5));
+      },
+    );
+
+    testWidgets('text bubble with audio url renders inline audio media card', (
+      tester,
+    ) async {
+      final message = WKMsg()
+        ..fromUID = 'u_me'
+        ..channelType = WKChannelType.personal
+        ..contentType = WkMessageContentType.text
+        ..messageContent = WKTextContent(
+          'listen https://cdn.example.com/audio/notice.m4a?token=abc',
+        )
+        ..status = WKSendMsgResult.sendSuccess;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MessageBubble(
+              model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('inline-audio-link-card')),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.audiotrack_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.link_rounded), findsNothing);
+      expect(find.byIcon(Icons.open_in_new_rounded), findsOneWidget);
+    });
+
+    testWidgets(
+      'text bubble with video url renders preview card and opens playback dialog',
+      (tester) async {
+        final message = WKMsg()
+          ..fromUID = 'u_peer'
+          ..channelType = WKChannelType.personal
+          ..contentType = WkMessageContentType.text
+          ..messageContent = WKTextContent(
+            'watch https://cdn.example.com/video/demo.webm?token=abc',
+          )
+          ..status = WKSendMsgResult.sendSuccess;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MessageBubble(
+                model: ChatMessageMapper().map(message, currentUid: 'u_me'),
+              ),
+            ),
+          ),
+        );
+
+        expect(
+          find.byKey(const ValueKey<String>('inline-video-link-card')),
+          findsOneWidget,
+        );
+        expect(find.byIcon(Icons.play_circle_fill_rounded), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey<String>('inline-video-player-dialog')),
+          findsNothing,
+        );
+
+        await tester.tap(
+          find.byKey(const ValueKey<String>('inline-video-link-card')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey<String>('inline-video-player-dialog')),
+          findsOneWidget,
+        );
       },
     );
 

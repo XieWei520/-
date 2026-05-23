@@ -166,7 +166,9 @@ class AndroidMessageAlertManager {
         AndroidMessageNotification(
           id: _stablePositiveId(notification.identifier),
           title: notification.title,
-          body: settings.showMessageDetail ? notification.body : 'New message',
+          body: settings.showMessageDetail
+              ? notification.body
+              : _privacySafeNotificationBody(notification.count),
           groupKey: notification.identifier,
           payload: plan.payload,
           onlyAlertOnce: notification.count > 1,
@@ -294,4 +296,11 @@ int _stablePositiveId(String value) {
     hash = (hash * 0x01000193) & 0x7fffffff;
   }
   return hash == 0 ? 1 : hash;
+}
+
+String _privacySafeNotificationBody(int count) {
+  if (count <= 1) {
+    return '收到新消息';
+  }
+  return '收到 $count 条新消息';
 }

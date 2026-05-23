@@ -17,8 +17,7 @@ import '../../core/utils/storage_utils.dart';
 import '../../data/models/chat_session.dart';
 import '../../data/providers/conversation_provider.dart';
 import '../../modules/conversation/conversation_activity_registry.dart';
-import '../../modules/video_call/call_coordinator.dart';
-import '../../modules/video_call/video_call_service.dart';
+import '../../modules/video_call/video_call_runtime_bridge.dart';
 import '../../realtime/session/session_event_frame.dart';
 import '../../realtime/session/session_event_gateway.dart';
 import '../../realtime/session/session_runtime.dart';
@@ -366,12 +365,10 @@ class IMService extends StateNotifier<IMServiceState>
         realtimeEventCoordinator ??
         ImRealtimeEventCoordinator(
           applyConversationPatch: _applyConversationPatch,
-          handleCallSessionFrame: CallCoordinator.instance.handleSessionFrame,
+          handleCallSessionFrame:
+              VideoCallRuntimeBridge.instance.handleSessionFrame,
         );
-    CallCoordinator.instance.setGatewayDegradationReader(
-      _sessionRuntime.isGatewayDegradedFor,
-    );
-    VideoCallService.instance.setGatewayDegradationReader(
+    VideoCallRuntimeBridge.instance.setGatewayDegradationReader(
       _sessionRuntime.isGatewayDegradedFor,
     );
   }
@@ -483,7 +480,7 @@ class IMService extends StateNotifier<IMServiceState>
     );
 
     try {
-      await _ensureDeviceUuid();
+      final deviceId = await _ensureDeviceUuid();
 
       final setupOk = await _connectionService.setupSdk(
         credentials: ImConnectionCredentials(
@@ -493,6 +490,7 @@ class IMService extends StateNotifier<IMServiceState>
           deviceSessionId: credentials.deviceSessionId,
         ),
         fallbackAddr: IMConfig.connectAddr,
+        deviceId: deviceId,
         protoVersion: IMConfig.protoVersion,
         deviceFlag: IMConfig.currentDeviceFlag,
         debug: kDebugMode,
@@ -839,7 +837,7 @@ class IMService extends StateNotifier<IMServiceState>
       isWeb: kIsWeb,
       hasActiveCallOrPendingSetup:
           hasActiveCallOrPendingSetup ??
-          VideoCallService.instance.hasActiveCallOrPendingSetup,
+          VideoCallRuntimeBridge.instance.hasActiveCallOrPendingSetupSync(),
     );
   }
 

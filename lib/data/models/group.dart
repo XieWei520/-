@@ -84,7 +84,17 @@ class GroupInfo {
         json['display_name'],
         json['displayName'],
       ),
-      avatar: json['avatar'],
+      avatar: _firstNonEmptyString(
+        json['avatar'],
+        json['group_avatar'],
+        json['groupAvatar'],
+        json['channel_avatar'],
+        json['channelAvatar'],
+        json['avatar_url'],
+        json['avatarUrl'],
+        json['logo'],
+        json['image'],
+      ),
       creator: json['creator'],
       notice: json['notice'],
       memberCount: json['member_count'],
@@ -336,6 +346,8 @@ String? _firstNonEmptyString(
   dynamic fifth,
   dynamic sixth,
   dynamic seventh,
+  dynamic eighth,
+  dynamic ninth,
 ]) {
   for (final value in <dynamic>[
     first,
@@ -345,6 +357,8 @@ String? _firstNonEmptyString(
     fifth,
     sixth,
     seventh,
+    eighth,
+    ninth,
   ]) {
     final text = value?.toString().trim() ?? '';
     if (text.isNotEmpty) {

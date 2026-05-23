@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.annotation.NonNull
+import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -35,6 +36,8 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "startKeepAlive" -> result.success(startKeepAlive())
                 "stopKeepAlive" -> result.success(stopKeepAlive())
+                "getKeepAliveStatus" -> result.success(getKeepAliveStatus())
+                "openNotificationSettings" -> result.success(openNotificationSettings())
                 "openBatteryOptimizationSettings" -> {
                     result.success(openBatteryOptimizationSettings())
                 }
@@ -82,12 +85,58 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun getKeepAliveStatus(): Map<String, Boolean> {
+        return mapOf(
+            "supported" to true,
+            "notificationEnabled" to NotificationManagerCompat
+                .from(applicationContext)
+                .areNotificationsEnabled(),
+            "ignoringBatteryOptimizations" to isIgnoringBatteryOptimizations(),
+            "serviceRunning" to AndroidKeepAliveForegroundService.isRunning,
+        )
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                true
+            } else {
+                val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+                powerManager.isIgnoringBatteryOptimizations(packageName)
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openNotificationSettings(): Boolean {
+        val intent = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                }
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", packageName, null)
+                }
+            }
+        } catch (_: Exception) {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
+        }
+
+        return try {
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun openBatteryOptimizationSettings(): Boolean {
         val intent = try {
-            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                !powerManager.isIgnoringBatteryOptimizations(packageName)
-            ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isIgnoringBatteryOptimizations()) {
                 Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                     data = Uri.parse("package:$packageName")
                 }

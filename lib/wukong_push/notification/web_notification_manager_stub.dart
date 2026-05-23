@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import 'web_alert_capability.dart';
 import 'message_alert_plan.dart';
 
 class WebNotificationManager {
@@ -15,6 +16,16 @@ class WebNotificationManager {
   bool get isInitialized => false;
 
   String get notificationPermission => 'unsupported';
+
+  WebAlertCapability get capability => buildWebAlertCapability(
+    userAgent: '',
+    standalone: false,
+    notificationPermission: notificationPermission,
+    supportsNotification: false,
+    supportsServiceWorker: false,
+    supportsPush: false,
+    secureContext: false,
+  );
 
   Future<void> init({
     String foregroundSoundAssetPath = 'audio/im_tick.wav',
@@ -41,6 +52,10 @@ class WebNotificationManager {
   Future<void> showNewMessageAlert({
     required MessageAlertPlan plan,
     required AppLifecycleState lifecycleState,
+  }) async {}
+
+  Future<void> refreshBackgroundDeliveryState({
+    String? visibilityOverride,
   }) async {}
 
   Future<void> dispose() async {}

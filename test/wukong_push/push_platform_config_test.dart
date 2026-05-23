@@ -53,4 +53,53 @@ void main() {
 
     expect(source, isNot(contains("import 'dart:io'")));
   });
+
+  test(
+    'Android keep-alive user guidance states local IM limits without remote push',
+    () {
+      final source = File(
+        'lib/wukong_push/android_keep_alive_service.dart',
+      ).readAsStringSync();
+      final nativeService = File(
+        'android/app/src/main/kotlin/com/im/wukong_im_app/'
+        'AndroidKeepAliveForegroundService.kt',
+      ).readAsStringSync();
+
+      expect(source, contains('本机后台提醒增强'));
+      expect(source, contains('没有厂商推送时'));
+      expect(source, contains('不等同于离线推送'));
+      expect(nativeService, contains('本机后台提醒运行中'));
+    },
+  );
+
+  test(
+    'Android keep-alive diagnostics expose notification battery and service state',
+    () {
+      final dartSource = File(
+        'lib/wukong_push/android_keep_alive_service.dart',
+      ).readAsStringSync();
+      final activitySource = File(
+        'android/app/src/main/kotlin/com/im/wukong_im_app/MainActivity.kt',
+      ).readAsStringSync();
+      final serviceSource = File(
+        'android/app/src/main/kotlin/com/im/wukong_im_app/'
+        'AndroidKeepAliveForegroundService.kt',
+      ).readAsStringSync();
+
+      expect(dartSource, contains('AndroidKeepAliveStatus'));
+      expect(dartSource, contains('getStatus'));
+      expect(dartSource, contains('openNotificationSettings'));
+      expect(dartSource, contains('通知权限'));
+      expect(dartSource, contains('电池优化'));
+      expect(dartSource, contains('保活服务'));
+      expect(dartSource, contains('通知设置'));
+      expect(dartSource, contains('后台设置'));
+      expect(activitySource, contains('getKeepAliveStatus'));
+      expect(activitySource, contains('openNotificationSettings'));
+      expect(activitySource, contains('ACTION_APP_NOTIFICATION_SETTINGS'));
+      expect(activitySource, contains('NotificationManagerCompat'));
+      expect(activitySource, contains('isIgnoringBatteryOptimizations'));
+      expect(serviceSource, contains('isRunning'));
+    },
+  );
 }

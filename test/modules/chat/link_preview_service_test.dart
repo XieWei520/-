@@ -12,6 +12,60 @@ void main() {
       expect(url, 'https://example.com/hello-world');
     });
 
+    test('classifyDirectMediaUrl detects supported audio links', () {
+      const supportedAudioUrls = <String>[
+        'https://cdn.example.com/audio/notice.mp3',
+        'https://cdn.example.com/audio/notice.m4a?token=abc',
+        'https://cdn.example.com/audio/notice.aac#clip',
+        'https://cdn.example.com/audio/notice.wav?download=1#play',
+        'https://cdn.example.com/audio/notice.ogg',
+      ];
+
+      for (final url in supportedAudioUrls) {
+        expect(
+          LinkPreviewService.classifyDirectMediaUrl(url),
+          DirectMediaType.audio,
+          reason: url,
+        );
+      }
+    });
+
+    test('classifyDirectMediaUrl detects supported video links', () {
+      const supportedVideoUrls = <String>[
+        'https://cdn.example.com/video/demo.mp4',
+        'https://cdn.example.com/video/demo.mov?token=abc',
+        'https://cdn.example.com/video/demo.m4v#preview',
+        'https://cdn.example.com/video/demo.webm?download=1#play',
+      ];
+
+      for (final url in supportedVideoUrls) {
+        expect(
+          LinkPreviewService.classifyDirectMediaUrl(url),
+          DirectMediaType.video,
+          reason: url,
+        );
+      }
+    });
+
+    test('classifyDirectMediaUrl keeps non-media links generic', () {
+      const genericUrls = <String?>[
+        null,
+        '',
+        'ftp://cdn.example.com/audio/notice.mp3',
+        'https://example.com/docs/audio',
+        'https://example.com/download?file=notice.mp3',
+        'https://example.com/archive.mp3.zip',
+      ];
+
+      for (final url in genericUrls) {
+        expect(
+          LinkPreviewService.classifyDirectMediaUrl(url),
+          DirectMediaType.none,
+          reason: url,
+        );
+      }
+    });
+
     test('buildFallbackPreview keeps host and path', () {
       final preview = LinkPreviewService.instance.buildFallbackPreview(
         'https://example.com/docs/path?a=1',

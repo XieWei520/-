@@ -1,17 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wukong_im_app/app/app.dart';
 import 'package:wukong_im_app/modules/dingtalk_monitor/dingtalk_monitor_auto_forward_runner.dart';
 import 'package:wukong_im_app/modules/feishu_monitor/feishu_monitor_auto_forward_runner.dart';
 import 'package:wukong_im_app/modules/juliang_monitor/juliang_monitor_auto_forward_runner.dart';
 import 'package:wukong_im_app/modules/juliang_monitor/juliang_monitor_forwarding_service.dart';
 import 'package:wukong_im_app/modules/juliang_monitor/juliang_monitor_shell_client.dart';
 import 'package:wukong_im_app/modules/juliang_monitor/juliang_monitor_shell_models.dart';
+import 'package:wukong_im_app/modules/local_monitor/local_monitor_auto_forward_runner_factory.dart';
 import 'package:wukong_im_app/modules/local_monitor/local_monitor_shell_models.dart';
 import 'package:wukong_im_app/modules/mengxia_monitor/mengxia_monitor_auto_forward_runner.dart';
 
 void main() {
   test('app auto-forward runners include Juliang with existing platforms', () {
-    final runners = createLocalMonitorAutoForwardRunners();
+    final runners = createDefaultLocalMonitorAutoForwardRunners();
     addTearDown(() {
       for (final runner in runners) {
         runner.dispose();

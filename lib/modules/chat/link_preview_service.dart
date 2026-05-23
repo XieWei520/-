@@ -6,11 +6,26 @@ import 'package:flutter/foundation.dart';
 
 import '../../data/models/link_preview.dart';
 
+enum DirectMediaType { none, audio, video }
+
 class LinkPreviewService {
   LinkPreviewService._();
 
   static final LinkPreviewService instance = LinkPreviewService._();
   static const int maxPreviewCacheEntries = 256;
+  static const Set<String> _audioExtensions = <String>{
+    '.mp3',
+    '.m4a',
+    '.aac',
+    '.wav',
+    '.ogg',
+  };
+  static const Set<String> _videoExtensions = <String>{
+    '.mp4',
+    '.mov',
+    '.m4v',
+    '.webm',
+  };
 
   static final RegExp _urlPattern = RegExp(
     r'(https?:\/\/[^\s<>"\u3000]+)',
@@ -73,6 +88,22 @@ class LinkPreviewService {
       return null;
     }
     return uri.toString();
+  }
+
+  static DirectMediaType classifyDirectMediaUrl(String? rawUrl) {
+    final normalizedUrl = normalizeUrl(rawUrl);
+    if (normalizedUrl == null) {
+      return DirectMediaType.none;
+    }
+    final uri = Uri.parse(normalizedUrl);
+    final path = uri.path.toLowerCase();
+    if (_audioExtensions.any(path.endsWith)) {
+      return DirectMediaType.audio;
+    }
+    if (_videoExtensions.any(path.endsWith)) {
+      return DirectMediaType.video;
+    }
+    return DirectMediaType.none;
   }
 
   Future<LinkPreview?> getPreviewForText(String text) async {

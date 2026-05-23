@@ -13,7 +13,13 @@ import androidx.core.app.NotificationCompat
 class AndroidKeepAliveForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         ensureChannel()
+    }
+
+    override fun onDestroy() {
+        isRunning = false
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -44,7 +50,7 @@ class AndroidKeepAliveForegroundService : Service() {
         return NotificationCompat.Builder(this, channelId)
             .setSmallIcon(applicationInfo.icon)
             .setContentTitle(getString(applicationInfo.labelRes))
-            .setContentText("后台实时提醒运行中")
+            .setContentText("本机后台提醒运行中")
             .setOngoing(true)
             .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -54,6 +60,9 @@ class AndroidKeepAliveForegroundService : Service() {
     companion object {
         private const val channelId = "wk_android_keep_alive"
         private const val notificationId = 8208
+        @Volatile
+        var isRunning: Boolean = false
+            private set
 
         fun start(context: Context) {
             val intent = Intent(context, AndroidKeepAliveForegroundService::class.java)

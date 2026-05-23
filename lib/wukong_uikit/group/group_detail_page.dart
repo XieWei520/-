@@ -8,6 +8,7 @@ import 'package:wukongimfluttersdk/entity/channel.dart';
 import 'package:wukongimfluttersdk/wkim.dart';
 
 import '../../core/platform/local_image_picker.dart';
+import '../../core/utils/avatar_utils.dart';
 import '../../core/utils/storage_utils.dart';
 import '../../data/models/friend.dart';
 import '../../data/models/group.dart';
@@ -126,152 +127,6 @@ List<AndroidGroupDetailRow> buildAndroidGroupDetailRows({
     includeGroupReminder: includeGroupReminder,
   );
 }
-/*
-  final rows = <AndroidGroupDetailRow>[
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.groupName,
-      title: '缇よ亰鍚嶇О',
-    ),
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.groupQr,
-      title: '缇や簩缁寸爜',
-    ),
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.groupNotice,
-      title: '缇ゅ叕鍛?,
-    ),
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.remark,
-      title: '澶囨敞',
-    ),
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.searchHistory,
-      title: '鏌ユ壘鑱婂ぉ璁板綍',
-    ),
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.mute,
-      title: '娑堟伅鍏嶆墦鎵?,
-    ),
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.top,
-      title: '缃《鑱婂ぉ',
-    ),
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.save,
-      title: '淇濆瓨鍒伴€氳褰?,
-    ),
-    const AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.myNick,
-      title: '鎴戝湪鏈兢鐨勬樀绉?,
-    ),
-  ];
-
-  if (showNickSetting) {
-    rows.add(
-      const AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.showNick,
-        title: '鏄剧ず缇ゆ垚鍛樻樀绉?,
-      ),
-    );
-  }
-  if (includeFeishuBot) {
-    rows.add(
-      const AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.feishuBot,
-        title: '鍏煎椋炰功鏈哄櫒浜?,
-      ),
-    );
-  }
-  if (includeGroupReminder) {
-    rows.add(
-      const AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.groupReminder,
-        title: '缇ゅ緟鍔?/ 缇ゆ彁閱?,
-      ),
-    );
-  }
-
-  rows.addAll(const [
-    AndroidGroupDetailRow(type: AndroidGroupDetailRowType.report, title: '涓炬姤'),
-    AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.clearHistory,
-      title: '娓呯┖鑱婂ぉ璁板綍',
-    ),
-  ]);
-  rows
-    ..clear()
-    ..addAll(const [
-      AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.groupName,
-        title: '缇よ亰鍚嶇О',
-      ),
-      AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.groupQr,
-        title: '缇や簩缁寸爜',
-      ),
-      AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.groupNotice,
-        title: '缇ゅ叕鍛?,
-      ),
-      AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.remark,
-        title: '澶囨敞',
-      ),
-      AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.searchHistory,
-        title: '鏌ユ壘鑱婂ぉ璁板綍',
-      ),
-      AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.mute,
-        title: '娑堟伅鍏嶆墦鎵?,
-      ),
-      AndroidGroupDetailRow(type: AndroidGroupDetailRowType.top, title: '缃《鑱婂ぉ'),
-      AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.save,
-        title: '淇濆瓨鍒伴€氳褰?,
-      ),
-      AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.myNick,
-        title: '鎴戝湪鏈兢鐨勬樀绉?,
-      ),
-    ]);
-
-  if (showNickSetting) {
-    rows.add(
-      const AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.showNick,
-        title: '鏄剧ず缇ゆ垚鍛樻樀绉?,
-      ),
-    );
-  }
-  if (includeFeishuBot) {
-    rows.add(
-      const AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.feishuBot,
-        title: '鍏煎椋炰功鏈哄櫒浜?,
-      ),
-    );
-  }
-  if (includeGroupReminder) {
-    rows.add(
-      const AndroidGroupDetailRow(
-        type: AndroidGroupDetailRowType.groupReminder,
-        title: '缇ゅ緟鍔?/ 缇ゆ彁閱?,
-      ),
-    );
-  }
-
-  rows.addAll(const [
-    AndroidGroupDetailRow(type: AndroidGroupDetailRowType.report, title: '鎶曡瘔'),
-    AndroidGroupDetailRow(
-      type: AndroidGroupDetailRowType.clearHistory,
-      title: '娓呯┖鑱婂ぉ璁板綍',
-    ),
-  ]);
-  return rows;
-}
-*/
-
 const String _groupDetailNameTitle = '群聊名称';
 const String _groupDetailQrTitle = '群二维码';
 const String _groupDetailNoticeTitle = '群公告';
@@ -421,6 +276,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
   bool _isUpdating = false;
   int _memberRole = 0;
   bool _isMuted = false;
+  bool _isGroupForbidden = false;
   bool _isPinned = false;
   bool _isSaved = false;
   bool _isChatPwdOn = false;
@@ -714,6 +570,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
 
   void _syncSettingsFromGroup(GroupInfo group, {ChannelInfo? channelInfo}) {
     _isMuted = (group.mute ?? 0) == 1;
+    _isGroupForbidden = (group.forbidden ?? 0) == 1;
     _isPinned = (group.top ?? 0) == 1;
     _isSaved = (group.save ?? 1) == 1;
     _isChatPwdOn = (group.chatPwdOn ?? 0) == 1;
@@ -783,6 +640,8 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
     switch (key) {
       case 'mute':
         return _isMuted ? 1 : 0;
+      case 'forbidden':
+        return _isGroupForbidden ? 1 : 0;
       case 'top':
         return _isPinned ? 1 : 0;
       case 'save':
@@ -808,6 +667,9 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
     switch (key) {
       case 'mute':
         _isMuted = value == 1;
+        break;
+      case 'forbidden':
+        _isGroupForbidden = value == 1;
         break;
       case 'top':
         _isPinned = value == 1;
@@ -904,6 +766,25 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
           return;
         }
         setState(() => _applyLocalSetting('invite', previousValue));
+      },
+    );
+  }
+
+  Future<void> _updateGroupForbiddenSetting(bool enabled) async {
+    final previousValue = _currentSettingValue('forbidden');
+    setState(() => _applyLocalSetting('forbidden', enabled ? 1 : 0));
+
+    await _runAction(
+      () async {
+        await GroupApi.instance.setGroupMute(widget.channelId, enabled);
+        await _loadData(showLoading: false);
+      },
+      failurePrefix: '更新全员禁言失败',
+      onError: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _applyLocalSetting('forbidden', previousValue));
       },
     );
   }
@@ -1190,13 +1071,13 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
             },
           ),
         ),
-        if (_members.length > visibleMemberLimit)
-          _buildSurfaceActionTile(
-            icon: Icons.groups_rounded,
-            title: '查看全部成员',
-            subtitle: '共 ${_members.length} 人，查看完整成员列表',
-            onTap: _isUpdating ? null : _navigateToAllMembers,
-          ),
+        _buildSurfaceActionTile(
+          key: const ValueKey<String>('group-all-members-entry'),
+          icon: Icons.groups_rounded,
+          title: '查看全部群成员',
+          subtitle: '共 ${_members.length} 人，查看完整成员列表',
+          onTap: _isUpdating ? null : _navigateToAllMembers,
+        ),
       ],
     );
   }
@@ -1246,7 +1127,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
 
   Widget _buildSurfaceGroupAvatarTile() {
     final groupName = (_group?.name ?? '缇よ亰').trim();
-    final avatarUrl = (_group?.avatar ?? '').trim();
+    final avatarUrl = resolveGroupAvatarUrl(_group?.avatar, widget.channelId);
     final canEdit = _canEditGroupAvatar && !_isUpdating;
 
     return ListTile(
@@ -1410,6 +1291,14 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
           onChanged: canManageSettings
               ? _updateAllowMemberPinnedMessageSetting
               : null,
+        ),
+        _buildSurfaceSwitchTile(
+          key: const ValueKey<String>('group_setting_forbidden_switch'),
+          title: '全员禁言',
+          subtitle: '开启后仅群主、管理员和已接入机器人可以发言',
+          icon: Icons.record_voice_over_outlined,
+          value: _isGroupForbidden,
+          onChanged: canManageSettings ? _updateGroupForbiddenSetting : null,
         ),
         _buildSurfaceActionTile(
           key: const ValueKey<String>('group-blacklist-entry'),
@@ -1578,13 +1467,14 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
   Widget _buildGroupInfoSection() {
     final groupName = (_group?.name ?? '群聊').trim();
     final remark = (_group?.remark ?? '').trim();
+    final avatarUrl = resolveGroupAvatarUrl(_group?.avatar, widget.channelId);
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           WKAvatar(
-            url: _group?.avatar,
+            url: avatarUrl,
             name: groupName.isEmpty ? '群聊' : groupName,
             size: 60,
             isGroup: true,
@@ -2258,6 +2148,14 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
                 ? _updateAllowMemberPinnedMessageSetting
                 : null,
           ),
+        if (_canManageMembers)
+          WKSettingsSwitchCell(
+            key: const ValueKey<String>('group_setting_forbidden_switch'),
+            title: '全员禁言',
+            value: _isGroupForbidden,
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+            onChanged: canManageSettings ? _updateGroupForbiddenSetting : null,
+          ),
         WKSettingsSwitchCell(
           key: const ValueKey<String>('group_setting_join_group_remind_switch'),
           title: '进群提醒',
@@ -2394,7 +2292,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         builder: (_) => GroupRemarkPage(
           groupId: widget.channelId,
           groupName: (_group?.name ?? '').trim(),
-          groupAvatar: _group?.avatar,
+          groupAvatar: resolveGroupAvatarUrl(_group?.avatar, widget.channelId),
           initialRemark: (_group?.remark ?? '').trim(),
         ),
       ),
@@ -2643,7 +2541,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         ),
       if (_canManageAdmins)
         WKBottomSheetItem(
-          title: '杞缇や富',
+          title: '转让群主',
           icon: Icons.swap_horiz_outlined,
           onTap: _transferGroupOwnerAligned,
         ),
@@ -2767,7 +2665,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         await _loadData(showLoading: false);
       },
       successMessage: '群主已转让',
-      failurePrefix: '杞缇や富澶辫触',
+      failurePrefix: '转让群主失败',
     );
   }
 
@@ -3107,7 +3005,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
 
   Future<void> _transferGroupOwner() async {
     if (!_canManageAdmins) {
-      _showMessage('鍙湁缇や富鍙互杞缇や富韬唤');
+      _showMessage('只有群主可以转让群主身份');
       return;
     }
 
@@ -3178,7 +3076,7 @@ class _GroupDetailPageState extends State<GroupDetailPage> {
         await _loadData(showLoading: false);
       },
       successMessage: '群主已转让',
-      failurePrefix: '杞缇や富澶辫触',
+      failurePrefix: '转让群主失败',
     );
   }
 

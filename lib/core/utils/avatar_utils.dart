@@ -42,3 +42,12 @@ String? resolveUserAvatarUrl(
   return resolveAvatarUrl(rawAvatar) ??
       buildUserAvatarUrl(uid, cacheKey: cacheKey);
 }
+
+String? resolveGroupAvatarUrl(
+  String? rawAvatar,
+  String? groupNo, {
+  String? cacheKey,
+}) {
+  return resolveAvatarUrl(rawAvatar) ??
+      buildGroupAvatarUrl(groupNo, cacheKey: cacheKey);
+}

@@ -981,7 +981,6 @@ const String feishuOpenLatestMediaFeedScript = r'''
   const pendingText = String(pendingTarget.text || '').replace(/\s+/g, ' ').trim();
   const mediaPreviewTokens = [
     '[图片]',
-    '[鍥剧墖]',
     '[Image]',
     '[Photo]'
   ];
@@ -2904,7 +2903,6 @@ bool _looksLikeSender(String value) {
 bool _isMediaPreviewText(String value) {
   final normalized = value.trim();
   return normalized == '[图片]' ||
-      normalized == '[鍥剧墖]' ||
       normalized == '[Image]' ||
       normalized == '[Video]' ||
       normalized == '[File]' ||

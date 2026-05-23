@@ -79,6 +79,9 @@ class ApiConfig {
   static const String userCustomerServices = '$v1/user/customerservices';
   static const String userDestroySms = '$v1/user/sms/destroy';
   static const String userChatPwd = '$v1/user/chatpwd';
+  static const String webPushConfig = '$v1/user/web_push/config';
+  static const String webPushSubscription = '$v1/user/web_push/subscription';
+  static const String webPushClientState = '$v1/user/web_push/client_state';
   static const String apps = '$v1/apps';
   static const String openApiAuthCode = '$v1/openapi/authcode';
   static const String launchPolicy = '$v1/app/launch-policy';

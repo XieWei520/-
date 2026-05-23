@@ -1,13 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/widgets.dart';
 import 'package:web/web.dart' as web;
 
+import '../../service/api/web_push_api.dart';
 import 'desktop_message_alert_policy.dart';
 import 'message_alert_plan.dart';
+import 'web_alert_capability.dart';
 
 class WebNotificationManager {
   WebNotificationManager._internal();
@@ -28,6 +32,8 @@ class WebNotificationManager {
   );
   final DesktopMessageAlertPolicy _policy = DesktopMessageAlertPolicy();
 
+  web.HTMLAudioElement? _foregroundElement;
+  web.HTMLAudioElement? _messageElement;
   String _foregroundSoundAssetPath = 'audio/im_tick.wav';
   String _messageSoundAssetPath = 'audio/im_message.wav';
   String _unlockSoundAssetPath = 'audio/silence.wav';
@@ -44,15 +50,28 @@ class WebNotificationManager {
   Timer? _titleBlinkTimer;
   Timer? _foregroundStopTimer;
   Timer? _messageStopTimer;
+  Timer? _visibleHeartbeatTimer;
   String? _titleBeforeBlink;
   bool _showBlinkText = true;
   web.EventListener? _visibilityChangeListener;
+  web.EventListener? _pageHideListener;
   bool _initialized = false;
   String _notificationPermission = 'default';
+  String? _lastWebPushEndpoint;
 
   bool get isInitialized => _initialized;
 
-  String get notificationPermission => _notificationPermission;
+  String get notificationPermission => _readNotificationPermission();
+
+  WebAlertCapability get capability => buildWebAlertCapability(
+    userAgent: _userAgent(),
+    standalone: _isStandaloneDisplay(),
+    notificationPermission: _readNotificationPermission(),
+    supportsNotification: _supportsNotification(),
+    supportsServiceWorker: _supportsServiceWorker(),
+    supportsPush: _supportsPush(),
+    secureContext: _isSecureContext(),
+  );
 
   /// Initializes browser notifications from a user gesture.
   ///
@@ -175,9 +194,18 @@ class WebNotificationManager {
     }
   }
 
+  Future<void> refreshBackgroundDeliveryState({
+    String? visibilityOverride,
+  }) async {
+    _bindVisibilityChangeListener();
+    await _ensureWebPushSubscription();
+    await _reportWebPushClientState(visibilityOverride: visibilityOverride);
+  }
+
   Future<void> dispose() async {
     _foregroundStopTimer?.cancel();
     _messageStopTimer?.cancel();
+    _stopVisibleHeartbeat();
     stopTitleBlink();
     final listener = _visibilityChangeListener;
     if (listener != null) {
@@ -188,21 +216,37 @@ class WebNotificationManager {
       }
     }
     _visibilityChangeListener = null;
+    final pageHideListener = _pageHideListener;
+    if (pageHideListener != null) {
+      try {
+        web.window.removeEventListener('pagehide', pageHideListener);
+      } catch (error, stackTrace) {
+        _logError('移除 pagehide 事件失败', error, stackTrace);
+      }
+    }
+    _pageHideListener = null;
 
     await Future.wait<void>([
       _foregroundPlayer.dispose(),
       _messagePlayer.dispose(),
       _unlockPlayer.dispose(),
     ]);
+    _releaseHtmlAudioElements();
   }
 
   Future<void> _initialize() async {
     try {
       final unlockFuture = _unlockAudioForAutoplay();
+      final elementUnlockFuture = _unlockHtmlAudioElementsForIos();
       final permissionFuture = _requestNotificationPermission();
       unawaited(_configurePlayers());
 
-      await Future.wait<void>([unlockFuture, permissionFuture]);
+      await Future.wait<void>([
+        unlockFuture,
+        elementUnlockFuture,
+        permissionFuture,
+      ]);
+      unawaited(_ensureWebPushSubscription());
       await _configurePlayers();
       _initialized = true;
     } catch (error, stackTrace) {
@@ -217,7 +261,7 @@ class WebNotificationManager {
         return;
       }
 
-      final currentPermission = web.Notification.permission;
+      final currentPermission = _readNotificationPermission();
       _notificationPermission = currentPermission;
       if (currentPermission != 'default') {
         return;
@@ -230,6 +274,104 @@ class WebNotificationManager {
     }
   }
 
+  String _readNotificationPermission() {
+    try {
+      if (!_supportsNotification()) {
+        _notificationPermission = 'unsupported';
+        return _notificationPermission;
+      }
+      _notificationPermission = web.Notification.permission;
+      return _notificationPermission;
+    } catch (error, stackTrace) {
+      _logError('读取 Notification 权限失败', error, stackTrace);
+      return _notificationPermission;
+    }
+  }
+
+  Future<void> _ensureWebPushSubscription() async {
+    try {
+      if (_readNotificationPermission() != 'granted') {
+        return;
+      }
+      if (!_supportsServiceWorker() ||
+          !_supportsPush() ||
+          !_isSecureContext()) {
+        return;
+      }
+
+      final config = await WebPushApi.instance.getWebPushConfig();
+      if (!config.canSubscribe) {
+        return;
+      }
+
+      final registration =
+          await web.window.navigator.serviceWorker.ready.toDart;
+      final pushManager = registration.pushManager;
+      var subscription = await pushManager.getSubscription().toDart;
+      if (subscription == null) {
+        final applicationServerKey = _decodeVapidPublicKey(config.publicKey);
+        subscription = await _subscribeWebPush(
+          pushManager,
+          applicationServerKey,
+        );
+      }
+
+      final payload = _toWebPushSubscription(subscription);
+      if (!payload.isValid) {
+        return;
+      }
+      _lastWebPushEndpoint = payload.endpoint;
+      await WebPushApi.instance.registerWebPushSubscription(payload);
+      unawaited(_reportWebPushClientState());
+    } catch (error, stackTrace) {
+      _logError('注册 Web Push 订阅失败', error, stackTrace);
+    }
+  }
+
+  WebPushSubscription _toWebPushSubscription(
+    web.PushSubscription subscription,
+  ) {
+    return WebPushSubscription(
+      endpoint: subscription.endpoint,
+      expirationTime: subscription.expirationTime,
+      p256dh: _encodePushKey(subscription.getKey('p256dh')),
+      auth: _encodePushKey(subscription.getKey('auth')),
+    );
+  }
+
+  Future<web.PushSubscription> _subscribeWebPush(
+    web.PushManager pushManager,
+    Uint8List applicationServerKey,
+  ) {
+    // Keep this as a direct pushManager.subscribe call; Dart web interop disallows tear-offs.
+    return pushManager
+        .subscribe(
+          web.PushSubscriptionOptionsInit(
+            userVisibleOnly: true,
+            applicationServerKey: applicationServerKey.toJS,
+          ),
+        )
+        .toDart;
+  }
+
+  Uint8List _decodeVapidPublicKey(String publicKey) {
+    final normalized = publicKey.trim();
+    if (normalized.isEmpty) {
+      return Uint8List(0);
+    }
+    return Uint8List.fromList(
+      base64Url.decode(base64Url.normalize(normalized)),
+    );
+  }
+
+  String _encodePushKey(JSArrayBuffer? key) {
+    if (key == null) {
+      return '';
+    }
+    final bytes = Uint8List.view(key.toDart);
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
   Future<void> _unlockAudioForAutoplay() async {
     try {
       await _unlockPlayer.play(
@@ -240,11 +382,25 @@ class WebNotificationManager {
       await Future<void>.delayed(const Duration(milliseconds: 80));
       await _safeStop(_unlockPlayer);
     } catch (error, stackTrace) {
-      _logError(
-        '解锁浏览器音频自动播放失败，请确认 init() 由用户点击触发且音频资源存在',
-        error,
-        stackTrace,
+      _logError('解锁浏览器音频自动播放失败，请确认 init() 由用户点击触发且音频资源存在', error, stackTrace);
+    }
+  }
+
+  Future<void> _unlockHtmlAudioElementsForIos() async {
+    try {
+      if (!_isAppleMobile()) {
+        return;
+      }
+      final foreground = _foregroundElement ??= _createHtmlAudioElement(
+        _assetUrl(_foregroundSoundAssetPath),
       );
+      final message = _messageElement ??= _createHtmlAudioElement(
+        _assetUrl(_messageSoundAssetPath),
+      );
+      await _primeHtmlAudioElement(foreground);
+      await _primeHtmlAudioElement(message);
+    } catch (error, stackTrace) {
+      _logError('iOS Web 音频预热失败，请确认 init() 由用户点击触发且提示音资源存在', error, stackTrace);
     }
   }
 
@@ -263,6 +419,13 @@ class WebNotificationManager {
   Future<void> _playForegroundTick() async {
     try {
       _foregroundStopTimer?.cancel();
+      if (await _playHtmlAudioElement(
+        _foregroundElement,
+        volume: _foregroundVolume,
+        stopAfter: _foregroundSoundMaxDuration,
+      )) {
+        return;
+      }
       await _safeStop(_foregroundPlayer);
       await _foregroundPlayer.play(
         AssetSource(_foregroundSoundAssetPath),
@@ -281,6 +444,13 @@ class WebNotificationManager {
   Future<void> _playMessageSound() async {
     try {
       _messageStopTimer?.cancel();
+      if (await _playHtmlAudioElement(
+        _messageElement,
+        volume: _messageVolume,
+        stopAfter: _messageSoundMaxDuration,
+      )) {
+        return;
+      }
       await _safeStop(_messagePlayer);
       await _messagePlayer.play(
         AssetSource(_messageSoundAssetPath),
@@ -316,6 +486,16 @@ class WebNotificationManager {
       );
       browserNotification.onclick = ((web.Event event) {
         try {
+          final payload = notification.payload.trim();
+          if (payload.isNotEmpty) {
+            web.window.postMessage(
+              <String, Object>{
+                'type': 'wk.notification.click',
+                'payload': payload,
+              }.jsify(),
+              web.window.location.origin.toJS,
+            );
+          }
           web.window.focus();
           browserNotification.close();
         } catch (error, stackTrace) {
@@ -337,8 +517,9 @@ class WebNotificationManager {
         body: notification.body,
         tag: tag,
         renotify: true,
-        silent: true,
+        silent: false,
         requireInteraction: false,
+        data: notification.payload.toJS,
       );
     }
 
@@ -348,8 +529,9 @@ class WebNotificationManager {
       icon: icon,
       badge: 'icons/Icon-maskable-192.png',
       renotify: true,
-      silent: true,
+      silent: false,
       requireInteraction: false,
+      data: notification.payload.toJS,
     );
   }
 
@@ -362,22 +544,111 @@ class WebNotificationManager {
   }
 
   void _bindVisibilityChangeListener() {
-    if (_visibilityChangeListener != null) {
-      return;
+    if (_visibilityChangeListener == null) {
+      try {
+        _visibilityChangeListener = ((web.Event event) {
+          if (isPageVisible()) {
+            stopTitleBlink();
+            _startVisibleHeartbeat();
+            unawaited(_ensureWebPushSubscription());
+          } else {
+            _stopVisibleHeartbeat();
+          }
+          unawaited(_reportWebPushClientState());
+        }).toJS;
+        web.document.addEventListener(
+          'visibilitychange',
+          _visibilityChangeListener,
+        );
+      } catch (error, stackTrace) {
+        _logError('绑定 visibilitychange 事件失败', error, stackTrace);
+      }
     }
 
+    if (_pageHideListener == null) {
+      try {
+        _pageHideListener = ((web.Event event) {
+          unawaited(_reportWebPushClientState(visibilityOverride: 'unloaded'));
+        }).toJS;
+        web.window.addEventListener('pagehide', _pageHideListener);
+      } catch (error, stackTrace) {
+        _logError('绑定 pagehide 事件失败', error, stackTrace);
+      }
+    }
+
+    if (isPageVisible()) {
+      _startVisibleHeartbeat();
+    }
+  }
+
+  void _startVisibleHeartbeat() {
+    if (_visibleHeartbeatTimer?.isActive == true) {
+      return;
+    }
+    _visibleHeartbeatTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!isPageVisible()) {
+        _stopVisibleHeartbeat();
+        return;
+      }
+      unawaited(_reportWebPushClientState(visibilityOverride: 'visible'));
+    });
+  }
+
+  void _stopVisibleHeartbeat() {
+    _visibleHeartbeatTimer?.cancel();
+    _visibleHeartbeatTimer = null;
+  }
+
+  Future<void> _reportWebPushClientState({String? visibilityOverride}) async {
     try {
-      _visibilityChangeListener = ((web.Event event) {
-        if (isPageVisible()) {
-          stopTitleBlink();
-        }
-      }).toJS;
-      web.document.addEventListener(
-        'visibilitychange',
-        _visibilityChangeListener,
+      final permission = _readNotificationPermission();
+      if (permission != 'granted') {
+        return;
+      }
+      final endpoint = await _currentWebPushEndpoint();
+      if (endpoint.isEmpty) {
+        return;
+      }
+      await WebPushApi.instance.updateWebPushClientState(
+        WebPushClientState(
+          endpoint: endpoint,
+          visibility: visibilityOverride ?? _pageVisibilityForReport(),
+          permission: permission,
+          standalone: _isStandaloneDisplay(),
+          userAgent: _userAgent(),
+        ),
       );
     } catch (error, stackTrace) {
-      _logError('绑定 visibilitychange 事件失败', error, stackTrace);
+      _logError('上报 Web Push 客户端状态失败', error, stackTrace);
+    }
+  }
+
+  Future<String> _currentWebPushEndpoint() async {
+    final cachedEndpoint = _lastWebPushEndpoint?.trim() ?? '';
+    if (cachedEndpoint.isNotEmpty) {
+      return cachedEndpoint;
+    }
+    if (!_supportsServiceWorker() || !_supportsPush() || !_isSecureContext()) {
+      return '';
+    }
+    final registration = await web.window.navigator.serviceWorker.ready.toDart;
+    final subscription = await registration.pushManager
+        .getSubscription()
+        .toDart;
+    final endpoint = subscription?.endpoint.trim() ?? '';
+    if (endpoint.isNotEmpty) {
+      _lastWebPushEndpoint = endpoint;
+    }
+    return endpoint;
+  }
+
+  String _pageVisibilityForReport() {
+    try {
+      final visibility = web.document.visibilityState.trim();
+      return visibility.isEmpty ? 'unknown' : visibility;
+    } catch (error, stackTrace) {
+      _logError('读取页面状态用于 Web Push 上报失败', error, stackTrace);
+      return 'unknown';
     }
   }
 
@@ -390,12 +661,136 @@ class WebNotificationManager {
     }
   }
 
+  bool _supportsServiceWorker() {
+    try {
+      return web.window.navigator.has('serviceWorker');
+    } catch (error, stackTrace) {
+      _logError('检测 Service Worker 支持失败', error, stackTrace);
+      return false;
+    }
+  }
+
+  bool _supportsPush() {
+    try {
+      return globalContext.has('PushManager');
+    } catch (error, stackTrace) {
+      _logError('检测 Push API 支持失败', error, stackTrace);
+      return false;
+    }
+  }
+
+  bool _isSecureContext() {
+    try {
+      final value = globalContext.getProperty('isSecureContext'.toJS);
+      return value.dartify() == true;
+    } catch (error, stackTrace) {
+      _logError('检测安全上下文失败', error, stackTrace);
+      return false;
+    }
+  }
+
+  bool _isStandaloneDisplay() {
+    try {
+      final standalone = web.window.navigator.getProperty('standalone'.toJS);
+      if (standalone.dartify() == true) {
+        return true;
+      }
+      final mediaQuery = web.window.matchMedia('(display-mode: standalone)');
+      return mediaQuery.matches;
+    } catch (error, stackTrace) {
+      _logError('检测 PWA standalone 模式失败', error, stackTrace);
+      return false;
+    }
+  }
+
+  String _userAgent() {
+    try {
+      return web.window.navigator.userAgent;
+    } catch (error, stackTrace) {
+      _logError('读取浏览器 userAgent 失败', error, stackTrace);
+      return '';
+    }
+  }
+
   Future<void> _safeStop(AudioPlayer player) async {
     try {
       await player.stop();
     } catch (error, stackTrace) {
       _logError('停止音频失败', error, stackTrace);
     }
+  }
+
+  web.HTMLAudioElement _createHtmlAudioElement(String source) {
+    final element = web.HTMLAudioElement()
+      ..src = source
+      ..preload = 'auto'
+      ..muted = false
+      ..volume = 1.0;
+    return element;
+  }
+
+  Future<void> _primeHtmlAudioElement(web.HTMLAudioElement element) async {
+    element.muted = true;
+    element.volume = 0;
+    try {
+      await element.play().toDart;
+    } finally {
+      element.pause();
+      _resetHtmlAudioElement(element);
+      element.muted = false;
+    }
+  }
+
+  Future<bool> _playHtmlAudioElement(
+    web.HTMLAudioElement? element, {
+    required double volume,
+    required Duration stopAfter,
+  }) async {
+    if (element == null) {
+      return false;
+    }
+    try {
+      element.muted = false;
+      element.volume = volume;
+      _resetHtmlAudioElement(element);
+      await element.play().toDart;
+      Timer(stopAfter, () {
+        try {
+          element.pause();
+          _resetHtmlAudioElement(element);
+        } catch (_) {}
+      });
+      return true;
+    } catch (error, stackTrace) {
+      _logError('iOS Web HTMLAudioElement 播放提示音失败', error, stackTrace);
+      return false;
+    }
+  }
+
+  void _resetHtmlAudioElement(web.HTMLAudioElement element) {
+    try {
+      element.currentTime = 0;
+    } catch (_) {}
+  }
+
+  void _releaseHtmlAudioElements() {
+    _foregroundElement?.pause();
+    _messageElement?.pause();
+    _foregroundElement = null;
+    _messageElement = null;
+  }
+
+  String _assetUrl(String assetPath) {
+    final normalized = assetPath.trim().replaceAll(RegExp(r'^/+'), '');
+    if (normalized.startsWith('assets/')) {
+      return normalized;
+    }
+    return 'assets/assets/$normalized';
+  }
+
+  bool _isAppleMobile() {
+    final ua = _userAgent().toLowerCase();
+    return ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod');
   }
 
   double _normalizeVolume(double value) {

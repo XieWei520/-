@@ -123,6 +123,31 @@ void main() {
     expect(event.isForwardableText, isTrue);
   });
 
+  test('marks local image captures as forwardable images', () {
+    final event = _event(
+      sourceConversationId: 'windows:fb61ccc7',
+      sourceConversationName: 'Alpha',
+      text: 'https://example.com/dingtalk-image.png',
+      localImagePath: r'C:\captures\dingtalk-image.png',
+      captureSource: DingTalkMonitorCaptureSource.uiaImageMetadata,
+    );
+
+    expect(event.isForwardableText, isFalse);
+    expect(event.isForwardableImage, isTrue);
+  });
+
+  test('does not forward OCR screenshots as images', () {
+    final event = _event(
+      sourceConversationId: 'source:dingtalk-screenshot',
+      sourceConversationName: 'DingTalk Screenshot',
+      text: 'ocr text',
+      localImagePath: r'C:\captures\ocr.png',
+      captureSource: DingTalkMonitorCaptureSource.chatAreaScreenshotOcr,
+    );
+
+    expect(event.isForwardableImage, isFalse);
+  });
+
   test('marks clipboard probe sentinel text as non-forwardable', () {
     final event = _event(
       sourceConversationId: 'windows:clipboard-active',
@@ -138,6 +163,9 @@ DingTalkMonitorMessageEvent _event({
   String sourceConversationId = 'source:alpha',
   String sourceConversationName = 'Alpha',
   String text = 'hello',
+  String localImagePath = '',
+  DingTalkMonitorCaptureSource captureSource =
+      DingTalkMonitorCaptureSource.uiaText,
 }) {
   return DingTalkMonitorMessageEvent(
     eventId: 'event-1',
@@ -147,8 +175,8 @@ DingTalkMonitorMessageEvent _event({
     senderName: 'Alice',
     observedAt: DateTime.parse('2026-05-16T01:33:16Z'),
     text: text,
-    localImagePath: '',
-    captureSource: DingTalkMonitorCaptureSource.uiaText,
+    localImagePath: localImagePath,
+    captureSource: captureSource,
     contentHash: 'hash-1',
   );
 }

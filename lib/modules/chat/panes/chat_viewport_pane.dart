@@ -842,6 +842,9 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
     }
 
     final viewportHeight = listRenderObject.size.height;
+    if (!viewportHeight.isFinite || viewportHeight <= 0) {
+      return const ChatViewportPersistenceSnapshot();
+    }
     VisibleViewportItem? firstVisible;
     var maxVisibleMessageSeq = 0;
 
@@ -854,7 +857,14 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
       final top = renderObject
           .localToGlobal(Offset.zero, ancestor: listRenderObject)
           .dy;
-      final bottom = top + renderObject.size.height;
+      final itemHeight = renderObject.size.height;
+      if (!top.isFinite || !itemHeight.isFinite || itemHeight <= 0) {
+        continue;
+      }
+      final bottom = top + itemHeight;
+      if (!bottom.isFinite) {
+        continue;
+      }
       if (bottom <= 0 || top >= viewportHeight) {
         continue;
       }
@@ -876,9 +886,15 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
         maxVisibleMessageSeq: maxVisibleMessageSeq,
       );
     }
+    final keepOffsetY = roundFiniteViewportOffset(firstVisible.top);
+    if (keepOffsetY == null) {
+      return ChatViewportPersistenceSnapshot(
+        maxVisibleMessageSeq: maxVisibleMessageSeq,
+      );
+    }
     return ChatViewportPersistenceSnapshot(
       keepMessageSeq: firstVisible.messageSeq,
-      keepOffsetY: firstVisible.top.round(),
+      keepOffsetY: keepOffsetY,
       maxVisibleMessageSeq: maxVisibleMessageSeq,
     );
   }
@@ -958,11 +974,15 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
   ) {
     _restoredKeepMessageSeq = anchor.keepMessageSeq;
     _isApplyingRestoreAnchor = false;
+    final appliedOffsetY = roundFiniteViewportOffset(appliedTop);
+    if (appliedOffsetY == null) {
+      return;
+    }
     widget.onRestoreAnchorApplied?.call(
       ChatViewportRestoreResult(
         keepMessageSeq: anchor.keepMessageSeq,
         requestedOffsetY: anchor.keepOffsetY,
-        appliedOffsetY: appliedTop.round(),
+        appliedOffsetY: appliedOffsetY,
       ),
     );
   }
@@ -977,9 +997,13 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
     if (!itemRenderObject.attached) {
       return null;
     }
-    return itemRenderObject
+    final top = itemRenderObject
         .localToGlobal(Offset.zero, ancestor: listRenderObject)
         .dy;
+    if (!top.isFinite) {
+      return null;
+    }
+    return top;
   }
 
   Iterable<WKMsg> _visibleMessages(ChatViewportState state) sync* {
@@ -988,6 +1012,9 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
       return;
     }
     final viewportHeight = listRenderObject.size.height;
+    if (!viewportHeight.isFinite || viewportHeight <= 0) {
+      return;
+    }
     for (final item in state.items) {
       final renderObject = _measurementKeys[item.identity]?.currentContext
           ?.findRenderObject();
@@ -997,7 +1024,14 @@ class _ChatViewportPaneState extends ConsumerState<ChatViewportPane> {
       final top = renderObject
           .localToGlobal(Offset.zero, ancestor: listRenderObject)
           .dy;
-      final bottom = top + renderObject.size.height;
+      final itemHeight = renderObject.size.height;
+      if (!top.isFinite || !itemHeight.isFinite || itemHeight <= 0) {
+        continue;
+      }
+      final bottom = top + itemHeight;
+      if (!bottom.isFinite) {
+        continue;
+      }
       if (bottom <= 0 || top >= viewportHeight) {
         continue;
       }

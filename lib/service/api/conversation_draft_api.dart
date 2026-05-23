@@ -106,7 +106,7 @@ class ConversationDraftApi implements ConversationDraftRemoteStore {
       ApiConfig.conversationExtraSync,
       data: {'version': version},
     );
-    _ensureSuccess(response, fallback: '鍚屾浼氳瘽 extra 澶辫触');
+    _ensureSuccess(response, fallback: '同步会话 extra 失败');
 
     final raw = response.data;
     final List<dynamic> items;
@@ -163,7 +163,7 @@ class ConversationDraftApi implements ConversationDraftRemoteStore {
       '${ApiConfig.conversations}/$channelId/$channelType/extra',
       data: data,
     );
-    _ensureSuccess(response, fallback: '鏇存柊浼氳瘽 extra 澶辫触');
+    _ensureSuccess(response, fallback: '保存会话 extra 失败');
 
     final body = _resolveBody(response.data);
     final directVersion = body['version'];

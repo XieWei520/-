@@ -39,6 +39,7 @@ void main() {
       expect(decision.notification!.identifier, 'wk-message-1-alice');
       expect(decision.notification!.title, 'Alice');
       expect(decision.notification!.body, 'hello');
+      expect(decision.notification!.payload, contains('channel_id'));
     });
 
     test('coalesces rapid messages from the same conversation', () {

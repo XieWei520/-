@@ -19,13 +19,13 @@ void main() {
           'blob_mime_type': 'image/webp',
           'blob_size': 12345,
           'conversation_id': 'feed:abc',
-          'conversation_name': '婊℃弧姝ｈ兘閲?',
+          'conversation_name': '飞书群聊',
           'message_id': 'msg_1',
-          'sender_name': '姗樼敓娣崡',
+          'sender_name': '张三',
           'display_time': '14:29',
-          'message_text': '[鍥剧墖]',
+          'message_text': '[图片]',
           'feed_card_id': 'feed_card_1',
-          'feed_card_text': '婊℃弧姝ｈ兘閲?14:29 姗樼敓娣崡: [鍥剧墖]',
+          'feed_card_text': '飞书群聊14:29 张三: [图片]',
           'confidence': 0.92,
           'confidence_label': 'high',
           'reason': 'dom_img_src',
@@ -34,7 +34,7 @@ void main() {
         },
       );
 
-      expect(attribution.conversationName, '婊℃弧姝ｈ兘閲?');
+      expect(attribution.conversationName, '飞书群聊');
       expect(
         attribution.sourceUrl,
         'blob:https://example.feishu.cn/abc?token=secret',

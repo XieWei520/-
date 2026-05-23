@@ -8,18 +8,14 @@ import 'package:go_router/go_router.dart';
 import '../core/config/app_config.dart';
 import 'app_display_preferences.dart';
 import '../data/providers/auth_provider.dart';
-import '../modules/dingtalk_monitor/dingtalk_monitor_auto_forward_runner.dart';
-import '../modules/feishu_monitor/feishu_monitor_auto_forward_runner.dart';
-import '../modules/feishu_monitor/feishu_monitor_shell_client.dart';
 import '../modules/home/home_badge_snapshot.dart';
 import '../modules/home/home_surface_kernel.dart';
-import '../modules/juliang_monitor/juliang_monitor_auto_forward_runner.dart';
 import '../modules/local_monitor/local_monitor_auto_forward_coordinator.dart';
+import '../modules/local_monitor/local_monitor_auto_forward_runner_factory.dart'
+    deferred as local_monitor_runners;
 import '../modules/launch_policy/launch_policy_controller.dart';
 import '../modules/launch_policy/launch_policy_dialogs.dart';
-import '../modules/mengxia_monitor/mengxia_monitor_auto_forward_runner.dart';
-import '../modules/video_call/call_coordinator.dart';
-import '../modules/xiaoe_monitor/xiaoe_monitor_auto_forward_runner.dart';
+import '../modules/video_call/video_call_runtime_bridge.dart';
 import '../core/theme/wk_dark_theme.dart';
 import '../widgets/wk_theme.dart';
 import '../wukong_push/android_keep_alive_service.dart';
@@ -72,7 +68,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
         NotificationPermissionPromptBridge.instance;
     _notificationPermissionPromptBridge.ensureRegistered();
     _localMonitorAutoForwardCoordinator = LocalMonitorAutoForwardCoordinator(
-      runners: createLocalMonitorAutoForwardRunners(),
+      loadRunners: _loadLocalMonitorAutoForwardRunners,
     );
     _launchPolicyController = LaunchPolicyController();
     _pushRouteBridge = AppPushRouteBridge(
@@ -118,7 +114,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
       ..bindNavigator(navigatorKey);
     _notificationPermissionPromptBridge.bindNavigator(navigatorKey);
     if (_callCoordinatorRunning) {
-      CallCoordinator.instance.start(navigatorKey);
+      unawaited(VideoCallRuntimeBridge.instance.startCoordinator(navigatorKey));
     }
   }
 
@@ -129,13 +125,17 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
         return;
       }
       if (!_callCoordinatorRunning) {
-        CallCoordinator.instance.start(router.routerDelegate.navigatorKey);
+        unawaited(
+          VideoCallRuntimeBridge.instance.startCoordinator(
+            router.routerDelegate.navigatorKey,
+          ),
+        );
         _callCoordinatorRunning = true;
       }
       return;
     }
     if (_callCoordinatorRunning) {
-      CallCoordinator.instance.stop();
+      unawaited(VideoCallRuntimeBridge.instance.stopCoordinator());
       _callCoordinatorRunning = false;
     }
   }
@@ -151,7 +151,7 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
     unawaited(_browserNotificationClickBridge.dispose());
     unawaited(_pushRouteBridge.dispose());
     if (_callCoordinatorRunning) {
-      CallCoordinator.instance.stop();
+      unawaited(VideoCallRuntimeBridge.instance.stopCoordinator());
       _callCoordinatorRunning = false;
     }
     _localMonitorAutoForwardCoordinator.dispose();
@@ -256,6 +256,12 @@ class _WuKongAppState extends ConsumerState<WuKongApp> {
 
 typedef WuKongIMApp = WuKongApp;
 
+Future<List<LocalMonitorAutoForwardRunnerController>>
+_loadLocalMonitorAutoForwardRunners() async {
+  await local_monitor_runners.loadLibrary();
+  return local_monitor_runners.createDefaultLocalMonitorAutoForwardRunners();
+}
+
 BuildContext? resolveLaunchPolicyDialogContext({
   required BuildContext appContext,
   required GoRouter router,
@@ -277,17 +283,4 @@ BuildContext? resolveLaunchPolicyDialogContext({
     return appContext;
   }
   return null;
-}
-
-List<LocalMonitorAutoForwardRunnerController>
-createLocalMonitorAutoForwardRunners() {
-  return <LocalMonitorAutoForwardRunnerController>[
-    FeishuMonitorAutoForwardRunner(
-      clientGroup: FeishuMonitorShellClientGroup.recommendedForRouteCount(120),
-    ),
-    DingTalkMonitorAutoForwardRunner(),
-    MengxiaMonitorAutoForwardRunner(),
-    JuliangMonitorAutoForwardRunner(),
-    XiaoeMonitorAutoForwardRunner(),
-  ];
 }

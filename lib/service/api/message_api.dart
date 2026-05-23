@@ -131,7 +131,7 @@ class MessageApi {
           'message_id': messageId.trim(),
       },
     );
-    _ensureSuccess(response, fallback: '鎾ゅ洖娑堟伅澶辫触');
+    _ensureSuccess(response, fallback: '撤回消息失败');
   }
 
   Future<void> editMessage({
@@ -171,7 +171,7 @@ class MessageApi {
         },
       ],
     );
-    _ensureSuccess(response, fallback: '鍒犻櫎娑堟伅澶辫触');
+    _ensureSuccess(response, fallback: '删除消息失败');
   }
 
   Future<void> mutualDeleteMessage({
@@ -187,7 +187,7 @@ class MessageApi {
         'channel_type': channelType,
       },
     );
-    _ensureSuccess(response, fallback: '鍙屽悜鍒犻櫎娑堟伅澶辫触');
+    _ensureSuccess(response, fallback: '双向删除消息失败');
   }
 
   Future<List<dynamic>> searchMessages({
@@ -210,7 +210,7 @@ class MessageApi {
     }
 
     final response = await _client.post(ApiConfig.messageSearch, data: data);
-    _ensureSuccess(response, fallback: '鎼滅储娑堟伅澶辫触');
+    _ensureSuccess(response, fallback: '搜索消息失败');
     if (response.data is List) {
       return response.data as List<dynamic>;
     }
@@ -231,7 +231,7 @@ class MessageApi {
       '/v1/message/typing',
       data: {'channel_id': channelId, 'channel_type': channelType},
     );
-    _ensureSuccess(response, fallback: '鍙戦€?typing 澶辫触');
+    _ensureSuccess(response, fallback: '发送输入状态失败');
   }
 
   Future<SensitiveWordsSnapshot> syncSensitiveWords({
@@ -404,7 +404,7 @@ class MessageApi {
         'limit': limit,
       },
     );
-    _ensureSuccess(response, fallback: '鍚屾娑堟伅 extra 澶辫触');
+    _ensureSuccess(response, fallback: '同步消息 extra 失败');
 
     final raw = response.data;
     final List<dynamic> items;
@@ -496,7 +496,7 @@ class MessageApi {
     }
 
     final response = await _client.post('/v1/message/syncack/$lastMessageSeq');
-    _ensureSuccess(response, fallback: 'message sync ack 澶辫触');
+    _ensureSuccess(response, fallback: '消息同步确认失败');
   }
 
   Future<void> clearChannelMessages({
@@ -507,7 +507,7 @@ class MessageApi {
       '/v1/message/offset',
       data: {'channel_id': channelId, 'channel_type': channelType},
     );
-    _ensureSuccess(response, fallback: '娓呯┖娑堟伅澶辫触');
+    _ensureSuccess(response, fallback: '清空消息失败');
   }
 
   Future<String> uploadFile({

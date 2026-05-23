@@ -73,26 +73,59 @@ void main() {
     expect(coordinator.isOpeningCallPage, isFalse);
   });
 
-  test('runGroupCall ignores concurrent group call opens', () async {
-    final gate = Completer<void>();
-    final events = <String>[];
-    final coordinator = ChatCallEntryCoordinator(
-      service: _FakeChatCallEntryService((
-        callType, {
-        required channelId,
-        required channelType,
-      }) async {
-        throw StateError('unused');
-      }),
+  test('runGroupCall checks the group call decision before opening', () async {
+    final service = _FakeChatCallEntryService((
+      callType, {
+      required channelId,
+      required channelType,
+    }) async {
+      return ChatCallEntryDecision.start(callType);
+    });
+    final coordinator = ChatCallEntryCoordinator(service: service);
+    ChatCallEntryDecision? handledDecision;
+
+    await coordinator.runGroupCall(
+      channelId: 'g_group',
+      channelType: 2,
+      handleDecision: (decision) async {
+        handledDecision = decision;
+      },
     );
 
-    final first = coordinator.runGroupCall(() async {
-      events.add('first');
+    expect(handledDecision, isNotNull);
+    expect(handledDecision!.shouldStart, isTrue);
+    expect(handledDecision!.callType, CallType.video);
+    expect(service.calls, <String>['video:g_group:2']);
+    expect(coordinator.isOpeningCallPage, isFalse);
+  });
+
+  test('runGroupCall ignores concurrent group call opens', () async {
+    final gate = Completer<void>();
+    final service = _FakeChatCallEntryService((
+      callType, {
+      required channelId,
+      required channelType,
+    }) async {
       await gate.future;
+      return ChatCallEntryDecision.start(callType);
     });
-    final second = coordinator.runGroupCall(() async {
-      events.add('second');
-    });
+    final events = <String>[];
+    final coordinator = ChatCallEntryCoordinator(service: service);
+
+    final first = coordinator.runGroupCall(
+      channelId: 'g_group',
+      channelType: 2,
+      handleDecision: (decision) async {
+        events.add('first');
+      },
+    );
+    final second = coordinator.runGroupCall(
+      channelId: 'g_group',
+      channelType: 2,
+      handleDecision: (decision) async {
+        events.add('second');
+      },
+    );
 
     await second;
     gate.complete();

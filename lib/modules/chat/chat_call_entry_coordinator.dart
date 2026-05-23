@@ -3,7 +3,6 @@ import 'chat_call_entry_service.dart';
 
 typedef ChatCallDecisionHandler =
     Future<void> Function(ChatCallEntryDecision decision);
-typedef ChatGroupCallRunner = Future<void> Function();
 
 class ChatCallEntryCoordinator {
   ChatCallEntryCoordinator({required ChatCallEntryService service})
@@ -36,13 +35,22 @@ class ChatCallEntryCoordinator {
     }
   }
 
-  Future<void> runGroupCall(ChatGroupCallRunner runner) async {
+  Future<void> runGroupCall({
+    required String channelId,
+    required int channelType,
+    required ChatCallDecisionHandler handleDecision,
+  }) async {
     if (_isOpeningCallPage) {
       return;
     }
     _isOpeningCallPage = true;
     try {
-      await runner();
+      final decision = await _service.prepareOutgoingCall(
+        CallType.video,
+        channelId: channelId,
+        channelType: channelType,
+      );
+      await handleDecision(decision);
     } finally {
       _isOpeningCallPage = false;
     }

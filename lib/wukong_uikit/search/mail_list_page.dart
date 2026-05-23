@@ -392,6 +392,7 @@ class _MailListPageState extends State<MailListPage> {
   Future<void> _applyContact(MailListContact contact) async {
     if (!await guardVipFeature(
       context,
+      entitlement: VipEntitlement.addFriend,
       customerServicesLoader: widget.vipCustomerServicesLoader,
     )) {
       return;

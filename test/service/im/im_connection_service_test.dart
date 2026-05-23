@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukongimfluttersdk/common/mode.dart';
 import 'package:wukong_im_app/service/api/im_route_info.dart';
 import 'package:wukong_im_app/service/im/im_connection_service.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
+import 'package:wukongimfluttersdk/wkim.dart';
 
 void main() {
   group('ImConnectionService policy', () {
@@ -277,6 +279,7 @@ void main() {
         final setupOk = await service.setupSdk(
           credentials: credentials,
           fallbackAddr: 'fallback.example:5100',
+          deviceId: 'device_bind_01',
           protoVersion: 4,
           deviceFlag: 7,
           debug: true,
@@ -287,6 +290,7 @@ void main() {
         expect(sdk.setupOptions, isNotNull);
         expect(sdk.setupOptions!.credentials, credentials);
         expect(sdk.setupOptions!.fallbackAddr, 'fallback.example:5100');
+        expect(sdk.setupOptions!.deviceId, 'device_bind_01');
         expect(sdk.setupOptions!.protoVersion, 4);
         expect(sdk.setupOptions!.deviceFlag, 7);
         expect(sdk.setupOptions!.debug, isTrue);
@@ -354,6 +358,32 @@ void main() {
 
       expect(setupOk, isFalse);
       expect(sdk.connectCount, 0);
+    });
+
+    test('WK SDK port passes explicit device id into SDK options', () async {
+      WKIM.shared.runMode = Model.web;
+      final port = const WkImSdkConnectionPort();
+
+      final setupOk = await port.setup(
+        ImSdkSetupOptions(
+          credentials: const ImConnectionCredentials(
+            uid: 'u_sdk',
+            apiToken: 'api_token_sdk',
+            imToken: 'im_token_sdk',
+            deviceSessionId: 'device_session_sdk',
+          ),
+          fallbackAddr: 'wss://route.example/ws',
+          resolveAddr: () async => 'wss://route.example/ws',
+          deviceId: 'device_bind_sdk',
+          protoVersion: 4,
+          deviceFlag: 2,
+          debug: false,
+        ),
+      );
+
+      expect(setupOk, isTrue);
+      expect(WKIM.shared.options.deviceID, 'device_bind_sdk');
+      expect(WKIM.shared.deviceFlagApp, 2);
     });
 
     test(

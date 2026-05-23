@@ -592,7 +592,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   }
 
   Future<void> _openAddFriendPage() async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.addFriend,
+    )) {
       return;
     }
     if (!mounted) {
@@ -611,7 +614,10 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   }
 
   Future<void> _openCreateGroupPage() async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.createGroup,
+    )) {
       return;
     }
     if (!mounted) {

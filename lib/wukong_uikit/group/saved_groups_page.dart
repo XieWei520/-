@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
-import '../../core/config/api_config.dart';
+import '../../core/utils/avatar_utils.dart';
 import '../../data/models/group.dart';
 import '../../modules/chat/chat_page.dart';
 import '../../modules/contacts/create_group_page.dart';
@@ -119,7 +119,7 @@ class _SavedGroupsPageState extends State<SavedGroupsPage> {
                 child: Row(
                   children: [
                     WKAvatar(
-                      url: _resolveAvatar(group.avatar),
+                      url: resolveGroupAvatarUrl(group.avatar, groupNo),
                       name: title,
                       size: 40,
                       isGroup: true,
@@ -218,7 +218,10 @@ class _SavedGroupsPageState extends State<SavedGroupsPage> {
   }
 
   Future<void> _openCreateGroupPage() async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.createGroup,
+    )) {
       return;
     }
     if (!mounted) {
@@ -255,17 +258,6 @@ class _SavedGroupsPageState extends State<SavedGroupsPage> {
       return name;
     }
     return group.groupNo;
-  }
-
-  String? _resolveAvatar(String? rawAvatar) {
-    final avatar = rawAvatar?.trim() ?? '';
-    if (avatar.isEmpty) {
-      return null;
-    }
-    if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
-      return avatar;
-    }
-    return ApiConfig.resolveMediaUrl(avatar);
   }
 
   void _showMessage(String message) {

@@ -40,6 +40,7 @@ import '../chat_desktop_drop_target.dart';
 import '../chat_gif_panel_service.dart';
 import '../chat_media_action_service.dart';
 import '../chat_mentions_controller.dart';
+import '../chat_scene_gateway.dart';
 import '../chat_scene_providers.dart';
 import '../chat_text_sticker_conversion.dart';
 import '../chat_typing_gateway.dart';
@@ -1170,8 +1171,8 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
             .buildDroppedFile(file);
         await _sendPickedContent(content, composerController);
       }
-    } catch (_) {
-      _showSendFailureFeedback();
+    } catch (error) {
+      _showSendFailureFeedback(error);
     }
   }
 
@@ -1254,8 +1255,8 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
       ref
           .read(chatSceneControllerProvider(widget.session).notifier)
           .restoreNormal();
-    } catch (_) {
-      _showSendFailureFeedback();
+    } catch (error) {
+      _showSendFailureFeedback(error);
     } finally {
       _setComposerSubmitting(false);
     }
@@ -1274,13 +1275,16 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
     });
   }
 
-  void _showSendFailureFeedback() {
+  void _showSendFailureFeedback([Object? error]) {
     if (!mounted) {
       return;
     }
+    final message = error is ChatSceneSendForbiddenException
+        ? error.message
+        : _sendFailureRetainedFeedback;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(_buildLiquidSnackBar(_sendFailureRetainedFeedback));
+      ..showSnackBar(_buildLiquidSnackBar(message));
   }
 
   Future<void> _startVoiceRecording() async {
@@ -1832,20 +1836,24 @@ class _ChatComposerPaneState extends ConsumerState<ChatComposerPane> {
       ..type = 'bot_command';
     content.entities = <WKMsgEntity>[entity];
 
-    await ref
-        .read(chatSceneGatewayProvider(widget.session))
-        .sendMessageContent(
-          content,
-          channelId: widget.session.channelId,
-          channelType: widget.session.channelType,
-          channelName: _channel?.channelName.trim().isNotEmpty == true
-              ? _channel!.channelName.trim()
-              : null,
-        );
-    composerController.hidePanels();
-    ref
-        .read(chatSceneControllerProvider(widget.session).notifier)
-        .restoreNormal();
+    try {
+      await ref
+          .read(chatSceneGatewayProvider(widget.session))
+          .sendMessageContent(
+            content,
+            channelId: widget.session.channelId,
+            channelType: widget.session.channelType,
+            channelName: _channel?.channelName.trim().isNotEmpty == true
+                ? _channel!.channelName.trim()
+                : null,
+          );
+      composerController.hidePanels();
+      ref
+          .read(chatSceneControllerProvider(widget.session).notifier)
+          .restoreNormal();
+    } catch (error) {
+      _showSendFailureFeedback(error);
+    }
   }
 
   Widget _buildFlamePanel(

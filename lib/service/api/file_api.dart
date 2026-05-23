@@ -199,7 +199,7 @@ class FileApi {
       uploadPath: _normalizeObjectPath(uploadPath),
     );
     if (uploadUrl.isEmpty) {
-      throw const FileApiException('鑾峰彇涓婁紶鍦板潃澶辫触');
+      throw const FileApiException('获取上传地址失败');
     }
 
     final response = await _client.uploadBytes(
@@ -215,7 +215,7 @@ class FileApi {
       'data',
     ]);
     if (uploadedPath.isEmpty) {
-      throw const FileApiException('涓婁紶鏂囦欢澶辫触');
+      throw const FileApiException('上传文件失败');
     }
     return ApiConfig.resolveMediaUrl(uploadedPath);
   }

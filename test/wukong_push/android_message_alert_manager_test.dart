@@ -142,9 +142,39 @@ void main() {
         );
 
         final notification = presenter.notifications.single;
-        expect(notification.body, 'New message');
+        expect(notification.body, '收到新消息');
         expect(notification.playSound, isFalse);
         expect(notification.enableVibration, isFalse);
+      },
+    );
+
+    test(
+      'privacy mode hides coalesced message detail with localized copy',
+      () async {
+        var now = DateTime(2026, 5, 20, 12);
+        final presenter = _FakePresenter();
+        final manager = AndroidMessageAlertManager(
+          presenter: presenter,
+          policy: DesktopMessageAlertPolicy(now: () => now),
+          alertSettings: const MessageAlertSettings(showMessageDetail: false),
+          isWeb: () => false,
+          targetPlatform: () => TargetPlatform.android,
+        );
+
+        await manager.showNewMessageAlert(
+          plan: _plan(body: 'first private message'),
+          lifecycleState: AppLifecycleState.hidden,
+        );
+        now = now.add(const Duration(milliseconds: 500));
+        await manager.showNewMessageAlert(
+          plan: _plan(body: 'second private message'),
+          lifecycleState: AppLifecycleState.hidden,
+        );
+
+        expect(presenter.notifications, hasLength(2));
+        expect(presenter.notifications.first.body, '收到新消息');
+        expect(presenter.notifications.last.body, '收到 2 条新消息');
+        expect(presenter.notifications.last.onlyAlertOnce, isTrue);
       },
     );
 

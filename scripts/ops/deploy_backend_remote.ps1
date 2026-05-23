@@ -80,7 +80,19 @@ $currentBuild | ForEach-Object { Write-Host $_ }
 
 try {
     Write-Host "[STEP] Uploading remote helper"
-    Copy-ToRemote -LocalPath $localRemoteScript -RemotePath $remoteTempScript
+    $normalizedRemoteScript = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "wukongim-remote-redeploy-$([guid]::NewGuid().ToString('N')).sh"
+    try {
+        $scriptText = [System.IO.File]::ReadAllText($localRemoteScript)
+        $scriptText = $scriptText -replace "`r`n", "`n"
+        $scriptText = $scriptText -replace "`r", "`n"
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($normalizedRemoteScript, $scriptText, $utf8NoBom)
+        Copy-ToRemote -LocalPath $normalizedRemoteScript -RemotePath $remoteTempScript
+    } finally {
+        if (Test-Path -LiteralPath $normalizedRemoteScript) {
+            Remove-Item -LiteralPath $normalizedRemoteScript -Force
+        }
+    }
     Invoke-Ssh -Command "chmod +x $(Quote-Bash -Value $remoteTempScript)"
 
     Write-Host "[STEP] Running remote redeploy"

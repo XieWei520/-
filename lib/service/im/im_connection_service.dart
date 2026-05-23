@@ -21,6 +21,7 @@ class ImSdkSetupOptions {
     required this.credentials,
     required this.fallbackAddr,
     required this.resolveAddr,
+    required this.deviceId,
     required this.protoVersion,
     required this.deviceFlag,
     required this.debug,
@@ -29,6 +30,7 @@ class ImSdkSetupOptions {
   final ImConnectionCredentials credentials;
   final String fallbackAddr;
   final Future<String> Function() resolveAddr;
+  final String deviceId;
   final int protoVersion;
   final int deviceFlag;
   final bool debug;
@@ -213,6 +215,7 @@ class WkImSdkConnectionPort implements ImSdkConnectionPort {
           ..getAddr = (complete) {
             setupOptions.resolveAddr().then(complete);
           }
+          ..deviceID = setupOptions.deviceId
           ..protoVersion = setupOptions.protoVersion
           ..deviceFlag = setupOptions.deviceFlag
           ..debug = setupOptions.debug;
@@ -438,6 +441,7 @@ class ImConnectionService {
   Future<bool> setupSdk({
     required ImConnectionCredentials credentials,
     required String fallbackAddr,
+    String deviceId = '',
     required int protoVersion,
     required int deviceFlag,
     required bool debug,
@@ -461,6 +465,7 @@ class ImConnectionService {
             return fallbackAddr;
           }
         },
+        deviceId: deviceId.trim(),
         protoVersion: protoVersion,
         deviceFlag: deviceFlag,
         debug: debug,

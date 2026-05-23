@@ -162,6 +162,122 @@ void main() {
   );
 
   test(
+    'native older history loading requests messages before the anchor',
+    () async {
+      final calls = <Map<String, Object>>[];
+      final expected = <WKMsg>[
+        WKMsg()
+          ..channelID = 'g1001'
+          ..channelType = WKChannelType.group
+          ..messageSeq = 49
+          ..orderSeq = 49000
+          ..contentType = WkMessageContentType.text,
+      ];
+      final gateway = WkImChatHistoryGateway(
+        useDirectRemoteSync: false,
+        requestHistoryMessages:
+            ({
+              required String channelId,
+              required int channelType,
+              required int oldestOrderSeq,
+              required bool contain,
+              required int pullMode,
+              required int limit,
+              required int aroundOrderSeq,
+              required void Function(List<WKMsg>) onResult,
+              required void Function() onSyncStart,
+            }) {
+              calls.add(<String, Object>{
+                'channel_id': channelId,
+                'channel_type': channelType,
+                'oldest_order_seq': oldestOrderSeq,
+                'contain': contain,
+                'pull_mode': pullMode,
+                'limit': limit,
+                'around_order_seq': aroundOrderSeq,
+              });
+              onResult(expected);
+            },
+      );
+
+      final messages = await gateway.loadMore(
+        channelId: 'g1001',
+        channelType: WKChannelType.group,
+        oldestOrderSeq: 50000,
+        limit: 50,
+      );
+
+      expect(messages, same(expected));
+      expect(calls, hasLength(1));
+      expect(calls.single['oldest_order_seq'], 50000);
+      expect(calls.single['contain'], isFalse);
+      expect(calls.single['pull_mode'], 0);
+      expect(calls.single['around_order_seq'], 0);
+    },
+  );
+
+  test(
+    'web direct older history sync requests messages before the anchor sequence',
+    () async {
+      final calls = <Map<String, Object>>[];
+      final gateway = WkImChatHistoryGateway(
+        useDirectRemoteSync: true,
+        authTokenProvider: () => 'token-123',
+        deviceUuidProvider: () => 'device-web-test',
+        syncChannelMessages:
+            ({
+              required channelId,
+              required channelType,
+              required startMessageSeq,
+              required endMessageSeq,
+              required limit,
+              required pullMode,
+              required deviceUuid,
+            }) async {
+              calls.add(<String, Object>{
+                'channel_id': channelId,
+                'channel_type': channelType,
+                'start_message_seq': startMessageSeq,
+                'end_message_seq': endMessageSeq,
+                'limit': limit,
+                'pull_mode': pullMode,
+                'device_uuid': deviceUuid,
+              });
+              return WKSyncChannelMsg()
+                ..messages = <WKSyncMsg>[
+                  WKSyncMsg()
+                    ..clientMsgNO = 'client-049'
+                    ..messageID = '9049'
+                    ..messageSeq = 49
+                    ..fromUID = 'u_sender'
+                    ..channelID = 'g1001'
+                    ..channelType = WKChannelType.group
+                    ..timestamp = 1777184000
+                    ..payload = <String, dynamic>{
+                      'content': 'older',
+                      'type': 1,
+                    },
+                ];
+            },
+      );
+
+      final messages = await gateway.loadMore(
+        channelId: 'g1001',
+        channelType: WKChannelType.group,
+        oldestOrderSeq: 50000,
+        limit: 50,
+      );
+
+      expect(calls, hasLength(1));
+      expect(calls.single['start_message_seq'], 49);
+      expect(calls.single['end_message_seq'], 0);
+      expect(calls.single['pull_mode'], 0);
+      expect(calls.single['device_uuid'], 'device-web-test');
+      expect(messages.map((message) => message.messageSeq), [49]);
+    },
+  );
+
+  test(
     'WkMessageRepository delegates paging queries directly to gateway',
     () async {
       final gateway = _RecordingHistoryGateway();

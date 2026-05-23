@@ -992,9 +992,9 @@ void main() {
     expect((tiles[0].title as Text).data, '鍥炲');
     expect((tiles[1].title as Text).data, '杞彂');
     expect((tiles[2].title as Text).data, '鏀惰棌');
-    expect((tiles[3].title as Text).data, '澶氶€?);
+    expect((tiles[3].title as Text).data, '复制');
     expect((tiles[4].title as Text).data, '鎾ゅ洖');
-    expect((tiles[5].title as Text).data, '琛ㄦ儏鍥炲簲');
+    expect((tiles[5].title as Text).data, '表情回应');
   });
 
     */
@@ -2195,8 +2195,8 @@ void main() {
     final location = WKLocationContent()
       ..latitude = 31.2304
       ..longitude = 121.4737
-      ..title = '涓婃捣'
-      ..address = '涓婃捣甯傞粍娴﹀尯';
+      ..title = '上海'
+      ..address = '上海市黄浦区';
     final message = WKMsg()
       ..messageID = 'm_location_open'
       ..channelID = 'u_location_open'
@@ -2244,7 +2244,7 @@ void main() {
       ..channelType = WKChannelType.personal
       ..fromUID = 'u_other'
       ..contentType = WkMessageContentType.card
-      ..messageContent = WKCardContent('u_card_target', '鍚嶇墖鐢ㄦ埛');
+      ..messageContent = WKCardContent('u_card_target', '名片用户');
 
     await pumpChatPage(
       tester,

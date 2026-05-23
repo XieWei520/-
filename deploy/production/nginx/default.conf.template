@@ -30,7 +30,6 @@ upstream wukongim_ws {
 
 limit_req_zone $binary_remote_addr zone=login_limit:10m rate=20r/m;
 limit_req_zone $binary_remote_addr zone=edge_noise_limit:10m rate=120r/m;
-limit_req_zone $binary_remote_addr zone=ws_limit:10m rate=60r/m;
 
 server {
     listen 80;
@@ -146,7 +145,6 @@ server {
     }
 
     location = /ws {
-        limit_req zone=ws_limit burst=30 nodelay;
         proxy_pass http://wukongim_ws/;
         proxy_http_version 1.1;
         proxy_read_timeout 3600s;

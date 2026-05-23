@@ -7,12 +7,14 @@ class DesktopMessageNotification {
     required this.identifier,
     required this.title,
     required this.body,
+    required this.payload,
     this.count = 1,
   });
 
   final String identifier;
   final String title;
   final String body;
+  final String payload;
   final int count;
 }
 
@@ -82,6 +84,7 @@ class DesktopMessageAlertPolicy {
       identifier: _notificationIdentifier(plan),
       title: plan.title,
       body: count == 1 ? plan.body : '$count new messages',
+      payload: _notificationPayload(plan),
       count: count,
     );
   }
@@ -92,6 +95,19 @@ class DesktopMessageAlertPolicy {
       '-',
     );
     return 'wk-message-${plan.channelType}-$normalizedChannelId';
+  }
+
+  String _notificationPayload(MessageAlertPlan plan) {
+    final payload = plan.payload.trim();
+    if (payload.isNotEmpty) {
+      return payload;
+    }
+    return buildMessageAlertPayload(
+      title: plan.title,
+      body: plan.body,
+      channelId: plan.channelId,
+      channelType: plan.channelType,
+    );
   }
 }
 

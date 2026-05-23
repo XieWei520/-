@@ -483,7 +483,7 @@ void main() {
             conversationName: 'Alpha Group',
             senderName: 'Alice',
             messageType: 'image',
-            text: '[鍥剧墖]',
+            text: '[图片]',
             observedAt: '2026-05-09T12:00:00Z',
             captureSource: 'dom_probe',
             imageAttachments: <MessageImageAttachment>[

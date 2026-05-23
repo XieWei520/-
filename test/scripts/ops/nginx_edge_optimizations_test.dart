@@ -27,10 +27,10 @@ void main() {
     );
     expect(content, contains(r'location ~ /\.(?!well-known/acme-challenge/)'));
     expect(content, contains('wp-|wordpress|phpmyadmin|pma|xmlrpc'));
-    expect(content, contains('zone=ws_limit:10m rate=60r/m'));
+    expect(content, isNot(contains('zone=ws_limit')));
     expect(
       _locationBlock(content, 'location = /ws'),
-      contains('limit_req zone=ws_limit burst=30 nodelay'),
+      isNot(contains('limit_req')),
     );
     expect(content, contains('location ^~ /v1/file/preview/'));
     expect(content, contains('location ^~ /v1/file/download/'));
@@ -63,10 +63,13 @@ void main() {
       _locationBlock(content, 'location = /flutter_bootstrap.js'),
       contains('Strict-Transport-Security'),
     );
+    expect(content, contains('gzip_comp_level 6;'));
+    expect(content, contains('application/wasm application/octet-stream'));
+    expect(content, contains('font/ttf font/otf'));
     expect(
       _locationBlock(content, 'location = /main.dart.js'),
       contains(
-        'Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"',
+        'Cache-Control "public, no-cache, must-revalidate"',
       ),
     );
     expect(

@@ -7,6 +7,7 @@ import 'package:wukong_im_app/modules/chat/message_forwarding.dart';
 import 'package:wukong_im_app/service/api/collection_api.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
+import 'package:wukongimfluttersdk/entity/channel_member.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_text_content.dart';
@@ -271,6 +272,63 @@ void main() {
       expect(completed, isTrue);
     },
   );
+
+  test(
+    'sendMessageContent rejects normal members when group is muted',
+    () async {
+      var sendCount = 0;
+      final gateway = ApiChatSceneGateway(
+        currentUidReader: () => 'u_member',
+        channelLoader: (channelId, channelType) async =>
+            WKChannel(channelId, channelType)..forbidden = 1,
+        memberLoader: (channelId, channelType, uid) async =>
+            WKChannelMember()..role = 0,
+        sendMessageWithOptions: (content, channel, options) {
+          sendCount += 1;
+        },
+      );
+
+      await expectLater(
+        gateway.sendMessageContent(
+          WKTextContent('blocked'),
+          channelId: 'g_muted',
+          channelType: WKChannelType.group,
+        ),
+        throwsA(
+          isA<ChatSceneSendForbiddenException>().having(
+            (error) => error.message,
+            'message',
+            chatSceneGroupMutedMessage,
+          ),
+        ),
+      );
+
+      expect(sendCount, 0);
+    },
+  );
+
+  test('sendMessageContent allows admins when group is muted', () async {
+    final sent = <String>[];
+    final gateway = ApiChatSceneGateway(
+      currentUidReader: () => 'u_admin',
+      channelLoader: (channelId, channelType) async =>
+          WKChannel(channelId, channelType)..forbidden = 1,
+      memberLoader: (channelId, channelType, uid) async =>
+          WKChannelMember()..role = 2,
+      sendMessageWithOptions: (content, channel, options) {
+        final text = content as WKTextContent;
+        sent.add('${channel.channelType}:${channel.channelID}:${text.content}');
+      },
+    );
+
+    await gateway.sendMessageContent(
+      WKTextContent('allowed'),
+      channelId: 'g_muted',
+      channelType: WKChannelType.group,
+    );
+
+    expect(sent, <String>['2:g_muted:allowed']);
+  });
 
   test(
     'sendForwardPayloads waits for injected sender futures to complete',

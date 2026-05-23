@@ -545,15 +545,29 @@ class _ChatPageShellState extends ConsumerState<ChatPageShell> {
   }
 
   Future<void> _openGroupCallPicker() async {
-    await _buildCallEntryCoordinator().runGroupCall(() async {
-      await pushGroupCallPicker(
-        context: context,
-        ref: ref,
-        channelId: widget.channelId,
-        channelType: widget.channelType,
-        channelName: _resolveTitle(),
-      );
-    });
+    await _buildCallEntryCoordinator().runGroupCall(
+      channelId: widget.channelId,
+      channelType: widget.channelType,
+      handleDecision: (decision) async {
+        if (!mounted) {
+          return;
+        }
+        if (!decision.shouldStart) {
+          final feedbackMessage = decision.feedbackMessage?.trim() ?? '';
+          if (feedbackMessage.isNotEmpty) {
+            _showCallFeedback(feedbackMessage);
+          }
+          return;
+        }
+        await pushGroupCallPicker(
+          context: context,
+          ref: ref,
+          channelId: widget.channelId,
+          channelType: widget.channelType,
+          channelName: _resolveTitle(),
+        );
+      },
+    );
   }
 
   ChatCallEntryCoordinator _buildCallEntryCoordinator() {

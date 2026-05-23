@@ -1229,7 +1229,7 @@ void main() {
             messageId: 'feed:image_1',
             dedupeKey: 'feed:alpha:feed:image_1',
             conversationId: 'feed:alpha',
-            text: '[鍥剧墖]',
+            text: '[图片]',
             imageAttachments: const <FeishuMonitorImageAttachment>[
               FeishuMonitorImageAttachment(
                 sourceUrl: 'https://internal.feishu.cn/image-1.png',
@@ -2531,7 +2531,7 @@ void main() {
             messageId: 'feed:image_1',
             dedupeKey: 'feed:alpha:feed:image_1',
             conversationId: 'feed:alpha',
-            text: '[鍥剧墖]',
+            text: '[图片]',
             imageAttachments: const <FeishuMonitorImageAttachment>[
               FeishuMonitorImageAttachment(
                 sourceUrl: 'https://internal.feishu.cn/image-1.png',

@@ -41,10 +41,46 @@ void main() {
       expect(isVipUser(UserInfo(uid: 'u1', vipLevel: 0)), isFalse);
       expect(isVipUser(UserInfo(uid: 'u1', vipLevel: -1)), isFalse);
       expect(isVipUser(UserInfo(uid: 'u1', vipLevel: 2)), isFalse);
+      expect(
+        isVipUser(
+          UserInfo(uid: 'u1', vipLevel: 1, vipExpireTime: DateTime.utc(2000)),
+        ),
+        isFalse,
+      );
     });
 
     test('isVipUser returns true only when vip level equals one', () {
       expect(isVipUser(UserInfo(uid: 'u1', vipLevel: 1)), isTrue);
+    });
+
+    test('hasVipEntitlement respects active vip entitlement model', () {
+      final activeLimited = UserInfo(
+        uid: 'u1',
+        vipLevel: 1,
+        vipExpireTime: DateTime.utc(2099),
+        vipEntitlements: const <String>{VipEntitlement.addFriend},
+      );
+
+      expect(
+        hasVipEntitlement(activeLimited, VipEntitlement.addFriend),
+        isTrue,
+      );
+      expect(
+        hasVipEntitlement(activeLimited, VipEntitlement.createGroup),
+        isFalse,
+      );
+      expect(
+        hasVipEntitlement(
+          UserInfo(
+            uid: 'u1',
+            vipLevel: 1,
+            vipExpireTime: DateTime.utc(2000),
+            vipEntitlements: const <String>{VipEntitlement.addFriend},
+          ),
+          VipEntitlement.addFriend,
+        ),
+        isFalse,
+      );
     });
 
     testWidgets('VipBadge renders default label with expected text settings', (

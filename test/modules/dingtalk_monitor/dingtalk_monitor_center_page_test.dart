@@ -5,6 +5,7 @@ import 'package:wukong_im_app/modules/dingtalk_monitor/dingtalk_monitor_center_p
 import 'package:wukong_im_app/modules/dingtalk_monitor/dingtalk_monitor_forwarding_service.dart';
 import 'package:wukong_im_app/modules/dingtalk_monitor/dingtalk_monitor_shell_client.dart';
 import 'package:wukong_im_app/modules/dingtalk_monitor/dingtalk_monitor_shell_models.dart';
+import 'package:wukong_im_app/modules/local_monitor/local_monitor_forwarding.dart';
 
 void main() {
   testWidgets('renders native host status and recent events', (tester) async {
@@ -225,6 +226,15 @@ class _NoopSender implements DingTalkMonitorTextSender {
     required int channelType,
     String? channelName,
     required String text,
+    DingTalkMonitorRelayIdentity? relayIdentity,
+  }) async {}
+
+  @override
+  Future<void> sendImage({
+    required String channelId,
+    required int channelType,
+    String? channelName,
+    required LocalMonitorForwardableImage image,
     DingTalkMonitorRelayIdentity? relayIdentity,
   }) async {}
 }

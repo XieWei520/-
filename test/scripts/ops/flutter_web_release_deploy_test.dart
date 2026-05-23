@@ -13,6 +13,11 @@ void main() {
       final content = script.readAsStringSync();
       expect(content, contains(r'[string]$BuildWebDir = '));
       expect(content, contains('build\\web'));
+      expect(content, contains('prune_flutter_web_release.ps1'));
+      expect(content, contains('[STEP] Pruning Flutter Web release artifacts'));
+      expect(content, contains('-NoProfile'));
+      expect(content, contains('-ExecutionPolicy Bypass'));
+      expect(content, contains(r'-BuildWebDir $resolvedBuildDir'));
       expect(content, contains('flutter_bootstrap.js'));
       expect(content, contains('wk_pwa_service_worker.js'));
       expect(content, contains('offline.html'));

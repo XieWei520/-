@@ -6,7 +6,7 @@ import 'package:wukong_im_app/widgets/wk_design_tokens.dart';
 import 'package:wukong_im_app/widgets/wk_main_top_bar.dart';
 
 void main() {
-  test('web typography keeps bundled Chinese fallback for CanvasKit', () {
+  test('web typography keeps a lightweight bundled Chinese fallback', () {
     const fallback = WKTypography.webFontFamilyFallback;
 
     expect(fallback, contains('WKChineseWebSubset'));
@@ -74,7 +74,7 @@ void main() {
     expect(pubspec, contains('asset: assets/reference_ui/fonts/rmedium.ttf'));
   });
 
-  testWidgets('main top bar title keeps bundled Chinese fallback', (
+  testWidgets('main top bar title follows the current platform fallback', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -93,7 +93,10 @@ void main() {
     );
 
     expect(defaultStyle.style.fontFamily, WKFontFamily.title);
-    expect(defaultStyle.style.fontFamilyFallback, contains('WKNotoSansSC'));
+    expect(
+      defaultStyle.style.fontFamilyFallback,
+      same(WKTypography.fontFamilyFallback),
+    );
     expect(defaultStyle.style.fontFamilyFallback, contains('Segoe UI Emoji'));
   });
 

@@ -1,0 +1,298 @@
+[CmdletBinding()]
+param(
+  [string]$RemoteHost = 'ubuntu@42.194.218.158',
+  [string]$LocalBackendRoot = '',
+  [string]$RemoteSourceRoot = '/opt/wukongim-prod/src',
+  [string]$RemoteProductionRoot = '/opt/wukongim-prod/src/deploy/production',
+  [string]$BuildVersion = ('phase6-backend-' + (Get-Date -Format 'yyyyMMdd-HHmmss')),
+  [string]$BuildCommit = ('manual-phase6-backend-' + (Get-Date -Format 'yyyyMMdd-HHmmss')),
+  [string]$BuildCommitDate = (Get-Date -Format 'yyyy-MM-dd'),
+  [string]$BuildTreeState = 'manual-sync',
+  [string]$SshKeyPath = '',
+  [switch]$Run,
+  [switch]$AllowProductionSync,
+  [switch]$BuildImage,
+  [switch]$AllowProductionBuild
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$ReleaseFiles = @(
+  'modules/common/api.go',
+  'modules/common/api_launch_policy.go',
+  'modules/common/api_manager.go',
+  'modules/common/api_test.go',
+  'modules/common/db_admin_audit.go',
+  'modules/common/db_app_config.go',
+  'modules/common/maintenance_audit_test.go',
+  'modules/common/sql/common-20260520-01.sql',
+  'modules/file/service.go',
+  'modules/file/service_minio.go',
+  'modules/message/api_manager.go',
+  'modules/message/api_manager_policy_test.go',
+  'modules/message/api_manager_policy_types.go',
+  'modules/message/db_manager.go',
+  'modules/message/sql/message-20260520-01.sql',
+  'modules/user/api_manager.go',
+  'modules/user/api_manager_customer_service_test.go',
+  'modules/user/api_manager_vip_test.go',
+  'modules/user/db_user_purge.go',
+  'modules/user/sql/user-20260520-01.sql',
+  'modules/user/user_purge.go',
+  'modules/user/user_purge_test.go'
+)
+
+function Quote-Bash {
+  param([AllowEmptyString()][Parameter(Mandatory = $true)][string]$Value)
+
+  $single = [string][char]39
+  $double = [string][char]34
+  $replacement = $single + $double + $single + $double + $single
+  return $single + $Value.Replace($single, $replacement) + $single
+}
+
+function Quote-ProcessArgument {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  if ($Value -match '[\s"]') {
+    return '"' + ($Value.Replace('\', '\\').Replace('"', '\"')) + '"'
+  }
+  return $Value
+}
+
+function Validate-RemoteHostToken {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  if ($Value -notmatch '^[A-Za-z0-9_.@:%+-]+$' -or $Value.StartsWith('-')) {
+    throw "RemoteHost must be a single safe ssh host token: $Value"
+  }
+}
+
+function Resolve-BackendRoot {
+  if (-not [string]::IsNullOrWhiteSpace($LocalBackendRoot)) {
+    return (Resolve-Path -LiteralPath $LocalBackendRoot).Path
+  }
+  $repoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')
+  return (Resolve-Path -LiteralPath (Join-Path $repoRoot '.codex-backend-work\src')).Path
+}
+
+function Get-SshOptions {
+  $options = @('-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new')
+  if (-not [string]::IsNullOrWhiteSpace($SshKeyPath)) {
+    $resolvedKey = (Resolve-Path -LiteralPath $SshKeyPath).Path
+    $options += @('-i', $resolvedKey)
+  }
+  return $options
+}
+
+function Invoke-RemoteBash {
+  param([Parameter(Mandatory = $true)][string]$Script)
+
+  Validate-RemoteHostToken -Value $RemoteHost
+  $normalizedScript = (($Script -replace "`r`n", "`n") -replace "`r", "`n").TrimEnd() + "`n"
+  $sshArgs = @((Get-SshOptions) + @('--', $RemoteHost, 'bash', '-s'))
+
+  $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = 'ssh'
+  $startInfo.Arguments = (($sshArgs | ForEach-Object { Quote-ProcessArgument -Value $_ }) -join ' ')
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardInput = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+
+  $process = [System.Diagnostics.Process]::new()
+  $process.StartInfo = $startInfo
+  [void]$process.Start()
+  $process.StandardInput.Write($normalizedScript)
+  $process.StandardInput.Close()
+  $stdout = $process.StandardOutput.ReadToEnd()
+  $stderr = $process.StandardError.ReadToEnd()
+  $process.WaitForExit()
+
+  if (-not [string]::IsNullOrWhiteSpace($stdout)) {
+    $stdout.TrimEnd() -split "`r?`n" | ForEach-Object { $_ }
+  }
+  if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+    $stderr.TrimEnd() -split "`r?`n" | ForEach-Object { $_ }
+  }
+  if ($process.ExitCode -ne 0) {
+    throw "Remote Phase 6 backend release prepare command failed with exit code $($process.ExitCode)."
+  }
+}
+
+function Copy-ToRemote {
+  param(
+    [Parameter(Mandatory = $true)][string]$LocalPath,
+    [Parameter(Mandatory = $true)][string]$RemotePath
+  )
+
+  Validate-RemoteHostToken -Value $RemoteHost
+  $scpArgs = @((Get-SshOptions) + @('--', $LocalPath, "$RemoteHost`:$RemotePath"))
+  & scp @scpArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "scp failed while copying '$LocalPath' to '$RemotePath'."
+  }
+}
+
+function New-Manifest {
+  param([Parameter(Mandatory = $true)][string]$BackendRoot)
+
+  $rows = New-Object System.Collections.Generic.List[string]
+  foreach ($relative in $ReleaseFiles) {
+    if ($relative.StartsWith('/') -or $relative.Contains('..') -or $relative.Contains('\')) {
+      throw "Unsafe release file path: $relative"
+    }
+    $localPath = Join-Path $BackendRoot ($relative -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $localPath -PathType Leaf)) {
+      throw "Missing local release file: $localPath"
+    }
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $localPath).Hash.ToLowerInvariant()
+    $rows.Add("$hash  $relative")
+  }
+  return $rows
+}
+
+$backendRoot = Resolve-BackendRoot
+$manifestRows = New-Manifest -BackendRoot $backendRoot
+$remoteSourceArg = Quote-Bash -Value $RemoteSourceRoot
+$remoteProductionArg = Quote-Bash -Value $RemoteProductionRoot
+$buildVersionArg = Quote-Bash -Value $BuildVersion
+$buildCommitArg = Quote-Bash -Value $BuildCommit
+$buildCommitDateArg = Quote-Bash -Value $BuildCommitDate
+$buildTreeStateArg = Quote-Bash -Value $BuildTreeState
+$manifestText = ($manifestRows -join "`n")
+$manifestArg = Quote-Bash -Value $manifestText
+
+if (-not $Run) {
+  Write-Host 'Dry run only. Add -Run -AllowProductionSync to sync Phase 6 backend source files.'
+  Write-Host 'Add -BuildImage -AllowProductionBuild to build tsdd-api/callgateway images after sync without restarting services.'
+  Write-Host "RemoteHost: $RemoteHost"
+  Write-Host "LocalBackendRoot: $backendRoot"
+  Write-Host "RemoteSourceRoot: $RemoteSourceRoot"
+  Write-Host "RemoteProductionRoot: $RemoteProductionRoot"
+  Write-Host "BuildVersion: $BuildVersion"
+  Write-Host ''
+  Write-Host 'Files to sync:'
+  $ReleaseFiles | ForEach-Object { Write-Host "  $_" }
+  Write-Host ''
+  Write-Host 'Manifest:'
+  $manifestRows | ForEach-Object { Write-Host $_ }
+  exit 0
+}
+
+if (-not $AllowProductionSync) {
+  throw 'Refusing to sync production backend source without -AllowProductionSync.'
+}
+if ($BuildImage -and -not $AllowProductionBuild) {
+  throw 'Refusing to build production backend image without -AllowProductionBuild.'
+}
+
+$remoteTempDir = "/tmp/phase6-backend-sync-$([guid]::NewGuid().ToString('N'))"
+$remoteTempArg = Quote-Bash -Value $remoteTempDir
+$initScript = @"
+set -euo pipefail
+remote_tmp=$remoteTempArg
+rm -rf "`$remote_tmp"
+mkdir -p "`$remote_tmp"
+"@
+Invoke-RemoteBash -Script $initScript
+
+try {
+  foreach ($relative in $ReleaseFiles) {
+    $localPath = Join-Path $backendRoot ($relative -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $remotePath = "$remoteTempDir/$relative"
+    $remoteDir = Split-Path -Path $remotePath -Parent
+    Invoke-RemoteBash -Script ("set -euo pipefail`nmkdir -p " + (Quote-Bash -Value ($remoteDir -replace '\\', '/')))
+    Copy-ToRemote -LocalPath $localPath -RemotePath $remotePath
+  }
+  $manifestFile = Join-Path ([System.IO.Path]::GetTempPath()) "phase6-backend-manifest-$([guid]::NewGuid().ToString('N')).txt"
+  try {
+    $manifestContent = (($manifestRows -join "`n") + "`n")
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($manifestFile, $manifestContent, $utf8NoBom)
+    Copy-ToRemote -LocalPath $manifestFile -RemotePath "$remoteTempDir/.manifest"
+  } finally {
+    if (Test-Path -LiteralPath $manifestFile) {
+      Remove-Item -LiteralPath $manifestFile -Force
+    }
+  }
+
+  $buildFlag = if ($BuildImage) { '1' } else { '0' }
+  $applyScript = @"
+set -euo pipefail
+remote_source=$remoteSourceArg
+remote_production=$remoteProductionArg
+remote_tmp=$remoteTempArg
+manifest_text=$manifestArg
+build_image='$buildFlag'
+build_version=$buildVersionArg
+build_commit=$buildCommitArg
+build_commit_date=$buildCommitDateArg
+build_tree_state=$buildTreeStateArg
+
+cd "`$remote_source"
+test -f go.mod
+test -d modules/common
+test -d modules/user
+test -d deploy/production
+test -f "`$remote_tmp/.manifest"
+tr -d '\r' < "`$remote_tmp/.manifest" > "`$remote_tmp/.manifest.lf"
+mv "`$remote_tmp/.manifest.lf" "`$remote_tmp/.manifest"
+if ! diff -u <(printf '%s\n' "`$manifest_text") "`$remote_tmp/.manifest"; then
+  echo 'phase6_backend_sync=manifest_mismatch' >&2
+  exit 1
+fi
+
+timestamp="`$(date +%Y%m%dT%H%M%S%z)"
+backup_dir="`$remote_production/backups/phase6-source-sync/`$timestamp"
+mkdir -p "`$backup_dir"
+
+while IFS= read -r row; do
+  [ -n "`$row" ] || continue
+  expected_hash="`$(printf '%s\n' "`$row" | awk '{print `$1}')"
+  relative_path="`$(printf '%s\n' "`$row" | cut -d' ' -f3-)"
+  case "`$relative_path" in
+    /*|*..*|'')
+      echo "unsafe release file path: `$relative_path" >&2
+      exit 1
+      ;;
+  esac
+  staged_path="`$remote_tmp/`$relative_path"
+  test -f "`$staged_path"
+  staged_hash="`$(sha256sum "`$staged_path" | awk '{print `$1}')"
+  if [ "`$staged_hash" != "`$expected_hash" ]; then
+    echo "staged hash mismatch for `$relative_path" >&2
+    exit 1
+  fi
+  if [ -f "`$relative_path" ]; then
+    mkdir -p "`$backup_dir/`$(dirname "`$relative_path")"
+    cp -p "`$relative_path" "`$backup_dir/`$relative_path"
+  fi
+  mkdir -p "`$(dirname "`$relative_path")"
+  install -m 0644 "`$staged_path" "`$relative_path"
+  installed_hash="`$(sha256sum "`$relative_path" | awk '{print `$1}')"
+  if [ "`$installed_hash" != "`$expected_hash" ]; then
+    echo "installed hash mismatch for `$relative_path" >&2
+    exit 1
+  fi
+done < "`$remote_tmp/.manifest"
+
+echo "phase6_backend_sync=applied"
+echo "phase6_backend_sync_backup_dir=`$backup_dir"
+
+if [ "`$build_image" = '1' ]; then
+  cd "`$remote_production"
+  BUILD_VERSION="`$build_version" BUILD_COMMIT="`$build_commit" BUILD_COMMIT_DATE="`$build_commit_date" BUILD_TREE_STATE="`$build_tree_state" \
+    docker compose --env-file .env build tsdd-api callgateway
+  echo 'phase6_backend_build=completed'
+  docker compose --env-file .env ps tsdd-api callgateway
+else
+  echo 'phase6_backend_build=skipped'
+fi
+"@
+  Invoke-RemoteBash -Script $applyScript
+}
+finally {
+  Invoke-RemoteBash -Script ("set -euo pipefail`nrm -rf " + $remoteTempArg) | Out-Null
+}

@@ -288,7 +288,10 @@ class _AddFriendsPageState extends State<AddFriendsPage> {
   }
 
   Future<void> _openSearchUserPage() async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.addFriend,
+    )) {
       return;
     }
     if (!mounted) {
@@ -335,6 +338,7 @@ class _AddFriendsPageState extends State<AddFriendsPage> {
   Future<void> _openMailListPage() async {
     if (!await guardVipFeature(
       context,
+      entitlement: VipEntitlement.addFriend,
       customerServicesLoader: widget.vipCustomerServicesLoader,
     )) {
       return;
@@ -670,7 +674,10 @@ class _SearchUserPageState extends State<SearchUserPage> {
     if (_appliedUids.contains(user.uid)) {
       return;
     }
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.addFriend,
+    )) {
       return;
     }
     if (!mounted) {

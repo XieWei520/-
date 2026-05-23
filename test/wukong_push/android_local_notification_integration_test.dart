@@ -24,6 +24,24 @@ void main() {
     expect(source, contains('defaultValue: false'));
   });
 
+  test('mainland China alert spec does not treat FCM as primary delivery', () {
+    final spec = File(
+      'docs/specs/cross-platform-message-alert-experience.md',
+    ).readAsStringSync();
+    final source = File('lib/wukong_push/push_service.dart').readAsStringSync();
+
+    expect(spec, contains('Mainland China Deployment Constraints'));
+    expect(spec, contains('must not depend on Firebase Cloud Messaging'));
+    expect(spec, contains('mainland manufacturer channels'));
+    expect(spec, contains('Web Push in mainland China should be treated as best-effort'));
+    expect(spec, contains('Getui'));
+    expect(spec, contains('JPush'));
+    expect(spec, contains('Tencent Cloud Push'));
+    expect(source, contains('WK_ENABLE_FCM_PUSH'));
+    expect(source, contains('defaultValue: false'));
+    expect(source, isNot(contains('defaultValue: true')));
+  });
+
   test('Android resources include the raw message sound', () {
     expect(
       File(

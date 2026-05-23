@@ -133,6 +133,46 @@ void main() {
     );
 
     test(
+      'getGroupMembers requests the full member list instead of backend default page size',
+      () async {
+        final adapter = _RecordingJsonAdapter(
+          payload: <String, dynamic>{
+            'code': 0,
+            'data': List<Map<String, dynamic>>.generate(
+              101,
+              (index) => <String, dynamic>{
+                'group_no': 'g-10001',
+                'uid': 'u-${index + 1}',
+                'name': 'Member ${index + 1}',
+                'role': 0,
+                'status': 1,
+                'is_deleted': 0,
+              },
+            ),
+          },
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+
+        final members = await GroupApi.instance.getGroupMembers('g-10001');
+
+        expect(members, hasLength(101));
+        expect(
+          adapter.lastRequestOptions?.path,
+          '${ApiConfig.groups}/g-10001${ApiConfig.groupMembers}',
+        );
+        expect(adapter.lastRequestOptions?.method, 'GET');
+        expect(
+          adapter.lastRequestOptions?.queryParameters,
+          containsPair('page', 1),
+        );
+        expect(
+          adapter.lastRequestOptions?.queryParameters,
+          containsPair('limit', 100000),
+        );
+      },
+    );
+
+    test(
       'getMyGroups does not resurrect local-only conversations when server no longer returns the group',
       () async {
         const serverGroupNo = 'g_server_only_phase3';

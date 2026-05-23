@@ -650,7 +650,10 @@ class _CreateGroupPageState extends ConsumerState<CreateGroupPage> {
       );
       return;
     }
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.createGroup,
+    )) {
       return;
     }
     if (!mounted) {

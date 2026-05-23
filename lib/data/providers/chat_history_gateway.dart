@@ -133,7 +133,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
         channelId: channelId,
         channelType: channelType,
         oldestOrderSeq: oldestOrderSeq,
-        pullMode: 1,
+        pullMode: 0,
         limit: limit,
       );
     }
@@ -141,7 +141,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
       channelId: channelId,
       channelType: channelType,
       oldestOrderSeq: oldestOrderSeq,
-      pullMode: 1,
+      pullMode: 0,
       limit: limit,
       aroundOrderSeq: 0,
     );
@@ -161,6 +161,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
         oldestOrderSeq: aroundOrderSeq,
         pullMode: 0,
         limit: limit,
+        aroundAnchor: true,
       );
     }
     return _fetch(
@@ -179,6 +180,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
     required int oldestOrderSeq,
     required int pullMode,
     required int limit,
+    bool aroundAnchor = false,
   }) async {
     if ((_authTokenProvider()?.trim() ?? '').isEmpty) {
       return _readCachedRemoteMessages(
@@ -187,6 +189,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
         oldestOrderSeq: oldestOrderSeq,
         pullMode: pullMode,
         limit: limit,
+        aroundAnchor: aroundAnchor,
       );
     }
     try {
@@ -223,6 +226,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
         oldestOrderSeq: oldestOrderSeq,
         pullMode: pullMode,
         limit: limit,
+        aroundAnchor: aroundAnchor,
       );
     }
   }
@@ -233,6 +237,7 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
     required int oldestOrderSeq,
     required int pullMode,
     required int limit,
+    bool aroundAnchor = false,
   }) async {
     final webCacheStore = _webCacheStore;
     if (webCacheStore == null) {
@@ -243,8 +248,8 @@ class WkImChatHistoryGateway implements ChatHistoryGateway {
       uid: uid,
       channelId: channelId,
       channelType: channelType,
-      beforeOrderSeq: pullMode == 1 ? oldestOrderSeq : 0,
-      aroundOrderSeq: pullMode == 0 ? oldestOrderSeq : 0,
+      beforeOrderSeq: !aroundAnchor && oldestOrderSeq > 0 ? oldestOrderSeq : 0,
+      aroundOrderSeq: aroundAnchor ? oldestOrderSeq : 0,
       limit: limit,
     );
   }

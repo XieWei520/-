@@ -89,6 +89,43 @@ void main() {
       expect(container.read(authProvider).isLoggedIn, isTrue);
     },
   );
+
+  test(
+    'restored login refreshes device binding when a session is already stored',
+    () async {
+      await StorageUtils.setUid('u_restore_existing');
+      await StorageUtils.setToken('token_restore_existing');
+      await StorageUtils.setImToken('token_restore_existing');
+      await StorageUtils.setDeviceSessionId('session_existing');
+
+      final authority = _FakeDeviceIdentityAuthority(
+        deviceSessionId: 'session_refreshed',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          noopImNotificationBridgeOverride(),
+          authProvider.overrideWith((ref) => _TestAuthNotifier(ref)),
+          deviceIdentityAuthorityProvider.overrideWithValue(authority),
+          authCurrentUserLoaderProvider.overrideWithValue(
+            () async => UserInfo(
+              uid: 'u_restore_existing',
+              token: 'token_restore_existing',
+            ),
+          ),
+          authDraftSyncProvider.overrideWithValue(() async {}),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await _waitFor(() => !container.read(authProvider).isRestoringSession);
+
+      expect(authority.bindCalls, hasLength(1));
+      expect(authority.bindCalls.single.userId, 'u_restore_existing');
+      expect(authority.bindCalls.single.token, 'token_restore_existing');
+      expect(StorageUtils.getDeviceSessionId(), 'session_refreshed');
+      expect(container.read(authProvider).isLoggedIn, isTrue);
+    },
+  );
 }
 
 class _TestAuthNotifier extends AuthNotifier {

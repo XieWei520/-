@@ -39,6 +39,13 @@ double chatListCacheExtent({
   return (safeHeight * multiplier).clamp(minExtent, maxExtent).toDouble();
 }
 
+int? roundFiniteViewportOffset(double value) {
+  if (!value.isFinite) {
+    return null;
+  }
+  return value.round();
+}
+
 @immutable
 class ChatViewportPersistenceSnapshot {
   const ChatViewportPersistenceSnapshot({

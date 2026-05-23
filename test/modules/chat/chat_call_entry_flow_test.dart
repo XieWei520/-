@@ -170,6 +170,7 @@ void main() {
     tester,
   ) async {
     var builderCallCount = 0;
+    final requestedTypes = <CallType>[];
 
     await pumpChat(
       tester,
@@ -177,6 +178,16 @@ void main() {
       channelType: WKChannelType.group,
       channelName: 'Team Room',
       overrides: [
+        chatCallEntryServiceProvider.overrideWithValue(
+          _FakeChatCallEntryService((
+            callType, {
+            required channelId,
+            required channelType,
+          }) async {
+            requestedTypes.add(callType);
+            return ChatCallEntryDecision.start(callType);
+          }),
+        ),
         chatGroupCallPageBuilderProvider.overrideWithValue(({
           required String channelId,
           required int channelType,
@@ -193,6 +204,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(requestedTypes, <CallType>[CallType.video]);
     expect(builderCallCount, 1);
     expect(find.byType(GroupCallMemberPickerPage), findsNothing);
     expect(
@@ -200,6 +212,51 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'group chat group-call action shows mute feedback and does not open picker',
+    (tester) async {
+      var builderCallCount = 0;
+
+      await pumpChat(
+        tester,
+        channelId: 'g_muted_group_call',
+        channelType: WKChannelType.group,
+        channelName: 'Muted Team',
+        overrides: [
+          chatCallEntryServiceProvider.overrideWithValue(
+            _FakeChatCallEntryService((
+              callType, {
+              required channelId,
+              required channelType,
+            }) async {
+              return ChatCallEntryDecision.blocked('group call muted');
+            }),
+          ),
+          chatGroupCallPageBuilderProvider.overrideWithValue(({
+            required String channelId,
+            required int channelType,
+            String? channelName,
+          }) {
+            builderCallCount += 1;
+            return const _StubGroupCallPage();
+          }),
+        ],
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('chat-group-call-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(builderCallCount, 0);
+      expect(
+        find.byKey(const ValueKey<String>('stub-group-call-page')),
+        findsNothing,
+      );
+      expect(find.text('group call muted'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'blocked call feedback is trimmed, replaces current snackbar, and does not navigate',

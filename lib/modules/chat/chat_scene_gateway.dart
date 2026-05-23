@@ -6,6 +6,7 @@ import 'package:wukong_im_app/service/api/collection_api.dart';
 import 'package:wukong_im_app/service/api/message_api.dart';
 import 'package:wukong_im_app/wukong_base/msg/reaction_manager.dart';
 import 'package:wukongimfluttersdk/entity/channel.dart';
+import 'package:wukongimfluttersdk/entity/channel_member.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/model/wk_message_content.dart';
@@ -32,8 +33,27 @@ typedef ChatSceneSendMessageWithOptions =
       WKChannel channel,
       WKSendOptions? options,
     );
+typedef ChatSceneChannelLoader =
+    FutureOr<WKChannel?> Function(String channelId, int channelType);
+typedef ChatSceneMemberLoader =
+    FutureOr<WKChannelMember?> Function(
+      String channelId,
+      int channelType,
+      String uid,
+    );
 
 const int defaultChatMessageRetentionSeconds = 30 * 24 * 60 * 60;
+const String chatSceneGroupMutedMessage = '当前群已全员禁言，仅群主、管理员和机器人可以发言';
+const String chatSceneMemberMutedMessage = '当前账号已被禁言，无法发送消息';
+
+class ChatSceneSendForbiddenException implements Exception {
+  const ChatSceneSendForbiddenException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 Future<void> sendPersistentSdkMessage({
   required WKMessageContent content,
@@ -282,6 +302,8 @@ class ApiChatSceneGateway implements ChatSceneGateway {
     FutureOr<void> Function(List<WKMsgExtra> extras)? saveRemoteExtras,
     FutureOr<void> Function(WKMsg message)? refreshLocalMessage,
     String Function()? currentUidReader,
+    ChatSceneChannelLoader? channelLoader,
+    ChatSceneMemberLoader? memberLoader,
   }) : _collectionApi = collectionApi ?? CollectionApi.instance,
        _messageApi = messageApi ?? MessageApi.instance,
        _reactionManager = reactionManager ?? ReactionManager(),
@@ -291,7 +313,9 @@ class ApiChatSceneGateway implements ChatSceneGateway {
        _deleteLocalMessage = deleteLocalMessage ?? _defaultDeleteLocalMessage,
        _saveRemoteExtras = saveRemoteExtras ?? _defaultSaveRemoteExtras,
        _refreshLocalMessage = refreshLocalMessage,
-       _currentUidReader = currentUidReader ?? _defaultCurrentUidReader;
+       _currentUidReader = currentUidReader ?? _defaultCurrentUidReader,
+       _channelLoader = channelLoader ?? _defaultChannelLoader,
+       _memberLoader = memberLoader ?? _defaultMemberLoader;
 
   final CollectionApi _collectionApi;
   final MessageApi _messageApi;
@@ -303,6 +327,8 @@ class ApiChatSceneGateway implements ChatSceneGateway {
   final FutureOr<void> Function(List<WKMsgExtra> extras) _saveRemoteExtras;
   final FutureOr<void> Function(WKMsg message)? _refreshLocalMessage;
   final String Function() _currentUidReader;
+  final ChatSceneChannelLoader _channelLoader;
+  final ChatSceneMemberLoader _memberLoader;
 
   static Future<List<WKUIConversationMsg>> _defaultLoadConversations() {
     return WKIM.shared.conversationManager.getAll();
@@ -339,6 +365,25 @@ class ApiChatSceneGateway implements ChatSceneGateway {
 
   static Future<void> _defaultSaveRemoteExtras(List<WKMsgExtra> extras) {
     return WKIM.shared.messageManager.saveRemoteExtraMsg(extras);
+  }
+
+  static Future<WKChannel?> _defaultChannelLoader(
+    String channelId,
+    int channelType,
+  ) {
+    return WKIM.shared.channelManager.getChannel(channelId, channelType);
+  }
+
+  static Future<WKChannelMember?> _defaultMemberLoader(
+    String channelId,
+    int channelType,
+    String uid,
+  ) {
+    return WKIM.shared.channelMemberManager.getMember(
+      channelId,
+      channelType,
+      uid,
+    );
   }
 
   static String _defaultCurrentUidReader() {
@@ -467,14 +512,66 @@ class ApiChatSceneGateway implements ChatSceneGateway {
     String? channelName,
     int? expireSeconds,
   }) async {
+    await _ensureCanSendToChannel(
+      channelId: channelId,
+      channelType: channelType,
+    );
     final channel = WKChannel(channelId, channelType);
     if (channelName != null && channelName.trim().isNotEmpty) {
       channel.channelName = channelName.trim();
     }
-    final options =
-        WKSendOptions()
-          ..expire = expireSeconds ?? defaultChatMessageRetentionSeconds;
+    final options = WKSendOptions()
+      ..expire = expireSeconds ?? defaultChatMessageRetentionSeconds;
     await Future<void>.sync(() => _sendMessage(content, channel, options));
+  }
+
+  Future<void> _ensureCanSendToChannel({
+    required String channelId,
+    required int channelType,
+  }) async {
+    if (channelType != WKChannelType.group) {
+      return;
+    }
+    final currentUid = _currentUidReader().trim();
+    if (currentUid.isEmpty) {
+      return;
+    }
+    final channel = await Future<WKChannel?>.sync(
+      () => _channelLoader(channelId, channelType),
+    );
+    if ((channel?.forbidden ?? 0) != 1) {
+      final member = await Future<WKChannelMember?>.sync(
+        () => _memberLoader(channelId, channelType, currentUid),
+      );
+      if (_isMemberMuted(member)) {
+        throw const ChatSceneSendForbiddenException(
+          chatSceneMemberMutedMessage,
+        );
+      }
+      return;
+    }
+    final member = await Future<WKChannelMember?>.sync(
+      () => _memberLoader(channelId, channelType, currentUid),
+    );
+    if (_isMemberMuted(member)) {
+      throw const ChatSceneSendForbiddenException(chatSceneMemberMutedMessage);
+    }
+    if (!_isGroupManagerOrOwner(member)) {
+      throw const ChatSceneSendForbiddenException(chatSceneGroupMutedMessage);
+    }
+  }
+
+  static bool _isGroupManagerOrOwner(WKChannelMember? member) {
+    final role = member?.role ?? 0;
+    return role == 1 || role == 2;
+  }
+
+  static bool _isMemberMuted(WKChannelMember? member) {
+    final expiresAt = member?.forbiddenExpirationTime ?? 0;
+    if (expiresAt <= 0) {
+      return false;
+    }
+    return expiresAt > DateTime.now().millisecondsSinceEpoch ~/ 1000;
   }
 
   @override
@@ -487,6 +584,12 @@ class ApiChatSceneGateway implements ChatSceneGateway {
     List<ForwardPayload> payloads,
     List<ForwardTarget> targets,
   ) async {
+    for (final target in targets) {
+      await _ensureCanSendToChannel(
+        channelId: target.channelId,
+        channelType: target.channelType,
+      );
+    }
     final pendingSends = <Future<void>>[];
     for (final target in targets) {
       final channel = WKChannel(target.channelId, target.channelType)

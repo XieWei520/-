@@ -1,15 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wukongimfluttersdk/type/const.dart';
 
+import '../../data/providers/conversation_provider.dart';
+import '../../platform/browser_startup_recovery_service.dart';
 import '../../service/im/im_service.dart';
 import '../../widgets/wk_colors.dart';
 import '../../widgets/wk_design_tokens.dart';
 import '../../widgets/wk_reference_assets.dart';
 import '../../widgets/wk_tab_shell.dart';
+import '../../wukong_push/notification/web_notification_manager.dart';
 import '../contacts/contacts_page.dart';
 import '../conversation/web_conversation_workspace.dart';
 import '../user/user_page.dart';
+import 'home_pwa_resume_coordinator.dart';
 import 'home_surface_contract.dart';
 import 'home_surface_kernel.dart';
 
@@ -39,6 +46,9 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage> {
   ];
   ProviderSubscription<HomeBootstrapState>? _bootstrapSubscription;
   ProviderSubscription<int>? _tabSubscription;
+  HomePwaResumeCoordinator? _pwaResumeCoordinator;
+  bool _webAlertUnlockDismissed = false;
+  bool _webAlertUnlocking = false;
 
   @override
   void initState() {
@@ -55,6 +65,12 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage> {
         controller.markReadyWithoutInit();
       });
       return;
+    }
+
+    if (kIsWeb) {
+      _pwaResumeCoordinator = createHomePwaResumeCoordinator(
+        onRecover: _recoverPwaMessageState,
+      )..start();
     }
 
     if (bootstrap.isReady || bootstrap.error != null) {
@@ -138,17 +154,30 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage> {
     }
   }
 
-  void _retryInitialize() {
+  Future<void> _retryInitialize() async {
     final bootstrap = ref.read(homeBootstrapStateProvider);
     if (bootstrap.isLoading && !bootstrap.isReady) {
       return;
     }
+    final recoveryService = ref.read(browserStartupRecoveryServiceProvider);
+    final recoveryStarted = await recoveryService.recoverFromStartupFailure();
+    if (recoveryStarted || !mounted) {
+      return;
+    }
     _markBootstrapStart();
-    ref.read(homeBootstrapStateProvider.notifier).initialize();
+    await ref.read(homeBootstrapStateProvider.notifier).initialize();
+    if (!mounted || !recoveryService.hasRecoveredStartupFailure) {
+      return;
+    }
+    final nextBootstrap = ref.read(homeBootstrapStateProvider);
+    if (nextBootstrap.error != null) {
+      await recoveryService.resetDamagedSession();
+    }
   }
 
   @override
   void dispose() {
+    _pwaResumeCoordinator?.dispose();
     _bootstrapSubscription?.close();
     _tabSubscription?.close();
     super.dispose();
@@ -168,7 +197,9 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage> {
           body: Center(
             child: ElevatedButton(
               key: const ValueKey<String>('home-bootstrap-retry-button'),
-              onPressed: _retryInitialize,
+              onPressed: () {
+                unawaited(_retryInitialize());
+              },
               child: const Text('重试'),
             ),
           ),
@@ -181,6 +212,14 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage> {
     final connectionBanner = _HomeConnectionBannerData.from(
       ref.watch(imServiceProvider),
     );
+    final showWebAlertUnlockBanner =
+        kIsWeb &&
+        !_webAlertUnlockDismissed &&
+        (!WebNotificationManager.instance.isInitialized ||
+            !WebNotificationManager
+                .instance
+                .capability
+                .hasNotificationPermission);
 
     final shell = WKTabShell(
       currentIndex: ref.watch(homeCurrentTabIndexProvider),
@@ -208,7 +247,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage> {
           ref.read(homeCurrentTabIndexProvider.notifier).state = index,
     );
 
-    if (connectionBanner == null) {
+    if (connectionBanner == null && !showWebAlertUnlockBanner) {
       return shell;
     }
 
@@ -221,11 +260,78 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage> {
           right: 0,
           child: SafeArea(
             bottom: false,
-            child: _HomeConnectionBanner(data: connectionBanner),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showWebAlertUnlockBanner)
+                  _HomeWebAlertUnlockBanner(
+                    unlocking: _webAlertUnlocking,
+                    message: WebNotificationManager
+                        .instance
+                        .capability
+                        .bannerMessage,
+                    reliabilityMessage: WebNotificationManager
+                        .instance
+                        .capability
+                        .reliabilityMessage,
+                    recommendedActions: WebNotificationManager
+                        .instance
+                        .capability
+                        .recommendedActions,
+                    diagnosticsMessage: WebNotificationManager
+                        .instance
+                        .capability
+                        .diagnosticsMessage,
+                    onEnable: _enableWebMessageAlerts,
+                    onDismiss: () {
+                      setState(() => _webAlertUnlockDismissed = true);
+                    },
+                  ),
+                if (connectionBanner != null)
+                  _HomeConnectionBanner(data: connectionBanner),
+              ],
+            ),
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _enableWebMessageAlerts() async {
+    if (_webAlertUnlocking) {
+      return;
+    }
+    setState(() => _webAlertUnlocking = true);
+    await WebNotificationManager.instance.init();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _webAlertUnlocking = false;
+      _webAlertUnlockDismissed =
+          WebNotificationManager.instance.capability.hasNotificationPermission;
+    });
+  }
+
+  Future<void> _recoverPwaMessageState(String reason) async {
+    if (!mounted) {
+      return;
+    }
+
+    try {
+      await WebNotificationManager.instance.refreshBackgroundDeliveryState();
+      if (!mounted) {
+        return;
+      }
+      await ref.read(imServiceProvider.notifier).init();
+      if (!mounted) {
+        return;
+      }
+      await ref.read(conversationProvider.notifier).refreshNow();
+    } catch (error, stackTrace) {
+      debugPrint('PWA message resume recovery failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 }
 
@@ -249,7 +355,7 @@ class _HomeConnectionBannerData {
       return null;
     }
 
-    if (!state.isInitialized && !state.isInitializing) {
+    if (!state.isInitialized && !state.isInitializing && state.error == null) {
       return null;
     }
 
@@ -343,6 +449,123 @@ class _HomeConnectionBanner extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _HomeWebAlertUnlockBanner extends StatelessWidget {
+  const _HomeWebAlertUnlockBanner({
+    required this.unlocking,
+    required this.message,
+    required this.reliabilityMessage,
+    required this.recommendedActions,
+    required this.diagnosticsMessage,
+    required this.onEnable,
+    required this.onDismiss,
+  });
+
+  final bool unlocking;
+  final String message;
+  final String reliabilityMessage;
+  final List<String> recommendedActions;
+  final String diagnosticsMessage;
+  final VoidCallback onEnable;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey<String>('home-web-alert-unlock-banner'),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(
+        horizontal: WKSpace.md,
+        vertical: WKSpace.sm,
+      ),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          WKColors.info.withValues(alpha: 0.12),
+          WKColors.white,
+        ),
+        border: Border.all(color: WKColors.info.withValues(alpha: 0.28)),
+        borderRadius: BorderRadius.circular(WKRadius.lg),
+        boxShadow: WKShadows.soft,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.notifications_active_outlined,
+            size: 18,
+            color: WKColors.info,
+          ),
+          const SizedBox(width: WKSpace.xs),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: WKColors.info,
+                fontFamily: WKFontFamily.primary,
+                fontFamilyFallback: WKTypography.fontFamilyFallback,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: unlocking ? null : onEnable,
+            child: Text(unlocking ? '开启中' : '开启'),
+          ),
+          IconButton(
+            tooltip: '查看提醒能力',
+            onPressed: unlocking
+                ? null
+                : () {
+                    showDialog<void>(
+                      context: context,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('网页提醒能力'),
+                        content: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(reliabilityMessage),
+                              const SizedBox(height: WKSpace.sm),
+                              Text(diagnosticsMessage),
+                              if (recommendedActions.isNotEmpty) ...[
+                                const SizedBox(height: WKSpace.md),
+                                const Text('建议操作'),
+                                const SizedBox(height: WKSpace.xs),
+                                for (final action in recommendedActions)
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                      bottom: WKSpace.xs,
+                                    ),
+                                    child: Text('• $action'),
+                                  ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        actions: <Widget>[
+                          TextButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text('知道了'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+            icon: const Icon(Icons.info_outline_rounded, size: 18),
+          ),
+          IconButton(
+            tooltip: '关闭',
+            onPressed: unlocking ? null : onDismiss,
+            icon: const Icon(Icons.close_rounded, size: 18),
+          ),
+        ],
       ),
     );
   }

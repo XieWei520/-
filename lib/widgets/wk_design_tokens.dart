@@ -63,9 +63,9 @@ class WKTypography {
     'sans-serif',
   ];
 
-  // CanvasKit can resolve the bundled emoji shard reliably, but system emoji
-  // family names are less predictable in browser text rendering, so web keeps
-  // the packaged color emoji font first.
+  // Web keeps only the subsetted bundled Chinese font on the hot path. The
+  // full CJK font is too large for first load and is removed from release
+  // artifacts by scripts/ops/prune_flutter_web_release.ps1.
   static const List<String> webFontFamilyFallback = [
     'Noto Color Emoji',
     'WKChineseWebSubset',

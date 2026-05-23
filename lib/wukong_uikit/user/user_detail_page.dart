@@ -206,7 +206,10 @@ class _UserDetailPageState extends ConsumerState<UserDetailPage> {
       }
       return;
     }
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.addFriend,
+    )) {
       return;
     }
     if (!mounted) {

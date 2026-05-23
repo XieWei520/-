@@ -82,6 +82,17 @@ foreach ($required in @('index.html', 'flutter_bootstrap.js', 'manifest.json')) 
     }
 }
 
+$pruneScript = Join-Path -Path $PSScriptRoot -ChildPath 'prune_flutter_web_release.ps1'
+if (-not (Test-Path -LiteralPath $pruneScript -PathType Leaf)) {
+    throw "Missing Flutter Web release pruner: $pruneScript"
+}
+
+Write-Host "[STEP] Pruning Flutter Web release artifacts"
+& powershell -NoProfile -ExecutionPolicy Bypass -File $pruneScript -BuildWebDir $resolvedBuildDir
+if ($LASTEXITCODE -ne 0) {
+    throw "Flutter Web release pruning failed for '$resolvedBuildDir'."
+}
+
 $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
 $archive = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "wukong-flutter-web-$timestamp.tar.gz"
 $localRemoteScript = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "wukong-flutter-web-deploy-$timestamp.sh"

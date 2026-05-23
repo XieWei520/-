@@ -279,7 +279,10 @@ class _NewFriendsPageState extends ConsumerState<NewFriendsPage> {
   }
 
   Future<void> _openAddFriendPage() async {
-    if (!await guardVipFeature(context)) {
+    if (!await guardVipFeature(
+      context,
+      entitlement: VipEntitlement.addFriend,
+    )) {
       return;
     }
     if (!mounted) {
