@@ -82,6 +82,8 @@ void main() {
       'tsdd-api:8090',
       'credentials_file: /run/secrets/wukongim_metrics_token',
       './secrets/wukongim_metrics_token',
+      'chown 65534:65534 ./secrets/wukongim_metrics_token',
+      'chmod 0600 ./secrets/wukongim_metrics_token',
       'WUKONGIM_METRICS_TOKEN',
       'phase2_backend_metrics_sync_backup_dir',
       'histogram_quantile(0.95',

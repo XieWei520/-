@@ -41,12 +41,16 @@ cd /opt/wukongim-prod/src/deploy/production
 mkdir -p ./secrets
 install -m 0600 /dev/null ./secrets/wukongim_metrics_token
 printf '%s' '<metrics-token>' > ./secrets/wukongim_metrics_token
+chown 65534:65534 ./secrets/wukongim_metrics_token
+chmod 0600 ./secrets/wukongim_metrics_token
 ```
 
 `deploy/production/docker-compose.observability.yaml` mounts
 `./secrets/wukongim_metrics_token` into the Prometheus container as read-only.
 Set the same value in production `.env` as `WUKONGIM_METRICS_TOKEN=<metrics-token>`
-so `tsdd-api` and Prometheus agree.
+so `tsdd-api` and Prometheus agree. The production Prometheus image runs as
+UID/GID `65534`, so the token file must be readable by that UID/GID while still
+not being world-readable.
 
 For the production `deploy/production` compose stack, Prometheus scrapes
 `tsdd-api:8090` inside the shared Docker Compose network. For the local
