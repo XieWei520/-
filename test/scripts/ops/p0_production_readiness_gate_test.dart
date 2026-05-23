@@ -94,6 +94,8 @@ void main() {
     expect(content, contains('mysqldump'));
     expect(content, contains('redis-cli'));
     expect(content, contains('tar'));
+    expect(content, contains(r'sudo -n tar -czf'));
+    expect(content, contains(r'sudo -n chown "`$(id -u):`$(id -g)" "`$target_dir/wukongim-data.tar.gz"'));
     expect(content, contains('docker compose --env-file .env exec -T mysql'));
     expect(content, contains('docker compose --env-file .env exec -T redis'));
     expect(content, contains(r'"`$1"'));

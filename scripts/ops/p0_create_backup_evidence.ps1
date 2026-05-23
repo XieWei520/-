@@ -179,7 +179,8 @@ sha256sum "`$target_dir/production-runtime-config.tar.gz" > "`$target_dir/produc
 echo "runtime_config_archive_done=`$target_dir/production-runtime-config.tar.gz"
 
 echo "wukongim_data_archive_start=true"
-tar -czf "`$target_dir/wukongim-data.tar.gz" -C "`$remote_root/data" wukongim
+sudo -n tar -czf "`$target_dir/wukongim-data.tar.gz" -C "`$remote_root/data" wukongim
+sudo -n chown "`$(id -u):`$(id -g)" "`$target_dir/wukongim-data.tar.gz"
 test -s "`$target_dir/wukongim-data.tar.gz"
 sha256sum "`$target_dir/wukongim-data.tar.gz" > "`$target_dir/wukongim-data.tar.gz.sha256"
 echo "wukongim_data_archive_done=`$target_dir/wukongim-data.tar.gz"
