@@ -448,7 +448,7 @@ services:
     image: prom/node-exporter:v1.8.2
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: ghcr.io/google/cadvisor:0.55.1
 ```
 
 The actual file must include persistent volumes and exporter mount points, but must not expose Prometheus or Grafana on `0.0.0.0`.

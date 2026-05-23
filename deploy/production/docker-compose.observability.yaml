@@ -52,7 +52,7 @@ services:
       - /:/rootfs:ro,rslave
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: ghcr.io/google/cadvisor:0.55.1
     restart: always
     privileged: true
     devices:

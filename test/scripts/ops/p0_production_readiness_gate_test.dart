@@ -179,6 +179,8 @@ void main() {
     expect(composeContent, contains('grafana'));
     expect(composeContent, contains('node-exporter'));
     expect(composeContent, contains('cadvisor'));
+    expect(composeContent, contains('ghcr.io/google/cadvisor:0.55.1'));
+    expect(composeContent, isNot(contains('gcr.io/cadvisor/cadvisor')));
     expect(composeContent, contains('127.0.0.1:9090:9090'));
     expect(composeContent, contains('127.0.0.1:3000:3000'));
     expect(composeContent, isNot(contains('0.0.0.0:9090')));
