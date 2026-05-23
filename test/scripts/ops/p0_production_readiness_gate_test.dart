@@ -99,7 +99,12 @@ void main() {
     expect(content, contains(r'"`$1"'));
     expect(content, contains(r'sh "`$MYSQL_DATABASE"'));
     expect(content, contains(r'sh -lc'));
-    expect(content, contains(r'REDISCLI_AUTH="`$REDIS_PASSWORD"'));
+    expect(content, contains(r'redis_auth="`$(read_env_value REDIS_PASSWORD)"'));
+    expect(
+      content,
+      contains('printf ' r"'" r'%s\n' r"'" r' "`$redis_auth" | docker compose --env-file .env exec -T redis'),
+    );
+    expect(content, contains(r'REDISCLI_AUTH="`$redis_auth"'));
     expect(content, isNot(contains('redis-cli -a')));
     expect(content, contains('Validate-RemoteHostToken'));
     expect(content, contains('Quote-Bash'));
@@ -131,7 +136,7 @@ void main() {
     final output = '${result.stdout}\n${result.stderr}';
     expect(output, contains(r'"$1"'));
     expect(output, isNot(contains(r'-p"$MYSQL_ROOT_PASSWORD" ""')));
-    expect(output, contains(r'REDISCLI_AUTH="$REDIS_PASSWORD"'));
+    expect(output, contains(r'REDISCLI_AUTH="$redis_auth"'));
     expect(output, isNot(contains('redis-cli -a')));
   });
 
@@ -149,8 +154,12 @@ void main() {
 
     expect(result.exitCode, 0);
     final output = '${result.stdout}\n${result.stderr}';
-    expect('</dev/null'.allMatches(output), hasLength(2));
+    expect('</dev/null'.allMatches(output), hasLength(1));
     expect(output, contains(r'sh "$MYSQL_DATABASE" \'));
+    expect(
+      output,
+      contains('printf ' r"'" r'%s\n' r"'" r' "$redis_auth" | docker compose --env-file .env exec -T redis'),
+    );
     expect(output, contains(r'> "$target_dir/redis.rdb"'));
   });
 

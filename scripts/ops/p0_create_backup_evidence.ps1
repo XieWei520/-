@@ -119,7 +119,9 @@ read_env_value() {
 }
 
 MYSQL_DATABASE="`$(read_env_value MYSQL_DATABASE)"
+redis_auth="`$(read_env_value REDIS_PASSWORD)"
 test -n "`$MYSQL_DATABASE"
+test -n "`$redis_auth"
 case "`$MYSQL_DATABASE" in
   *[!A-Za-z0-9_]*)
     echo "invalid_mysql_database=true"
@@ -157,9 +159,8 @@ sha256sum "`$target_dir/mysql-`$MYSQL_DATABASE.sql.gz" > "`$target_dir/mysql-`$M
 echo "mysql_backup_done=`$target_dir/mysql-`$MYSQL_DATABASE.sql.gz"
 
 echo "redis_backup_start=true"
-docker compose --env-file .env exec -T redis sh -lc \
-  'if [ -n "`$REDIS_PASSWORD" ]; then REDISCLI_AUTH="`$REDIS_PASSWORD" exec redis-cli --rdb -; else exec redis-cli --rdb -; fi' \
-  </dev/null \
+printf '%s\n' "`$redis_auth" | docker compose --env-file .env exec -T redis sh -lc \
+  'IFS= read -r redis_auth; test -n "`$redis_auth"; REDISCLI_AUTH="`$redis_auth" exec redis-cli --rdb -' \
   > "`$target_dir/redis.rdb"
 test -s "`$target_dir/redis.rdb"
 sha256sum "`$target_dir/redis.rdb" > "`$target_dir/redis.rdb.sha256"
