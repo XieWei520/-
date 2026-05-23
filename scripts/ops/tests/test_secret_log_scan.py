@@ -96,6 +96,14 @@ class SecretLogScanTests(unittest.TestCase):
         self.assertEqual(result.finding_count, 0)
         self.assertEqual(result.redacted_report, "")
 
+    def test_ignores_non_secret_refresh_token_metadata(self) -> None:
+        text = "refreshToken: 1 refresh_token=2"
+
+        result = scan_text(text, source="dart-diff")
+
+        self.assertEqual(result.finding_count, 0)
+        self.assertEqual(result.redacted_report, "")
+
     def test_redacts_multiple_secret_fields_on_same_line(self) -> None:
         text = '{"actToken":"raw1","password":"raw2"}'
 

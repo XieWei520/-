@@ -83,6 +83,36 @@ void main() {
       expect(first, isNot(second));
     });
 
+    test(
+      'normalizes stable request key inputs across whitespace and category casing',
+      () {
+        final first = buildConversationListItemRequestKey(
+          channelId: ' u_demo ',
+          channelType: 1,
+          clientMsgNo: ' client_1 ',
+          unreadCount: 3,
+          lastMsgTimestamp: 42,
+          preferredTitle: ' Alice ',
+          preferredAvatarUrl: ' https://example.com/a.png ',
+          preferredCategory: ' Customer_Service ',
+          refreshToken: 1,
+        );
+        final second = buildConversationListItemRequestKey(
+          channelId: 'u_demo',
+          channelType: 1,
+          clientMsgNo: 'client_1',
+          unreadCount: 3,
+          lastMsgTimestamp: 42,
+          preferredTitle: 'Alice',
+          preferredAvatarUrl: 'https://example.com/a.png',
+          preferredCategory: 'customer_service',
+          refreshToken: 1,
+        );
+
+        expect(first, second);
+      },
+    );
+
     test('keeps the last resolved row data for loading refreshes', () async {
       final loader = ConversationListItemLoader();
       const rowKey = '1:u_vip';

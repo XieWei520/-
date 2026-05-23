@@ -3,6 +3,139 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('baseline collector redaction', () {
+    test('defines a centralized redaction helper and uses <redacted>', () {
+      final content =
+          File('scripts/ops/collect_im_performance_baseline.ps1')
+              .readAsStringSync();
+
+      expect(content, contains('function Redact-SensitiveText'));
+      expect(content, contains('<redacted>'));
+      final redactBlock = _functionBlock(content, 'Redact-SensitiveText');
+      expect(redactBlock, contains('password'));
+      expect(redactBlock, contains('token'));
+      expect(redactBlock, contains('secret'));
+      expect(redactBlock, contains('key'));
+      expect(redactBlock, contains('pwd'));
+      expect(redactBlock, contains('dsn'));
+      expect(
+        _functionBlock(content, 'Write-RedactedContent'),
+        contains('Redact-SensitiveText'),
+      );
+    });
+
+    test(
+      'remote nginx config, nginx log, and api log capture paths pass through redaction',
+      () {
+        final content =
+            File('scripts/ops/collect_im_performance_baseline.ps1')
+                .readAsStringSync();
+
+        expect(
+          _functionBlock(content, 'Invoke-Capture'),
+          contains('Write-RedactedContent'),
+        );
+        expect(
+          _functionBlock(content, 'Write-DirectorySize'),
+          contains('Write-RedactedContent'),
+        );
+        expect(
+          content,
+          contains('remote_nginx_config'),
+          reason: 'expected nginx config capture to remain present',
+        );
+        expect(
+          content,
+          contains('remote_recent_nginx_log'),
+          reason: 'expected nginx log capture to remain present',
+        );
+        expect(
+          content,
+          contains('remote_recent_api_log'),
+          reason: 'expected api log capture to remain present',
+        );
+        expect(
+          _invokeCaptureBlock(content, 'remote_nginx_config'),
+          contains('ssh'),
+        );
+        expect(
+          _invokeCaptureBlock(content, 'remote_recent_nginx_log'),
+          contains('docker logs --since 30m --tail 300 wukongim-prod-nginx'),
+        );
+        expect(
+          _invokeCaptureBlock(content, 'remote_recent_api_log'),
+          contains('docker logs --since 30m --tail 300 wukongim-prod-tsdd-api'),
+        );
+      },
+    );
+
+    test('redaction helper handles empty output and preserves later fields', () {
+      final content =
+          File('scripts/ops/collect_im_performance_baseline.ps1')
+              .readAsStringSync();
+
+      expect(
+        _functionBlock(content, 'Write-RedactedContent'),
+        contains('[AllowEmptyString()]'),
+      );
+      expect(
+        _functionBlock(content, 'Redact-SensitiveText'),
+        contains('structuredFieldBoundary'),
+      );
+      expect(
+        _functionBlock(content, 'Redact-SensitiveText'),
+        contains('Redact-SensitiveValueMatch'),
+      );
+    });
+
+    test('redaction helper removes raw sensitive values at runtime', () async {
+      if (!Platform.isWindows) {
+        return;
+      }
+
+      final result = await Process.run('powershell', <String>[
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        r'''
+$ErrorActionPreference = 'Stop'
+$script = Get-Content -Raw scripts\ops\collect_im_performance_baseline.ps1
+$start = $script.IndexOf('function Redact-SensitiveText')
+$end = $script.IndexOf("Invoke-Capture -Name 'local_git_status'")
+if ($start -lt 0 -or $end -lt 0 -or $end -le $start) { throw 'missing function bounds' }
+. ([scriptblock]::Create($script.Substring($start, $end - $start)))
+$fieldA = 'Authori' + 'zation'
+$fieldB = 'pass' + 'word'
+$fieldC = 'to' + 'ken'
+$fieldD = 'd' + 'sn'
+$sample = "$fieldA`: Bearer abc $fieldB=raw $fieldC=tok $fieldD=mysql://root:pw@host normal=ok refreshToken=1"
+$redacted = Redact-SensitiveText -Text $sample
+if ($redacted.Contains('Bearer' + ' abc') -or
+    $redacted.Contains('=' + 'raw') -or
+    $redacted.Contains('=' + 'tok') -or
+    $redacted.Contains('mysql' + '://')) {
+  throw "redaction failed: $redacted"
+}
+if (!$redacted.Contains("$fieldB=<redacted>") -or
+    !$redacted.Contains("$fieldC=<redacted>") -or
+    !$redacted.Contains("$fieldD=<redacted>") -or
+    !$redacted.Contains('normal=ok') -or
+    !$redacted.Contains('refreshToken=1')) {
+  throw "field preservation failed: $redacted"
+}
+$path = Join-Path $env:TEMP 'wukong-baseline-empty-redaction.txt'
+Write-RedactedContent -Path $path -Text ''
+if (![string]::IsNullOrWhiteSpace((Get-Content -Raw $path))) { throw 'empty write failed' }
+'runtime_redaction_ok'
+''',
+      ]);
+
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      expect(result.stdout.toString(), contains('runtime_redaction_ok'));
+    });
+  });
+
   test(
     'baseline collector captures local build and remote runtime signals',
     () {
@@ -131,4 +264,24 @@ void main() {
       expect(content, contains('101 Switching Protocols'));
     },
   );
+}
+
+String _invokeCaptureBlock(String source, String name) {
+  final marker = "Invoke-Capture -Name '$name' -Command {";
+  final start = source.indexOf(marker);
+  expect(start, isNonNegative, reason: 'missing $name capture block');
+  final rest = source.substring(start + marker.length);
+  final end = rest.indexOf('\n}');
+  expect(end, isNonNegative, reason: 'unterminated $name capture block');
+  return rest.substring(0, end);
+}
+
+String _functionBlock(String source, String name) {
+  final marker = 'function $name';
+  final start = source.indexOf(marker);
+  expect(start, isNonNegative, reason: 'missing $name function');
+  final rest = source.substring(start);
+  final end = rest.indexOf('\n}\n');
+  expect(end, isNonNegative, reason: 'unterminated $name function');
+  return rest.substring(0, end + 2);
 }

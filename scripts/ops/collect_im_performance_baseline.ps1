@@ -17,6 +17,113 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 Set-Location $ProjectRoot
 
+function Redact-SensitiveText {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text
+  )
+
+  if ([string]::IsNullOrEmpty($Text)) {
+    return $Text
+  }
+
+  $redacted = $Text
+
+  function Redact-SensitiveValueMatch {
+    param(
+      [Parameter(Mandatory = $true)]$Match
+    )
+
+    $fieldName = $Match.Groups['field'].Value.ToLowerInvariant().Replace('-', '_').Replace('_', '')
+    $isSafeMetadata = $fieldName -eq 'refreshtoken' -or
+      $fieldName -eq 'tokenempty' -or
+      $fieldName -eq 'tokenhash' -or
+      $fieldName -eq 'tokenlength' -or
+      $fieldName -eq 'tokenlen' -or
+      $fieldName -eq 'tokensha256' -or
+      $fieldName -eq 'tokensha256prefix'
+    if ($isSafeMetadata) {
+      return $Match.Value
+    }
+
+    $isSensitive = $fieldName.Contains('password') -or
+      $fieldName.Contains('secret') -or
+      $fieldName.Contains('credential') -or
+      $fieldName.Contains('token') -or
+      $fieldName.Contains('apikey') -or
+      $fieldName.Contains('apisecret') -or
+      $fieldName.Contains('pwd') -or
+      $fieldName.Contains('dsn') -or
+      $fieldName.Contains('key')
+    if (!$isSensitive) {
+      return $Match.Value
+    }
+
+    return "$($Match.Groups['prefix'].Value)<redacted>"
+  }
+
+  $structuredFieldBoundary = '\s+[A-Za-z_][A-Za-z0-9_-]*\s*[:=]'
+  $sensitiveFieldPattern = '(?i)(?<![A-Za-z0-9_-])(?<prefix>"?(?<field>[A-Za-z_][A-Za-z0-9_-]*)"?\s*[:=]\s*)(?<value>"(?:\\.|[^"\\])*"|''(?:\\.|[^''\\])*''|(?:Bearer\s+)?[^\s,}\]]+)'
+  $authHeaderRegex = '(?i)(?<![A-Za-z0-9_-])(?<prefix>"?Authorization"?\s*[:=]\s*)(?<value>"(?:\\.|[^"\\])*"|''(?:\\.|[^''\\])*''|[^\r\n]*)'
+  $redacted = [regex]::Replace(
+    $redacted,
+    $authHeaderRegex,
+    {
+      param($Match)
+
+      $value = $Match.Groups['value'].Value
+      if ([string]::IsNullOrWhiteSpace($value)) {
+        return $Match.Value
+      }
+
+      $trailingText = ''
+      $isQuoted = $value.Length -ge 2 -and
+        (($value[0] -eq '"' -and $value[$value.Length - 1] -eq '"') -or
+         ($value[0] -eq "'" -and $value[$value.Length - 1] -eq "'"))
+      if (!$isQuoted) {
+        $boundary = [regex]::Match($value, $structuredFieldBoundary)
+        if ($boundary.Success) {
+          $trailingText = $value.Substring($boundary.Index)
+          $value = $value.Substring(0, $boundary.Index)
+        }
+      }
+
+      if (![string]::IsNullOrEmpty($trailingText)) {
+        $trailingText = [regex]::Replace(
+          $trailingText,
+          $sensitiveFieldPattern,
+          { param($TailMatch) Redact-SensitiveValueMatch -Match $TailMatch }
+        )
+      }
+
+      return "$($Match.Groups['prefix'].Value)<redacted>$trailingText"
+    }
+  )
+
+  $redacted = [regex]::Replace(
+    $redacted,
+    $sensitiveFieldPattern,
+    { param($Match) Redact-SensitiveValueMatch -Match $Match }
+  )
+
+  return $redacted
+}
+
+function Write-RedactedContent {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+    [switch]$Append
+  )
+
+  $redactedText = Redact-SensitiveText -Text $Text
+  if ($Append) {
+    $redactedText | Add-Content -Path $Path -Encoding UTF8
+    return
+  }
+
+  $redactedText | Set-Content -Path $Path -Encoding UTF8
+}
+
 function Invoke-Capture {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
@@ -24,15 +131,16 @@ function Invoke-Capture {
   )
 
   $target = Join-Path $OutputDirectory "$Name.txt"
-  "## $Name" | Set-Content -Path $target -Encoding UTF8
-  "## started: $(Get-Date -Format o)" | Add-Content -Path $target -Encoding UTF8
+  Write-RedactedContent -Path $target -Text "## $Name"
+  Write-RedactedContent -Path $target -Text "## started: $(Get-Date -Format o)" -Append
   try {
-    & $Command 2>&1 | Out-String | Add-Content -Path $target -Encoding UTF8
-    "## exit: $LASTEXITCODE" | Add-Content -Path $target -Encoding UTF8
+    $commandOutput = & $Command 2>&1 | Out-String
+    Write-RedactedContent -Path $target -Text $commandOutput -Append
+    Write-RedactedContent -Path $target -Text "## exit: $LASTEXITCODE" -Append
   } catch {
-    "## error: $($_.Exception.Message)" | Add-Content -Path $target -Encoding UTF8
+    Write-RedactedContent -Path $target -Text "## error: $($_.Exception.Message)" -Append
   }
-  "## finished: $(Get-Date -Format o)" | Add-Content -Path $target -Encoding UTF8
+  Write-RedactedContent -Path $target -Text "## finished: $(Get-Date -Format o)" -Append
 }
 
 function Quote-Bash {
@@ -52,16 +160,17 @@ function Write-DirectorySize {
 
   $target = Join-Path $OutputDirectory "$Name.txt"
   if (!(Test-Path $Path)) {
-    "$Path does not exist" | Set-Content -Path $target -Encoding UTF8
+    Write-RedactedContent -Path $target -Text "$Path does not exist"
     return
   }
 
-  Get-ChildItem -Path $Path -Recurse -File |
+  $directorySizeOutput = Get-ChildItem -Path $Path -Recurse -File |
     Sort-Object Length -Descending |
     Select-Object -First 80 FullName, Length |
     Format-Table -AutoSize |
-    Out-String |
-    Set-Content -Path $target -Encoding UTF8
+    Out-String
+
+  Write-RedactedContent -Path $target -Text $directorySizeOutput
 }
 
 Invoke-Capture -Name 'local_git_status' -Command { git status --short --branch }

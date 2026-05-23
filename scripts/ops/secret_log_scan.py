@@ -17,6 +17,9 @@ class ScanResult:
 
 
 _SAFE_TOKEN_FIELDS = {
+    "_safe_token_fields",
+    "refresh_token",
+    "refreshtoken",
     "token_empty",
     "token_hash",
     "token_length",
