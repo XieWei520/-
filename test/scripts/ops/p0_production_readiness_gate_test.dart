@@ -104,6 +104,7 @@ void main() {
     expect(content, contains('Validate-RemoteHostToken'));
     expect(content, contains('Quote-Bash'));
     expect(content, contains('BatchMode=yes'));
+    expect(content, contains('sudo -n install -d -m 700'));
 
     expect(content, isNot(contains('DROP ')));
     expect(content, isNot(contains('DELETE ')));

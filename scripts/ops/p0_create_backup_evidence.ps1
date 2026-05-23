@@ -127,8 +127,11 @@ case "`$MYSQL_DATABASE" in
     ;;
 esac
 
-mkdir -p "`$target_dir" "`$sysctl_backup_root"
-chmod 700 "`$backup_root" "`$target_dir" "`$sysctl_backup_root"
+if [ ! -d "`$backup_root" ]; then
+  mkdir -p "`$backup_root" 2>/dev/null || sudo -n install -d -m 755 "`$backup_root"
+fi
+sudo -n install -d -m 700 -o "`$(id -u)" -g "`$(id -g)" "`$target_dir" "`$sysctl_backup_root"
+chmod 700 "`$target_dir" "`$sysctl_backup_root"
 
 {
   echo "backup_kind=p0-readiness"
