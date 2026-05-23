@@ -32,14 +32,14 @@ Already completed before this plan was formalized:
   - Added backup evidence script, observability compose overlay, Prometheus config, and observability preflight.
   - Verified dry-run behavior and script contract tests.
 
-Production state from latest read-only gate:
+Production state from Task 4 P0 gate:
 
 - [x] Local worktree clean.
 - [x] Containers healthy enough for smoke and WSS checks.
 - [x] `/v1/ping` returns `{"status":200}`.
 - [x] `/ws` handshake returns `101 Switching Protocols`.
-- [ ] Recent backup evidence missing under `/opt/wukongim-prod/backups`.
-- [ ] Sysctl backup path missing under `/var/backups/wukongim-sysctl`.
+- [x] Recent backup evidence exists under `/opt/wukongim-prod/backups`.
+- [x] Sysctl backup evidence exists under `/var/backups/wukongim-sysctl`.
 - [ ] Observability stack missing on production.
 
 ---
@@ -317,7 +317,7 @@ Expected:
 - Output contains `REDISCLI_AUTH="$REDIS_PASSWORD"`.
 - Flutter test PASS.
 
-- [ ] **Step 6: Execute production backup evidence after explicit approval**
+- [x] **Step 6: Execute production backup evidence after explicit approval**
 
 Only run this step after the user explicitly approves production writes.
 
@@ -337,7 +337,7 @@ Expected:
 - `/var/backups/wukongim-sysctl/p0-readiness-YYYYmmddTHHMMSSZ.txt` exists and has a `.sha256`; use the same timestamp emitted by the script output.
 - Output includes a concrete `backup_manifest.txt=/opt/wukongim-prod/backups/p0-readiness-YYYYmmddTHHMMSSZ/backup_manifest.txt` line.
 
-- [ ] **Step 7: Verify backup evidence with P0 gate**
+- [x] **Step 7: Verify backup evidence with P0 gate**
 
 Run:
 
@@ -348,7 +348,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ops\p0_production_re
 Expected after Step 6:
 
 - `remote_backup_artifact_audit` no longer fails.
-- `remote_observability_inventory` may still fail until Task 4 is executed.
+- `remote_observability_inventory` may still fail until Task 5 is executed.
 
 - [x] **Step 8: Commit local script and tests**
 
@@ -523,7 +523,7 @@ Expected: included in commit `2a1edd62`.
 - No local file changes expected.
 - Remote writes under `/opt/wukongim-prod/backups` and `/var/backups/wukongim-sysctl`.
 
-- [ ] **Step 1: Confirm explicit production write approval**
+- [x] **Step 1: Confirm explicit production write approval**
 
 Ask the user:
 
@@ -533,7 +533,7 @@ Ask the user:
 
 Required answer before continuing: explicit approval.
 
-- [ ] **Step 2: Run production backup evidence script**
+- [x] **Step 2: Run production backup evidence script**
 
 Run:
 
@@ -552,7 +552,7 @@ Expected:
   - `sysctl_backup_done=...`
   - `backup_manifest.txt=...`
 
-- [ ] **Step 3: Re-run P0 readiness gate**
+- [x] **Step 3: Re-run P0 readiness gate**
 
 Run:
 
@@ -565,7 +565,7 @@ Expected:
 - `remote_backup_artifact_audit` is absent from `failed-gates`.
 - `remote_observability_inventory` may still fail.
 
-- [ ] **Step 4: Record evidence in plan**
+- [x] **Step 4: Record evidence in plan**
 
 Update this file under "Execution Evidence" with:
 
@@ -575,7 +575,7 @@ Update this file under "Execution Evidence" with:
 - Remaining failed gates copied from the `failed-gates:` line printed by `scripts\ops\p0_production_readiness_gate.ps1 -Run`.
 ```
 
-- [ ] **Step 5: Commit plan evidence**
+- [x] **Step 5: Commit plan evidence**
 
 Run:
 
@@ -699,7 +699,11 @@ Expected: one documentation-only commit.
 
 - 2026-05-23: P0 gate hardening committed as `73618dbc`.
 - 2026-05-23: P0 backup and observability ops committed as `2a1edd62`.
-- 2026-05-23: Latest read-only P0 gate evidence showed remaining failed gates: `remote_backup_artifact_audit`, `remote_observability_inventory`.
+- 2026-05-23: Production backup script hardening committed as `3845a559`, `5a5c47e5`, `213155ff`, and `d0b1c590` after production permission, stdin, Redis auth, and protected data archive issues were found during Task 4 execution.
+- 2026-05-23: Production backup evidence generated at `/opt/wukongim-prod/backups/p0-readiness-20260523T111507Z/backup_manifest.txt`.
+- 2026-05-23: Task 4 P0 gate evidence directory: `C:\Users\COLORFUL\Desktop\WuKong\build\p0-production-readiness\20260523-192039`.
+- 2026-05-23: Task 4 P0 gate remaining failed gates: `remote_observability_inventory`; `remote_backup_artifact_audit` no longer failed.
+- 2026-05-23: Earlier read-only P0 gate evidence showed remaining failed gates: `remote_backup_artifact_audit`, `remote_observability_inventory`.
 
 ---
 
