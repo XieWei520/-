@@ -51,4 +51,29 @@ void main() {
     expect(content, isNot(contains('CREATE ')));
     expect(content, isNot(contains('TRUNCATE ')));
   });
+
+  test('p0 production readiness gate uses Windows PowerShell compatible ssh arguments', () {
+    final script = File('scripts/ops/p0_production_readiness_gate.ps1');
+
+    expect(script.existsSync(), isTrue);
+
+    final content = script.readAsStringSync();
+    expect(content, contains(r'$startInfo.Arguments ='));
+    expect(content, isNot(contains(r'$startInfo.ArgumentList.Add')));
+  });
+
+  test('p0 production readiness gate fails on missing release prerequisites', () {
+    final script = File('scripts/ops/p0_production_readiness_gate.ps1');
+
+    expect(script.existsSync(), isTrue);
+
+    final content = script.readAsStringSync();
+    expect(content, contains('local_worktree_dirty=true'));
+    expect(content, contains('git status --porcelain'));
+    expect(content, contains('backup_artifacts_missing=true'));
+    expect(content, contains('backup_path_missing='));
+    expect(content, contains('observability_stack_missing=true'));
+    expect(content, contains('prometheus'));
+    expect(content, contains('grafana'));
+  });
 }

@@ -47,14 +47,7 @@ function Invoke-RemoteReadOnlyBash {
 
   $startInfo = New-Object System.Diagnostics.ProcessStartInfo
   $startInfo.FileName = 'ssh'
-  $startInfo.ArgumentList.Add('-o')
-  $startInfo.ArgumentList.Add('BatchMode=yes')
-  $startInfo.ArgumentList.Add('-o')
-  $startInfo.ArgumentList.Add('StrictHostKeyChecking=accept-new')
-  $startInfo.ArgumentList.Add('--')
-  $startInfo.ArgumentList.Add($RemoteHost)
-  $startInfo.ArgumentList.Add('bash')
-  $startInfo.ArgumentList.Add('-s')
+  $startInfo.Arguments = "-o BatchMode=yes -o StrictHostKeyChecking=accept-new -- $RemoteHost bash -s"
   $startInfo.UseShellExecute = $false
   $startInfo.RedirectStandardInput = $true
   $startInfo.RedirectStandardOutput = $true
@@ -116,6 +109,11 @@ function Invoke-ReadOnlyGate {
 
 Invoke-ReadOnlyGate -Name 'local_git_status' -Command {
   git status --short --branch
+  $dirty = git status --porcelain
+  if (-not [string]::IsNullOrWhiteSpace(($dirty -join "`n"))) {
+    'local_worktree_dirty=true'
+    $global:LASTEXITCODE = 1
+  }
 }
 
 Invoke-ReadOnlyGate -Name 'local_secret_scan' -Command {
@@ -190,14 +188,26 @@ printf '%s\n' "`$response" | grep -q '101 Switching Protocols'
 Invoke-ReadOnlyGate -Name 'remote_backup_artifact_audit' -Command {
   $remoteCommand = @"
 set -euo pipefail
+missing=0
 for path in /opt/wukongim-prod/backups /var/backups/wukongim-sysctl; do
   if [ -d "`$path" ]; then
     echo "backup_path=`$path"
+    recent_count=`$(find "`$path" -maxdepth 2 -type f -mtime -14 | wc -l)
+    echo "backup_recent_file_count=`$recent_count"
     find "`$path" -maxdepth 2 -type f -printf '%TY-%Tm-%Td %TH:%TM %s %p\n' | sort | tail -20
+    if [ "`$recent_count" -eq 0 ]; then
+      echo "backup_recent_artifacts_missing=`$path"
+      missing=1
+    fi
   else
     echo "backup_path_missing=`$path"
+    missing=1
   fi
 done
+if [ "`$missing" -ne 0 ]; then
+  echo 'backup_artifacts_missing=true'
+  exit 1
+fi
 "@
   Invoke-RemoteReadOnlyBash -Script $remoteCommand
 }
@@ -208,7 +218,14 @@ set -euo pipefail
 echo 'observability_port_probe=9090,3000'
 ss -ltnup | grep -E ':(9090|3000)\b' || true
 cd $remoteRootArg
-docker compose ps | grep -Ei 'prometheus|grafana|node-exporter|cadvisor' || true
+observability_services=`$(docker compose ps | grep -Ei 'prometheus|grafana|node-exporter|cadvisor' || true)
+printf '%s\n' "`$observability_services"
+printf '%s\n' "`$observability_services" | grep -qi 'prometheus' || missing_prometheus=1
+printf '%s\n' "`$observability_services" | grep -qi 'grafana' || missing_grafana=1
+if [ "`${missing_prometheus:-0}" -ne 0 ] || [ "`${missing_grafana:-0}" -ne 0 ]; then
+  echo 'observability_stack_missing=true'
+  exit 1
+fi
 "@
   Invoke-RemoteReadOnlyBash -Script $remoteCommand
 }
