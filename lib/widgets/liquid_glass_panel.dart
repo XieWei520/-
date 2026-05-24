@@ -33,6 +33,7 @@ class LiquidGlassPanel extends StatelessWidget {
     this.margin = EdgeInsets.zero,
     this.borderRadius = LiquidGlassRadii.lg,
     this.shadow = LiquidGlassShadows.md,
+    this.disableBlur = false,
   });
 
   final Widget child;
@@ -40,10 +41,20 @@ class LiquidGlassPanel extends StatelessWidget {
   final EdgeInsetsGeometry margin;
   final BorderRadius borderRadius;
   final List<BoxShadow> shadow;
+  final bool disableBlur;
 
   @override
   Widget build(BuildContext context) {
     final tokens = LiquidGlassTokens.of(context);
+    final panel = DecoratedBox(
+      key: const ValueKey<String>('liquid-glass-panel-decoration'),
+      decoration: BoxDecoration(
+        color: disableBlur ? tokens.surfaceSolid : tokens.surface,
+        borderRadius: borderRadius,
+        border: Border.all(color: tokens.border),
+      ),
+      child: Padding(padding: padding, child: child),
+    );
     return Padding(
       padding: margin,
       child: DecoratedBox(
@@ -54,18 +65,9 @@ class LiquidGlassPanel extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: borderRadius,
-          child: BackdropFilter(
-            filter: tokens.backdropFilter,
-            child: DecoratedBox(
-              key: const ValueKey<String>('liquid-glass-panel-decoration'),
-              decoration: BoxDecoration(
-                color: tokens.surface,
-                borderRadius: borderRadius,
-                border: Border.all(color: tokens.border),
-              ),
-              child: Padding(padding: padding, child: child),
-            ),
-          ),
+          child: disableBlur
+              ? panel
+              : BackdropFilter(filter: tokens.backdropFilter, child: panel),
         ),
       ),
     );
@@ -79,18 +81,21 @@ class LiquidGlassAppFrame extends StatelessWidget {
     this.frameKey,
     this.width,
     this.height,
+    this.disableBlur = false,
   });
 
   final Widget child;
   final Key? frameKey;
   final double? width;
   final double? height;
+  final bool disableBlur;
 
   @override
   Widget build(BuildContext context) {
     return LiquidGlassPanel(
       borderRadius: LiquidGlassRadii.lg,
       shadow: LiquidGlassShadows.md,
+      disableBlur: disableBlur,
       child: ClipRRect(
         borderRadius: LiquidGlassRadii.lg,
         child: SizedBox(

@@ -1,7 +1,10 @@
 import 'media_preprocess_models.dart';
 
 class DefaultMediaPreprocessService implements MediaPreprocessService {
-  const DefaultMediaPreprocessService({Object? outputDirectoryProvider});
+  const DefaultMediaPreprocessService({
+    Object? outputDirectoryProvider,
+    Object? computeRunner,
+  });
 
   @override
   Future<MediaImageInfo?> probeImage(String path) async => null;

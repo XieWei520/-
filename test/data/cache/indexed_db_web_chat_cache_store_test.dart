@@ -68,6 +68,86 @@ void main() {
     },
   );
 
+  test(
+    'indexeddb web chat cache store anchors around page at first newer message',
+    () async {
+      final adapter = FakeIndexedDbChatCacheAdapter();
+      final store = IndexedDbWebChatCacheStore(adapter: adapter);
+
+      await store.upsertMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        messages: [
+          _message('m1', 1, 'u1', 'c1', 1000),
+          _message('m2', 2, 'u1', 'c1', 2000),
+          _message('m4', 4, 'u1', 'c1', 4000),
+          _message('m5', 5, 'u1', 'c1', 5000),
+        ],
+      );
+
+      final around = await store.readMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        aroundOrderSeq: 3000,
+        limit: 3,
+      );
+
+      expect(around.map((message) => message.messageID), ['m2', 'm4', 'm5']);
+    },
+  );
+
+  test(
+    'indexeddb web chat cache store fills around page near partition boundaries',
+    () async {
+      final adapter = FakeIndexedDbChatCacheAdapter();
+      final store = IndexedDbWebChatCacheStore(adapter: adapter);
+
+      await store.upsertMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        messages: [
+          _message('m1', 1, 'u1', 'c1', 1000),
+          _message('m2', 2, 'u1', 'c1', 2000),
+          _message('m3', 3, 'u1', 'c1', 3000),
+          _message('m4', 4, 'u1', 'c1', 4000),
+        ],
+      );
+
+      final beforeFirst = await store.readMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        aroundOrderSeq: 500,
+        limit: 3,
+      );
+      final nearEnd = await store.readMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        aroundOrderSeq: 4000,
+        limit: 3,
+      );
+      final afterLast = await store.readMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        aroundOrderSeq: 9000,
+        limit: 3,
+      );
+
+      expect(beforeFirst.map((message) => message.messageID), [
+        'm1',
+        'm2',
+        'm3',
+      ]);
+      expect(nearEnd.map((message) => message.messageID), ['m2', 'm3', 'm4']);
+      expect(afterLast.map((message) => message.messageID), ['m2', 'm3', 'm4']);
+    },
+  );
+
   test('indexeddb web chat cache store isolates channels and users', () async {
     final adapter = FakeIndexedDbChatCacheAdapter();
     final store = IndexedDbWebChatCacheStore(adapter: adapter);
@@ -214,6 +294,45 @@ void main() {
   );
 
   test(
+    'indexeddb web chat cache store does not resurrect clean records deleted externally',
+    () async {
+      final adapter = FakeIndexedDbChatCacheAdapter();
+      final store = IndexedDbWebChatCacheStore(adapter: adapter);
+
+      await store.upsertMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        messages: [
+          _message('m1', 1, 'u1', 'c1', 1000),
+          _message('m2', 2, 'u1', 'c1', 2000),
+        ],
+      );
+      await store.readMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        limit: 20,
+      );
+      await adapter.applyChanges(
+        upserts: const <Map<String, Object?>>[],
+        deleteKeys: const <String>['u1|1|c1|message%3Am1'],
+      );
+      final persistedRecords = await adapter.readAll();
+
+      final cached = await store.readMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        limit: 20,
+      );
+
+      expect(persistedRecords.map((record) => record['message_id']), ['m2']);
+      expect(cached.map((message) => message.messageID), ['m2']);
+    },
+  );
+
+  test(
     'indexeddb web chat cache store retries persist after a transient failure',
     () async {
       final adapter = FailsFirstApplyIndexedDbChatCacheAdapter();
@@ -246,7 +365,7 @@ void main() {
   );
 
   test(
-    'indexeddb web chat cache store waits for in-flight hydration before writing',
+    'indexeddb web chat cache store waits for in-flight partition read before writing',
     () async {
       final adapter = BlockingReadIndexedDbChatCacheAdapter();
       await adapter.applyChanges(
@@ -280,7 +399,7 @@ void main() {
         limit: 20,
       );
 
-      expect(adapter.readAllCalls, 1);
+      expect(adapter.readMessagesCalls, greaterThanOrEqualTo(1));
       expect(cached.map((message) => message.messageID), ['hydrated', 'new']);
     },
   );
@@ -433,6 +552,66 @@ void main() {
       expect(records.single['server_msg_id'], isEmpty);
     },
   );
+
+  test(
+    'indexeddb web chat cache store reads partition without full hydration',
+    () async {
+      final adapter = QueryTrackingIndexedDbChatCacheAdapter();
+      await adapter.applyChanges(
+        upserts: [
+          _record('u1', 'c1', 1, 'm1', 1, 1000),
+          _record('u1', 'c1', 1, 'm2', 2, 2000),
+          _record('u2', 'c1', 1, 'other', 1, 1000),
+        ],
+        deleteKeys: const <String>[],
+      );
+      final store = IndexedDbWebChatCacheStore(adapter: adapter);
+
+      final cached = await store.readMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        limit: 1,
+      );
+
+      expect(cached.map((message) => message.messageID), ['m2']);
+      expect(adapter.readMessagesCalls, 1);
+      expect(adapter.readAllCalls, 0);
+    },
+  );
+
+  test(
+    'indexeddb web chat cache store trims partition without full scan',
+    () async {
+      final adapter = QueryTrackingIndexedDbChatCacheAdapter();
+      final store = IndexedDbWebChatCacheStore(
+        adapter: adapter,
+        maxMessagesPerChannel: 2,
+      );
+
+      await store.upsertMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        messages: [
+          _message('m1', 1, 'u1', 'c1', 1000),
+          _message('m2', 2, 'u1', 'c1', 2000),
+          _message('m3', 3, 'u1', 'c1', 3000),
+        ],
+      );
+
+      final cached = await store.readMessages(
+        uid: 'u1',
+        channelId: 'c1',
+        channelType: 1,
+        limit: 20,
+      );
+
+      expect(cached.map((message) => message.messageID), ['m2', 'm3']);
+      expect(adapter.deleteOldMessagesCalls, 1);
+      expect(adapter.readAllCalls, 0);
+    },
+  );
 }
 
 void _ignoreCacheError(String message, Object error, StackTrace stackTrace) {}
@@ -493,6 +672,62 @@ class FakeIndexedDbChatCacheAdapter implements IndexedDbChatCacheAdapter {
   }
 
   @override
+  Future<List<Map<String, Object?>>> readMessages({
+    required String uid,
+    required String channelId,
+    required int channelType,
+    required int limit,
+    int beforeOrderSeq = 0,
+    int aroundOrderSeq = 0,
+  }) async {
+    var records = _snapshot();
+    records =
+        records
+            .where(
+              (record) =>
+                  record['uid'] == uid &&
+                  record['channel_id'] == channelId &&
+                  record['channel_type'] == channelType,
+            )
+            .toList(growable: false)
+          ..sort(_compareRecordOrder);
+    final safeLimit = limit <= 0 ? 20 : limit;
+    if (beforeOrderSeq > 0) {
+      records = records
+          .where((record) => (record['order_seq'] as int) < beforeOrderSeq)
+          .toList(growable: false);
+    } else if (aroundOrderSeq > 0) {
+      if (records.length <= safeLimit) {
+        return records;
+      }
+      final anchorIndex = records.indexWhere(
+        (record) => (record['order_seq'] as int) >= aroundOrderSeq,
+      );
+      if (anchorIndex < 0) {
+        return records.sublist(records.length - safeLimit);
+      }
+      final before = safeLimit ~/ 2;
+      var start = anchorIndex - before;
+      if (start < 0) {
+        start = 0;
+      }
+      var end = start + safeLimit;
+      if (end > records.length) {
+        end = records.length;
+        start = end - safeLimit;
+        if (start < 0) {
+          start = 0;
+        }
+      }
+      return records.sublist(start, end);
+    }
+    if (records.length <= safeLimit) {
+      return records;
+    }
+    return records.sublist(records.length - safeLimit);
+  }
+
+  @override
   Future<void> applyChanges({
     required List<Map<String, Object?>> upserts,
     required Iterable<String> deleteKeys,
@@ -510,6 +745,97 @@ class FakeIndexedDbChatCacheAdapter implements IndexedDbChatCacheAdapter {
       _records.add(Map<String, Object?>.from(upsert));
     }
   }
+
+  @override
+  Future<void> deleteOldMessages({
+    required String uid,
+    required String channelId,
+    required int channelType,
+    required int keepLatest,
+  }) async {
+    final records =
+        _snapshot()
+            .where(
+              (record) =>
+                  record['uid'] == uid &&
+                  record['channel_id'] == channelId &&
+                  record['channel_type'] == channelType,
+            )
+            .toList(growable: false)
+          ..sort(_compareRecordOrder);
+    if (records.length <= keepLatest) {
+      return;
+    }
+    final deleteKeys = records
+        .take(records.length - keepLatest)
+        .map((record) => record['cache_key']?.toString() ?? '')
+        .where((key) => key.isNotEmpty)
+        .toList(growable: false);
+    await applyChanges(
+      upserts: const <Map<String, Object?>>[],
+      deleteKeys: deleteKeys,
+    );
+  }
+
+  List<Map<String, Object?>> _snapshot() {
+    return _records.map((record) => Map<String, Object?>.from(record)).toList();
+  }
+
+  static int _compareRecordOrder(
+    Map<String, Object?> left,
+    Map<String, Object?> right,
+  ) {
+    return (left['order_seq'] as int).compareTo(right['order_seq'] as int);
+  }
+}
+
+class QueryTrackingIndexedDbChatCacheAdapter
+    extends FakeIndexedDbChatCacheAdapter {
+  int readAllCalls = 0;
+  int readMessagesCalls = 0;
+  int deleteOldMessagesCalls = 0;
+
+  @override
+  Future<List<Map<String, Object?>>> readAll() async {
+    readAllCalls += 1;
+    return super.readAll();
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> readMessages({
+    required String uid,
+    required String channelId,
+    required int channelType,
+    required int limit,
+    int beforeOrderSeq = 0,
+    int aroundOrderSeq = 0,
+  }) async {
+    readMessagesCalls += 1;
+    return super.readMessages(
+      uid: uid,
+      channelId: channelId,
+      channelType: channelType,
+      limit: limit,
+      beforeOrderSeq: beforeOrderSeq,
+      aroundOrderSeq: aroundOrderSeq,
+    );
+  }
+
+  @override
+  Future<void> deleteOldMessages({
+    required String uid,
+    required String channelId,
+    required int channelType,
+    required int keepLatest,
+  }) async {
+    deleteOldMessagesCalls += 1;
+    await super.deleteOldMessages(
+      uid: uid,
+      channelId: channelId,
+      channelType: channelType,
+      keepLatest: keepLatest,
+    );
+  }
 }
 
 class ThrowingIndexedDbChatCacheAdapter implements IndexedDbChatCacheAdapter {
@@ -519,9 +845,31 @@ class ThrowingIndexedDbChatCacheAdapter implements IndexedDbChatCacheAdapter {
   }
 
   @override
+  Future<List<Map<String, Object?>>> readMessages({
+    required String uid,
+    required String channelId,
+    required int channelType,
+    required int limit,
+    int beforeOrderSeq = 0,
+    int aroundOrderSeq = 0,
+  }) async {
+    throw StateError('indexeddb unavailable');
+  }
+
+  @override
   Future<void> applyChanges({
     required List<Map<String, Object?>> upserts,
     required Iterable<String> deleteKeys,
+  }) async {
+    throw StateError('indexeddb unavailable');
+  }
+
+  @override
+  Future<void> deleteOldMessages({
+    required String uid,
+    required String channelId,
+    required int channelType,
+    required int keepLatest,
   }) async {
     throw StateError('indexeddb unavailable');
   }
@@ -548,12 +896,26 @@ class BlockingReadIndexedDbChatCacheAdapter
     extends FakeIndexedDbChatCacheAdapter {
   final Completer<void> readStarted = Completer<void>();
   final Completer<void> _completeRead = Completer<void>();
-  int readAllCalls = 0;
+  int readMessagesCalls = 0;
 
   @override
-  Future<List<Map<String, Object?>>> readAll() async {
-    readAllCalls += 1;
-    final snapshot = await super.readAll();
+  Future<List<Map<String, Object?>>> readMessages({
+    required String uid,
+    required String channelId,
+    required int channelType,
+    required int limit,
+    int beforeOrderSeq = 0,
+    int aroundOrderSeq = 0,
+  }) async {
+    readMessagesCalls += 1;
+    final snapshot = await super.readMessages(
+      uid: uid,
+      channelId: channelId,
+      channelType: channelType,
+      limit: limit,
+      beforeOrderSeq: beforeOrderSeq,
+      aroundOrderSeq: aroundOrderSeq,
+    );
     if (!readStarted.isCompleted) {
       readStarted.complete();
     }

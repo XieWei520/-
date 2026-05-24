@@ -12,6 +12,7 @@ void main() {
       expect(index, isNot(contains(filingNumber)));
       expect(index, isNot(contains('?ICP?2026016828?')));
       expect(index, isNot(contains('https://beian.miit.gov.cn/')));
+      expect(index, isNot(contains('icp-footer')));
       expect(index, isNot(contains('wk-icp-footer')));
     },
   );

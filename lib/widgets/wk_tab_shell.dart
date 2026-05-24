@@ -2,7 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../modules/chat/chat_frame_jank_monitor.dart';
 import 'liquid_glass_panel.dart';
 import 'liquid_glass_tokens.dart';
 import 'wk_colors.dart';
@@ -122,10 +124,7 @@ class WKTabShell extends StatelessWidget {
             );
 
             return Center(
-              child: LiquidGlassAppFrame(
-                frameKey: const ValueKey<String>(
-                  'wk_tab_shell_web_liquid_shell',
-                ),
+              child: _LiquidGlassFallbackFrame(
                 width: shellWidth,
                 height: shellHeight,
                 child: Row(
@@ -169,6 +168,51 @@ class WKTabShell extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _LiquidGlassFallbackFrame extends StatelessWidget {
+  final double width;
+  final double height;
+  final Widget child;
+
+  const _LiquidGlassFallbackFrame({
+    required this.width,
+    required this.height,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_hasProviderScope(context)) {
+      return _buildFrame(disableBlur: false);
+    }
+
+    return Consumer(
+      builder: (context, ref, _) {
+        final disableGlassBlur = ref.watch(chatLiquidGlassFallbackProvider);
+        return _buildFrame(disableBlur: disableGlassBlur);
+      },
+    );
+  }
+
+  Widget _buildFrame({required bool disableBlur}) {
+    return LiquidGlassAppFrame(
+      frameKey: const ValueKey<String>('wk_tab_shell_web_liquid_shell'),
+      width: width,
+      height: height,
+      disableBlur: disableBlur,
+      child: child,
+    );
+  }
+
+  bool _hasProviderScope(BuildContext context) {
+    try {
+      ProviderScope.containerOf(context, listen: false);
+      return true;
+    } on StateError {
+      return false;
+    }
   }
 }
 

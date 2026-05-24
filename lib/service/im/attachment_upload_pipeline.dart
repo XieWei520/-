@@ -17,6 +17,12 @@ typedef ChatFileUploader =
       required String channelId,
       required int channelType,
     });
+typedef ResumableChatFileUploader =
+    Future<String> Function({
+      required String filePath,
+      required String channelId,
+      required int channelType,
+    });
 typedef LocalAttachmentFileExists = Future<bool> Function(String filePath);
 typedef LocalAttachmentFileLength = Future<int?> Function(String filePath);
 
@@ -61,20 +67,26 @@ class AttachmentUploadPipeline {
     this.fileApi,
     this.legacyUploader,
     ChatFileUploader? chatFileUploader,
+    ResumableChatFileUploader? resumableChatFileUploader,
+    this.multipartUploadThresholdBytes =
+        FileApi.defaultMultipartUploadThresholdBytes,
     LocalAttachmentFileExists? fileExists,
     LocalAttachmentFileLength? fileLength,
     this.metadataNormalizer = const AttachmentPipeline(),
     this.maxConcurrentUploads = 2,
   }) : _chatFileUploader = chatFileUploader,
+       _resumableChatFileUploader = resumableChatFileUploader,
        _fileExists = fileExists ?? localAttachmentFileExists,
        _fileLength = fileLength ?? localAttachmentFileLength;
 
   final FileApi? fileApi;
   final LegacyAttachmentUploader? legacyUploader;
   final ChatFileUploader? _chatFileUploader;
+  final ResumableChatFileUploader? _resumableChatFileUploader;
   final LocalAttachmentFileExists _fileExists;
   final LocalAttachmentFileLength _fileLength;
   final AttachmentPipeline metadataNormalizer;
+  final int multipartUploadThresholdBytes;
   final int maxConcurrentUploads;
   final StreamController<AttachmentUploadEvent> _eventsController =
       StreamController<AttachmentUploadEvent>.broadcast();
@@ -124,7 +136,20 @@ class AttachmentUploadPipeline {
     required String filePath,
     required String channelId,
     required int channelType,
-  }) {
+  }) async {
+    final resumableUploader = _resumableChatFileUploader;
+    final threshold = multipartUploadThresholdBytes;
+    if (resumableUploader != null && threshold >= 0) {
+      final length = await _fileLength(filePath);
+      if (length != null && length >= threshold) {
+        return resumableUploader(
+          filePath: filePath,
+          channelId: channelId,
+          channelType: channelType,
+        );
+      }
+    }
+
     final uploader = _chatFileUploader;
     if (uploader != null) {
       return uploader(

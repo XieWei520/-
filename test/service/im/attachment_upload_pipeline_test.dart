@@ -66,6 +66,86 @@ void main() {
       },
     );
 
+    test(
+      'routes local files at or above the multipart threshold to the resumable uploader',
+      () async {
+        final ordinaryUploads = <String>[];
+        final resumableUploads = <String>[];
+        final pipeline = AttachmentUploadPipeline(
+          chatFileUploader:
+              ({
+                required String filePath,
+                required String channelId,
+                required int channelType,
+              }) async {
+                ordinaryUploads.add(filePath);
+                return 'https://cdn.example/ordinary';
+              },
+          resumableChatFileUploader:
+              ({
+                required String filePath,
+                required String channelId,
+                required int channelType,
+              }) async {
+                resumableUploads.add('$channelId:$channelType:$filePath');
+                return 'https://cdn.example/resumable';
+              },
+          multipartUploadThresholdBytes: 64,
+          fileLength: (_) async => 128,
+        );
+
+        final result = await pipeline.uploadLocalFile(
+          filePath: 'C:/tmp/large.bin',
+          channelId: 'chat-a',
+          channelType: 1,
+        );
+
+        expect(result, 'https://cdn.example/resumable');
+        expect(resumableUploads, <String>['chat-a:1:C:/tmp/large.bin']);
+        expect(ordinaryUploads, isEmpty);
+      },
+    );
+
+    test(
+      'keeps local files below the multipart threshold on the ordinary chat uploader',
+      () async {
+        final ordinaryUploads = <String>[];
+        final resumableUploads = <String>[];
+        final pipeline = AttachmentUploadPipeline(
+          chatFileUploader:
+              ({
+                required String filePath,
+                required String channelId,
+                required int channelType,
+              }) async {
+                ordinaryUploads.add('$channelId:$channelType:$filePath');
+                return 'https://cdn.example/ordinary';
+              },
+          resumableChatFileUploader:
+              ({
+                required String filePath,
+                required String channelId,
+                required int channelType,
+              }) async {
+                resumableUploads.add(filePath);
+                return 'https://cdn.example/resumable';
+              },
+          multipartUploadThresholdBytes: 64,
+          fileLength: (_) async => 32,
+        );
+
+        final result = await pipeline.uploadLocalFile(
+          filePath: 'C:/tmp/small.bin',
+          channelId: 'chat-a',
+          channelType: 1,
+        );
+
+        expect(result, 'https://cdn.example/ordinary');
+        expect(ordinaryUploads, <String>['chat-a:1:C:/tmp/small.bin']);
+        expect(resumableUploads, isEmpty);
+      },
+    );
+
     test('uploads video cover after the main video file succeeds', () async {
       final uploadedPaths = <String>[];
       final pipeline = AttachmentUploadPipeline(

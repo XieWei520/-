@@ -41,6 +41,10 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Run IndexedDB browser test in Chrome
+        timeout-minutes: 5
+        run: dart run test -p chrome test/data/cache/indexed_db_web_chat_cache_store_adapter_web_test.dart -r expanded
+
       - name: Build Android APK
         run: flutter build apk --release --target-platform android-arm64
 

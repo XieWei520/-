@@ -27,6 +27,7 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
   final int maxMessagesPerChannel;
   final Map<String, List<Map<String, Object?>>> _recordsByPartition =
       <String, List<Map<String, Object?>>>{};
+  final Set<String> _dirtyPartitions = <String>{};
   Future<void>? _loadFuture;
   bool _loaded = false;
 
@@ -39,13 +40,17 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
     int beforeOrderSeq = 0,
     int aroundOrderSeq = 0,
   }) async {
-    await _ensureLoaded();
     final pageLimit = _safeLimit(limit);
-    var messages = _recordsForPartition(
-      uid,
-      channelId,
-      channelType,
-    ).map(_messageFromRecord).toList(growable: false)..sort(_compareMessages);
+    final records = await _readPartitionRecords(
+      uid: uid,
+      channelId: channelId,
+      channelType: channelType,
+      limit: pageLimit,
+      beforeOrderSeq: beforeOrderSeq,
+      aroundOrderSeq: aroundOrderSeq,
+    );
+    var messages = records.map(_messageFromRecord).toList(growable: false)
+      ..sort(_compareMessages);
     if (beforeOrderSeq > 0) {
       messages = messages
           .where((message) => message.orderSeq < beforeOrderSeq)
@@ -70,11 +75,14 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
     if (messages.isEmpty) {
       return;
     }
-    await _ensureLoaded();
 
     final partitionKey = _partitionKey(uid, channelId, channelType);
-    final previousRecords =
-        _recordsByPartition[partitionKey] ?? const <Map<String, Object?>>[];
+    final previousRecords = await _readPartitionRecords(
+      uid: uid,
+      channelId: channelId,
+      channelType: channelType,
+      limit: maxMessagesPerChannel,
+    );
     final byIdentity = <String, Map<String, Object?>>{
       for (final record in previousRecords)
         _recordIdentity(record): Map<String, Object?>.from(record),
@@ -108,6 +116,11 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
     await _persistPartition(
       previousRecords: previousRecords,
       nextRecords: trimmed,
+    );
+    await _deleteOldPartitionRecords(
+      uid: uid,
+      channelId: channelId,
+      channelType: channelType,
     );
   }
 
@@ -173,23 +186,132 @@ class IndexedDbWebChatCacheStore implements WebChatCacheStore {
     required List<Map<String, Object?>> previousRecords,
     required List<Map<String, Object?>> nextRecords,
   }) async {
+    final partitionKey = nextRecords.isNotEmpty
+        ? _partitionKeyFromRecord(nextRecords.first)
+        : previousRecords.isNotEmpty
+        ? _partitionKeyFromRecord(previousRecords.first)
+        : null;
     final previousKeys = previousRecords.map(_cacheKey).toSet();
     final nextKeys = nextRecords.map(_cacheKey).toSet();
     final deleteKeys = previousKeys
         .difference(nextKeys)
         .where((key) => key.isNotEmpty)
         .toList(growable: false);
-    await _applyChanges(upserts: nextRecords, deleteKeys: deleteKeys);
+    final persisted = await _applyChanges(
+      upserts: nextRecords,
+      deleteKeys: deleteKeys,
+    );
+    if (partitionKey != null) {
+      if (persisted) {
+        _dirtyPartitions.remove(partitionKey);
+      } else {
+        _dirtyPartitions.add(partitionKey);
+      }
+    }
   }
 
-  Future<void> _applyChanges({
+  Future<List<Map<String, Object?>>> _readPartitionRecords({
+    required String uid,
+    required String channelId,
+    required int channelType,
+    required int limit,
+    int beforeOrderSeq = 0,
+    int aroundOrderSeq = 0,
+  }) async {
+    try {
+      final records = await _adapter.readMessages(
+        uid: _normalizeUid(uid),
+        channelId: channelId.trim(),
+        channelType: channelType,
+        limit: limit,
+        beforeOrderSeq: beforeOrderSeq,
+        aroundOrderSeq: aroundOrderSeq,
+      );
+      final normalized =
+          records
+              .map((record) => Map<String, Object?>.from(record))
+              .where(
+                (record) =>
+                    _partitionKeyFromRecord(record) ==
+                    _partitionKey(uid, channelId, channelType),
+              )
+              .toList(growable: false)
+            ..sort(_compareRecords);
+      final partitionKey = _partitionKey(uid, channelId, channelType);
+      final merged = _dirtyPartitions.contains(partitionKey)
+          ? _mergePartitionRecords(
+              _recordsByPartition[partitionKey] ??
+                  const <Map<String, Object?>>[],
+              normalized,
+            )
+          : normalized;
+      if (merged.length > maxMessagesPerChannel) {
+        final trimmed = merged.sublist(merged.length - maxMessagesPerChannel);
+        _recordsByPartition[partitionKey] = trimmed;
+        await _deleteOldPartitionRecords(
+          uid: uid,
+          channelId: channelId,
+          channelType: channelType,
+        );
+        return trimmed;
+      }
+      _recordsByPartition[partitionKey] = merged;
+      return merged;
+    } catch (error, stackTrace) {
+      _errorReporter(
+        'IndexedDB chat cache partition read failed',
+        error,
+        stackTrace,
+      );
+      return _recordsForPartition(uid, channelId, channelType);
+    }
+  }
+
+  static List<Map<String, Object?>> _mergePartitionRecords(
+    List<Map<String, Object?>> existing,
+    List<Map<String, Object?>> incoming,
+  ) {
+    final byIdentity = <String, Map<String, Object?>>{
+      for (final record in existing)
+        _recordIdentity(record): Map<String, Object?>.from(record),
+    };
+    for (final record in incoming) {
+      byIdentity[_recordIdentity(record)] = Map<String, Object?>.from(record);
+    }
+    return byIdentity.values.toList(growable: false)..sort(_compareRecords);
+  }
+
+  Future<void> _deleteOldPartitionRecords({
+    required String uid,
+    required String channelId,
+    required int channelType,
+  }) async {
+    try {
+      await _adapter.deleteOldMessages(
+        uid: _normalizeUid(uid),
+        channelId: channelId.trim(),
+        channelType: channelType,
+        keepLatest: maxMessagesPerChannel,
+      );
+    } catch (error, stackTrace) {
+      _errorReporter(
+        'IndexedDB chat cache retention trim failed',
+        error,
+        stackTrace,
+      );
+    }
+  }
+
+  Future<bool> _applyChanges({
     required List<Map<String, Object?>> upserts,
     required List<String> deleteKeys,
   }) async {
     try {
       await _adapter.applyChanges(upserts: upserts, deleteKeys: deleteKeys);
+      return true;
     } catch (error, stackTrace) {
       _errorReporter('IndexedDB chat cache persist failed', error, stackTrace);
+      return false;
     }
   }
 

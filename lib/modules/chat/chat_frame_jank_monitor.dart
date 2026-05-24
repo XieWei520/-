@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../realtime/telemetry/realtime_rollout_telemetry.dart';
 import '../../realtime/telemetry/realtime_rollout_telemetry_provider.dart';
+import '../../widgets/liquid_glass_performance.dart';
 
 typedef ChatFrameTimingSampleReader =
     ChatFrameTimingSample Function(FrameTiming timing);
@@ -52,14 +53,70 @@ final chatFrameTimingRegistrarProvider = Provider<FrameTimingRegistrar>((ref) {
   return const SchedulerFrameTimingRegistrar();
 });
 
+final chatLiquidGlassFallbackIsWebProvider = Provider<bool>((ref) {
+  return kIsWeb;
+});
+
+final chatLiquidGlassFallbackControllerProvider =
+    StateNotifierProvider<ChatLiquidGlassFallbackController, bool>((ref) {
+      return ChatLiquidGlassFallbackController();
+    });
+
+final chatLiquidGlassFallbackProvider = Provider<bool>((ref) {
+  return ref.watch(chatLiquidGlassFallbackControllerProvider);
+});
+
+class ChatLiquidGlassFallbackController extends StateNotifier<bool> {
+  ChatLiquidGlassFallbackController() : super(false);
+
+  int _rasterJankCount = 0;
+  int _totalJankCount = 0;
+
+  void recordRasterJank({
+    required bool isWeb,
+    required bool disableAnimations,
+  }) {
+    if (!isWeb) {
+      return;
+    }
+    _rasterJankCount += 1;
+    _syncState(isWeb: isWeb, disableAnimations: disableAnimations);
+  }
+
+  void recordTotalJank({required bool isWeb, required bool disableAnimations}) {
+    if (!isWeb) {
+      return;
+    }
+    _totalJankCount += 1;
+    _syncState(isWeb: isWeb, disableAnimations: disableAnimations);
+  }
+
+  void _syncState({required bool isWeb, required bool disableAnimations}) {
+    state = shouldDisableLiquidGlassBlur(
+      isWeb: isWeb,
+      disableAnimations: disableAnimations,
+      rasterJankCount: _rasterJankCount,
+      totalJankCount: _totalJankCount,
+    );
+  }
+}
+
 typedef ChatFrameJankMonitorFactory = ChatFrameJankMonitor Function();
 
 final chatFrameJankMonitorFactoryProvider =
     Provider<ChatFrameJankMonitorFactory>((ref) {
       final telemetry = ref.watch(frameJankTelemetryProvider);
       final registrar = ref.watch(chatFrameTimingRegistrarProvider);
-      return () =>
-          ChatFrameJankMonitor(telemetry: telemetry, registrar: registrar);
+      final liquidGlassFallback = ref.watch(
+        chatLiquidGlassFallbackControllerProvider.notifier,
+      );
+      final isWeb = ref.watch(chatLiquidGlassFallbackIsWebProvider);
+      return () => ChatFrameJankMonitor(
+        telemetry: telemetry,
+        registrar: registrar,
+        liquidGlassFallback: liquidGlassFallback,
+        isWeb: isWeb,
+      );
     });
 
 class ChatFrameJankMonitor {
@@ -68,16 +125,25 @@ class ChatFrameJankMonitor {
     required FrameTimingRegistrar registrar,
     ChatFrameTimingSampleReader sampleReader =
         ChatFrameTimingSample.fromFrameTiming,
+    ChatLiquidGlassFallbackController? liquidGlassFallback,
+    bool isWeb = kIsWeb,
+    bool disableAnimations = false,
     this.buildJankThreshold = const Duration(milliseconds: 8),
     this.rasterJankThreshold = const Duration(milliseconds: 16),
     this.totalJankThreshold = const Duration(milliseconds: 24),
   }) : _telemetry = telemetry,
        _registrar = registrar,
-       _sampleReader = sampleReader;
+       _sampleReader = sampleReader,
+       _liquidGlassFallback = liquidGlassFallback,
+       _isWeb = isWeb,
+       _disableAnimations = disableAnimations;
 
   final FrameJankTelemetry _telemetry;
   final FrameTimingRegistrar _registrar;
   final ChatFrameTimingSampleReader _sampleReader;
+  final ChatLiquidGlassFallbackController? _liquidGlassFallback;
+  final bool _isWeb;
+  final bool _disableAnimations;
 
   final Duration buildJankThreshold;
   final Duration rasterJankThreshold;
@@ -129,11 +195,19 @@ class ChatFrameJankMonitor {
         duration: sample.rasterDuration,
         reason: FrameJankTelemetry.reasonRaster,
       );
+      _liquidGlassFallback?.recordRasterJank(
+        isWeb: _isWeb,
+        disableAnimations: _disableAnimations,
+      );
     }
     if (sample.totalSpan > totalJankThreshold) {
       _telemetry.recordChatFrameJank(
         duration: sample.totalSpan,
         reason: FrameJankTelemetry.reasonTotal,
+      );
+      _liquidGlassFallback?.recordTotalJank(
+        isWeb: _isWeb,
+        disableAnimations: _disableAnimations,
       );
     }
   }

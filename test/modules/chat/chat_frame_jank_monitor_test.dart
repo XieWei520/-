@@ -1,4 +1,5 @@
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/modules/chat/chat_frame_jank_monitor.dart';
 import 'package:wukong_im_app/realtime/telemetry/realtime_rollout_telemetry.dart';
@@ -52,6 +53,108 @@ void main() {
           reason: FrameJankTelemetry.reasonTotal,
         ),
       ]);
+    });
+  });
+
+  group('Chat liquid glass fallback', () {
+    test('repeated Web raster jank disables liquid glass blur fallback', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final monitor = ChatFrameJankMonitor(
+        telemetry: _SpyFrameJankTelemetry(),
+        registrar: _FakeFrameTimingRegistrar(),
+        liquidGlassFallback: container.read(
+          chatLiquidGlassFallbackControllerProvider.notifier,
+        ),
+        isWeb: true,
+      );
+
+      expect(container.read(chatLiquidGlassFallbackProvider), isFalse);
+      for (var i = 0; i < 3; i += 1) {
+        monitor.recordSample(
+          const ChatFrameTimingSample(
+            buildDuration: Duration.zero,
+            rasterDuration: Duration(milliseconds: 17),
+            totalSpan: Duration.zero,
+          ),
+        );
+        expect(container.read(chatLiquidGlassFallbackProvider), i == 2);
+      }
+    });
+
+    test('repeated Web total jank disables liquid glass blur fallback', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final monitor = ChatFrameJankMonitor(
+        telemetry: _SpyFrameJankTelemetry(),
+        registrar: _FakeFrameTimingRegistrar(),
+        liquidGlassFallback: container.read(
+          chatLiquidGlassFallbackControllerProvider.notifier,
+        ),
+        isWeb: true,
+      );
+
+      expect(container.read(chatLiquidGlassFallbackProvider), isFalse);
+      for (var i = 0; i < 3; i += 1) {
+        monitor.recordSample(
+          const ChatFrameTimingSample(
+            buildDuration: Duration.zero,
+            rasterDuration: Duration.zero,
+            totalSpan: Duration(milliseconds: 25),
+          ),
+        );
+        expect(container.read(chatLiquidGlassFallbackProvider), i == 2);
+      }
+    });
+
+    test('repeated non-Web total jank keeps liquid glass blur enabled', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final monitor = ChatFrameJankMonitor(
+        telemetry: _SpyFrameJankTelemetry(),
+        registrar: _FakeFrameTimingRegistrar(),
+        liquidGlassFallback: container.read(
+          chatLiquidGlassFallbackControllerProvider.notifier,
+        ),
+        isWeb: false,
+      );
+
+      for (var i = 0; i < 3; i += 1) {
+        monitor.recordSample(
+          const ChatFrameTimingSample(
+            buildDuration: Duration.zero,
+            rasterDuration: Duration.zero,
+            totalSpan: Duration(milliseconds: 25),
+          ),
+        );
+      }
+
+      expect(container.read(chatLiquidGlassFallbackProvider), isFalse);
+    });
+
+    test('factory-created Web monitor toggles fallback provider', () {
+      final container = ProviderContainer(
+        overrides: <Override>[
+          chatLiquidGlassFallbackIsWebProvider.overrideWithValue(true),
+          chatFrameTimingRegistrarProvider.overrideWithValue(
+            _FakeFrameTimingRegistrar(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final monitor = container.read(chatFrameJankMonitorFactoryProvider)();
+
+      for (var i = 0; i < 3; i += 1) {
+        monitor.recordSample(
+          const ChatFrameTimingSample(
+            buildDuration: Duration.zero,
+            rasterDuration: Duration(milliseconds: 17),
+            totalSpan: Duration.zero,
+          ),
+        );
+      }
+
+      expect(container.read(chatLiquidGlassFallbackProvider), isTrue);
     });
   });
 

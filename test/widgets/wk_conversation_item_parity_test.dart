@@ -298,6 +298,59 @@ void main() {
     },
   );
 
+  testWidgets('ordinary conversation item does not animate the row shell', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithApp(
+        const WKConversationItem(
+          data: WKConversationItemData(
+            channelId: 'ordinary_row_animation_scope',
+            channelType: 1,
+            title: 'Ordinary Row',
+            lastMsgContent: 'status and unread animations are unrelated',
+            unreadCount: 7,
+            showSingleTick: true,
+          ),
+        ),
+      ),
+    );
+
+    final rowShellAnimations = find.ancestor(
+      of: find.byKey(const ValueKey<String>('wk-conversation-item-hitbox')),
+      matching: find.byType(AnimatedContainer),
+    );
+
+    expect(rowShellAnimations, findsNothing);
+    expect(find.byType(UnreadBadgeBounce), findsOneWidget);
+  });
+
+  testWidgets(
+    'selected conversation item keeps the row shell animation scoped',
+    (tester) async {
+      await tester.pumpWidget(
+        wrapWithApp(
+          const WKConversationItem(
+            selected: true,
+            data: WKConversationItemData(
+              channelId: 'selected_row_animation_scope',
+              channelType: 1,
+              title: 'Selected Row',
+              lastMsgContent: 'selected rows may animate their shell',
+            ),
+          ),
+        ),
+      );
+
+      final rowShellAnimations = find.ancestor(
+        of: find.byKey(const ValueKey<String>('wk-conversation-item-hitbox')),
+        matching: find.byType(AnimatedContainer),
+      );
+
+      expect(rowShellAnimations, findsOneWidget);
+    },
+  );
+
   testWidgets('conversation item supports warm Web selected state', (
     tester,
   ) async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/motion/chat_motion.dart';
 import '../core/theme/chat_micro_interactions.dart';
 import '../modules/customer_service/customer_service_badge.dart';
 import '../modules/customer_service/customer_service_identity.dart';
@@ -328,84 +329,89 @@ class WKConversationItem extends StatelessWidget {
       ),
     );
 
-    return Material(
-      color: Colors.transparent,
-      child: AnimatedContainer(
-        key: webStyle
-            ? const ValueKey<String>('wk-conversation-item-web-shell')
-            : null,
-        duration: const Duration(milliseconds: 160),
-        margin: webStyle
-            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
-            : EdgeInsets.zero,
-        decoration: BoxDecoration(
-          color: effectiveRowBackground,
-          borderRadius: rowBorderRadius,
-          border: webStyle
-              ? Border.all(
-                  color: selected
-                      ? const Color(0xFFD8E6FF)
-                      : Colors.transparent,
-                )
-              : isWarmMobileStyle
-              ? Border.all(
-                  color: (selected || data.isTop)
-                      ? WKWebColors.action
-                      : Colors.transparent,
-                  width: 1.5,
-                )
-              : null,
-        ),
-        child: webStyle
-            ? Stack(
-                children: [
-                  Material(
-                    type: MaterialType.transparency,
-                    borderRadius: rowBorderRadius,
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: onTap,
-                      onLongPress: onLongPress,
-                      borderRadius: rowBorderRadius,
-                      highlightColor: WKWebColors.actionSoft.withValues(
-                        alpha: 0.6,
+    final shellKey = webStyle
+        ? const ValueKey<String>('wk-conversation-item-web-shell')
+        : null;
+    final shellMargin = webStyle
+        ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+        : EdgeInsets.zero;
+    final shellDecoration = BoxDecoration(
+      color: effectiveRowBackground,
+      borderRadius: rowBorderRadius,
+      border: webStyle
+          ? Border.all(
+              color: selected ? const Color(0xFFD8E6FF) : Colors.transparent,
+            )
+          : isWarmMobileStyle
+          ? Border.all(
+              color: (selected || data.isTop)
+                  ? WKWebColors.action
+                  : Colors.transparent,
+              width: 1.5,
+            )
+          : null,
+    );
+    final shellChild = webStyle
+        ? Stack(
+            children: [
+              Material(
+                type: MaterialType.transparency,
+                borderRadius: rowBorderRadius,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: onTap,
+                  onLongPress: onLongPress,
+                  borderRadius: rowBorderRadius,
+                  highlightColor: WKWebColors.actionSoft.withValues(alpha: 0.6),
+                  splashColor: WKWebColors.actionSoft.withValues(alpha: 0.4),
+                  child: hitbox,
+                ),
+              ),
+              if (selected)
+                Positioned(
+                  left: 0,
+                  top: 10,
+                  bottom: 10,
+                  child: IgnorePointer(
+                    child: Container(
+                      key: const ValueKey<String>(
+                        'wk-conversation-item-active-indicator',
                       ),
-                      splashColor: WKWebColors.actionSoft.withValues(
-                        alpha: 0.4,
+                      width: 2,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2563D9),
+                        borderRadius: LiquidGlassRadii.pill,
                       ),
-                      child: hitbox,
                     ),
                   ),
-                  if (selected)
-                    Positioned(
-                      left: 0,
-                      top: 10,
-                      bottom: 10,
-                      child: IgnorePointer(
-                        child: Container(
-                          key: const ValueKey<String>(
-                            'wk-conversation-item-active-indicator',
-                          ),
-                          width: 2,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2563D9),
-                            borderRadius: LiquidGlassRadii.pill,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              )
-            : InkWell(
-                onTap: onTap,
-                onLongPress: onLongPress,
-                borderRadius: rowBorderRadius,
-                highlightColor: WKColors.screenBgSelected,
-                splashColor: WKColors.screenBgSelected,
-                child: hitbox,
-              ),
-      ),
-    );
+                ),
+            ],
+          )
+        : InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            borderRadius: rowBorderRadius,
+            highlightColor: WKColors.screenBgSelected,
+            splashColor: WKColors.screenBgSelected,
+            child: hitbox,
+          );
+
+    final shell = selected
+        ? AnimatedContainer(
+            key: shellKey,
+            duration: ChatMotionDurations.fast.value,
+            margin: shellMargin,
+            decoration: shellDecoration,
+            child: shellChild,
+          )
+        : Container(
+            key: shellKey,
+            margin: shellMargin,
+            decoration: shellDecoration,
+            child: shellChild,
+          );
+
+    return Material(color: Colors.transparent, child: shell);
   }
 
   Widget _buildSubtitlePreview(String text, TextStyle style) {

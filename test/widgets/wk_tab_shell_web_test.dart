@@ -1,7 +1,9 @@
 import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wukong_im_app/modules/chat/chat_frame_jank_monitor.dart';
 import 'package:wukong_im_app/widgets/liquid_glass_panel.dart';
 import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 import 'package:wukong_im_app/widgets/wk_tab_shell.dart';
@@ -283,6 +285,38 @@ void main() {
     final decoration = frameDecoration.decoration as BoxDecoration;
     expect(decoration.borderRadius, LiquidGlassRadii.lg);
     expect(decoration.border, Border.all(color: LiquidGlassColors.border));
+  });
+
+  testWidgets('desktop Web shell disables backdrop blur when jank fallback flips', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          chatLiquidGlassFallbackProvider.overrideWithValue(true),
+        ],
+        child: MaterialApp(
+          home: SizedBox(
+            width: 1200,
+            height: 800,
+            child: WKTabShell(
+              currentIndex: 0,
+              items: items,
+              pages: const <Widget>[
+                Text('chat page'),
+                Text('contacts page'),
+                Text('mine page'),
+              ],
+              onTap: (_) {},
+              forceDesktopRailForTesting: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(LiquidGlassAppFrame), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsNothing);
   });
 
   testWidgets('desktop Web rail uses dark liquid shell colors', (tester) async {

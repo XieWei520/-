@@ -3,9 +3,22 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/widgets/liquid_glass_panel.dart';
+import 'package:wukong_im_app/widgets/liquid_glass_performance.dart';
 import 'package:wukong_im_app/widgets/liquid_glass_tokens.dart';
 
 void main() {
+  test('shouldDisableLiquidGlassBlur disables blur after Web raster jank', () {
+    expect(
+      shouldDisableLiquidGlassBlur(
+        isWeb: true,
+        disableAnimations: false,
+        rasterJankCount: 3,
+        totalJankCount: 0,
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('LiquidGlassPanel renders clipped translucent shell', (
     tester,
   ) async {
@@ -41,6 +54,21 @@ void main() {
     expect(shadowDecoration.borderRadius, LiquidGlassRadii.lg);
     expect(shadowDecoration.boxShadow, LiquidGlassShadows.md);
     expect(shadowDecoration.boxShadow!.single.blurRadius, 16);
+  });
+
+  testWidgets('LiquidGlassPanel can render without backdrop blur', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: LiquidGlassPanel(disableBlur: true, child: Text('x')),
+        ),
+      ),
+    );
+
+    expect(find.text('x'), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsNothing);
   });
 
   testWidgets('LiquidGlassStage paints a flat restrained light workbench', (

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -39,6 +40,27 @@ void main() {
       expect(info.bytes, greaterThan(0));
     });
 
+    test('probes valid images through the compute runner', () async {
+      final computeRunner = _RecordingComputeRunner();
+      final service = DefaultMediaPreprocessService(
+        outputDirectoryProvider: () async => tempDir,
+        computeRunner: computeRunner.call,
+      );
+      final source = await _writeTestImage(
+        tempDir,
+        fileName: 'probe_runner.png',
+        width: 120,
+        height: 80,
+      );
+
+      final info = await service.probeImage(source.path);
+
+      expect(info, isNotNull);
+      expect(info!.width, 120);
+      expect(info.height, 80);
+      expect(computeRunner.calls, 1);
+    });
+
     test('resizes oversized images before upload', () async {
       final source = await _writeTestImage(
         tempDir,
@@ -58,6 +80,31 @@ void main() {
       expect(result.outputInfo!.width, 60);
       expect(result.outputInfo!.height, 40);
       expect(File(result.outputPath).existsSync(), isTrue);
+    });
+
+    test('preprocesses valid images through the compute runner', () async {
+      final computeRunner = _RecordingComputeRunner();
+      final service = DefaultMediaPreprocessService(
+        outputDirectoryProvider: () async => tempDir,
+        computeRunner: computeRunner.call,
+      );
+      final source = await _writeTestImage(
+        tempDir,
+        fileName: 'preprocess_runner.png',
+        width: 120,
+        height: 80,
+      );
+
+      final result = await service.preprocessImage(
+        source.path,
+        options: const MediaPreprocessOptions(maxDimension: 60, quality: 75),
+      );
+
+      expect(result.outputPath, isNot(source.path));
+      expect(result.outputInfo, isNotNull);
+      expect(result.outputInfo!.width, 60);
+      expect(result.outputInfo!.height, 40);
+      expect(computeRunner.calls, 1);
     });
 
     test(
@@ -102,4 +149,17 @@ Future<File> _writeTestImage(
   final file = File('${directory.path}${Platform.pathSeparator}$fileName');
   await file.writeAsBytes(image.encodePng(bitmap), flush: true);
   return file;
+}
+
+class _RecordingComputeRunner {
+  var calls = 0;
+
+  Future<R> call<M, R>(
+    FutureOr<R> Function(M message) callback,
+    M message, {
+    String? debugLabel,
+  }) async {
+    calls += 1;
+    return await callback(message);
+  }
 }
