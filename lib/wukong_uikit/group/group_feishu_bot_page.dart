@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 
 import '../../core/platform/local_image_picker.dart';
 import '../../data/models/group_feishu_robot_config.dart';
+import '../../modules/robot_config/feishu_robot_credentials.dart';
 import '../../service/api/file_api.dart';
 import '../../service/api/group_api.dart';
 import '../../widgets/wk_colors.dart';
@@ -28,15 +29,18 @@ class GroupFeishuBotPage extends StatefulWidget {
   final GroupRobotAvatarPicker? pickDisplayAvatarImage;
   final GroupRobotAvatarUploader? uploadDisplayAvatarImage;
   final GroupRobotAvatarUploadPathBuilder? buildDisplayAvatarUploadPath;
+  final FeishuRobotCredentialsStore credentialsStore;
 
-  const GroupFeishuBotPage({
+  GroupFeishuBotPage({
     super.key,
     required this.groupNo,
     required this.groupName,
     this.pickDisplayAvatarImage,
     this.uploadDisplayAvatarImage,
     this.buildDisplayAvatarUploadPath,
-  });
+    FeishuRobotCredentialsStore? credentialsStore,
+  }) : credentialsStore =
+           credentialsStore ?? SharedPreferencesFeishuRobotCredentialsStore();
 
   @override
   State<GroupFeishuBotPage> createState() => _GroupFeishuBotPageState();
@@ -118,6 +122,10 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
     }
 
     await _runBusyAction(() async {
+      final credentials = await _loadOpenAPICredentials();
+      final configuredCredentials = credentials.isConfigured
+          ? credentials
+          : FeishuRobotCredentials.empty;
       final saved = await GroupApi.instance.updateFeishuRobotConfig(
         widget.groupNo,
         enabled: _enabled,
@@ -129,6 +137,12 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
             : null,
         officialSecret: _webhookMode == GroupRobotWebhookMode.official
             ? officialSecret
+            : null,
+        appId: configuredCredentials.isConfigured
+            ? configuredCredentials.appId
+            : null,
+        appSecret: configuredCredentials.isConfigured
+            ? configuredCredentials.appSecret
             : null,
         displayName: _displayNameController.text.trim(),
         displayAvatar: _displayAvatar.trim(),
@@ -166,9 +180,19 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
   }
 
   Future<void> _persistDisplayIdentity({String? successMessage}) async {
+    final credentials = await _loadOpenAPICredentials();
+    final configuredCredentials = credentials.isConfigured
+        ? credentials
+        : FeishuRobotCredentials.empty;
     final saved = await GroupApi.instance.updateFeishuRobotConfig(
       widget.groupNo,
       enabled: _enabled,
+      appId: configuredCredentials.isConfigured
+          ? configuredCredentials.appId
+          : null,
+      appSecret: configuredCredentials.isConfigured
+          ? configuredCredentials.appSecret
+          : null,
       displayName: _displayNameController.text.trim(),
       displayAvatar: _displayAvatar.trim(),
     );
@@ -185,6 +209,10 @@ class _GroupFeishuBotPageState extends State<GroupFeishuBotPage> {
     await _runBusyAction(
       () => _persistDisplayIdentity(successMessage: successMessage),
     );
+  }
+
+  Future<FeishuRobotCredentials> _loadOpenAPICredentials() {
+    return widget.credentialsStore.load();
   }
 
   void _scheduleDisplayIdentitySave(String _) {

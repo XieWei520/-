@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wukong_im_app/core/config/api_config.dart';
+import 'package:wukong_im_app/modules/robot_config/feishu_robot_credentials.dart';
 import 'package:wukong_im_app/service/api/api_client.dart';
 import 'package:wukong_im_app/wukong_uikit/group/group_feishu_bot_page.dart';
 
@@ -115,62 +116,73 @@ void main() {
     expect(updatePayload?.containsKey('official_secret'), isFalse);
   });
 
+  testWidgets(
+    'submits configured Feishu OpenAPI credentials without rendering per-group fields',
+    (tester) async {
+      Map<String, dynamic>? updatePayload;
 
-  testWidgets('does not render or submit per-group Feishu OpenAPI credentials', (
-    tester,
-  ) async {
-    Map<String, dynamic>? updatePayload;
+      ApiClient.instance.dio.httpClientAdapter = _RoutingJsonAdapter((options) {
+        final method = options.method.toUpperCase();
+        final path = options.uri.path;
 
-    ApiClient.instance.dio.httpClientAdapter = _RoutingJsonAdapter((options) {
-      final method = options.method.toUpperCase();
-      final path = options.uri.path;
+        if (method == 'GET' &&
+            path == '${ApiConfig.groups}/g_feishu/robot/feishu') {
+          return _MockJsonResponse(<String, dynamic>{
+            'code': 0,
+            'data': _buildFeishuConfigJson(),
+          });
+        }
 
-      if (method == 'GET' &&
-          path == '${ApiConfig.groups}/g_feishu/robot/feishu') {
+        if (method == 'PUT' &&
+            path == '${ApiConfig.groups}/g_feishu/robot/feishu') {
+          updatePayload = Map<String, dynamic>.from(
+            (options.data as Map?) ?? const <String, dynamic>{},
+          );
+          return _MockJsonResponse(<String, dynamic>{
+            'code': 0,
+            'data': _buildFeishuConfigJson(
+              displayName:
+                  updatePayload?['display_name']?.toString() ?? '?????',
+              displayAvatar:
+                  updatePayload?['display_avatar']?.toString() ??
+                  'https://im.example.com/robot-feishu.png',
+            ),
+          });
+        }
+
         return _MockJsonResponse(<String, dynamic>{
-          'code': 0,
-          'data': _buildFeishuConfigJson(),
-        });
-      }
+          'code': 404,
+          'msg': 'Unhandled request: $method $path',
+        }, statusCode: 404);
+      });
 
-      if (method == 'PUT' &&
-          path == '${ApiConfig.groups}/g_feishu/robot/feishu') {
-        updatePayload = Map<String, dynamic>.from(
-          (options.data as Map?) ?? const <String, dynamic>{},
-        );
-        return _MockJsonResponse(<String, dynamic>{
-          'code': 0,
-          'data': _buildFeishuConfigJson(
-            displayName: updatePayload?['display_name']?.toString() ?? '?????',
-            displayAvatar:
-                updatePayload?['display_avatar']?.toString() ??
-                'https://im.example.com/robot-feishu.png',
+      await _pumpPage(
+        tester,
+        credentialsStore: _MemoryFeishuRobotCredentialsStore(
+          initial: const FeishuRobotCredentials(
+            appId: 'cli_configured',
+            appSecret: 'secret-configured',
           ),
-        });
-      }
+        ),
+      );
 
-      return _MockJsonResponse(<String, dynamic>{
-        'code': 404,
-        'msg': 'Unhandled request: $method $path',
-      }, statusCode: 404);
-    });
+      expect(find.text('?? OpenAPI ??'), findsNothing);
+      expect(find.text('????'), findsNothing);
+      expect(find.text('????'), findsNothing);
+      expect(find.textContaining('App Secret'), findsNothing);
 
-    await _pumpPage(tester);
+      final saveCell = find.byKey(
+        const ValueKey('group-robot-save-config-cell'),
+      );
+      await _scrollTo(tester, saveCell);
+      await tester.tap(saveCell);
+      await tester.pumpAndSettle();
 
-    expect(find.text('?? OpenAPI ??'), findsNothing);
-    expect(find.text('????'), findsNothing);
-    expect(find.text('????'), findsNothing);
-    expect(find.textContaining('App Secret'), findsNothing);
-
-    final saveCell = find.byKey(const ValueKey('group-robot-save-config-cell'));
-    await _scrollTo(tester, saveCell);
-    await tester.tap(saveCell);
-    await tester.pumpAndSettle();
-
-    expect(updatePayload, isNotNull);
-    expect(updatePayload?.containsKey('app_id'), isFalse);
-    expect(updatePayload?.containsKey('app_secret'), isFalse);
-  });
+      expect(updatePayload, isNotNull);
+      expect(updatePayload?['app_id'], 'cli_configured');
+      expect(updatePayload?['app_secret'], 'secret-configured');
+    },
+  );
 
   testWidgets('can switch to official mode', (tester) async {
     ApiClient.instance.dio.httpClientAdapter = _RoutingJsonAdapter((options) {
@@ -364,10 +376,18 @@ void main() {
   });
 }
 
-Future<void> _pumpPage(WidgetTester tester) async {
+Future<void> _pumpPage(
+  WidgetTester tester, {
+  FeishuRobotCredentialsStore? credentialsStore,
+}) async {
   await tester.pumpWidget(
-    const MaterialApp(
-      home: GroupFeishuBotPage(groupNo: 'g_feishu', groupName: '测试群'),
+    MaterialApp(
+      home: GroupFeishuBotPage(
+        groupNo: 'g_feishu',
+        groupName: '测试群',
+        credentialsStore:
+            credentialsStore ?? _MemoryFeishuRobotCredentialsStore(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -441,4 +461,21 @@ class _MockJsonResponse {
 
   final Object payload;
   final int statusCode;
+}
+
+class _MemoryFeishuRobotCredentialsStore
+    implements FeishuRobotCredentialsStore {
+  _MemoryFeishuRobotCredentialsStore({
+    FeishuRobotCredentials initial = FeishuRobotCredentials.empty,
+  }) : _credentials = initial;
+
+  FeishuRobotCredentials _credentials;
+
+  @override
+  Future<FeishuRobotCredentials> load() async => _credentials;
+
+  @override
+  Future<void> save(FeishuRobotCredentials credentials) async {
+    _credentials = credentials.normalize();
+  }
 }

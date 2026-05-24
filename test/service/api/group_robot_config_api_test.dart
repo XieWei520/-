@@ -80,6 +80,51 @@ void main() {
     );
 
     test(
+      'updateFeishuRobotConfig submits OpenAPI credentials for generated image relay',
+      () async {
+        const groupNo = 'g_robot_feishu_openapi_credentials';
+        Map<String, dynamic>? updatePayload;
+        final adapter = _RoutingJsonAdapter((options) {
+          final method = options.method.toUpperCase();
+          final path = options.uri.path;
+
+          if (method == 'PUT' &&
+              path == '${ApiConfig.groups}/$groupNo/robot/feishu') {
+            updatePayload = Map<String, dynamic>.from(
+              (options.data as Map?) ?? const <String, dynamic>{},
+            );
+            return _MockJsonResponse(<String, dynamic>{
+              'code': 0,
+              'data': _buildFeishuConfigJson(
+                groupNo: groupNo,
+                appId: updatePayload?['app_id']?.toString() ?? '',
+                appSecret: updatePayload?['app_secret']?.toString() ?? '',
+              ),
+            });
+          }
+
+          return _MockJsonResponse(<String, dynamic>{
+            'code': 404,
+            'msg': 'Unhandled request: $method $path',
+          }, statusCode: 404);
+        });
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+
+        final saved = await GroupApi.instance.updateFeishuRobotConfig(
+          groupNo,
+          appId: ' cli_configured ',
+          appSecret: ' secret-configured ',
+        );
+
+        expect(updatePayload, isNotNull);
+        expect(updatePayload?['app_id'], 'cli_configured');
+        expect(updatePayload?['app_secret'], 'secret-configured');
+        expect(saved.appId, 'cli_configured');
+        expect(saved.appSecret, 'secret-configured');
+      },
+    );
+
+    test(
       'updateDingTalkRobotConfig accepts code-only response and returns submitted display fields',
       () async {
         const groupNo = 'g_robot_dingtalk_code_only';
@@ -135,6 +180,8 @@ void main() {
 
 Map<String, dynamic> _buildFeishuConfigJson({
   required String groupNo,
+  String appId = 'cli_xxx',
+  String appSecret = '',
   String displayName = '',
   String displayAvatar = '',
 }) {
@@ -142,8 +189,8 @@ Map<String, dynamic> _buildFeishuConfigJson({
     'group_no': groupNo,
     'webhook_url': 'https://example.com/feishu/webhook',
     'secret': 'feishu-secret',
-    'app_id': 'cli_xxx',
-    'app_secret': '',
+    'app_id': appId,
+    'app_secret': appSecret,
     'enabled': 1,
     'secret_set': 1,
     'app_secret_set': 1,

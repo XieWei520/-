@@ -897,12 +897,16 @@ class GroupApi {
     String? webhookMode,
     String? officialWebhookUrl,
     String? officialSecret,
+    String? appId,
+    String? appSecret,
     String? displayName,
     String? displayAvatar,
   }) async {
     final normalizedWebhookMode = _normalizeWebhookModePayload(webhookMode);
     final trimmedOfficialWebhookUrl = officialWebhookUrl?.trim();
     final trimmedOfficialSecret = officialSecret?.trim();
+    final trimmedAppId = appId?.trim();
+    final trimmedAppSecret = appSecret?.trim();
     final trimmedDisplayName = displayName?.trim();
     final trimmedDisplayAvatar = displayAvatar?.trim();
     final data = <String, dynamic>{
@@ -918,6 +922,12 @@ class GroupApi {
     }
     if (trimmedOfficialSecret != null) {
       data['official_secret'] = trimmedOfficialSecret;
+    }
+    if (trimmedAppId != null) {
+      data['app_id'] = trimmedAppId;
+    }
+    if (trimmedAppSecret != null) {
+      data['app_secret'] = trimmedAppSecret;
     }
     if (trimmedDisplayName != null) {
       data['display_name'] = trimmedDisplayName;
@@ -935,6 +945,8 @@ class GroupApi {
       groupNo,
       response.data,
       enabled: enabled,
+      appId: trimmedAppId,
+      appSecret: trimmedAppSecret,
       webhookMode: normalizedWebhookMode,
       officialWebhookUrl: trimmedOfficialWebhookUrl,
       officialSecret: trimmedOfficialSecret,
