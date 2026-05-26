@@ -1,0 +1,834 @@
+﻿diff --git a/modules/file/service_minio.go b/modules/file/service_minio.go
+index 684c479..d4e98a3 100644
+--- a/modules/file/service_minio.go
++++ b/modules/file/service_minio.go
+@@ -10,10 +10,12 @@ import (
+ 	"net/url"
+ 	"path/filepath"
+ 	"strings"
++	"sync"
+ 	"time"
+ 
+ 	"github.com/TangSengDaoDao/TangSengDaoDaoServerLib/config"
+ 	"github.com/TangSengDaoDao/TangSengDaoDaoServerLib/pkg/log"
++	"github.com/TangSengDaoDao/TangSengDaoDaoServerLib/pkg/metrics"
+ 	"github.com/minio/minio-go/v7"
+ 	"github.com/minio/minio-go/v7/pkg/credentials"
+ 	"go.uber.org/zap"
+@@ -24,6 +26,10 @@ type ServiceMinio struct {
+ 	log.Log
+ 	ctx            *config.Context
+ 	downloadClient *http.Client
++	minioMu        sync.Mutex
++	minioClient    minioClient
++	readyBuckets   map[string]struct{}
++	clientFactory  func(endpoint string, opts *minio.Options) (minioClient, error)
+ }
+ 
+ // NewServiceMinio NewServiceMinio
+@@ -34,9 +40,22 @@ func NewServiceMinio(ctx *config.Context) *ServiceMinio {
+ 		downloadClient: &http.Client{
+ 			Timeout: time.Second * 30,
+ 		},
++		readyBuckets:  map[string]struct{}{},
++		clientFactory: defaultMinioClientFactory,
+ 	}
+ }
+ 
++type minioClient interface {
++	BucketExists(ctx context.Context, bucketName string) (bool, error)
++	MakeBucket(ctx context.Context, bucketName string, opts minio.MakeBucketOptions) error
++	SetBucketPolicy(ctx context.Context, bucketName string, policy string) error
++	PutObject(ctx context.Context, bucketName string, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) (minio.UploadInfo, error)
++}
++
++func defaultMinioClientFactory(endpoint string, opts *minio.Options) (minioClient, error) {
++	return minio.New(endpoint, opts)
++}
++
+ type minioObjectPath struct {
+ 	bucketName string
+ 	objectName string
+@@ -109,42 +128,23 @@ func (sm *ServiceMinio) UploadFile(filePath string, contentType string, copyFile
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	endpoint := uploadURL.Host
+-	accessKeyID := minioConfig.AccessKeyID
+-	secretAccessKey := minioConfig.SecretAccessKey
+-	useSSL := strings.HasPrefix(uploadURL.Scheme, "https")
+-
+-	minioClient, err := minio.New(endpoint, &minio.Options{
+-		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
+-		Secure: useSSL,
+-	})
++	started := time.Now()
++	minioClient, err := sm.uploadClient(uploadURL)
++	metrics.ObserveStorageOperation("minio", "client_create", time.Since(started), err)
+ 	if err != nil {
+ 		sm.Error("create minio client failed", zap.Error(err))
+ 		return nil, err
+ 	}
+ 
+ 	objectPath := splitMinioObjectPath(filePath)
+-	exists, err := minioClient.BucketExists(ctx, objectPath.bucketName)
+-	if err != nil {
+-		sm.Error(fmt.Sprintf("check %s bucket exists failed", objectPath.bucketName), zap.Error(err))
++	if err := sm.ensureBucketReady(ctx, minioClient, objectPath.bucketName); err != nil {
+ 		return nil, err
+ 	}
+-	if !exists {
+-		err = minioClient.MakeBucket(ctx, objectPath.bucketName, minio.MakeBucketOptions{})
+-		if err != nil {
+-			sm.Error(fmt.Sprintf("create %s bucket failed", objectPath.bucketName), zap.Error(err))
+-			return nil, err
+-		}
+-		err = minioClient.SetBucketPolicy(ctx, objectPath.bucketName, minioPublicReadBucketPolicy(objectPath.bucketName))
+-		if err != nil {
+-			sm.Error("set minio bucket policy failed", zap.Error(err))
+-			return nil, err
+-		}
+-	}
+ 
+ 	uploadStream := newMinioUploadStream(copyFileWriter)
+ 	defer uploadStream.reader.Close()
+ 
++	started = time.Now()
+ 	n, err := minioClient.PutObject(
+ 		ctx,
+ 		objectPath.bucketName,
+@@ -156,6 +156,7 @@ func (sm *ServiceMinio) UploadFile(filePath string, contentType string, copyFile
+ 			PartSize:    10 * 1024 * 1024,
+ 		},
+ 	)
++	metrics.ObserveStorageOperation("minio", "put_object", time.Since(started), err)
+ 	if err != nil {
+ 		_ = uploadStream.reader.Close()
+ 		_ = uploadStream.wait()
+@@ -173,6 +174,68 @@ func (sm *ServiceMinio) UploadFile(filePath string, contentType string, copyFile
+ 	}, nil
+ }
+ 
++func (sm *ServiceMinio) uploadClient(uploadURL *url.URL) (minioClient, error) {
++	sm.minioMu.Lock()
++	defer sm.minioMu.Unlock()
++
++	if sm.minioClient != nil {
++		return sm.minioClient, nil
++	}
++	if sm.clientFactory == nil {
++		sm.clientFactory = defaultMinioClientFactory
++	}
++	client, err := sm.clientFactory(uploadURL.Host, &minio.Options{
++		Creds:  credentials.NewStaticV4(sm.ctx.GetConfig().Minio.AccessKeyID, sm.ctx.GetConfig().Minio.SecretAccessKey, ""),
++		Secure: strings.HasPrefix(uploadURL.Scheme, "https"),
++	})
++	if err != nil {
++		return nil, err
++	}
++	sm.minioClient = client
++	if sm.readyBuckets == nil {
++		sm.readyBuckets = map[string]struct{}{}
++	}
++	return client, nil
++}
++
++func (sm *ServiceMinio) ensureBucketReady(ctx context.Context, client minioClient, bucketName string) error {
++	sm.minioMu.Lock()
++	defer sm.minioMu.Unlock()
++
++	if sm.readyBuckets == nil {
++		sm.readyBuckets = map[string]struct{}{}
++	}
++	if _, ok := sm.readyBuckets[bucketName]; ok {
++		return nil
++	}
++
++	started := time.Now()
++	exists, err := client.BucketExists(ctx, bucketName)
++	metrics.ObserveStorageOperation("minio", "bucket_exists", time.Since(started), err)
++	if err != nil {
++		sm.Error(fmt.Sprintf("check %s bucket exists failed", bucketName), zap.Error(err))
++		return err
++	}
++	if !exists {
++		started = time.Now()
++		err = client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{})
++		metrics.ObserveStorageOperation("minio", "bucket_create", time.Since(started), err)
++		if err != nil {
++			sm.Error(fmt.Sprintf("create %s bucket failed", bucketName), zap.Error(err))
++			return err
++		}
++		started = time.Now()
++		err = client.SetBucketPolicy(ctx, bucketName, minioPublicReadBucketPolicy(bucketName))
++		metrics.ObserveStorageOperation("minio", "bucket_policy_set", time.Since(started), err)
++		if err != nil {
++			sm.Error("set minio bucket policy failed", zap.Error(err))
++			return err
++		}
++	}
++	sm.readyBuckets[bucketName] = struct{}{}
++	return nil
++}
++
+ func (sm *ServiceMinio) DownloadURL(ph string, filename string) (string, error) {
+ 	minioConfig := sm.ctx.GetConfig().Minio
+ 	return minioDownloadURL(minioConfig.DownloadURL, ph, filename)
+diff --git a/modules/file/service_minio_test.go b/modules/file/service_minio_test.go
+index f82cef7..56c1175 100644
+--- a/modules/file/service_minio_test.go
++++ b/modules/file/service_minio_test.go
+@@ -1,11 +1,15 @@
+ package file
+ 
+ import (
++	"context"
+ 	"encoding/json"
+ 	"io"
++	"strings"
+ 	"testing"
+ 	"time"
+ 
++	"github.com/TangSengDaoDao/TangSengDaoDaoServerLib/config"
++	"github.com/minio/minio-go/v7"
+ 	"github.com/stretchr/testify/require"
+ )
+ 
+@@ -60,3 +64,68 @@ func TestMinioPublicReadBucketPolicyDoesNotGrantAnonymousWrite(t *testing.T) {
+ 	require.NotContains(t, policy, "s3:ListBucket")
+ 	require.Contains(t, policy, `"arn:aws:s3:::chat/*"`)
+ }
++
++func TestServiceMinioReusesClientAndBucketReadinessForUpload(t *testing.T) {
++	cfg := config.New()
++	cfg.Minio.UploadURL = "http://minio.example:9000"
++	cfg.Minio.AccessKeyID = "test-access"
++	cfg.Minio.SecretAccessKey = "test-secret"
++	ctx := config.NewContext(cfg)
++
++	fake := &fakeMinioClient{bucketExists: true}
++	factoryCalls := 0
++	service := NewServiceMinio(ctx)
++	service.clientFactory = func(endpoint string, opts *minio.Options) (minioClient, error) {
++		factoryCalls++
++		require.Equal(t, "minio.example:9000", endpoint)
++		require.NotNil(t, opts)
++		return fake, nil
++	}
++
++	for i := 0; i < 2; i++ {
++		resp, err := service.UploadFile("avatar/u1.png", "image/png", func(w io.Writer) error {
++			_, err := io.Copy(w, strings.NewReader("hello"))
++			return err
++		})
++		require.NoError(t, err)
++		require.Equal(t, "u1.png", resp["path"])
++	}
++
++	require.Equal(t, 1, factoryCalls)
++	require.Equal(t, 1, fake.bucketExistsCalls)
++	require.Equal(t, 0, fake.makeBucketCalls)
++	require.Equal(t, 2, fake.putObjectCalls)
++}
++
++type fakeMinioClient struct {
++	bucketExists      bool
++	bucketExistsCalls int
++	makeBucketCalls   int
++	setPolicyCalls    int
++	putObjectCalls    int
++}
++
++func (f *fakeMinioClient) BucketExists(ctx context.Context, bucketName string) (bool, error) {
++	f.bucketExistsCalls++
++	return f.bucketExists, nil
++}
++
++func (f *fakeMinioClient) MakeBucket(ctx context.Context, bucketName string, opts minio.MakeBucketOptions) error {
++	f.makeBucketCalls++
++	f.bucketExists = true
++	return nil
++}
++
++func (f *fakeMinioClient) SetBucketPolicy(ctx context.Context, bucketName string, policy string) error {
++	f.setPolicyCalls++
++	return nil
++}
++
++func (f *fakeMinioClient) PutObject(ctx context.Context, bucketName string, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) (minio.UploadInfo, error) {
++	f.putObjectCalls++
++	_, err := io.Copy(io.Discard, reader)
++	if err != nil {
++		return minio.UploadInfo{}, err
++	}
++	return minio.UploadInfo{Key: objectName}, nil
++}
+diff --git a/modules/message/api_conversation.go b/modules/message/api_conversation.go
+index 5db4a43..767dd95 100644
+--- a/modules/message/api_conversation.go
++++ b/modules/message/api_conversation.go
+@@ -619,29 +619,7 @@ func (co *Conversation) syncUserConversationAck(c *wkhttp.Context) {
+ 	channelMessageSeqStrs := co.syncConversationResultCacheMap[userKey]
+ 	co.syncConversationResultCacheLock.RUnlock()
+ 
+-	userLastOffsetModels := make([]*userLastOffsetModel, 0, len(channelMessageSeqStrs))
+-	if len(channelMessageSeqStrs) > 0 {
+-		for _, channelMessageSeqStr := range channelMessageSeqStrs {
+-			channelID, channelType, messageSeq := co.channelMessageSeqSplit(channelMessageSeqStr)
+-
+-			var has bool
+-			for _, userLastOffsetM := range userLastOffsetModels {
+-				if channelID == userLastOffsetM.ChannelID && channelType == userLastOffsetM.ChannelType && messageSeq > uint32(userLastOffsetM.MessageSeq) {
+-					userLastOffsetM.MessageSeq = int64(messageSeq)
+-					has = true
+-					break
+-				}
+-			}
+-			if !has {
+-				userLastOffsetModels = append(userLastOffsetModels, &userLastOffsetModel{
+-					UID:         loginUID,
+-					ChannelID:   channelID,
+-					ChannelType: channelType,
+-					MessageSeq:  int64(messageSeq),
+-				})
+-			}
+-		}
+-	}
++	userLastOffsetModels := co.buildUserLastOffsetsFromCache(loginUID, channelMessageSeqStrs)
+ 
+ 	if len(userLastOffsetModels) > 0 {
+ 		err := co.insertUserLastOffsets(userLastOffsetModels)
+@@ -662,9 +640,46 @@ func (co *Conversation) syncUserConversationAck(c *wkhttp.Context) {
+ 		}
+ 	}
+ 
++	co.clearSyncConversationCache(userKey)
+ 	c.ResponseOK()
+ }
+ 
++func (co *Conversation) buildUserLastOffsetsFromCache(loginUID string, channelMessageSeqStrs []string) []*userLastOffsetModel {
++	byChannel := make(map[string]*userLastOffsetModel, len(channelMessageSeqStrs))
++	for _, channelMessageSeqStr := range channelMessageSeqStrs {
++		channelID, channelType, messageSeq := co.channelMessageSeqSplit(channelMessageSeqStr)
++		if channelID == "" || channelType == 0 || messageSeq == 0 {
++			continue
++		}
++		key := fmt.Sprintf("%s:%d", channelID, channelType)
++		existing := byChannel[key]
++		if existing == nil {
++			byChannel[key] = &userLastOffsetModel{
++				UID:         loginUID,
++				ChannelID:   channelID,
++				ChannelType: channelType,
++				MessageSeq:  int64(messageSeq),
++			}
++			continue
++		}
++		if int64(messageSeq) > existing.MessageSeq {
++			existing.MessageSeq = int64(messageSeq)
++		}
++	}
++	result := make([]*userLastOffsetModel, 0, len(byChannel))
++	for _, item := range byChannel {
++		result = append(result, item)
++	}
++	return result
++}
++
++func (co *Conversation) clearSyncConversationCache(userKey string) {
++	co.syncConversationResultCacheLock.Lock()
++	delete(co.syncConversationResultCacheMap, userKey)
++	delete(co.syncConversationVersionMap, userKey)
++	co.syncConversationResultCacheLock.Unlock()
++}
++
+ func (co *Conversation) insertDeviceOffsets(deviceOffsetModels []*deviceOffsetModel) error {
+ 	tx, err := co.ctx.DB().Begin()
+ 	if err != nil {
+diff --git a/modules/message/api_conversation_syncack_test.go b/modules/message/api_conversation_syncack_test.go
+new file mode 100644
+index 0000000..e7a6c7f
+--- /dev/null
++++ b/modules/message/api_conversation_syncack_test.go
+@@ -0,0 +1,47 @@
++package message
++
++import (
++	"fmt"
++	"testing"
++
++	"github.com/stretchr/testify/require"
++)
++
++func TestBuildUserLastOffsetsDedupesByChannelWithMaxSeq(t *testing.T) {
++	co := &Conversation{}
++
++	got := co.buildUserLastOffsetsFromCache("u1", []string{
++		"c1:1:10",
++		"c1:1:12",
++		"c2:2:4",
++		"bad-value",
++		"c2:2:3",
++	})
++
++	require.Len(t, got, 2)
++
++	byKey := make(map[string]int64, len(got))
++	for _, item := range got {
++		require.Equal(t, "u1", item.UID)
++		byKey[fmt.Sprintf("%s:%d", item.ChannelID, item.ChannelType)] = item.MessageSeq
++	}
++
++	require.Equal(t, int64(12), byKey["c1:1"])
++	require.Equal(t, int64(4), byKey["c2:2"])
++}
++
++func TestClearSyncConversationCacheRemovesUserEntries(t *testing.T) {
++	co := &Conversation{
++		syncConversationResultCacheMap: map[string][]string{
++			"u1": []string{"c1:1:10"},
++		},
++		syncConversationVersionMap: map[string]int64{
++			"u1": 99,
++		},
++	}
++
++	co.clearSyncConversationCache("u1")
++
++	require.Empty(t, co.syncConversationResultCacheMap)
++	require.Empty(t, co.syncConversationVersionMap)
++}
+diff --git a/modules/user/api.go b/modules/user/api.go
+index 802432b..f5d4c0e 100644
+--- a/modules/user/api.go
++++ b/modules/user/api.go
+@@ -49,6 +49,27 @@ var qrcodeChanMap = map[string]chan *common.QRCodeModel{}
+ var qrcodeChanLock sync.RWMutex
+ 
+ // User 用户相关API
++const userIMRouteCacheTTL = 5 * time.Second
++
++type userIMRouteCacheKey struct {
++	apiURL       string
++	managerToken string
++	uid          string
++}
++
++type userIMRouteCacheEntry struct {
++	statusCode int
++	response   imRouteResponse
++	expiresAt  time.Time
++}
++
++var userIMRouteCache = struct {
++	sync.RWMutex
++	entries map[userIMRouteCacheKey]userIMRouteCacheEntry
++}{
++	entries: make(map[userIMRouteCacheKey]userIMRouteCacheEntry),
++}
++
+ type User struct {
+ 	db            *DB
+ 	friendDB      *friendDB
+@@ -453,15 +474,26 @@ func (u *User) uploadAvatar(c *wkhttp.Context) {
+ // 获取用户的IM连接地址
+ func (u *User) userIM(c *wkhttp.Context) {
+ 	uid := c.Param("uid")
++	apiURL := u.ctx.GetConfig().WuKongIM.APIURL
++	managerToken := strings.TrimSpace(u.ctx.GetConfig().WuKongIM.ManagerToken)
++	cacheKey := userIMRouteCacheKey{
++		apiURL:       apiURL,
++		managerToken: managerToken,
++		uid:          uid,
++	}
++	if cached, ok := getCachedUserIMRoute(cacheKey); ok {
++		c.JSON(cached.statusCode, cached.response)
++		return
++	}
+ 	headers := map[string]string{}
+-	if managerToken := strings.TrimSpace(u.ctx.GetConfig().WuKongIM.ManagerToken); managerToken != "" {
++	if managerToken != "" {
+ 		headers["token"] = managerToken
+ 	}
+ 	if len(headers) == 0 {
+ 		headers = nil
+ 	}
+ 
+-	routeURL := fmt.Sprintf("%s/route?uid=%s", u.ctx.GetConfig().WuKongIM.APIURL, url.QueryEscape(uid))
++	routeURL := fmt.Sprintf("%s/route?uid=%s", apiURL, url.QueryEscape(uid))
+ 	resp, err := network.Get(routeURL, nil, headers)
+ 	if err != nil {
+ 		u.Error("调用IM服务失败！", zap.Error(err))
+@@ -475,7 +507,41 @@ func (u *User) userIM(c *wkhttp.Context) {
+ 		return
+ 	}
+ 	normalizeIMRouteForEdge(resultMap)
+-	c.JSON(resp.StatusCode, buildIMRouteResponse(resultMap))
++	routeResp := buildIMRouteResponse(resultMap)
++	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
++		setCachedUserIMRoute(cacheKey, userIMRouteCacheEntry{
++			statusCode: resp.StatusCode,
++			response:   routeResp,
++			expiresAt:  time.Now().Add(userIMRouteCacheTTL),
++		})
++	}
++	c.JSON(resp.StatusCode, routeResp)
++}
++
++func getCachedUserIMRoute(key userIMRouteCacheKey) (userIMRouteCacheEntry, bool) {
++	now := time.Now()
++	userIMRouteCache.RLock()
++	entry, ok := userIMRouteCache.entries[key]
++	userIMRouteCache.RUnlock()
++	if !ok {
++		return userIMRouteCacheEntry{}, false
++	}
++	if now.Before(entry.expiresAt) {
++		return entry, true
++	}
++
++	userIMRouteCache.Lock()
++	if current, ok := userIMRouteCache.entries[key]; ok && !now.Before(current.expiresAt) {
++		delete(userIMRouteCache.entries, key)
++	}
++	userIMRouteCache.Unlock()
++	return userIMRouteCacheEntry{}, false
++}
++
++func setCachedUserIMRoute(key userIMRouteCacheKey, entry userIMRouteCacheEntry) {
++	userIMRouteCache.Lock()
++	userIMRouteCache.entries[key] = entry
++	userIMRouteCache.Unlock()
+ }
+ 
+ func (u *User) qrcodeMy(c *wkhttp.Context) {
+diff --git a/modules/user/api_im_route_test.go b/modules/user/api_im_route_test.go
+index ccfadc3..485e623 100644
+--- a/modules/user/api_im_route_test.go
++++ b/modules/user/api_im_route_test.go
+@@ -4,6 +4,7 @@ import (
+ 	"encoding/json"
+ 	"net/http"
+ 	"net/http/httptest"
++	"sync/atomic"
+ 	"testing"
+ 
+ 	"github.com/TangSengDaoDao/TangSengDaoDaoServerLib/config"
+@@ -156,3 +157,132 @@ func TestUserIM_EncodesUIDForUpstreamQuery(t *testing.T) {
+ 
+ 	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+ }
++
++func TestUserIM_CachesSuccessfulNormalizedRouteForSameConfigAndUID(t *testing.T) {
++	cfg := config.New()
++	ctx := config.NewContext(cfg)
++	httpRouter := wkhttp.New()
++	u := &User{ctx: ctx}
++	httpRouter.GET("/v1/users/:uid/im", u.userIM)
++
++	var hits int32
++	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		atomic.AddInt32(&hits, 1)
++		require.Equal(t, "/route", r.URL.Path)
++		require.Equal(t, "route-user-1", r.URL.Query().Get("uid"))
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = w.Write([]byte(`{"tcp_addr":"wemx.cc:5100","ws_addr":"ws://wemx.cc:5200","wss_addr":"wss://wemx.cc/ws"}`))
++	}))
++	defer upstream.Close()
++
++	ctx.GetConfig().WuKongIM.APIURL = upstream.URL
++	ctx.GetConfig().WuKongIM.ManagerToken = "test-token"
++
++	for i := 0; i < 2; i++ {
++		w := httptest.NewRecorder()
++		req := httptest.NewRequest(http.MethodGet, "/v1/users/route-user-1/im", nil)
++		httpRouter.ServeHTTP(w, req)
++		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
++		assert.JSONEq(t, `{"tcp_addr":"wemx.cc:5100","ws_addr":"ws://wemx.cc:5200","wss_addr":"wss://wemx.cc/ws","preferred_transport":"wss","preferred_addr":"wss://wemx.cc/ws"}`, w.Body.String())
++	}
++
++	assert.Equal(t, int32(1), atomic.LoadInt32(&hits))
++}
++
++func TestUserIM_ManagerTokenChangeDoesNotReuseCachedRoute(t *testing.T) {
++	cfg := config.New()
++	ctx := config.NewContext(cfg)
++	httpRouter := wkhttp.New()
++	u := &User{ctx: ctx}
++	httpRouter.GET("/v1/users/:uid/im", u.userIM)
++
++	var hits int32
++	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		atomic.AddInt32(&hits, 1)
++		w.Header().Set("Content-Type", "application/json")
++		switch r.Header.Get("token") {
++		case "test-token":
++			_, _ = w.Write([]byte(`{"tcp_addr":"wemx.cc:5100","ws_addr":"ws://wemx.cc:5200","wss_addr":"wss://wemx.cc/ws"}`))
++		case "dummy-token":
++			_, _ = w.Write([]byte(`{"tcp_addr":"wemx.cc:6100","ws_addr":"ws://wemx.cc:6200","wss_addr":"wss://wemx.cc/changed"}`))
++		default:
++			w.WriteHeader(http.StatusUnauthorized)
++			_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
++		}
++	}))
++	defer upstream.Close()
++
++	ctx.GetConfig().WuKongIM.APIURL = upstream.URL
++	ctx.GetConfig().WuKongIM.ManagerToken = "test-token"
++	w := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodGet, "/v1/users/route-user-1/im", nil)
++	httpRouter.ServeHTTP(w, req)
++	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
++	assert.JSONEq(t, `{"tcp_addr":"wemx.cc:5100","ws_addr":"ws://wemx.cc:5200","wss_addr":"wss://wemx.cc/ws","preferred_transport":"wss","preferred_addr":"wss://wemx.cc/ws"}`, w.Body.String())
++
++	ctx.GetConfig().WuKongIM.ManagerToken = "dummy-token"
++	w = httptest.NewRecorder()
++	req = httptest.NewRequest(http.MethodGet, "/v1/users/route-user-1/im", nil)
++	httpRouter.ServeHTTP(w, req)
++	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
++	assert.JSONEq(t, `{"tcp_addr":"wemx.cc:6100","ws_addr":"ws://wemx.cc:6200","wss_addr":"wss://wemx.cc/changed","preferred_transport":"wss","preferred_addr":"wss://wemx.cc/changed"}`, w.Body.String())
++
++	assert.Equal(t, int32(2), atomic.LoadInt32(&hits))
++}
++
++func TestUserIM_DoesNotCacheNon2xxOrMalformedJSON(t *testing.T) {
++	tests := []struct {
++		name       string
++		statusCode int
++		body       string
++	}{
++		{
++			name:       "non 2xx",
++			statusCode: http.StatusBadGateway,
++			body:       `{"error":"bad gateway"}`,
++		},
++		{
++			name:       "malformed json",
++			statusCode: http.StatusOK,
++			body:       `{`,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			cfg := config.New()
++			ctx := config.NewContext(cfg)
++			httpRouter := wkhttp.New()
++			u := &User{ctx: ctx}
++			httpRouter.GET("/v1/users/:uid/im", u.userIM)
++
++			var hits int32
++			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				hit := atomic.AddInt32(&hits, 1)
++				w.Header().Set("Content-Type", "application/json")
++				if hit == 1 {
++					w.WriteHeader(tt.statusCode)
++					_, _ = w.Write([]byte(tt.body))
++					return
++				}
++				_, _ = w.Write([]byte(`{"tcp_addr":"wemx.cc:5100","ws_addr":"ws://wemx.cc:5200","wss_addr":"wss://wemx.cc/ws"}`))
++			}))
++			defer upstream.Close()
++
++			ctx.GetConfig().WuKongIM.APIURL = upstream.URL
++			ctx.GetConfig().WuKongIM.ManagerToken = "test-token"
++
++			w := httptest.NewRecorder()
++			req := httptest.NewRequest(http.MethodGet, "/v1/users/route-user-1/im", nil)
++			httpRouter.ServeHTTP(w, req)
++			require.NotEqual(t, http.StatusOK, w.Code, w.Body.String())
++
++			w = httptest.NewRecorder()
++			req = httptest.NewRequest(http.MethodGet, "/v1/users/route-user-1/im", nil)
++			httpRouter.ServeHTTP(w, req)
++			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
++			assert.JSONEq(t, `{"tcp_addr":"wemx.cc:5100","ws_addr":"ws://wemx.cc:5200","wss_addr":"wss://wemx.cc/ws","preferred_transport":"wss","preferred_addr":"wss://wemx.cc/ws"}`, w.Body.String())
++			assert.Equal(t, int32(2), atomic.LoadInt32(&hits))
++		})
++	}
++}
+diff --git a/serverlib/pkg/metrics/metrics.go b/serverlib/pkg/metrics/metrics.go
+index f6919a6..214a00f 100644
+--- a/serverlib/pkg/metrics/metrics.go
++++ b/serverlib/pkg/metrics/metrics.go
+@@ -28,6 +28,8 @@ type Recorder struct {
+ 	httpLatency      map[httpLabelKey]*histogram
+ 	operationTotal   map[operationLabelKey]uint64
+ 	operationLatency map[operationLabelKey]*histogram
++	storageTotal     map[storageLabelKey]uint64
++	storageLatency   map[storageLabelKey]*histogram
+ }
+ 
+ type httpLabelKey struct {
+@@ -41,6 +43,12 @@ type operationLabelKey struct {
+ 	result    string
+ }
+ 
++type storageLabelKey struct {
++	provider  string
++	operation string
++	result    string
++}
++
+ type histogram struct {
+ 	buckets []float64
+ 	counts  []uint64
+@@ -54,6 +62,8 @@ func NewRecorder() *Recorder {
+ 		httpLatency:      make(map[httpLabelKey]*histogram),
+ 		operationTotal:   make(map[operationLabelKey]uint64),
+ 		operationLatency: make(map[operationLabelKey]*histogram),
++		storageTotal:     make(map[storageLabelKey]uint64),
++		storageLatency:   make(map[storageLabelKey]*histogram),
+ 	}
+ }
+ 
+@@ -127,6 +137,36 @@ func (r *Recorder) ObserveOperation(operation string, duration time.Duration, er
+ 	r.mu.Unlock()
+ }
+ 
++func ObserveStorageOperation(provider string, operation string, duration time.Duration, err error) {
++	DefaultRecorder.ObserveStorageOperation(provider, operation, duration, err)
++}
++
++func (r *Recorder) ObserveStorageOperation(provider string, operation string, duration time.Duration, err error) {
++	result := "success"
++	if err != nil {
++		result = "failure"
++	}
++	key := storageLabelKey{
++		provider:  normalizeOperation(provider),
++		operation: normalizeOperation(operation),
++		result:    result,
++	}
++	elapsed := duration.Seconds()
++	if elapsed < 0 {
++		elapsed = 0
++	}
++
++	r.mu.Lock()
++	r.storageTotal[key]++
++	h := r.storageLatency[key]
++	if h == nil {
++		h = newHistogram(operationLatencyBuckets)
++		r.storageLatency[key] = h
++	}
++	h.observe(elapsed)
++	r.mu.Unlock()
++}
++
+ func ProtectedHandler(token string) http.Handler {
+ 	return DefaultRecorder.ProtectedHandler(token)
+ }
+@@ -168,6 +208,16 @@ func (r *Recorder) GatherText() string {
+ 		writeHistogram(&b, "wukongim_operation_duration_seconds", operationLabels(key, ""), r.operationLatency[key])
+ 	}
+ 
++	writeHelpType(&b, "wukongim_storage_operation_total", "Storage operation count by provider, operation name, and result.", "counter")
++	for _, key := range sortedStorageKeys(r.storageTotal) {
++		writeMetric(&b, "wukongim_storage_operation_total", storageLabels(key, ""), float64(r.storageTotal[key]))
++	}
++
++	writeHelpType(&b, "wukongim_storage_operation_duration_seconds", "Storage operation latency by provider, operation name, and result.", "histogram")
++	for _, key := range sortedStorageHistogramKeys(r.storageLatency) {
++		writeHistogram(&b, "wukongim_storage_operation_duration_seconds", storageLabels(key, ""), r.storageLatency[key])
++	}
++
+ 	return b.String()
+ }
+ 
+@@ -237,6 +287,18 @@ func operationLabels(key operationLabelKey, extra string) string {
+ 	return labels + "," + extra
+ }
+ 
++func storageLabels(key storageLabelKey, extra string) string {
++	labels := fmt.Sprintf(`provider="%s",operation="%s",result="%s"`,
++		escapeLabelValue(key.provider),
++		escapeLabelValue(key.operation),
++		escapeLabelValue(key.result),
++	)
++	if extra == "" {
++		return labels
++	}
++	return labels + "," + extra
++}
++
+ func withLeLabel(labels, le string) string {
+ 	return labels + `,le="` + escapeLabelValue(le) + `"`
+ }
+@@ -298,6 +360,24 @@ func sortedOperationHistogramKeys(values map[operationLabelKey]*histogram) []ope
+ 	return keys
+ }
+ 
++func sortedStorageKeys(values map[storageLabelKey]uint64) []storageLabelKey {
++	keys := make([]storageLabelKey, 0, len(values))
++	for key := range values {
++		keys = append(keys, key)
++	}
++	sort.Slice(keys, func(i, j int) bool { return lessStorageKey(keys[i], keys[j]) })
++	return keys
++}
++
++func sortedStorageHistogramKeys(values map[storageLabelKey]*histogram) []storageLabelKey {
++	keys := make([]storageLabelKey, 0, len(values))
++	for key := range values {
++		keys = append(keys, key)
++	}
++	sort.Slice(keys, func(i, j int) bool { return lessStorageKey(keys[i], keys[j]) })
++	return keys
++}
++
+ func lessOperationKey(left, right operationLabelKey) bool {
+ 	if left.operation != right.operation {
+ 		return left.operation < right.operation
+@@ -305,6 +385,16 @@ func lessOperationKey(left, right operationLabelKey) bool {
+ 	return left.result < right.result
+ }
+ 
++func lessStorageKey(left, right storageLabelKey) bool {
++	if left.provider != right.provider {
++		return left.provider < right.provider
++	}
++	if left.operation != right.operation {
++		return left.operation < right.operation
++	}
++	return left.result < right.result
++}
++
+ func normalizedRoute(c *gin.Context) string {
+ 	route := strings.TrimSpace(c.FullPath())
+ 	if route == "" {
+diff --git a/serverlib/pkg/metrics/metrics_test.go b/serverlib/pkg/metrics/metrics_test.go
+index 840a3c7..75bdace 100644
+--- a/serverlib/pkg/metrics/metrics_test.go
++++ b/serverlib/pkg/metrics/metrics_test.go
+@@ -78,6 +78,30 @@ func TestOperationTimerRecordsResultWithoutPayloadLabels(t *testing.T) {
+ 	}
+ }
+ 
++func TestStorageOperationMetricsDoNotLeakObjectPaths(t *testing.T) {
++	recorder := NewRecorder()
++	recorder.ObserveStorageOperation("minio", "put_object", time.Millisecond, nil)
++	recorder.ObserveStorageOperation("minio", "bucket_exists", 2*time.Millisecond, assertErr("bucket /avatar/u1.png failed"))
++
++	body := recorder.GatherText()
++	for _, want := range []string{
++		`wukongim_storage_operation_total{provider="minio",operation="put_object",result="success"} 1`,
++		`wukongim_storage_operation_total{provider="minio",operation="bucket_exists",result="failure"} 1`,
++	} {
++		if !strings.Contains(body, want) {
++			t.Fatalf("missing %s in:\n%s", want, body)
++		}
++	}
++	if !strings.Contains(body, `wukongim_storage_operation_duration_seconds_bucket{provider="minio",operation="put_object",result="success",le=`) {
++		t.Fatalf("missing storage latency histogram:\n%s", body)
++	}
++	for _, leaked := range []string{"avatar", "u1.png", "bucket /avatar/u1.png failed"} {
++		if strings.Contains(body, leaked) {
++			t.Fatalf("metrics leaked %q:\n%s", leaked, body)
++		}
++	}
++}
++
+ func TestProtectedMetricsHandlerRequiresBearerTokenWhenConfigured(t *testing.T) {
+ 	recorder := NewRecorder()
+ 	recorder.ObserveOperation("message_sync", time.Millisecond, nil)
