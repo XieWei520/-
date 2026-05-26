@@ -72,15 +72,17 @@ allowlist contains only:
 - `serverlib/pkg/metrics/metrics.go`
 - `serverlib/pkg/metrics/metrics_test.go`
 
-## Sync Source And Optional One-Shot Build
+## Sync Source And Build
 
 This copies the allowlisted files to `/opt/wukongim-prod/src` and creates a
-timestamped backup. Use either one-shot sync+build, or sync then build-only.
-Do not run a second sync just to build, because a second sync would create a
-backup of already-updated source files.
+timestamped backup under
+`/opt/wukongim-prod/backups/phase3-backend-optimization-source-sync`, outside
+the source tree. Build only through the one-shot sync+build command so the
+script can verify and isolate the Docker build context before building.
+Build-only mode is intentionally unsupported.
 
 ```powershell
-.\scripts\ops\phase3_backend_optimization_prepare.ps1 -Run -AllowProductionSync
+.\scripts\ops\phase3_backend_optimization_prepare.ps1 -Run -AllowProductionSync -BuildImage -AllowProductionBuild
 ```
 
 Record the printed value:
@@ -95,26 +97,32 @@ Also record the absent-file manifest if printed:
 phase3_backend_optimization_absent_files_manifest=<remote backup dir>/.phase3_absent_files
 ```
 
-For one-shot sync+build, run this command instead of the sync-only command:
+Before build, the script verifies the effective Docker build context:
+`go.mod`, `go.sum`, `main.go`, `assets`, `configs`, `internal`, `modules`,
+`pkg`, and `serverlib`. The only allowed build-context changes are the eight
+Phase 3 files listed in this runbook. The build runs only after:
+`phase3_backend_optimization_build_context=verified`.
 
-```powershell
-.\scripts\ops\phase3_backend_optimization_prepare.ps1 -Run -AllowProductionSync -BuildImage -AllowProductionBuild
+The image build uses a temporary build context printed as:
+
+```text
+phase3_backend_optimization_build_context_root=<remote tmp>/build-context
 ```
 
-## Build Image Only
+Before overwriting `wukongim/tsdd-api:production-local`, the script tags the
+current image and prints:
 
-If the source sync already succeeded and you recorded the first backup
-directory, build the backend image without syncing source files again:
-
-```powershell
-.\scripts\ops\phase3_backend_optimization_prepare.ps1 -Run -BuildImage -AllowProductionBuild
+```text
+phase3_backend_optimization_previous_image_tag=wukongim/tsdd-api:phase3-pre-<timestamp>
 ```
 
-The build-only path verifies the remote source files still match the reviewed
-Phase 3 manifest, then runs:
+This keeps production backups, logs, rendered configs, and other source-tree
+runtime state out of `COPY . .`. The temporary build context also writes a
+`.dockerignore` that excludes secret/archive/runtime patterns such as
+`**/*.p12`, `**/*.sql`, and `**/*.log`.
 
 ```bash
-docker compose --env-file .env build tsdd-api
+docker compose --env-file .env -f "<remote tmp>/docker-compose.phase3-build.yaml" build tsdd-api
 ```
 
 ## Switch Service
@@ -162,9 +170,9 @@ Pass criteria:
 If smoke checks fail or the 30-minute gates regress, restore from the recorded backup directory:
 
 ```bash
-ssh ubuntu@42.194.218.158 'set -euo pipefail; backup_dir="<phase3_backend_optimization_sync_backup_dir>"; cd /opt/wukongim-prod/src; rsync -a "$backup_dir"/ ./'
+ssh ubuntu@42.194.218.158 'set -euo pipefail; backup_dir="<phase3_backend_optimization_sync_backup_dir>"; cd /opt/wukongim-prod/src; rsync -a --exclude .phase3_absent_files "$backup_dir"/ ./'
 ssh ubuntu@42.194.218.158 'set -euo pipefail; backup_dir="<phase3_backend_optimization_sync_backup_dir>"; cd /opt/wukongim-prod/src; if [ -f "$backup_dir/.phase3_absent_files" ]; then while IFS= read -r path; do case "$path" in modules/user/api.go|modules/user/api_im_route_test.go|modules/message/api_conversation.go|modules/message/api_conversation_syncack_test.go|modules/file/service_minio.go|modules/file/service_minio_test.go|serverlib/pkg/metrics/metrics.go|serverlib/pkg/metrics/metrics_test.go) rm -f -- "$path" ;; /*|*..*|*\\*|"") echo "unsafe rollback absent path: $path" >&2; exit 1 ;; *) echo "rollback absent path outside Phase 3 allowlist: $path" >&2; exit 1 ;; esac; done < "$backup_dir/.phase3_absent_files"; fi'
-ssh ubuntu@42.194.218.158 'set -euo pipefail; cd /opt/wukongim-prod/src/deploy/production; docker compose --env-file .env build tsdd-api'
+ssh ubuntu@42.194.218.158 'set -euo pipefail; previous_image_tag="<phase3_backend_optimization_previous_image_tag>"; docker image inspect "$previous_image_tag" >/dev/null; docker tag "$previous_image_tag" wukongim/tsdd-api:production-local'
 ```
 
 Then switch back with:

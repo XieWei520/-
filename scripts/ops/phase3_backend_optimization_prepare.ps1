@@ -4,6 +4,7 @@ param(
   [string]$LocalBackendRoot = '',
   [string]$RemoteSourceRoot = '/opt/wukongim-prod/src',
   [string]$RemoteProductionRoot = '/opt/wukongim-prod/src/deploy/production',
+  [string]$RemoteBackupRoot = '/opt/wukongim-prod/backups/phase3-backend-optimization-source-sync',
   [string]$PatchPath = '',
   [string]$SshKeyPath = '',
   [switch]$Run,
@@ -55,6 +56,19 @@ function Quote-ProcessArgument {
     return '"' + ($Value.Replace('\', '\\').Replace('"', '\"')) + '"'
   }
   return $Value
+}
+
+function Quote-CmdArgument {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  $escaped = $Value.
+    Replace('^', '^^').
+    Replace('&', '^&').
+    Replace('<', '^<').
+    Replace('>', '^>').
+    Replace('|', '^|').
+    Replace('"', '\"')
+  return '"' + $escaped + '"'
 }
 
 function Validate-RemoteHostToken {
@@ -119,29 +133,38 @@ function Invoke-RemoteBash {
   Validate-RemoteHostToken -Value $RemoteHost
   $normalizedScript = (($Script -replace "`r`n", "`n") -replace "`r", "`n").TrimEnd() + "`n"
   $sshArgs = @((Get-SshOptions) + @('--', $RemoteHost, 'bash', '-s'))
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  $remoteScriptFile = Join-Path ([System.IO.Path]::GetTempPath()) "phase3-remote-bash-$([guid]::NewGuid().ToString('N')).sh"
+  $cmdFile = Join-Path ([System.IO.Path]::GetTempPath()) "phase3-remote-bash-$([guid]::NewGuid().ToString('N')).cmd"
 
-  $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-  $startInfo.FileName = 'ssh'
-  $startInfo.Arguments = (($sshArgs | ForEach-Object { Quote-ProcessArgument -Value $_ }) -join ' ')
-  $startInfo.UseShellExecute = $false
-  $startInfo.RedirectStandardInput = $true
-  $startInfo.RedirectStandardOutput = $true
-  $startInfo.RedirectStandardError = $true
+  try {
+    [System.IO.File]::WriteAllText($remoteScriptFile, $normalizedScript, $utf8NoBom)
+    $sshCommand = (Quote-CmdArgument -Value 'ssh') + ' ' + (($sshArgs | ForEach-Object { Quote-CmdArgument -Value $_ }) -join ' ') + ' < ' + (Quote-CmdArgument -Value $remoteScriptFile)
+    [System.IO.File]::WriteAllText($cmdFile, "@echo off`r`n$sshCommand`r`nexit /b %ERRORLEVEL%`r`n", [System.Text.Encoding]::ASCII)
 
-  $process = [System.Diagnostics.Process]::new()
-  $process.StartInfo = $startInfo
-  [void]$process.Start()
-  $process.StandardInput.Write($normalizedScript)
-  $process.StandardInput.Close()
-  $stdout = $process.StandardOutput.ReadToEnd()
-  $stderr = $process.StandardError.ReadToEnd()
-  $process.WaitForExit()
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
+    $startInfo.Arguments = '/d /c ' + (Quote-CmdArgument -Value $cmdFile) + ' 2>&1'
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $false
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    [void]$process.Start()
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $process.WaitForExit()
+  } finally {
+    if (Test-Path -LiteralPath $remoteScriptFile) {
+      Remove-Item -LiteralPath $remoteScriptFile -Force
+    }
+    if (Test-Path -LiteralPath $cmdFile) {
+      Remove-Item -LiteralPath $cmdFile -Force
+    }
+  }
 
   if (-not [string]::IsNullOrWhiteSpace($stdout)) {
     $stdout.TrimEnd() -split "`r?`n" | ForEach-Object { $_ }
-  }
-  if (-not [string]::IsNullOrWhiteSpace($stderr)) {
-    $stderr.TrimEnd() -split "`r?`n" | ForEach-Object { $_ }
   }
   if ($process.ExitCode -ne 0) {
     throw "Remote Phase 3 backend optimization prepare command failed with exit code $($process.ExitCode)."
@@ -197,6 +220,14 @@ function Assert-RemoteProductionRootMatchesSourceRoot {
   $expectedProductionRoot = $RemoteSourceRoot.TrimEnd('/') + '/deploy/production'
   if ($RemoteProductionRoot.TrimEnd('/') -ne $expectedProductionRoot) {
     throw "RemoteProductionRoot must equal RemoteSourceRoot/deploy/production: expected $expectedProductionRoot"
+  }
+}
+
+function Assert-RemoteBackupRootOutsideSourceRoot {
+  $sourcePrefix = $RemoteSourceRoot.TrimEnd('/') + '/'
+  $backupRoot = $RemoteBackupRoot.TrimEnd('/')
+  if ($backupRoot -eq $RemoteSourceRoot.TrimEnd('/') -or $backupRoot.StartsWith($sourcePrefix)) {
+    throw 'RemoteBackupRoot must be outside RemoteSourceRoot so backups cannot enter the Docker build context.'
   }
 }
 
@@ -266,7 +297,9 @@ function Invoke-LocalTests {
 Validate-RemoteHostToken -Value $RemoteHost
 Validate-RemoteAbsolutePath -Name 'RemoteSourceRoot' -Value $RemoteSourceRoot
 Validate-RemoteAbsolutePath -Name 'RemoteProductionRoot' -Value $RemoteProductionRoot
+Validate-RemoteAbsolutePath -Name 'RemoteBackupRoot' -Value $RemoteBackupRoot
 Assert-RemoteProductionRootMatchesSourceRoot
+Assert-RemoteBackupRootOutsideSourceRoot
 
 $backendRoot = Resolve-BackendRoot
 
@@ -282,17 +315,18 @@ $manifestRows = New-Manifest -BackendRoot $backendRoot
 Assert-ReviewedManifest -ManifestRows $manifestRows
 $remoteSourceArg = Quote-Bash -Value $RemoteSourceRoot
 $remoteProductionArg = Quote-Bash -Value $RemoteProductionRoot
+$remoteBackupArg = Quote-Bash -Value $RemoteBackupRoot
 $manifestText = ($manifestRows -join "`n")
 $manifestArg = Quote-Bash -Value $manifestText
 
 if (-not $Run) {
-  Write-Host 'Dry run only. Add -Run -AllowProductionSync to sync Phase 3 backend optimization source files.'
-  Write-Host 'Add -Run -BuildImage -AllowProductionBuild to build the tsdd-api image without syncing source files.'
-  Write-Host 'Use -Run -AllowProductionSync -BuildImage -AllowProductionBuild only for one-shot sync+build.'
+  Write-Host 'Dry run only. Use -Run -AllowProductionSync -BuildImage -AllowProductionBuild for one-shot sync+build.'
+  Write-Host 'Build-only mode is intentionally unsupported; build context integrity is verified during sync+build.'
   Write-Host "RemoteHost: $RemoteHost"
   Write-Host "LocalBackendRoot: $backendRoot"
   Write-Host "RemoteSourceRoot: $RemoteSourceRoot"
   Write-Host "RemoteProductionRoot: $RemoteProductionRoot"
+  Write-Host "RemoteBackupRoot: $RemoteBackupRoot"
   Write-Host 'phase3_backend_optimization_sync_backup_dir=<created only when -Run -AllowProductionSync is used>'
   Write-Host 'Reviewed manifest: verified'
   Write-Host 'phase3_backend_optimization_reviewed_manifest=verified'
@@ -308,63 +342,11 @@ if (-not $Run) {
 if ($BuildImage -and -not $AllowProductionBuild) {
   throw 'Refusing to build production backend image without -AllowProductionBuild.'
 }
-if (-not $AllowProductionSync -and -not $BuildImage) {
+if (-not $AllowProductionSync) {
   throw 'Refusing to sync production backend source without -AllowProductionSync.'
 }
-
-if (-not $AllowProductionSync -and $BuildImage) {
-  $buildOnlyScript = @"
-set -euo pipefail
-remote_source=$remoteSourceArg
-remote_production=$remoteProductionArg
-manifest_text=$manifestArg
-case "`$remote_source" in
-  /*) ;;
-  *) echo "unsafe remote source path: `$remote_source" >&2; exit 1 ;;
-esac
-case "`$remote_production" in
-  /*) ;;
-  *) echo "unsafe remote production path: `$remote_production" >&2; exit 1 ;;
-esac
-case "`$remote_source" in
-  /|*'/../'*|*/..|../*) echo "unsafe remote source path: `$remote_source" >&2; exit 1 ;;
-esac
-case "`$remote_production" in
-  /|*'/../'*|*/..|../*) echo "unsafe remote production path: `$remote_production" >&2; exit 1 ;;
-esac
-
-cd "`$remote_source"
-test -f main.go
-while IFS= read -r row; do
-  [ -n "`$row" ] || continue
-  expected_hash="`$(printf '%s\n' "`$row" | awk '{print `$1}')"
-  relative_path="`$(printf '%s\n' "`$row" | cut -d' ' -f3-)"
-  case "`$relative_path" in
-    /*|*..*|*'\'*|'')
-      echo "unsafe release file path: `$relative_path" >&2
-      exit 1
-      ;;
-  esac
-  test -f "`$relative_path"
-  installed_hash="`$(sha256sum "`$relative_path" | awk '{print `$1}')"
-  if [ "`$installed_hash" != "`$expected_hash" ]; then
-    echo "remote reviewed manifest mismatch for `$relative_path" >&2
-    exit 1
-  fi
-done <<'PHASE3_MANIFEST'
-$manifestText
-PHASE3_MANIFEST
-
-cd "`$remote_production"
-test -f .env
-echo 'phase3_backend_optimization_reviewed_manifest=verified'
-echo 'phase3_backend_optimization_sync=skipped_build_only'
-docker compose --env-file .env build tsdd-api
-echo 'phase3_backend_optimization_build=completed'
-docker compose --env-file .env ps tsdd-api
-"@
-  Invoke-RemoteBash -Script $buildOnlyScript
-  exit 0
+if (-not $BuildImage) {
+  throw 'Refusing to run production Phase 3 prepare without -BuildImage.'
 }
 
 $remoteTempDir = "/tmp/phase3-backend-optimization-sync-$([guid]::NewGuid().ToString('N'))"
@@ -403,6 +385,7 @@ try {
 set -euo pipefail
 remote_source=$remoteSourceArg
 remote_production=$remoteProductionArg
+remote_backup_root=$remoteBackupArg
 remote_tmp=$remoteTempArg
 manifest_text=$manifestArg
 build_image='$buildFlag'
@@ -415,11 +398,32 @@ case "`$remote_production" in
   /*) ;;
   *) echo "unsafe remote production path: `$remote_production" >&2; exit 1 ;;
 esac
+case "`$remote_backup_root" in
+  /*) ;;
+  *) echo "unsafe remote backup path: `$remote_backup_root" >&2; exit 1 ;;
+esac
 case "`$remote_source" in
   /|*'/../'*|*/..|../*) echo "unsafe remote source path: `$remote_source" >&2; exit 1 ;;
 esac
 case "`$remote_production" in
   /|*'/../'*|*/..|../*) echo "unsafe remote production path: `$remote_production" >&2; exit 1 ;;
+esac
+case "`$remote_backup_root" in
+  /|*'/../'*|*/..|../*) echo "unsafe remote backup path: `$remote_backup_root" >&2; exit 1 ;;
+esac
+case "`$remote_backup_root" in
+  "`$remote_source"|"`$remote_source"/*)
+    echo "remote backup root must be outside source tree: `$remote_backup_root" >&2
+    exit 1
+    ;;
+esac
+canonical_source="`$(realpath -m "`$remote_source")"
+canonical_backup_root="`$(realpath -m "`$remote_backup_root")"
+case "`$canonical_backup_root" in
+  "`$canonical_source"|"`$canonical_source"/*)
+    echo "remote backup root must be outside canonical source tree: `$canonical_backup_root" >&2
+    exit 1
+    ;;
 esac
 
 cd "`$remote_source"
@@ -427,6 +431,13 @@ test -f main.go
 test -d modules/message
 test -d modules/file
 test -d serverlib
+build_context_before="`$remote_tmp/.build-context.before"
+build_context_after="`$remote_tmp/.build-context.after"
+release_paths_file="`$remote_tmp/.release_paths"
+printf '%s\n' "`$manifest_text" | awk '{print `$2}' > "`$release_paths_file"
+find go.mod go.sum main.go assets configs internal modules pkg serverlib -type f -print0 \
+  | sort -z \
+  | xargs -0 sha256sum > "`$build_context_before"
 test -f "`$remote_tmp/.manifest"
 tr -d '\r' < "`$remote_tmp/.manifest" > "`$remote_tmp/.manifest.lf"
 mv "`$remote_tmp/.manifest.lf" "`$remote_tmp/.manifest"
@@ -436,7 +447,7 @@ if ! diff -u <(printf '%s\n' "`$manifest_text") "`$remote_tmp/.manifest"; then
 fi
 
 timestamp="`$(date +%Y%m%dT%H%M%S%z)"
-backup_dir="`$remote_production/backups/phase3-backend-optimization-source-sync/`$timestamp"
+backup_dir="`$remote_backup_root/`$timestamp"
 mkdir -p "`$backup_dir"
 absent_manifest="`$backup_dir/.phase3_absent_files"
 : > "`$absent_manifest"
@@ -473,14 +484,161 @@ while IFS= read -r row; do
   fi
 done < "`$remote_tmp/.manifest"
 
+find go.mod go.sum main.go assets configs internal modules pkg serverlib -type f -print0 \
+  | sort -z \
+  | xargs -0 sha256sum > "`$build_context_after"
+awk '{hash=`$1; `$1=""; sub(/^  */, "", `$0); print `$0 "\t" hash}' "`$build_context_before" | sort > "`$remote_tmp/.build-context.before.tsv"
+awk '{hash=`$1; `$1=""; sub(/^  */, "", `$0); print `$0 "\t" hash}' "`$build_context_after" | sort > "`$remote_tmp/.build-context.after.tsv"
+if ! awk -F '\t' 'NR==FNR {allowed[`$1]=1; next} {
+  path=`$1
+  sub(/^\.\//, "", path)
+  before[path]=`$2
+  seen[path]=1
+}
+END {
+  for (path in before) {
+    if (!(path in allowed)) {
+      print "phase3_backend_optimization_build_context_unreviewed_change=" path > "/dev/stderr"
+      exit 1
+    }
+  }
+}' "`$release_paths_file" <(comm -3 "`$remote_tmp/.build-context.before.tsv" "`$remote_tmp/.build-context.after.tsv" | sed 's/^\t//'); then
+  echo 'phase3_backend_optimization_build_context=unreviewed_change' >&2
+  exit 1
+fi
+echo 'phase3_backend_optimization_build_context=verified'
+
 echo 'phase3_backend_optimization_sync=applied'
 echo "phase3_backend_optimization_sync_backup_dir=`$backup_dir"
 echo "phase3_backend_optimization_absent_files_manifest=`$absent_manifest"
 echo 'phase3_backend_optimization_reviewed_manifest=verified'
 
 if [ "`$build_image" = '1' ]; then
+  build_context_root="`$remote_tmp/build-context"
+  rm -rf "`$build_context_root"
+  mkdir -p "`$build_context_root"
+  for item in go.mod go.sum main.go assets configs internal modules pkg serverlib; do
+    if [ -d "`$item" ]; then
+      mkdir -p "`$build_context_root/`$(dirname "`$item")"
+      cp -a "`$item" "`$build_context_root/`$item"
+    else
+      mkdir -p "`$build_context_root/`$(dirname "`$item")"
+      cp -p "`$item" "`$build_context_root/`$item"
+    fi
+  done
+  cat > "`$build_context_root/Dockerfile.tsdd" <<'PHASE3_DOCKERFILE'
+FROM golang:1.20 AS build
+
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GO111MODULE=on
+ARG BUILD_VERSION=prod-local
+ARG BUILD_COMMIT=workspace
+ARG BUILD_COMMIT_DATE=2026-04-05
+ARG BUILD_TREE_STATE=dirty
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+COPY serverlib ./serverlib
+RUN go mod download
+
+COPY . .
+
+RUN mkdir -p /out && CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -X main.Version=`${BUILD_VERSION} -X main.Commit=`${BUILD_COMMIT} -X main.CommitDate=`${BUILD_COMMIT_DATE} -X main.TreeState=`${BUILD_TREE_STATE}" \
+    -o /out/app ./main.go
+
+FROM debian:bookworm-slim
+
+ENV TZ=Asia/Shanghai
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates tzdata wget && \
+    ln -snf /usr/share/zoneinfo/`$TZ /etc/localtime && \
+    echo `$TZ >/etc/timezone && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /home
+
+COPY --from=build /out/app /home/app
+COPY --from=build /src/assets /home/assets
+COPY --from=build /src/configs /home/configs
+
+ENTRYPOINT ["/home/app"]
+PHASE3_DOCKERFILE
+  cat > "`$build_context_root/.dockerignore" <<'PHASE3_DOCKERIGNORE'
+.git
+**/.git
+
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+deploy/production/.env
+deploy/production/.env.bak*
+deploy/production/rendered/
+deploy/production/logs/
+deploy/production/data/
+deploy/production/backup/
+deploy/production/backups/
+deploy/production/certs/
+deploy/production/keys/
+
+**/__pycache__/
+**/*.pyc
+
+build/
+**/build/
+dist/
+**/dist/
+node_modules/
+**/node_modules/
+.dart_tool/
+
+**/*.pem
+**/*.key
+**/*.sql
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.log
+**/*.gz
+**/*.zip
+**/*.tar
+**/*.tgz
+**/*.p12
+**/*.pfx
+**/*.jks
+PHASE3_DOCKERIGNORE
+  cat > "`$remote_tmp/docker-compose.phase3-build.yaml" <<'PHASE3_COMPOSE'
+services:
+  tsdd-api:
+    build:
+      context: __BUILD_CONTEXT_ROOT__
+      dockerfile: Dockerfile.tsdd
+      args:
+        BUILD_VERSION: "`${BUILD_VERSION}"
+        BUILD_COMMIT: "`${BUILD_COMMIT}"
+        BUILD_COMMIT_DATE: "`${BUILD_COMMIT_DATE}"
+        BUILD_TREE_STATE: "`${BUILD_TREE_STATE}"
+    image: wukongim/tsdd-api:production-local
+PHASE3_COMPOSE
+  sed -i "s|__BUILD_CONTEXT_ROOT__|`$build_context_root|g" "`$remote_tmp/docker-compose.phase3-build.yaml"
+  echo "phase3_backend_optimization_build_context_root=`$build_context_root"
   cd "`$remote_production"
-  docker compose --env-file .env build tsdd-api
+  image_timestamp="`$(date -u +%Y%m%dT%H%M%SZ)"
+  previous_image_tag="wukongim/tsdd-api:phase3-pre-`$image_timestamp"
+  if docker image inspect wukongim/tsdd-api:production-local >/dev/null 2>&1; then
+    docker tag wukongim/tsdd-api:production-local "`$previous_image_tag"
+    echo "phase3_backend_optimization_previous_image_tag=`$previous_image_tag"
+  else
+    echo 'previous production image is missing: wukongim/tsdd-api:production-local' >&2
+    exit 1
+  fi
+  docker compose --env-file .env -f "`$remote_tmp/docker-compose.phase3-build.yaml" build tsdd-api
   echo 'phase3_backend_optimization_build=completed'
   docker compose --env-file .env ps tsdd-api
 else
