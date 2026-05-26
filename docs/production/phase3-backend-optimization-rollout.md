@@ -22,11 +22,13 @@ Run backend verification from the local backend snapshot:
 
 ```powershell
 Push-Location .codex-backend-work/src/serverlib
-go test -count=1 ./pkg/metrics
+go test -count=1 ./pkg/metrics -run TestStorageOperationMetricsDoNotLeakObjectPaths
 Pop-Location
 
 Push-Location .codex-backend-work/src
-go test -count=1 ./modules/user ./modules/message ./modules/file
+go test -count=1 ./modules/user -run 'TestUserIM_'
+go test -count=1 ./modules/message -run 'TestBuildUserLastOffsetsDedupesByChannelWithMaxSeq|TestClearSyncConversationCacheRemovesUserEntries'
+go test -count=1 ./modules/file -run 'TestServiceMinioReusesClientAndBucketReadinessForUpload|TestMinio'
 Pop-Location
 ```
 
@@ -57,7 +59,9 @@ Expected before rollout:
 .\scripts\ops\phase3_backend_optimization_prepare.ps1
 ```
 
-The dry run prints the file manifest and does not write production. Confirm the allowlist contains only:
+The dry run prints the file manifest, verifies it against the reviewed Phase 3
+manifest embedded in the script, and does not write production. Confirm the
+allowlist contains only:
 
 - `modules/user/api.go`
 - `modules/user/api_im_route_test.go`
@@ -68,9 +72,12 @@ The dry run prints the file manifest and does not write production. Confirm the 
 - `serverlib/pkg/metrics/metrics.go`
 - `serverlib/pkg/metrics/metrics_test.go`
 
-## Sync Source
+## Sync Source And Optional One-Shot Build
 
-This copies the allowlisted files to `/opt/wukongim-prod/src` and creates a timestamped backup.
+This copies the allowlisted files to `/opt/wukongim-prod/src` and creates a
+timestamped backup. Use either one-shot sync+build, or sync then build-only.
+Do not run a second sync just to build, because a second sync would create a
+backup of already-updated source files.
 
 ```powershell
 .\scripts\ops\phase3_backend_optimization_prepare.ps1 -Run -AllowProductionSync
@@ -82,15 +89,29 @@ Record the printed value:
 phase3_backend_optimization_sync_backup_dir=<remote backup dir>
 ```
 
-## Build Image
+Also record the absent-file manifest if printed:
 
-Build the backend image without switching services:
+```text
+phase3_backend_optimization_absent_files_manifest=<remote backup dir>/.phase3_absent_files
+```
+
+For one-shot sync+build, run this command instead of the sync-only command:
 
 ```powershell
 .\scripts\ops\phase3_backend_optimization_prepare.ps1 -Run -AllowProductionSync -BuildImage -AllowProductionBuild
 ```
 
-This runs:
+## Build Image Only
+
+If the source sync already succeeded and you recorded the first backup
+directory, build the backend image without syncing source files again:
+
+```powershell
+.\scripts\ops\phase3_backend_optimization_prepare.ps1 -Run -BuildImage -AllowProductionBuild
+```
+
+The build-only path verifies the remote source files still match the reviewed
+Phase 3 manifest, then runs:
 
 ```bash
 docker compose --env-file .env build tsdd-api
@@ -110,7 +131,7 @@ Run immediately after switch:
 
 ```bash
 ssh ubuntu@42.194.218.158 'set -euo pipefail; cd /opt/wukongim-prod/src/deploy/production; docker compose --env-file .env ps tsdd-api'
-ssh ubuntu@42.194.218.158 'curl -fsS http://127.0.0.1:8090/v1/ping'
+ssh ubuntu@42.194.218.158 'curl -k -fsS https://infoequity.cn/v1/ping'
 ssh ubuntu@42.194.218.158 'docker exec wukongim_prod-tsdd-api-1 wget --header="Authorization: Bearer <metrics-token>" -q -O - http://127.0.0.1:8090/metrics | head'
 ```
 
@@ -142,6 +163,7 @@ If smoke checks fail or the 30-minute gates regress, restore from the recorded b
 
 ```bash
 ssh ubuntu@42.194.218.158 'set -euo pipefail; backup_dir="<phase3_backend_optimization_sync_backup_dir>"; cd /opt/wukongim-prod/src; rsync -a "$backup_dir"/ ./'
+ssh ubuntu@42.194.218.158 'set -euo pipefail; backup_dir="<phase3_backend_optimization_sync_backup_dir>"; cd /opt/wukongim-prod/src; if [ -f "$backup_dir/.phase3_absent_files" ]; then while IFS= read -r path; do case "$path" in modules/user/api.go|modules/user/api_im_route_test.go|modules/message/api_conversation.go|modules/message/api_conversation_syncack_test.go|modules/file/service_minio.go|modules/file/service_minio_test.go|serverlib/pkg/metrics/metrics.go|serverlib/pkg/metrics/metrics_test.go) rm -f -- "$path" ;; /*|*..*|*\\*|"") echo "unsafe rollback absent path: $path" >&2; exit 1 ;; *) echo "rollback absent path outside Phase 3 allowlist: $path" >&2; exit 1 ;; esac; done < "$backup_dir/.phase3_absent_files"; fi'
 ssh ubuntu@42.194.218.158 'set -euo pipefail; cd /opt/wukongim-prod/src/deploy/production; docker compose --env-file .env build tsdd-api'
 ```
 

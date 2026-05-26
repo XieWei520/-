@@ -2,6 +2,15 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+String _pathWithPrependedDirectory({
+  required String directory,
+  required Map<String, String> environment,
+}) {
+  final separator = Platform.isWindows ? ';' : ':';
+  final currentPath = environment['PATH'] ?? '';
+  return currentPath.isEmpty ? directory : '$directory$separator$currentPath';
+}
+
 void main() {
   test('phase3 backend optimization prepare script is gated and scoped', () {
     final script = File('scripts/ops/phase3_backend_optimization_prepare.ps1');
@@ -17,15 +26,42 @@ void main() {
     expect(content, contains(r'[switch]$ApplyLocalPatch'));
 
     expect(content, contains('Dry run only'));
-    expect(content, contains('Refusing to sync production backend source without -AllowProductionSync'));
-    expect(content, contains('Refusing to build production backend image without -AllowProductionBuild'));
+    expect(
+      content,
+      contains(
+        'Refusing to sync production backend source without -AllowProductionSync',
+      ),
+    );
+    expect(
+      content,
+      contains(
+        'Refusing to build production backend image without -AllowProductionBuild',
+      ),
+    );
     expect(content, contains('/opt/wukongim-prod/src'));
     expect(content, contains('/opt/wukongim-prod/src/deploy/production'));
-    expect(content, contains('backups/phase3-backend-optimization-source-sync'));
+    expect(
+      content,
+      contains('backups/phase3-backend-optimization-source-sync'),
+    );
     expect(content, contains('phase3_backend_optimization_sync=applied'));
+    expect(
+      content,
+      contains('phase3_backend_optimization_sync=skipped_build_only'),
+    );
     expect(content, contains('phase3_backend_optimization_build=completed'));
     expect(content, contains('phase3_backend_optimization_build=skipped'));
     expect(content, contains('docker compose --env-file .env build tsdd-api'));
+    expect(content, contains(r'$ExpectedManifestRows'));
+    expect(
+      content,
+      contains('phase3_backend_optimization_reviewed_manifest=verified'),
+    );
+    expect(
+      content,
+      contains('phase3_backend_optimization_absent_files_manifest'),
+    );
+    expect(content, contains('.phase3_absent_files'));
 
     const releaseFiles = [
       'modules/user/api.go',
@@ -60,10 +96,42 @@ void main() {
       expect(content, isNot(contains("'$file'")));
     }
 
-    expect(content, contains(r"Push-Location -LiteralPath (Join-Path $backendRoot 'serverlib')"));
-    expect(content, contains('go test -count=1 ./pkg/metrics -run TestStorageOperationMetricsDoNotLeakObjectPaths'));
-    expect(content, contains('Running backend module tests:'));
-    expect(content, contains(r"go test -count=1 ./modules/user ./modules/message ./modules/file"));
+    expect(
+      content,
+      contains(
+        r"Push-Location -LiteralPath (Join-Path $backendRoot 'serverlib')",
+      ),
+    );
+    expect(
+      content,
+      contains(
+        'go test -count=1 ./pkg/metrics -run TestStorageOperationMetricsDoNotLeakObjectPaths',
+      ),
+    );
+    expect(
+      content,
+      contains("go test -count=1 ./modules/user -run 'TestUserIM_'"),
+    );
+    expect(
+      content,
+      contains(
+        "go test -count=1 ./modules/message -run 'TestBuildUserLastOffsetsDedupesByChannelWithMaxSeq|TestClearSyncConversationCacheRemovesUserEntries'",
+      ),
+    );
+    expect(
+      content,
+      contains(
+        "go test -count=1 ./modules/file -run 'TestServiceMinioReusesClientAndBucketReadinessForUpload|TestMinio'",
+      ),
+    );
+    expect(
+      content,
+      isNot(
+        contains(
+          r"go test -count=1 ./modules/user ./modules/message ./modules/file",
+        ),
+      ),
+    );
 
     expect(content, isNot(contains('docker compose up')));
     expect(content, isNot(contains('docker compose down')));
@@ -114,12 +182,17 @@ void main() {
       'phase3_backend_optimization_prepare.ps1 -RunTests',
       '-Run -AllowProductionSync',
       '-BuildImage -AllowProductionBuild',
+      '-Run -BuildImage -AllowProductionBuild',
       'phase6_backend_service_switch.ps1',
       '-Run',
       '-AllowProductionServiceSwitch',
       '/v1/ping',
       'Authorization: Bearer <metrics-token>',
       'phase3_backend_optimization_sync_backup_dir',
+      '.phase3_absent_files',
+      r'case "$path" in',
+      'modules/user/api.go|modules/user/api_im_route_test.go|modules/message/api_conversation.go|modules/message/api_conversation_syncack_test.go|modules/file/service_minio.go|modules/file/service_minio_test.go|serverlib/pkg/metrics/metrics.go|serverlib/pkg/metrics/metrics_test.go)',
+      r'rm -f -- "$path"',
       'up{job="wukongim_api"}',
       'sum by (status_class) (increase(wukongim_http_requests_total[30m]))',
       'histogram_quantile(0.95',
@@ -134,87 +207,402 @@ void main() {
 
     expect(
       content,
-      isNot(contains(RegExp(r'Bearer\s+(?!<metrics-token>)[A-Za-z0-9._~+/=-]{8,}'))),
+      isNot(
+        contains(RegExp(r'Bearer\s+(?!<metrics-token>)[A-Za-z0-9._~+/=-]{8,}')),
+      ),
       reason: 'runbook must not include a real bearer token',
     );
   });
 
-  test('phase3 backend optimization prepare dry-run lists manifest without production writes', () async {
-    final result = await Process.run(
-      'powershell',
-      [
+  test(
+    'phase3 backend optimization prepare dry-run lists manifest without production writes',
+    () async {
+      final result = await Process.run('powershell', [
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
         '-File',
         'scripts\\ops\\phase3_backend_optimization_prepare.ps1',
-      ],
-      workingDirectory: Directory.current.path,
-    );
+      ], workingDirectory: Directory.current.path);
 
-    expect(result.exitCode, 0, reason: result.stderr.toString());
-    final output = result.stdout.toString();
-    expect(output, contains('Dry run only'));
-    expect(output, contains('Files to sync:'));
-    expect(output, contains('Manifest:'));
-    expect(output, contains('phase3_backend_optimization_sync_backup_dir'));
-    expect(output, contains('modules/user/api.go'));
-    expect(output, contains('modules/message/api_conversation.go'));
-    expect(output, contains('modules/file/service_minio.go'));
-    expect(output, contains('serverlib/pkg/metrics/metrics.go'));
-    expect(output, isNot(contains('serverlib/go.mod')));
-    expect(output, isNot(contains('serverlib/go.sum')));
-    expect(output, isNot(contains('phase3_backend_optimization_sync=applied')));
-    expect(output, isNot(contains('test-token')));
-    expect(output, isNot(contains('dummy-token')));
-  }, skip: !Platform.isWindows);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+      final output = result.stdout.toString();
+      expect(output, contains('Dry run only'));
+      expect(output, contains('Files to sync:'));
+      expect(output, contains('Manifest:'));
+      expect(output, contains('Reviewed manifest: verified'));
+      expect(output, contains('phase3_backend_optimization_sync_backup_dir'));
+      expect(output, contains('modules/user/api.go'));
+      expect(output, contains('modules/message/api_conversation.go'));
+      expect(output, contains('modules/file/service_minio.go'));
+      expect(output, contains('serverlib/pkg/metrics/metrics.go'));
+      expect(output, isNot(contains('serverlib/go.mod')));
+      expect(output, isNot(contains('serverlib/go.sum')));
+      expect(
+        output,
+        isNot(contains('phase3_backend_optimization_sync=applied')),
+      );
+      expect(output, isNot(contains('test-token')));
+      expect(output, isNot(contains('dummy-token')));
+    },
+    skip: !Platform.isWindows,
+  );
 
-  test('phase3 backend optimization prepare rejects unsafe production flags', () async {
-    Future<ProcessResult> run(List<String> arguments) {
-      return Process.run(
-        'powershell',
-        [
+  test(
+    'phase3 backend optimization prepare rejects unsafe production flags',
+    () async {
+      Future<ProcessResult> run(List<String> arguments) {
+        return Process.run('powershell', [
           '-NoProfile',
           '-ExecutionPolicy',
           'Bypass',
           '-File',
           'scripts\\ops\\phase3_backend_optimization_prepare.ps1',
           ...arguments,
-        ],
-        workingDirectory: Directory.current.path,
+        ], workingDirectory: Directory.current.path);
+      }
+
+      final missingSyncApproval = await run(['-Run']);
+      expect(missingSyncApproval.exitCode, isNot(0));
+      expect(
+        '${missingSyncApproval.stdout}\n${missingSyncApproval.stderr}',
+        contains(
+          'Refusing to sync production backend source without -AllowProductionSync',
+        ),
       );
-    }
 
-    final missingSyncApproval = await run(['-Run']);
-    expect(missingSyncApproval.exitCode, isNot(0));
-    expect(
-      '${missingSyncApproval.stdout}\n${missingSyncApproval.stderr}',
-      contains('Refusing to sync production backend source without -AllowProductionSync'),
-    );
+      final missingBuildApproval = await run([
+        '-Run',
+        '-AllowProductionSync',
+        '-BuildImage',
+      ]);
+      expect(missingBuildApproval.exitCode, isNot(0));
+      expect(
+        '${missingBuildApproval.stdout}\n${missingBuildApproval.stderr}',
+        contains(
+          'Refusing to build production backend image without -AllowProductionBuild',
+        ),
+      );
 
-    final missingBuildApproval = await run([
-      '-Run',
-      '-AllowProductionSync',
-      '-BuildImage',
-    ]);
-    expect(missingBuildApproval.exitCode, isNot(0));
-    expect(
-      '${missingBuildApproval.stdout}\n${missingBuildApproval.stderr}',
-      contains('Refusing to build production backend image without -AllowProductionBuild'),
-    );
+      final buildOnlyMissingBuildApproval = await run(['-Run', '-BuildImage']);
+      expect(buildOnlyMissingBuildApproval.exitCode, isNot(0));
+      final buildOnlyMissingBuildApprovalOutput =
+          '${buildOnlyMissingBuildApproval.stdout}\n${buildOnlyMissingBuildApproval.stderr}';
+      expect(
+        buildOnlyMissingBuildApprovalOutput,
+        contains(
+          'Refusing to build production backend image without -AllowProductionBuild',
+        ),
+      );
+      expect(
+        buildOnlyMissingBuildApprovalOutput,
+        isNot(
+          contains(
+            'Refusing to sync production backend source without -AllowProductionSync',
+          ),
+        ),
+      );
 
-    final unsafeHost = await run(['-RemoteHost', '-oProxyCommand=bad']);
-    expect(unsafeHost.exitCode, isNot(0));
-    expect(
-      '${unsafeHost.stdout}\n${unsafeHost.stderr}',
-      contains('RemoteHost must be a single safe ssh host token'),
-    );
+      final unsafeHost = await run(['-RemoteHost', '-oProxyCommand=bad']);
+      expect(unsafeHost.exitCode, isNot(0));
+      expect(
+        '${unsafeHost.stdout}\n${unsafeHost.stderr}',
+        contains('RemoteHost must be a single safe ssh host token'),
+      );
 
-    final unsafePath = await run(['-RemoteSourceRoot', '/opt/../src']);
-    expect(unsafePath.exitCode, isNot(0));
-    expect(
-      '${unsafePath.stdout}\n${unsafePath.stderr}',
-      contains('RemoteSourceRoot must be a safe absolute remote path'),
-    );
-  }, skip: !Platform.isWindows);
+      final unsafePath = await run(['-RemoteSourceRoot', '/opt/../src']);
+      expect(unsafePath.exitCode, isNot(0));
+      expect(
+        '${unsafePath.stdout}\n${unsafePath.stderr}',
+        contains('RemoteSourceRoot must be a safe absolute remote path'),
+      );
+
+      final mismatchedProductionRoot = await run([
+        '-RemoteSourceRoot',
+        '/opt/wukongim-prod/src',
+        '-RemoteProductionRoot',
+        '/opt/other-prod/src/deploy/production',
+      ]);
+      expect(mismatchedProductionRoot.exitCode, isNot(0));
+      expect(
+        '${mismatchedProductionRoot.stdout}\n${mismatchedProductionRoot.stderr}',
+        contains(
+          'RemoteProductionRoot must equal RemoteSourceRoot/deploy/production',
+        ),
+      );
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test(
+    'phase3 backend optimization prepare rejects unreviewed local backend payload',
+    () async {
+      final tempRoot = Directory.systemTemp.createTempSync(
+        'phase3-unreviewed-backend-',
+      );
+      try {
+        const releaseFiles = [
+          'modules/user/api.go',
+          'modules/user/api_im_route_test.go',
+          'modules/message/api_conversation.go',
+          'modules/message/api_conversation_syncack_test.go',
+          'modules/file/service_minio.go',
+          'modules/file/service_minio_test.go',
+          'serverlib/pkg/metrics/metrics.go',
+          'serverlib/pkg/metrics/metrics_test.go',
+        ];
+        for (final relative in releaseFiles) {
+          final file = File(
+            '${tempRoot.path}${Platform.pathSeparator}${relative.replaceAll('/', Platform.pathSeparator)}',
+          );
+          file.parent.createSync(recursive: true);
+          file.writeAsStringSync('unreviewed $relative\n');
+        }
+
+        final result = await Process.run('powershell', [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          'scripts\\ops\\phase3_backend_optimization_prepare.ps1',
+          '-LocalBackendRoot',
+          tempRoot.path,
+        ], workingDirectory: Directory.current.path);
+
+        expect(result.exitCode, isNot(0));
+        expect(
+          '${result.stdout}\n${result.stderr}',
+          contains(
+            'LocalBackendRoot files do not match reviewed Phase 3 manifest',
+          ),
+        );
+      } finally {
+        tempRoot.deleteSync(recursive: true);
+      }
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test(
+    'phase3 backend optimization build-only enforces remote manifest before build',
+    () async {
+      final tempRoot = Directory.systemTemp.createTempSync(
+        'phase3-build-only-shim-',
+      );
+      try {
+        final shimDir = Directory(
+          '${tempRoot.path}${Platform.pathSeparator}bin',
+        )..createSync(recursive: true);
+        final remoteSource = Directory(
+          '${tempRoot.path}${Platform.pathSeparator}remote${Platform.pathSeparator}src',
+        )..createSync(recursive: true);
+        final remoteProduction = Directory(
+          '${remoteSource.path}${Platform.pathSeparator}deploy${Platform.pathSeparator}production',
+        )..createSync(recursive: true);
+        File(
+          '${remoteProduction.path}${Platform.pathSeparator}.env',
+        ).writeAsStringSync('PHASE3_TEST=1\n');
+
+        const releaseFiles = [
+          'modules/user/api.go',
+          'modules/user/api_im_route_test.go',
+          'modules/message/api_conversation.go',
+          'modules/message/api_conversation_syncack_test.go',
+          'modules/file/service_minio.go',
+          'modules/file/service_minio_test.go',
+          'serverlib/pkg/metrics/metrics.go',
+          'serverlib/pkg/metrics/metrics_test.go',
+        ];
+        for (final relative in releaseFiles) {
+          final localFile = File(
+            '.codex-backend-work/src/${relative.replaceAll('/', Platform.pathSeparator)}',
+          );
+          final remoteFile = File(
+            '${remoteSource.path}${Platform.pathSeparator}${relative.replaceAll('/', Platform.pathSeparator)}',
+          );
+          remoteFile.parent.createSync(recursive: true);
+          localFile.copySync(remoteFile.path);
+        }
+
+        final captureFile = File(
+          '${tempRoot.path}${Platform.pathSeparator}remote-script.txt',
+        );
+        final buildLog = File(
+          '${tempRoot.path}${Platform.pathSeparator}docker-build.log',
+        );
+        final sshGo = File('${shimDir.path}${Platform.pathSeparator}ssh.go');
+        final sshExe = File('${shimDir.path}${Platform.pathSeparator}ssh.exe');
+        sshGo.writeAsStringSync(r'''
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+func fail(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	content, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fail("read stdin: %v", err)
+	}
+	script := string(content)
+	if capture := os.Getenv("PHASE3_FAKE_CAPTURE"); capture != "" {
+		_ = os.WriteFile(capture, content, 0644)
+	}
+	if !strings.Contains(script, "remote_source='/opt/wukongim-prod/src'") {
+		fail("missing expected remote source")
+	}
+	if !strings.Contains(script, "remote_production='/opt/wukongim-prod/src/deploy/production'") {
+		fail("missing expected remote production")
+	}
+
+	startMarker := "done <<'PHASE3_MANIFEST'\n"
+	endMarker := "\nPHASE3_MANIFEST"
+	start := strings.Index(script, startMarker)
+	if start < 0 {
+		fail("manifest heredoc missing")
+	}
+	afterStart := script[start+len(startMarker):]
+	end := strings.Index(afterStart, endMarker)
+	if end < 0 {
+		fail("manifest heredoc terminator missing")
+	}
+	manifest := strings.TrimSpace(afterStart[:end])
+
+	source := os.Getenv("PHASE3_FAKE_SOURCE")
+	production := os.Getenv("PHASE3_FAKE_PRODUCTION")
+	buildLog := os.Getenv("PHASE3_FAKE_BUILD_LOG")
+	if source == "" || production == "" || buildLog == "" {
+		fail("missing fake ssh environment")
+	}
+	if _, err := os.Stat(filepath.Join(production, ".env")); err != nil {
+		fail("missing production .env: %v", err)
+	}
+
+	for _, row := range strings.Split(manifest, "\n") {
+		row = strings.TrimSpace(row)
+		if row == "" {
+			continue
+		}
+		fields := strings.Fields(row)
+		if len(fields) != 2 {
+			fail("bad manifest row: %s", row)
+		}
+		expectedHash := fields[0]
+		relativePath := fields[1]
+		if strings.HasPrefix(relativePath, "/") ||
+			strings.Contains(relativePath, "..") ||
+			strings.Contains(relativePath, "\\") {
+			fail("unsafe release path: %s", relativePath)
+		}
+		body, err := os.ReadFile(filepath.Join(source, filepath.FromSlash(relativePath)))
+		if err != nil {
+			fail("missing release file %s: %v", relativePath, err)
+		}
+		sum := sha256.Sum256(body)
+		if hex.EncodeToString(sum[:]) != expectedHash {
+			fail("remote reviewed manifest mismatch for %s", relativePath)
+		}
+	}
+
+	f, err := os.OpenFile(buildLog, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		fail("open build log: %v", err)
+	}
+	defer f.Close()
+	fmt.Fprintln(f, "docker compose --env-file .env build tsdd-api")
+	fmt.Println("phase3_backend_optimization_reviewed_manifest=verified")
+	fmt.Println("phase3_backend_optimization_sync=skipped_build_only")
+	fmt.Println("phase3_backend_optimization_build=completed")
+}
+''');
+        final compileResult = await Process.run('go', [
+          'build',
+          '-o',
+          sshExe.path,
+          sshGo.path,
+        ]);
+        expect(
+          compileResult.exitCode,
+          0,
+          reason: '${compileResult.stdout}\n${compileResult.stderr}',
+        );
+
+        final env = Map<String, String>.from(Platform.environment);
+        env['PATH'] = _pathWithPrependedDirectory(
+          directory: shimDir.path,
+          environment: env,
+        );
+        env['PHASE3_FAKE_CAPTURE'] = captureFile.path;
+        env['PHASE3_FAKE_SOURCE'] = remoteSource.path;
+        env['PHASE3_FAKE_PRODUCTION'] = remoteProduction.path;
+        env['PHASE3_FAKE_BUILD_LOG'] = buildLog.path;
+
+        Future<ProcessResult> runBuildOnly() {
+          return Process.run(
+            'powershell',
+            [
+              '-NoProfile',
+              '-ExecutionPolicy',
+              'Bypass',
+              '-File',
+              'scripts\\ops\\phase3_backend_optimization_prepare.ps1',
+              '-Run',
+              '-BuildImage',
+              '-AllowProductionBuild',
+            ],
+            workingDirectory: Directory.current.path,
+            environment: env,
+          );
+        }
+
+        final success = await runBuildOnly();
+        expect(
+          success.exitCode,
+          0,
+          reason: '${success.stdout}\n${success.stderr}',
+        );
+        expect(
+          buildLog.readAsStringSync(),
+          contains('docker compose --env-file .env build tsdd-api'),
+        );
+
+        final remoteScript = captureFile.readAsStringSync();
+        final manifestCheckIndex = remoteScript.indexOf(
+          'remote reviewed manifest mismatch',
+        );
+        final buildIndex = remoteScript.indexOf(
+          'docker compose --env-file .env build tsdd-api',
+        );
+        expect(manifestCheckIndex, greaterThanOrEqualTo(0));
+        expect(buildIndex, greaterThan(manifestCheckIndex));
+
+        buildLog.writeAsStringSync('');
+        File(
+          '${remoteSource.path}${Platform.pathSeparator}modules${Platform.pathSeparator}user${Platform.pathSeparator}api.go',
+        ).writeAsStringSync('tampered\n');
+        final mismatch = await runBuildOnly();
+        expect(mismatch.exitCode, isNot(0));
+        expect(
+          '${mismatch.stdout}\n${mismatch.stderr}',
+          contains('remote reviewed manifest mismatch for modules/user/api.go'),
+        );
+        expect(buildLog.readAsStringSync(), isEmpty);
+      } finally {
+        tempRoot.deleteSync(recursive: true);
+      }
+    },
+    skip: !Platform.isWindows,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 }
