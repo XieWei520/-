@@ -29,6 +29,17 @@ void main() {
       contains(r'docker compose --env-file .env logs --since="$post_reload_since" nginx'),
     );
     expect(content, contains('phase6_backend_service_switch=completed'));
+    expect(content, contains('phase6-remote-bash-'));
+    expect(content, contains(r'[System.Text.UTF8Encoding]::new($false)'));
+    expect(content, contains(r'[System.IO.File]::WriteAllText($remoteScriptFile'));
+    expect(
+      content,
+      contains(
+        r"$startInfo.Arguments = '/d /c ' + (Quote-CmdArgument -Value $cmdFile) + ' 2>&1'",
+      ),
+    );
+    expect(content, contains(r'$startInfo.RedirectStandardError = $false'));
+    expect(content, isNot(contains(r'$process.StandardError.ReadToEnd()')));
 
     expect(content, isNot(contains('docker compose build')));
     expect(content, isNot(contains('docker compose down')));

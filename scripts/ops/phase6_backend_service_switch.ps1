@@ -31,6 +31,19 @@ function Quote-ProcessArgument {
   return $Value
 }
 
+function Quote-CmdArgument {
+  param([Parameter(Mandatory = $true)][string]$Value)
+
+  $escaped = $Value.
+    Replace('^', '^^').
+    Replace('&', '^&').
+    Replace('<', '^<').
+    Replace('>', '^>').
+    Replace('|', '^|').
+    Replace('"', '\"')
+  return '"' + $escaped + '"'
+}
+
 function Validate-RemoteHostToken {
   param([Parameter(Mandatory = $true)][string]$Value)
 
@@ -54,29 +67,38 @@ function Invoke-RemoteBash {
   Validate-RemoteHostToken -Value $RemoteHost
   $normalizedScript = (($Script -replace "`r`n", "`n") -replace "`r", "`n").TrimEnd() + "`n"
   $sshArgs = @((Get-SshOptions) + @('--', $RemoteHost, 'bash', '-s'))
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  $remoteScriptFile = Join-Path ([System.IO.Path]::GetTempPath()) "phase6-remote-bash-$([guid]::NewGuid().ToString('N')).sh"
+  $cmdFile = Join-Path ([System.IO.Path]::GetTempPath()) "phase6-remote-bash-$([guid]::NewGuid().ToString('N')).cmd"
 
-  $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-  $startInfo.FileName = 'ssh'
-  $startInfo.Arguments = (($sshArgs | ForEach-Object { Quote-ProcessArgument -Value $_ }) -join ' ')
-  $startInfo.UseShellExecute = $false
-  $startInfo.RedirectStandardInput = $true
-  $startInfo.RedirectStandardOutput = $true
-  $startInfo.RedirectStandardError = $true
+  try {
+    [System.IO.File]::WriteAllText($remoteScriptFile, $normalizedScript, $utf8NoBom)
+    $sshCommand = (Quote-CmdArgument -Value 'ssh') + ' ' + (($sshArgs | ForEach-Object { Quote-CmdArgument -Value $_ }) -join ' ') + ' < ' + (Quote-CmdArgument -Value $remoteScriptFile)
+    [System.IO.File]::WriteAllText($cmdFile, "@echo off`r`n$sshCommand`r`nexit /b %ERRORLEVEL%`r`n", [System.Text.Encoding]::ASCII)
 
-  $process = [System.Diagnostics.Process]::new()
-  $process.StartInfo = $startInfo
-  [void]$process.Start()
-  $process.StandardInput.Write($normalizedScript)
-  $process.StandardInput.Close()
-  $stdout = $process.StandardOutput.ReadToEnd()
-  $stderr = $process.StandardError.ReadToEnd()
-  $process.WaitForExit()
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
+    $startInfo.Arguments = '/d /c ' + (Quote-CmdArgument -Value $cmdFile) + ' 2>&1'
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $false
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    [void]$process.Start()
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $process.WaitForExit()
+  } finally {
+    if (Test-Path -LiteralPath $remoteScriptFile) {
+      Remove-Item -LiteralPath $remoteScriptFile -Force
+    }
+    if (Test-Path -LiteralPath $cmdFile) {
+      Remove-Item -LiteralPath $cmdFile -Force
+    }
+  }
 
   if (-not [string]::IsNullOrWhiteSpace($stdout)) {
     $stdout.TrimEnd() -split "`r?`n" | ForEach-Object { $_ }
-  }
-  if (-not [string]::IsNullOrWhiteSpace($stderr)) {
-    $stderr.TrimEnd() -split "`r?`n" | ForEach-Object { $_ }
   }
   if ($process.ExitCode -ne 0) {
     throw "Remote Phase 6 backend service switch failed with exit code $($process.ExitCode)."

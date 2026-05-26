@@ -426,6 +426,39 @@ case "`$canonical_backup_root" in
     ;;
 esac
 
+function should_include_build_context_path() {
+  case "`$1" in
+    .git|.git/*|*/.git|*/.git/*|\
+    .env|.env.*|*/.env|*/.env.*|\
+    *.pem|*.key|*.db|*.sqlite|*.sqlite3|*.log|*.gz|*.zip|*.tar|*.tgz|*.p12|*.pfx|*.jks|\
+    *.pyc|*/__pycache__/*|__pycache__/*|\
+    .dart_tool|.dart_tool/*|*/.dart_tool/*|\
+    build|build/*|*/build/*|dist|dist/*|*/dist/*|node_modules|node_modules/*|*/node_modules/*)
+      return 1
+      ;;
+  esac
+  return 0
+}
+
+copy_build_context_file_list() {
+  find go.mod go.sum main.go assets configs internal modules pkg serverlib -type f -print | while IFS= read -r path; do
+    if should_include_build_context_path "`$path"; then
+      printf '%s\n' "`$path"
+    fi
+  done
+}
+
+hash_build_context_file_list() {
+  while IFS= read -r path; do
+    [ -n "`$path" ] || continue
+    if [ ! -r "`$path" ]; then
+      echo "unreadable build context path: `$path" >&2
+      exit 1
+    fi
+    sha256sum "`$path"
+  done
+}
+
 cd "`$remote_source"
 test -f main.go
 test -d modules/message
@@ -435,9 +468,7 @@ build_context_before="`$remote_tmp/.build-context.before"
 build_context_after="`$remote_tmp/.build-context.after"
 release_paths_file="`$remote_tmp/.release_paths"
 printf '%s\n' "`$manifest_text" | awk '{print `$2}' > "`$release_paths_file"
-find go.mod go.sum main.go assets configs internal modules pkg serverlib -type f -print0 \
-  | sort -z \
-  | xargs -0 sha256sum > "`$build_context_before"
+copy_build_context_file_list | hash_build_context_file_list | sort > "`$build_context_before"
 test -f "`$remote_tmp/.manifest"
 tr -d '\r' < "`$remote_tmp/.manifest" > "`$remote_tmp/.manifest.lf"
 mv "`$remote_tmp/.manifest.lf" "`$remote_tmp/.manifest"
@@ -448,7 +479,8 @@ fi
 
 timestamp="`$(date +%Y%m%dT%H%M%S%z)"
 backup_dir="`$remote_backup_root/`$timestamp"
-mkdir -p "`$backup_dir"
+sudo mkdir -p "`$backup_dir"
+sudo chown "`$(id -u):`$(id -g)" "`$backup_dir"
 absent_manifest="`$backup_dir/.phase3_absent_files"
 : > "`$absent_manifest"
 
@@ -484,9 +516,7 @@ while IFS= read -r row; do
   fi
 done < "`$remote_tmp/.manifest"
 
-find go.mod go.sum main.go assets configs internal modules pkg serverlib -type f -print0 \
-  | sort -z \
-  | xargs -0 sha256sum > "`$build_context_after"
+copy_build_context_file_list | hash_build_context_file_list | sort > "`$build_context_after"
 awk '{hash=`$1; `$1=""; sub(/^  */, "", `$0); print `$0 "\t" hash}' "`$build_context_before" | sort > "`$remote_tmp/.build-context.before.tsv"
 awk '{hash=`$1; `$1=""; sub(/^  */, "", `$0); print `$0 "\t" hash}' "`$build_context_after" | sort > "`$remote_tmp/.build-context.after.tsv"
 if ! awk -F '\t' 'NR==FNR {allowed[`$1]=1; next} {
@@ -517,14 +547,9 @@ if [ "`$build_image" = '1' ]; then
   build_context_root="`$remote_tmp/build-context"
   rm -rf "`$build_context_root"
   mkdir -p "`$build_context_root"
-  for item in go.mod go.sum main.go assets configs internal modules pkg serverlib; do
-    if [ -d "`$item" ]; then
-      mkdir -p "`$build_context_root/`$(dirname "`$item")"
-      cp -a "`$item" "`$build_context_root/`$item"
-    else
-      mkdir -p "`$build_context_root/`$(dirname "`$item")"
-      cp -p "`$item" "`$build_context_root/`$item"
-    fi
+  copy_build_context_file_list | while IFS= read -r relative_path; do
+    mkdir -p "`$build_context_root/`$(dirname "`$relative_path")"
+    install -m 0644 "`$relative_path" "`$build_context_root/`$relative_path"
   done
   cat > "`$build_context_root/Dockerfile.tsdd" <<'PHASE3_DOCKERFILE'
 FROM golang:1.20 AS build
@@ -600,7 +625,6 @@ node_modules/
 
 **/*.pem
 **/*.key
-**/*.sql
 **/*.db
 **/*.sqlite
 **/*.sqlite3

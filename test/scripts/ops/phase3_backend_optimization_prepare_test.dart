@@ -60,6 +60,11 @@ void main() {
         '/opt/wukongim-prod/backups/phase3-backend-optimization-source-sync',
       ),
     );
+    expect(content, contains(r'sudo mkdir -p "`$backup_dir"'));
+    expect(
+      content,
+      contains(r'sudo chown "`$(id -u):`$(id -g)" "`$backup_dir"'),
+    );
     expect(content, contains('phase3_backend_optimization_sync=applied'));
     expect(
       content,
@@ -88,6 +93,20 @@ void main() {
     expect(
       content,
       contains('phase3_backend_optimization_build_context_root='),
+    );
+    expect(content, contains('function should_include_build_context_path()'));
+    expect(content, contains('copy_build_context_file_list()'));
+    expect(content, contains('hash_build_context_file_list()'));
+    expect(content, contains('install -m 0644'));
+    expect(
+      content,
+      isNot(contains(r'cp -a "`$item" "`$build_context_root/`$item"')),
+    );
+    expect(
+      content,
+      contains(
+        r'copy_build_context_file_list | hash_build_context_file_list | sort > "`$build_context_after"',
+      ),
     );
     expect(
       content,
