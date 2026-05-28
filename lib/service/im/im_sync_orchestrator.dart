@@ -15,6 +15,7 @@ import 'coordinators/message_sync_coordinator.dart';
 import 'im_connection_service.dart';
 import 'im_word_sync_models.dart';
 import 'im_word_sync_store.dart';
+import 'sync_load_policy.dart';
 
 typedef ImSyncTaskHandler = Future<void> Function({String? reason});
 typedef ImMessageExtraSyncTask =
@@ -204,6 +205,8 @@ class ImSyncOrchestrator {
     ImMessageExtraStore? messageExtraStore,
     ImRefreshMaskedMessagesTask? refreshMaskedMessagesAfterProhibitWordSync,
     ImSyncDelay? syncDelay,
+    SyncLoadPolicy? syncLoadPolicy,
+    DateTime Function()? now,
     this.coordinator = const MessageSyncCoordinator(),
   }) : reminderStore = reminderStore ?? const WkImReminderStore(),
        reminderChannelIdsLoader =
@@ -215,7 +218,9 @@ class ImSyncOrchestrator {
        refreshMaskedMessagesAfterProhibitWordSync =
            refreshMaskedMessagesAfterProhibitWordSync ??
            _noopRefreshMaskedMessages,
-       _syncDelay = syncDelay ?? Future<void>.delayed;
+       _syncDelay = syncDelay ?? Future<void>.delayed,
+       syncLoadPolicy = syncLoadPolicy ?? const SyncLoadPolicy(),
+       _now = now ?? DateTime.now;
 
   final IMSyncApi syncApi;
   final MessageApi messageApi;
@@ -228,12 +233,18 @@ class ImSyncOrchestrator {
   final ImMessageExtraStore messageExtraStore;
   final ImRefreshMaskedMessagesTask refreshMaskedMessagesAfterProhibitWordSync;
   final MessageSyncCoordinator coordinator;
+  final SyncLoadPolicy syncLoadPolicy;
   final ImSyncDelay _syncDelay;
+  final DateTime Function() _now;
   final Set<ImSyncTaskSlot> _activeTaskSlots = <ImSyncTaskSlot>{};
   final Map<ImSyncTaskSlot, String?> _pendingTaskReasons =
       <ImSyncTaskSlot, String?>{};
   final Set<String> _activeMessageExtraKeys = <String>{};
   final Map<String, String?> _pendingMessageExtraReasons = <String, String?>{};
+  final Map<SyncEndpoint, DateTime> _lastNoChangeSuccessAt =
+      <SyncEndpoint, DateTime>{};
+  final Map<SyncEndpoint, int> _consecutiveNoChangeResponses =
+      <SyncEndpoint, int>{};
 
   ImSyncStatus get status {
     return ImSyncStatus(
@@ -323,19 +334,29 @@ class ImSyncOrchestrator {
 
   void runFanOutPlan(ImSyncFanOutPlan plan, ImSyncTaskHandlers handlers) {
     if (plan.syncReminders) {
-      handlers.syncReminders(reason: plan.reason);
+      if (_shouldRequestEndpoint(SyncEndpoint.reminderSync)) {
+        handlers.syncReminders(reason: plan.reason);
+      }
     }
     if (plan.syncSensitiveWords) {
-      handlers.syncSensitiveWords(reason: plan.reason);
+      if (_shouldRequestEndpoint(SyncEndpoint.sensitiveWordsSync)) {
+        handlers.syncSensitiveWords(reason: plan.reason);
+      }
     }
     if (plan.syncProhibitWords) {
-      handlers.syncProhibitWords(reason: plan.reason);
+      if (_shouldRequestEndpoint(SyncEndpoint.prohibitWordsSync)) {
+        handlers.syncProhibitWords(reason: plan.reason);
+      }
     }
     if (plan.syncConversationExtras) {
-      handlers.syncConversationExtras(reason: plan.reason);
+      if (_shouldRequestEndpoint(SyncEndpoint.conversationExtraSync)) {
+        handlers.syncConversationExtras(reason: plan.reason);
+      }
     }
     if (plan.syncOfflineCommandMessages) {
-      handlers.syncOfflineCommandMessages(reason: plan.reason);
+      if (_shouldRequestEndpoint(SyncEndpoint.messageSync)) {
+        handlers.syncOfflineCommandMessages(reason: plan.reason);
+      }
     }
   }
 
@@ -483,6 +504,9 @@ class ImSyncOrchestrator {
       reason: reason,
       task: ({reason}) async {
         try {
+          if (!_shouldRequestEndpoint(SyncEndpoint.reminderSync)) {
+            return;
+          }
           final version = await reminderStore.getMaxVersion();
           final channelIds = await reminderChannelIdsLoader();
           final reminders = await reminderApi.syncReminders(
@@ -490,7 +514,10 @@ class ImSyncOrchestrator {
             channelIds: channelIds,
           );
           if (reminders.isNotEmpty) {
+            _clearNoChangeSuccess(SyncEndpoint.reminderSync);
             await reminderStore.saveOrUpdateReminders(reminders);
+          } else {
+            _recordNoChangeSuccess(SyncEndpoint.reminderSync);
           }
         } catch (error, stackTrace) {
           debugPrint('Reminder sync failed($reason): $error');
@@ -506,12 +533,18 @@ class ImSyncOrchestrator {
       reason: reason,
       task: ({reason}) async {
         try {
+          if (!_shouldRequestEndpoint(SyncEndpoint.sensitiveWordsSync)) {
+            return;
+          }
           final version = wordStore.loadSensitiveWordsSnapshot().version;
           final snapshot = await messageApi.syncSensitiveWords(
             version: version,
           );
-          if (snapshot.version > 0 || snapshot.tips.trim().isNotEmpty) {
+          if (!_isNoChangeSensitiveWordsSnapshot(snapshot)) {
+            _clearNoChangeSuccess(SyncEndpoint.sensitiveWordsSync);
             await applySensitiveWordsSync(snapshot);
+          } else {
+            _recordNoChangeSuccess(SyncEndpoint.sensitiveWordsSync);
           }
         } catch (error, stackTrace) {
           debugPrint('Sensitive words sync failed($reason): $error');
@@ -541,11 +574,17 @@ class ImSyncOrchestrator {
       reason: reason,
       task: ({reason}) async {
         try {
+          if (!_shouldRequestEndpoint(SyncEndpoint.prohibitWordsSync)) {
+            return;
+          }
           final version = await wordStore.getMaxProhibitWordVersion();
           final words = await messageApi.syncProhibitWords(version: version);
           if (words.isNotEmpty) {
+            _clearNoChangeSuccess(SyncEndpoint.prohibitWordsSync);
             await applyProhibitWordsSync(words);
             await refreshMaskedMessages();
+          } else {
+            _recordNoChangeSuccess(SyncEndpoint.prohibitWordsSync);
           }
         } catch (error, stackTrace) {
           debugPrint('Prohibit words sync failed($reason): $error');
@@ -565,14 +604,20 @@ class ImSyncOrchestrator {
       reason: reason,
       task: ({reason}) async {
         try {
+          if (!_shouldRequestEndpoint(SyncEndpoint.conversationExtraSync)) {
+            return;
+          }
           final version = await conversationExtraStore.getMaxVersion();
           final extras = await conversationDraftApi.syncExtras(
             version: version,
           );
           if (extras.isNotEmpty) {
+            _clearNoChangeSuccess(SyncEndpoint.conversationExtraSync);
             await conversationExtraStore.saveSyncExtras(
               extras.map(toSyncConversationExtra).toList(growable: false),
             );
+          } else {
+            _recordNoChangeSuccess(SyncEndpoint.conversationExtraSync);
           }
         } catch (error, stackTrace) {
           debugPrint('Conversation extra sync failed($reason): $error');
@@ -659,10 +704,15 @@ class ImSyncOrchestrator {
     return runExclusiveSyncTask(
       ImSyncTaskSlot.offlineCommands,
       reason: reason,
-      task: ({reason}) => _runOfflineCommandSync(
-        reason: reason,
-        dispatchOfflineCommand: dispatcher,
-      ),
+      task: ({reason}) async {
+        if (!_shouldRequestEndpoint(SyncEndpoint.messageSync)) {
+          return;
+        }
+        await _runOfflineCommandSync(
+          reason: reason,
+          dispatchOfflineCommand: dispatcher,
+        );
+      },
     );
   }
 
@@ -681,9 +731,13 @@ class ImSyncOrchestrator {
         );
         final messages = response.messages ?? const <dynamic>[];
         if (messages.isEmpty) {
+          if (nextMaxMessageSeq == 0) {
+            _recordNoChangeSuccess(SyncEndpoint.messageSync);
+          }
           break;
         }
 
+        _clearNoChangeSuccess(SyncEndpoint.messageSync);
         pendingCommands.addAll(extractOfflineCommands(messages));
         final ackSequence = coordinator.resolveOfflineCommandAckSequence(
           messages,
@@ -784,6 +838,49 @@ class ImSyncOrchestrator {
 
   String _readDynamicString(dynamic value) {
     return value?.toString().trim() ?? '';
+  }
+
+  bool _shouldRequestEndpoint(SyncEndpoint endpoint) {
+    final lastNoChangeSuccessAt = _lastNoChangeSuccessAt[endpoint];
+    if (lastNoChangeSuccessAt == null) {
+      return true;
+    }
+    if (_isConfigurationEndpoint(endpoint)) {
+      return syncLoadPolicy.shouldRequest(
+        endpoint: endpoint,
+        now: _now(),
+        lastSuccessfulRequestAt: lastNoChangeSuccessAt,
+        hasServerInvalidation: false,
+      );
+    }
+
+    final delay = syncLoadPolicy.nextDelay(
+      endpoint: endpoint,
+      consecutiveEmptyResponses: _consecutiveNoChangeResponses[endpoint] ?? 0,
+      appVisible: true,
+      hasPendingLocalMutation: false,
+    );
+    return _now().difference(lastNoChangeSuccessAt) >= delay;
+  }
+
+  bool _isConfigurationEndpoint(SyncEndpoint endpoint) {
+    return endpoint == SyncEndpoint.sensitiveWordsSync ||
+        endpoint == SyncEndpoint.prohibitWordsSync;
+  }
+
+  void _recordNoChangeSuccess(SyncEndpoint endpoint) {
+    _lastNoChangeSuccessAt[endpoint] = _now();
+    _consecutiveNoChangeResponses[endpoint] =
+        (_consecutiveNoChangeResponses[endpoint] ?? 0) + 1;
+  }
+
+  void _clearNoChangeSuccess(SyncEndpoint endpoint) {
+    _lastNoChangeSuccessAt.remove(endpoint);
+    _consecutiveNoChangeResponses.remove(endpoint);
+  }
+
+  bool _isNoChangeSensitiveWordsSnapshot(SensitiveWordsSnapshot snapshot) {
+    return snapshot.tips.trim().isEmpty && snapshot.list.isEmpty;
   }
 }
 
