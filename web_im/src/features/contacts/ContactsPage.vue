@@ -18,7 +18,13 @@ import { fakeContacts, fakeGroups } from '../../mocks/fakeImData';
             <span class="row-title">{{ contact.name }}</span>
             <span class="row-subtitle">{{ contact.title }} - {{ contact.phone }}</span>
           </span>
-          <span class="status-dot" :class="{ online: contact.online }" :aria-label="contact.online ? '在线' : '离线'" />
+          <span
+            class="status-dot"
+            :class="{ online: contact.online }"
+            role="img"
+            :aria-label="contact.online ? '在线' : '离线'"
+          />
+          <span class="sr-only">{{ contact.online ? '在线' : '离线' }}</span>
         </li>
       </ul>
     </section>

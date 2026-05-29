@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/authStore';
+
+type LoginField = 'phone' | 'password' | null;
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -9,10 +11,30 @@ const router = useRouter();
 const phone = ref('13800138000');
 const password = ref('1234');
 const errorMessage = ref('');
+const errorField = ref<LoginField>(null);
 const isSubmitting = ref(false);
+
+const errorId = 'login-error';
+const phoneHasError = computed(() => errorField.value === 'phone');
+const passwordHasError = computed(() => errorField.value === 'password');
+
+function fieldFromError(error: unknown): LoginField {
+  const message = error instanceof Error ? error.message : '';
+
+  if (message.includes('手机号')) {
+    return 'phone';
+  }
+
+  if (message.includes('密码')) {
+    return 'password';
+  }
+
+  return null;
+}
 
 async function submitLogin() {
   errorMessage.value = '';
+  errorField.value = null;
   isSubmitting.value = true;
 
   try {
@@ -20,6 +42,7 @@ async function submitLogin() {
     await router.replace('/conversations');
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试';
+    errorField.value = fieldFromError(error);
   } finally {
     isSubmitting.value = false;
   }
@@ -40,6 +63,11 @@ async function submitLogin() {
         inputmode="tel"
         autocomplete="tel"
         placeholder="请输入手机号"
+        required
+        pattern="^1\d{10}$"
+        maxlength="11"
+        :aria-invalid="phoneHasError ? 'true' : 'false'"
+        :aria-describedby="phoneHasError && errorMessage ? errorId : undefined"
       >
 
       <label class="field-label" for="password">密码</label>
@@ -50,9 +78,15 @@ async function submitLogin() {
         type="password"
         autocomplete="current-password"
         placeholder="请输入密码"
+        required
+        minlength="4"
+        :aria-invalid="passwordHasError ? 'true' : 'false'"
+        :aria-describedby="passwordHasError && errorMessage ? errorId : undefined"
       >
 
-      <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
+      <p v-if="errorMessage" :id="errorId" class="form-error" role="alert">
+        {{ errorMessage }}
+      </p>
 
       <button class="primary-button" type="submit" :disabled="isSubmitting">
         {{ isSubmitting ? '登录中' : '登录' }}

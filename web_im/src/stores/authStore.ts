@@ -10,15 +10,35 @@ function getStoredToken(): string | null {
     return null;
   }
 
-  return window.localStorage.getItem(tokenKey);
+  try {
+    return window.localStorage.getItem(tokenKey);
+  } catch {
+    return null;
+  }
 }
 
 function setStoredToken(token: string): void {
-  window.localStorage.setItem(tokenKey, token);
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(tokenKey, token);
+  } catch {
+    // Storage can be unavailable in iOS private or locked-down contexts.
+  }
 }
 
 function clearStoredToken(): void {
-  window.localStorage.removeItem(tokenKey);
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(tokenKey);
+  } catch {
+    // Ignore storage failures so logout can still clear in-memory auth state.
+  }
 }
 
 export const useAuthStore = defineStore('auth', () => {
