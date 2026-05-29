@@ -26,7 +26,13 @@ function openConversation(channelType: ChannelType, channelId: string) {
   <main class="page">
     <header class="page-header">
       <h1>会话</h1>
-      <p>本地假数据，仅用于 Phase 1 移动端壳验证</p>
+      <p>
+        {{
+          chat.isLiveConversationMode
+            ? 'Phase 2 只读会话，消息收发将在下一个阶段接入'
+            : '本地假数据，仅用于 Phase 1 移动端壳验证'
+        }}
+      </p>
     </header>
 
     <section v-if="chat.isLoadingConversations" class="status-list" role="status">姝ｅ湪鍔犺浇浼氳瘽...</section>

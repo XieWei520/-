@@ -41,7 +41,11 @@ watch(
 
     <section v-if="canOpenChannel" class="chat-page__body" aria-label="聊天内容">
       <VirtualMessageList :messages="chat.activeMessages" @load-older="chat.prependOlderMessages" />
-      <ChatComposer @send="chat.sendText" />
+      <section v-if="chat.isLiveConversationMode" class="chat-empty-state" role="status">
+        <p class="chat-empty-state__title">Phase 2 只读会话</p>
+        <p class="chat-empty-state__text">消息收发将在下一个阶段接入。</p>
+      </section>
+      <ChatComposer v-else @send="chat.sendText" />
     </section>
 
     <section v-else class="chat-empty-state" role="status">
