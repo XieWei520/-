@@ -4,6 +4,8 @@ import type { WebDeviceIdentity } from '../stores/authStorage';
 import { ApiError } from './apiError';
 import { signedJsonRequest, type SignedJsonRequestOptions } from './signedHttpClient';
 
+const unsupportedLoginVerificationMessage = '褰撳墠 Web 鐗堟湰鏆備笉鏀寔鐧诲綍浜屾楠岃瘉';
+
 export interface LoginCredential {
   uid: string;
   token: string;
@@ -68,7 +70,7 @@ export function parseLoginResponse(raw: unknown): LoginCredential {
   const root = asRecord(raw);
   const code = normalizeCode(root?.code);
   if (code === 110) {
-    throw new ApiError('褰撳墠 Web 鐗堟湰鏆備笉鏀寔鐧诲綍浜屾楠岃瘉', { code, retryable: false });
+    throw new ApiError(unsupportedLoginVerificationMessage, { code, retryable: false });
   }
 
   const data = dataRecord(raw);
@@ -111,24 +113,33 @@ export function mapCurrentUser(raw: unknown, fallback: CurrentUserFallback = {})
 
 export async function loginWithPhone(options: LoginWithPhoneOptions): Promise<LoginCredential> {
   const request = options.request ?? signedJsonRequest;
-  const raw = await request({
-    baseUrl: options.config.apiBaseUrl,
-    appId: options.config.appId,
-    appKey: options.config.appKey,
-    path: '/v1/user/login',
-    method: 'POST',
-    body: {
-      username: `0086${options.phone.trim()}`,
-      password: options.password,
-      flag: options.config.deviceFlag,
-      device: {
-        device_id: options.device.deviceId,
-        device_install_id: options.device.deviceInstallId,
-        device_name: options.device.deviceName,
-        device_model: options.device.deviceModel,
+  let raw: unknown;
+
+  try {
+    raw = await request({
+      baseUrl: options.config.apiBaseUrl,
+      appId: options.config.appId,
+      appKey: options.config.appKey,
+      path: '/v1/user/login',
+      method: 'POST',
+      body: {
+        username: `0086${options.phone.trim()}`,
+        password: options.password,
+        flag: options.config.deviceFlag,
+        device: {
+          device_id: options.device.deviceId,
+          device_install_id: options.device.deviceInstallId,
+          device_name: options.device.deviceName,
+          device_model: options.device.deviceModel,
+        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 110) {
+      throw new ApiError(unsupportedLoginVerificationMessage, { code: error.code, retryable: false });
+    }
+    throw error;
+  }
 
   return parseLoginResponse(raw);
 }

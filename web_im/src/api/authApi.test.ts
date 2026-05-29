@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ApiError } from './apiError';
 import { loginWithPhone, mapCurrentUser, parseLoginResponse } from './authApi';
 
 describe('auth api', () => {
@@ -73,5 +74,33 @@ describe('auth api', () => {
         },
       }),
     );
+  });
+
+  it('remaps request-layer login verification code 110 to the unsupported verification message', async () => {
+    const request = vi.fn().mockRejectedValue(new ApiError('check phone', { code: 110, retryable: false }));
+
+    await expect(
+      loginWithPhone({
+        phone: '13800000000',
+        password: '123456',
+        request,
+        config: {
+          mode: 'live',
+          apiBaseUrl: 'https://infoequity.cn',
+          appId: 'wukongchat',
+          appKey: 'key',
+          deviceFlag: 5,
+        },
+        device: {
+          deviceId: 'web-device',
+          deviceInstallId: 'install',
+          deviceName: 'Web PWA',
+          deviceModel: 'iPhone',
+        },
+      }),
+    ).rejects.toMatchObject({
+      message: '褰撳墠 Web 鐗堟湰鏆備笉鏀寔鐧诲綍浜屾楠岃瘉',
+      retryable: false,
+    });
   });
 });
