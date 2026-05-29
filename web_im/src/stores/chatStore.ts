@@ -1,13 +1,22 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
+import { loadConversationSync } from '../api/conversationSyncApi';
+import { toUserMessage } from '../api/apiError';
+import { isMockMode, runtimeConfig } from '../config/runtimeConfig';
 import { buildFakeMessages, fakeConversations, fakeCurrentUser } from '../mocks/fakeImData';
-import type { ChannelType, ChatMessage } from '../models/im';
+import type { ChannelType, ChatMessage, Conversation } from '../models/im';
 
 type ChannelKey = `${ChannelType}_${string}`;
 type ActiveChannel = {
   channelType: ChannelType;
   channelId: string;
 };
+type ConversationSyncAuth = {
+  uid: string;
+  token: string;
+  imToken?: string;
+  deviceUuid: string;
+} | null;
 
 const conversationTitles: Record<string, string> = {
   'g-delivery': '产品交付群',
@@ -66,6 +75,9 @@ function cleanFakeMessage(message: ChatMessage, index: number): ChatMessage {
 }
 
 export const useChatStore = defineStore('chat', () => {
+  const conversations = ref<Conversation[]>([...fakeConversations]);
+  const isLoadingConversations = ref(false);
+  const conversationError = ref('');
   const messagesByChannel = ref<Record<string, ChatMessage[]>>({});
   const activeChannelKey = ref<ChannelKey | null>(null);
   let localMessageSeq = 0;
@@ -83,7 +95,7 @@ export const useChatStore = defineStore('chat', () => {
       return undefined;
     }
 
-    const conversation = fakeConversations.find((item) => channelKey(item.channelType, item.channelId) === activeChannelKey.value);
+    const conversation = conversations.value.find((item) => channelKey(item.channelType, item.channelId) === activeChannelKey.value);
 
     if (!conversation) {
       return undefined;
@@ -167,7 +179,46 @@ export const useChatStore = defineStore('chat', () => {
     return olderMessages.length;
   }
 
+  async function loadLiveConversationsForTest(items: Conversation[]): Promise<void> {
+    conversations.value = items;
+  }
+
+  async function loadConversations(auth: ConversationSyncAuth): Promise<void> {
+    if (isMockMode(runtimeConfig)) {
+      conversations.value = [...fakeConversations];
+      conversationError.value = '';
+      isLoadingConversations.value = false;
+      return;
+    }
+
+    if (!auth?.uid || !auth.token || !auth.deviceUuid) {
+      conversations.value = [];
+      conversationError.value = 'Conversation sync requires an active session.';
+      isLoadingConversations.value = false;
+      return;
+    }
+
+    isLoadingConversations.value = true;
+    conversationError.value = '';
+
+    try {
+      conversations.value = await loadConversationSync({
+        uid: auth.uid,
+        token: auth.token,
+        deviceUuid: auth.deviceUuid,
+        config: runtimeConfig,
+      });
+    } catch (error) {
+      conversationError.value = toUserMessage(error, 'Failed to load conversations.');
+    } finally {
+      isLoadingConversations.value = false;
+    }
+  }
+
   return {
+    conversations,
+    isLoadingConversations,
+    conversationError,
     messagesByChannel,
     activeChannelKey,
     activeMessages,
@@ -175,5 +226,7 @@ export const useChatStore = defineStore('chat', () => {
     openChannel,
     sendText,
     prependOlderMessages,
+    loadConversations,
+    loadLiveConversationsForTest,
   };
 });

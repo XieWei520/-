@@ -1,0 +1,158 @@
+import type { WebImRuntimeConfig } from '../config/runtimeConfig';
+import type { ChannelType, Conversation } from '../models/im';
+import { signedJsonRequest, type SignedJsonRequestOptions } from './signedHttpClient';
+
+type ConversationSyncRequest = <TResult, TBody = unknown>(
+  options: SignedJsonRequestOptions<TBody>,
+) => Promise<TResult>;
+
+interface ConversationSyncOptions {
+  uid: string;
+  token: string;
+  deviceUuid: string;
+  config: WebImRuntimeConfig;
+  request?: ConversationSyncRequest;
+}
+
+interface ConversationSyncBody {
+  version: 0;
+  last_msg_seqs: '';
+  msg_count: 200;
+  device_uuid: string;
+}
+
+export function readRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+export function readInt(record: Record<string, unknown> | null, key: string): number | undefined {
+  const value = record?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : undefined;
+  }
+  return undefined;
+}
+
+export function readString(record: Record<string, unknown> | null, key: string): string | undefined {
+  const value = record?.[key];
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+export function parsePayload(value: unknown): Record<string, unknown> | null {
+  if (typeof value === 'string') {
+    try {
+      return readRecord(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+
+  return readRecord(value);
+}
+
+export function summarizeRecentMessage(raw: unknown): string {
+  const record = readRecord(raw);
+  if (!record || Object.keys(record).length === 0) {
+    return '[鏆傛棤娑堟伅]';
+  }
+
+  const payload = parsePayload(record.payload);
+  if (!payload) {
+    return '[涓嶆敮鎸佺殑娑堟伅]';
+  }
+
+  const content = readString(payload, 'content') ?? readString(payload, 'text');
+  if (content) return content;
+
+  switch (readInt(payload, 'type')) {
+    case 2:
+      return '[鍥剧墖]';
+    case 4:
+      return '[璇煶]';
+    case 5:
+    case 6:
+      return '[鏂囦欢]';
+    default:
+      return '[涓嶆敮鎸佺殑娑堟伅]';
+  }
+}
+
+function latestRecent(recents: unknown): Record<string, unknown> | null {
+  if (!Array.isArray(recents)) return null;
+
+  return recents.reduce<Record<string, unknown> | null>((latest, item) => {
+    const current = readRecord(item);
+    if (!current) return latest;
+    if (!latest) return current;
+
+    const currentSeq = readInt(current, 'message_seq') ?? readInt(current, 'messageSeq') ?? 0;
+    const latestSeq = readInt(latest, 'message_seq') ?? readInt(latest, 'messageSeq') ?? 0;
+    if (currentSeq !== latestSeq) {
+      return currentSeq > latestSeq ? current : latest;
+    }
+
+    const currentTimestamp = readInt(current, 'timestamp') ?? 0;
+    const latestTimestamp = readInt(latest, 'timestamp') ?? 0;
+    return currentTimestamp > latestTimestamp ? current : latest;
+  }, null);
+}
+
+export function mapConversationSyncRows(rows: unknown): Conversation[] {
+  if (!Array.isArray(rows)) return [];
+
+  return rows.flatMap((row): Conversation[] => {
+    const record = readRecord(row);
+    if (!record) return [];
+
+    const channelId = readString(record, 'channel_id') ?? readString(record, 'channelId');
+    const channelType = readInt(record, 'channel_type') ?? readInt(record, 'channelType');
+    if (!channelId || (channelType !== 1 && channelType !== 2)) return [];
+
+    const latest = latestRecent(record.recents);
+    const timestamp = readInt(latest, 'timestamp') ?? readInt(record, 'timestamp');
+    const lastMsgSeq = readInt(latest, 'message_seq') ?? readInt(latest, 'messageSeq');
+    const lastClientMsgNo = readString(latest, 'client_msg_no') ?? readString(latest, 'clientMsgNo');
+
+    return [
+      {
+        id: `${channelType}:${channelId}`,
+        channelId,
+        channelType: channelType as ChannelType,
+        title: channelId,
+        avatarText: channelId.charAt(0).toUpperCase(),
+        lastMessage: latest ? summarizeRecentMessage(latest) : '[鏆傛棤娑堟伅]',
+        lastMessageAt: timestamp ? new Date(timestamp * 1000).toISOString() : '',
+        unreadCount: readInt(record, 'unread') ?? readInt(record, 'unreadCount') ?? 0,
+        muted: false,
+        lastMsgSeq,
+        lastClientMsgNo,
+      },
+    ];
+  });
+}
+
+export async function loadConversationSync(options: ConversationSyncOptions): Promise<Conversation[]> {
+  const request = options.request ?? signedJsonRequest;
+  const raw = await request<unknown, ConversationSyncBody>({
+    baseUrl: options.config.apiBaseUrl,
+    appId: options.config.appId,
+    appKey: options.config.appKey,
+    token: options.token,
+    path: '/v1/conversation/sync',
+    method: 'POST',
+    body: {
+      version: 0,
+      last_msg_seqs: '',
+      msg_count: 200,
+      device_uuid: options.deviceUuid,
+    },
+  });
+
+  const root = readRecord(raw);
+  const data = readRecord(root?.data);
+  return mapConversationSyncRows(root?.conversations ?? data?.conversations);
+}

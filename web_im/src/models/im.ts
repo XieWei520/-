@@ -24,6 +24,8 @@ export interface Conversation {
   lastMessageAt: string;
   unreadCount: number;
   muted: boolean;
+  lastMsgSeq?: number;
+  lastClientMsgNo?: string;
 }
 
 export interface Contact {

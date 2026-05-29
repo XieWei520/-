@@ -43,4 +43,25 @@ describe('chat store unknown active channels', () => {
       status: 'sent',
     });
   });
+
+  it('loads live conversations into store state', async () => {
+    const chat = useChatStore();
+
+    await chat.loadLiveConversationsForTest([
+      {
+        id: '1:u2',
+        channelId: 'u2',
+        channelType: 1,
+        title: 'u2',
+        avatarText: 'U',
+        lastMessage: 'hello',
+        lastMessageAt: '2026-05-29T00:00:00.000Z',
+        unreadCount: 2,
+        muted: false,
+      },
+    ]);
+
+    expect(chat.conversations).toHaveLength(1);
+    expect(chat.conversations[0]).toMatchObject({ channelId: 'u2', unreadCount: 2 });
+  });
 });
