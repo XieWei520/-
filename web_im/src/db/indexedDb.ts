@@ -1,6 +1,7 @@
 import { IM_DB_VERSION, STORE_CONVERSATIONS, STORE_DRAFTS, STORE_MESSAGES } from './schema';
 
 type StoreName = typeof STORE_CONVERSATIONS | typeof STORE_MESSAGES | typeof STORE_DRAFTS;
+type NonThenable<T> = T extends PromiseLike<unknown> ? never : T;
 
 const stores: StoreName[] = [STORE_CONVERSATIONS, STORE_MESSAGES, STORE_DRAFTS];
 
@@ -51,7 +52,7 @@ export async function runStore<T>(
   dbName: string,
   storeName: StoreName,
   mode: IDBTransactionMode,
-  operation: (store: IDBObjectStore) => IDBRequest<T> | T,
+  operation: (store: IDBObjectStore) => IDBRequest<T> | NonThenable<T>,
 ): Promise<T> {
   const db = await openDatabase(dbName);
 
@@ -76,7 +77,7 @@ export async function runStore<T>(
       transactionError = error;
     });
 
-    let result: IDBRequest<T> | T;
+    let result: IDBRequest<T> | NonThenable<T>;
 
     try {
       // IndexedDB transactions auto-close once the current task finishes.
