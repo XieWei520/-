@@ -9,6 +9,7 @@ export interface NotificationPayload {
 
 const fallbackTarget = '/im/conversations';
 const allowedChannelTypes = new Set(['1', '2']);
+const defaultOrigin = 'http://localhost';
 
 function getChannelField(payload: NotificationPayload, snakeName: 'channel_id' | 'channel_type', camelName: 'channelId' | 'channelType'): unknown {
   return payload[snakeName] ?? payload[camelName] ?? payload.payload?.[snakeName] ?? payload.payload?.[camelName];
@@ -25,13 +26,10 @@ function resolveExplicitUrl(url: unknown): string | null {
     return null;
   }
 
-  if (trimmedUrl.startsWith('/im/')) {
-    return trimmedUrl;
-  }
-
   try {
-    const parsedUrl = new URL(trimmedUrl);
-    if (parsedUrl.origin === globalThis.location?.origin && parsedUrl.pathname.startsWith('/im/')) {
+    const currentOrigin = globalThis.location?.origin ?? defaultOrigin;
+    const parsedUrl = new URL(trimmedUrl, currentOrigin);
+    if (parsedUrl.origin === currentOrigin && parsedUrl.pathname.startsWith('/im/')) {
       return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
     }
   } catch {

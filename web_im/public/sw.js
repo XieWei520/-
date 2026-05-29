@@ -24,9 +24,24 @@ function explicitTarget(payload) {
   }
 
   const trimmedUrl = url.trim();
-  return trimmedUrl.startsWith('/im/') ? trimmedUrl : null;
+
+  if (!trimmedUrl) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedUrl, self.location.origin);
+    if (parsedUrl.origin === self.location.origin && parsedUrl.pathname.startsWith('/im/')) {
+      return `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
+// Keep this resolver aligned with src/push/notificationTarget.ts.
 function resolveNotificationTarget(payload = {}) {
   const explicitUrl = explicitTarget(payload);
 
@@ -49,6 +64,7 @@ self.addEventListener('install', (event) => {
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(SHELL_ASSETS))
+      .catch(() => undefined)
       .then(() => self.skipWaiting()),
   );
 });
@@ -65,10 +81,41 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request).catch(async () => {
       const cachedOfflinePage = await caches.match('/im/offline.html');
-      return cachedOfflinePage ?? Response.error();
+      return cachedOfflinePage ?? new Response('当前离线，请稍后重试。', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
     }),
   );
 });
+
+async function openTargetWindow(targetUrl) {
+  if (!self.clients.openWindow) {
+    return undefined;
+  }
+
+  try {
+    return await self.clients.openWindow(targetUrl);
+  } catch {
+    return undefined;
+  }
+}
+
+async function focusOrNavigateClient(client, targetUrl) {
+  try {
+    if ('focus' in client) {
+      await client.focus();
+    }
+
+    if ('navigate' in client) {
+      return await client.navigate(targetUrl);
+    }
+
+    return client;
+  } catch {
+    return undefined;
+  }
+}
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
@@ -79,20 +126,15 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
       for (const client of clientList) {
         const clientUrl = new URL(client.url);
-        if (clientUrl.pathname.startsWith('/im/') && 'focus' in client) {
-          await client.focus();
-          if ('navigate' in client) {
-            return client.navigate(targetUrl);
+        if (clientUrl.origin === self.location.origin && clientUrl.pathname.startsWith('/im/')) {
+          const routedClient = await focusOrNavigateClient(client, targetUrl);
+          if (routedClient) {
+            return routedClient;
           }
-          return undefined;
         }
       }
 
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
-
-      return undefined;
+      return openTargetWindow(targetUrl);
     }),
   );
 });
