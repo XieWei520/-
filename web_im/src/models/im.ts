@@ -43,6 +43,7 @@ export interface Group {
 
 export interface ChatMessage {
   id: string;
+  clientMsgNo?: string;
   channelId: string;
   channelType: ChannelType;
   senderId: string;

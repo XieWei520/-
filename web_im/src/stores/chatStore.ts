@@ -4,6 +4,10 @@ import { buildFakeMessages, fakeConversations, fakeCurrentUser } from '../mocks/
 import type { ChannelType, ChatMessage } from '../models/im';
 
 type ChannelKey = `${ChannelType}_${string}`;
+type ActiveChannel = {
+  channelType: ChannelType;
+  channelId: string;
+};
 
 const conversationTitles: Record<string, string> = {
   'g-delivery': '产品交付群',
@@ -22,6 +26,25 @@ const textSamples = [
 
 function channelKey(channelType: ChannelType, channelId: string): ChannelKey {
   return `${channelType}_${channelId}`;
+}
+
+function parseChannelKey(key: ChannelKey | null): ActiveChannel | null {
+  if (!key) {
+    return null;
+  }
+
+  const separatorIndex = key.indexOf('_');
+  const channelType = Number(key.slice(0, separatorIndex));
+  const channelId = key.slice(separatorIndex + 1);
+
+  if ((channelType !== 1 && channelType !== 2) || !channelId) {
+    return null;
+  }
+
+  return {
+    channelType,
+    channelId,
+  };
 }
 
 function cleanFakeMessage(message: ChatMessage, index: number): ChatMessage {
@@ -72,6 +95,8 @@ export const useChatStore = defineStore('chat', () => {
     };
   });
 
+  const activeChannel = computed(() => parseChannelKey(activeChannelKey.value));
+
   function openChannel(channelType: ChannelType, channelId: string): void {
     const key = channelKey(channelType, channelId);
     activeChannelKey.value = key;
@@ -86,18 +111,19 @@ export const useChatStore = defineStore('chat', () => {
 
   function sendText(text: string): void {
     const normalizedText = text.trim();
-    const conversation = activeConversation.value;
+    const channel = activeChannel.value;
 
-    if (!normalizedText || !activeChannelKey.value || !conversation) {
+    if (!normalizedText || !activeChannelKey.value || !channel) {
       return;
     }
 
     localMessageSeq += 1;
-    const clientMsgNo = `local-${conversation.channelId}-${Date.now()}-${localMessageSeq}`;
-    const message: ChatMessage = {
+    const clientMsgNo = `local-${channel.channelId}-${Date.now()}-${localMessageSeq}`;
+    const message: ChatMessage & { clientMsgNo: string } = {
       id: clientMsgNo,
-      channelId: conversation.channelId,
-      channelType: conversation.channelType,
+      clientMsgNo,
+      channelId: channel.channelId,
+      channelType: channel.channelType,
       senderId: fakeCurrentUser.id,
       senderName: '吴小空',
       direction: 'outgoing',
@@ -111,9 +137,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function prependOlderMessages(): number {
-    const conversation = activeConversation.value;
+    const channel = activeChannel.value;
 
-    if (!activeChannelKey.value || !conversation) {
+    if (!activeChannelKey.value || !channel) {
       return 0;
     }
 
@@ -124,9 +150,9 @@ export const useChatStore = defineStore('chat', () => {
       const sentAt = new Date(firstSentAt - olderIndex * 90_000).toISOString();
 
       return {
-        id: `older-${conversation.channelId}-${firstSentAt}-${index}`,
-        channelId: conversation.channelId,
-        channelType: conversation.channelType,
+        id: `older-${channel.channelId}-${firstSentAt}-${index}`,
+        channelId: channel.channelId,
+        channelType: channel.channelType,
         senderId: `u-history-${index % 4}`,
         senderName: ['李明', '客户 A', '陈晨', '系统通知'][index % 4],
         direction: index % 4 === 0 ? 'outgoing' : 'incoming',
