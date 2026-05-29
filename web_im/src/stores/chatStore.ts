@@ -114,7 +114,7 @@ export const useChatStore = defineStore('chat', () => {
     const key = channelKey(channelType, channelId);
     activeChannelKey.value = key;
 
-    if (!messagesByChannel.value[key]) {
+    if (isMockMode(runtimeConfig) && !messagesByChannel.value[key]) {
       messagesByChannel.value[key] = buildFakeMessages(channelId).map((message) => ({
         ...message,
         channelType,

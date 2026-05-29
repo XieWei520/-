@@ -52,7 +52,7 @@ function clearStoredToken(): void {
 
 export const useAuthStore = defineStore('auth', () => {
   const snapshot = loadAuthSnapshot();
-  const fakeToken = snapshot ? null : getStoredToken();
+  const fakeToken = !snapshot && isMockMode(runtimeConfig) ? getStoredToken() : null;
   const uid = ref<string | null>(snapshot?.uid ?? null);
   const token = ref<string | null>(snapshot?.token ?? fakeToken);
   const imToken = ref<string | null>(snapshot?.imToken ?? null);

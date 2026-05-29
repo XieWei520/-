@@ -53,6 +53,25 @@ describe('chat store unknown active channels', () => {
     expect(chat.activeMessages.at(-1)?.id).toBe(chat.activeMessages.at(-1)?.clientMsgNo);
   });
 
+  it('does not populate fake messages when opening a live channel', () => {
+    const chat = useChatStore();
+
+    chat.openChannel(1, 'u-live');
+
+    expect(chat.activeChannelKey).toBe('1_u-live');
+    expect(chat.activeMessages).toEqual([]);
+  });
+
+  it('populates fake messages when opening an unknown mock channel', () => {
+    runtimeConfig.mode = 'mock';
+    const chat = useChatStore();
+
+    chat.openChannel(1, 'u-mock');
+
+    expect(chat.activeChannelKey).toBe('1_u-mock');
+    expect(chat.activeMessages.length).toBeGreaterThan(0);
+  });
+
   it('prepends older messages to an unknown but valid active channel', () => {
     const chat = useChatStore();
 

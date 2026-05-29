@@ -3,8 +3,25 @@ import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from './authStore';
 import { saveAuthSnapshot } from './authStorage';
 
+const { runtimeConfig } = vi.hoisted(() => ({
+  runtimeConfig: {
+    mode: 'mock',
+    apiBaseUrl: 'https://infoequity.cn',
+    appId: 'wukongchat',
+    appKey: 'key',
+    deviceFlag: 5,
+  },
+}));
+
+vi.mock('../config/runtimeConfig', () => ({
+  runtimeConfig,
+  isMockMode: vi.fn((config: { mode: string }) => config.mode === 'mock'),
+  isLiveMode: vi.fn((config: { mode: string }) => config.mode === 'live'),
+}));
+
 describe('auth store storage resilience', () => {
   beforeEach(() => {
+    runtimeConfig.mode = 'mock';
     setActivePinia(createPinia());
     vi.restoreAllMocks();
     window.localStorage.clear();
@@ -76,5 +93,26 @@ describe('auth store storage resilience', () => {
     expect(auth.uid).toBe('u1');
     expect(auth.imToken).toBe('im1');
     expect(auth.user?.name).toBe('Alice Updated');
+  });
+
+  it('ignores fake localStorage tokens in live mode', () => {
+    window.localStorage.setItem('wk_web_im_fake_token', 'fake-token-13800138000');
+    runtimeConfig.mode = 'live';
+
+    const auth = useAuthStore();
+
+    expect(auth.isLoggedIn).toBe(false);
+    expect(auth.user).toBeNull();
+    expect(auth.token).toBeNull();
+  });
+
+  it('restores fake localStorage tokens in mock mode', () => {
+    window.localStorage.setItem('wk_web_im_fake_token', 'fake-token-13800138000');
+
+    const auth = useAuthStore();
+
+    expect(auth.isLoggedIn).toBe(true);
+    expect(auth.user).not.toBeNull();
+    expect(auth.token).toBe('fake-token-13800138000');
   });
 });
