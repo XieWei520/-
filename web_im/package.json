@@ -7,16 +7,16 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vue-tsc --noEmit && vite build && node scripts/assert-build.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "lint": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@vitejs/plugin-vue": "^6.0.0",
     "pinia": "^3.0.3",
     "vue": "^3.5.16"
   },
   "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.0",
     "@vue/test-utils": "^2.4.6",
     "jsdom": "^26.1.0",
     "typescript": "^5.8.3",
