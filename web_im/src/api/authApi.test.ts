@@ -35,6 +35,23 @@ describe('auth api', () => {
     });
   });
 
+  it('ignores blank current user fields and uses fallback user values', () => {
+    expect(
+      mapCurrentUser(
+        { uid: '', name: '', phone: '', avatar: '' },
+        { uid: 'u-fallback', name: 'Fallback', phone: '13900000000', avatar: 'avatar.png' },
+      ),
+    ).toEqual({
+      id: 'u-fallback',
+      uid: 'u-fallback',
+      name: 'Fallback',
+      phone: '13900000000',
+      avatarText: 'F',
+      avatarUrl: 'avatar.png',
+      connectionState: 'connected',
+    });
+  });
+
   it('posts phone login with 0086 username and configured device flag', async () => {
     const request = vi.fn().mockResolvedValue({ uid: 'u1', token: 't1' });
     const result = await loginWithPhone({

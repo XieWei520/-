@@ -49,7 +49,9 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function readString(record: Record<string, unknown> | null, key: string): string | undefined {
   const value = record?.[key];
-  return typeof value === 'string' ? value.trim() : undefined;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
 }
 
 function normalizeCode(value: unknown): number {
