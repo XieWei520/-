@@ -36,6 +36,25 @@ describe('signed HTTP client', () => {
     expect(headers.sign).toBe('ad4431a046fca758eb045c9fa15310ac');
   });
 
+  it('uses browser crypto for default nonce generation', async () => {
+    const getRandomValues = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation((array) => {
+      const bytes = array as Uint8Array;
+      bytes.set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+      return array;
+    });
+
+    const headers = await createSignedHeaders({
+      body: '',
+      appId: 'wukongchat',
+      appKey: 'key',
+      now: () => 1,
+    });
+
+    expect(getRandomValues).toHaveBeenCalledOnce();
+    expect(getRandomValues.mock.calls[0]?.[0]).toBeInstanceOf(Uint8Array);
+    expect(headers.noncestr).toBe('ABCDEFGHIJKLMNOP');
+  });
+
   it('sends signed JSON and unwraps data payloads', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ code: 0, data: { ok: true } }), {

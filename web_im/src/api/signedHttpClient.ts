@@ -90,9 +90,20 @@ function joinUrl(baseUrl: string, path: string): string {
 
 function defaultNonce(): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = new Uint8Array(16);
+  const crypto = globalThis.crypto;
+
+  if (crypto?.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
   let value = '';
-  for (let index = 0; index < 16; index += 1) {
-    value += alphabet[Math.floor(Math.random() * alphabet.length)];
+  for (const byte of bytes) {
+    value += alphabet[byte % alphabet.length];
   }
   return value;
 }
