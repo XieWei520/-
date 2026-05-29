@@ -34,6 +34,7 @@ describe('chat store unknown active channels', () => {
   });
 
   it('sends text to an unknown but valid active channel with a client message number', () => {
+    runtimeConfig.mode = 'mock';
     const chat = useChatStore();
 
     chat.openChannel(1, 'u-unknown');
@@ -62,6 +63,24 @@ describe('chat store unknown active channels', () => {
     expect(chat.activeMessages).toEqual([]);
   });
 
+  it('does not append local messages in live read-only mode', () => {
+    const chat = useChatStore();
+
+    chat.openChannel(1, 'u-live');
+    chat.sendText('should not be sent');
+
+    expect(chat.activeMessages).toEqual([]);
+  });
+
+  it('does not synthesize older local history in live read-only mode', () => {
+    const chat = useChatStore();
+
+    chat.openChannel(1, 'u-live');
+
+    expect(chat.prependOlderMessages()).toBe(0);
+    expect(chat.activeMessages).toEqual([]);
+  });
+
   it('populates fake messages when opening an unknown mock channel', () => {
     runtimeConfig.mode = 'mock';
     const chat = useChatStore();
@@ -73,6 +92,7 @@ describe('chat store unknown active channels', () => {
   });
 
   it('prepends older messages to an unknown but valid active channel', () => {
+    runtimeConfig.mode = 'mock';
     const chat = useChatStore();
 
     chat.openChannel(2, 'g-unknown');

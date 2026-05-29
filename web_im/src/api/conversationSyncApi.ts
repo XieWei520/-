@@ -57,12 +57,12 @@ export function parsePayload(value: unknown): Record<string, unknown> | null {
 export function summarizeRecentMessage(raw: unknown): string {
   const record = readRecord(raw);
   if (!record || Object.keys(record).length === 0) {
-    return '[鏆傛棤娑堟伅]';
+    return '[暂无消息]';
   }
 
   const payload = parsePayload(record.payload);
   if (!payload) {
-    return '[涓嶆敮鎸佺殑娑堟伅]';
+    return '[不支持的消息]';
   }
 
   const content = readString(payload, 'content') ?? readString(payload, 'text');
@@ -70,14 +70,14 @@ export function summarizeRecentMessage(raw: unknown): string {
 
   switch (readInt(payload, 'type')) {
     case 2:
-      return '[鍥剧墖]';
+      return '[图片]';
     case 4:
-      return '[璇煶]';
+      return '[语音]';
     case 5:
     case 6:
-      return '[鏂囦欢]';
+      return '[文件]';
     default:
-      return '[涓嶆敮鎸佺殑娑堟伅]';
+      return '[不支持的消息]';
   }
 }
 
@@ -132,7 +132,7 @@ export function mapConversationSyncRows(rows: unknown): Conversation[] {
         channelType: channelType as ChannelType,
         title: channelId,
         avatarText: channelId.charAt(0).toUpperCase(),
-        lastMessage: latest ? summarizeRecentMessage(latest) : '[鏆傛棤娑堟伅]',
+        lastMessage: latest ? summarizeRecentMessage(latest) : '[暂无消息]',
         lastMessageAt: timestamp ? new Date(timestamp * 1000).toISOString() : '',
         unreadCount: readInt(record, 'unread') ?? readInt(record, 'unreadCount') ?? 0,
         muted: false,

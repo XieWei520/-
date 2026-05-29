@@ -19,7 +19,7 @@ describe('auth api', () => {
 
   it('rejects login verification code 110 as unsupported in phase 2', () => {
     expect(() => parseLoginResponse({ code: 110, data: { uid: 'u1' }, msg: 'check phone' })).toThrow(
-      '褰撳墠 Web 鐗堟湰鏆備笉鏀寔鐧诲綍浜屾楠岃瘉',
+      '当前 Web 版本暂不支持登录二次验证',
     );
   });
 
@@ -116,7 +116,7 @@ describe('auth api', () => {
         },
       }),
     ).rejects.toMatchObject({
-      message: '褰撳墠 Web 鐗堟湰鏆備笉鏀寔鐧诲綍浜屾楠岃瘉',
+      message: '当前 Web 版本暂不支持登录二次验证',
       retryable: false,
     });
   });

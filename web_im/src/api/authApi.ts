@@ -4,7 +4,7 @@ import type { WebDeviceIdentity } from '../stores/authStorage';
 import { ApiError } from './apiError';
 import { signedJsonRequest, type SignedJsonRequestOptions } from './signedHttpClient';
 
-const unsupportedLoginVerificationMessage = '褰撳墠 Web 鐗堟湰鏆備笉鏀寔鐧诲綍浜屾楠岃瘉';
+const unsupportedLoginVerificationMessage = '当前 Web 版本暂不支持登录二次验证';
 
 export interface LoginCredential {
   uid: string;
@@ -98,7 +98,7 @@ export function parseLoginResponse(raw: unknown): LoginCredential {
 export function mapCurrentUser(raw: unknown, fallback: CurrentUserFallback = {}): CurrentUser {
   const data = dataRecord(raw);
   const uid = readString(data, 'uid') ?? fallback.uid ?? '';
-  const name = readString(data, 'name') ?? readString(data, 'username') ?? fallback.name ?? fallback.username ?? uid ?? '鎴?';
+  const name = readString(data, 'name') ?? readString(data, 'username') ?? fallback.name ?? fallback.username ?? uid ?? '我';
   const phone = readString(data, 'phone') ?? fallback.phone ?? '';
   const avatarUrl = readString(data, 'avatar') ?? fallback.avatar ?? '';
 
@@ -107,7 +107,7 @@ export function mapCurrentUser(raw: unknown, fallback: CurrentUserFallback = {})
     uid,
     name,
     phone,
-    avatarText: name.charAt(0).toUpperCase() || '鎴?',
+    avatarText: name.charAt(0).toUpperCase() || '我',
     avatarUrl,
     connectionState: 'connected',
   };

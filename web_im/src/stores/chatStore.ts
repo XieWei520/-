@@ -123,6 +123,10 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function sendText(text: string): void {
+    if (isLiveMode(runtimeConfig)) {
+      return;
+    }
+
     const normalizedText = text.trim();
     const channel = activeChannel.value;
 
@@ -150,6 +154,10 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function prependOlderMessages(): number {
+    if (isLiveMode(runtimeConfig)) {
+      return 0;
+    }
+
     const channel = activeChannel.value;
 
     if (!activeChannelKey.value || !channel) {

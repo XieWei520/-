@@ -162,6 +162,18 @@ export const useAuthStore = defineStore('auth', () => {
         clearState();
         return;
       }
+      if (typeof error === 'object' && error !== null && 'retryable' in error && error.retryable) {
+        const restored = {
+          ...existing,
+          user: {
+            ...existing.user,
+            connectionState: 'offline' as const,
+          },
+        };
+        applyLiveSession(restored);
+        saveAuthSnapshot(restored);
+        return;
+      }
       throw error;
     }
   }

@@ -58,10 +58,10 @@ describe('conversation sync api', () => {
   });
 
   it('summarizes malformed and media payloads safely', () => {
-    expect(summarizeRecentMessage({ payload: '{"type":2}' })).toBe('[鍥剧墖]');
-    expect(summarizeRecentMessage({ payload: { type: 4 } })).toBe('[璇煶]');
-    expect(summarizeRecentMessage({ payload: '{bad json' })).toBe('[涓嶆敮鎸佺殑娑堟伅]');
-    expect(summarizeRecentMessage({})).toBe('[鏆傛棤娑堟伅]');
+    expect(summarizeRecentMessage({ payload: '{"type":2}' })).toBe('[图片]');
+    expect(summarizeRecentMessage({ payload: { type: 4 } })).toBe('[语音]');
+    expect(summarizeRecentMessage({ payload: '{bad json' })).toBe('[不支持的消息]');
+    expect(summarizeRecentMessage({})).toBe('[暂无消息]');
   });
 
   it('posts Flutter-compatible conversation sync body', async () => {
