@@ -1,0 +1,15 @@
+{
+  "name": "悟空 IM",
+  "short_name": "悟空 IM",
+  "id": "/im/",
+  "scope": "/im/",
+  "start_url": "/im/",
+  "display": "standalone",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "background_color": "#f6f7f9",
+  "theme_color": "#0f766e",
+  "description": "悟空 iOS PWA IM 客户端",
+  "categories": ["communication", "productivity"],
+  "icons": []
+}
