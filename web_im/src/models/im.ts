@@ -6,9 +6,11 @@ export type SendStatus = 'sent' | 'sending' | 'failed';
 
 export interface CurrentUser {
   id: string;
+  uid?: string;
   name: string;
   phone: string;
   avatarText: string;
+  avatarUrl?: string;
   connectionState: ConnectionState;
 }
 

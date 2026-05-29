@@ -18,7 +18,7 @@ describe('auth store storage resilience', () => {
     expect(useAuthStore().isLoggedIn).toBe(false);
   });
 
-  it('does not crash login or logout when localStorage writes fail', () => {
+  it('does not crash login or logout when localStorage writes fail', async () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('storage disabled', 'SecurityError');
     });
@@ -28,9 +28,27 @@ describe('auth store storage resilience', () => {
 
     const auth = useAuthStore();
 
-    expect(() => auth.login('13800138000', '1234')).not.toThrow();
+    await expect(auth.login('13800138000', '1234')).resolves.toBeUndefined();
     expect(auth.isLoggedIn).toBe(true);
     expect(() => auth.logout()).not.toThrow();
     expect(auth.isLoggedIn).toBe(false);
+  });
+
+  it('clears live auth when session restore is unauthorized', async () => {
+    const auth = useAuthStore();
+    await auth.setLiveSessionForTest({
+      uid: 'u1',
+      token: 't1',
+      imToken: 't1',
+      user: { id: 'u1', uid: 'u1', name: 'Alice', phone: '', avatarText: 'A', connectionState: 'connected' },
+      savedAt: 1,
+    });
+
+    await auth.restoreSessionForTest(async () => {
+      throw Object.assign(new Error('expired'), { unauthorized: true });
+    });
+
+    expect(auth.isLoggedIn).toBe(false);
+    expect(auth.user).toBeNull();
   });
 });
