@@ -26,6 +26,37 @@ describe('conversation sync api', () => {
     ]);
   });
 
+  it('preserves row-level last message markers when recents are empty or absent', () => {
+    const conversations = mapConversationSyncRows([
+      {
+        channel_id: 'u-empty',
+        channel_type: 1,
+        last_msg_seq: 42,
+        last_client_msg_no: 'client-empty',
+        recents: [],
+      },
+      {
+        channelId: 'g-absent',
+        channelType: 2,
+        lastMsgSeq: '84',
+        lastClientMsgNo: 'client-absent',
+      },
+    ]);
+
+    expect(conversations).toEqual([
+      expect.objectContaining({
+        channelId: 'u-empty',
+        lastMsgSeq: 42,
+        lastClientMsgNo: 'client-empty',
+      }),
+      expect.objectContaining({
+        channelId: 'g-absent',
+        lastMsgSeq: 84,
+        lastClientMsgNo: 'client-absent',
+      }),
+    ]);
+  });
+
   it('summarizes malformed and media payloads safely', () => {
     expect(summarizeRecentMessage({ payload: '{"type":2}' })).toBe('[鍥剧墖]');
     expect(summarizeRecentMessage({ payload: { type: 4 } })).toBe('[璇煶]');

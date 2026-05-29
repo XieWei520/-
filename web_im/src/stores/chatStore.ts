@@ -179,10 +179,6 @@ export const useChatStore = defineStore('chat', () => {
     return olderMessages.length;
   }
 
-  async function loadLiveConversationsForTest(items: Conversation[]): Promise<void> {
-    conversations.value = items;
-  }
-
   async function loadConversations(auth: ConversationSyncAuth): Promise<void> {
     if (isMockMode(runtimeConfig)) {
       conversations.value = [...fakeConversations];
@@ -227,6 +223,5 @@ export const useChatStore = defineStore('chat', () => {
     sendText,
     prependOlderMessages,
     loadConversations,
-    loadLiveConversationsForTest,
   };
 });

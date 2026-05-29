@@ -1,9 +1,34 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useChatStore } from './chatStore';
+import { loadConversationSync } from '../api/conversationSyncApi';
+import { fakeConversations } from '../mocks/fakeImData';
+
+const { runtimeConfig } = vi.hoisted(() => ({
+  runtimeConfig: {
+    mode: 'live',
+    apiBaseUrl: 'https://infoequity.cn',
+    appId: 'wukongchat',
+    appKey: 'key',
+    deviceFlag: 5,
+  },
+}));
+
+vi.mock('../config/runtimeConfig', () => ({
+  runtimeConfig,
+  isMockMode: vi.fn((config: { mode: string }) => config.mode === 'mock'),
+}));
+
+vi.mock('../api/conversationSyncApi', () => ({
+  loadConversationSync: vi.fn(),
+}));
+
+const loadConversationSyncMock = vi.mocked(loadConversationSync);
 
 describe('chat store unknown active channels', () => {
   beforeEach(() => {
+    runtimeConfig.mode = 'live';
+    loadConversationSyncMock.mockReset();
     setActivePinia(createPinia());
   });
 
@@ -44,14 +69,13 @@ describe('chat store unknown active channels', () => {
     });
   });
 
-  it('loads live conversations into store state', async () => {
+  it('loads live conversations from sync API and clears loading state', async () => {
     const chat = useChatStore();
-
-    await chat.loadLiveConversationsForTest([
+    const syncedConversations = [
       {
         id: '1:u2',
         channelId: 'u2',
-        channelType: 1,
+        channelType: 1 as const,
         title: 'u2',
         avatarText: 'U',
         lastMessage: 'hello',
@@ -59,9 +83,75 @@ describe('chat store unknown active channels', () => {
         unreadCount: 2,
         muted: false,
       },
-    ]);
+    ];
 
-    expect(chat.conversations).toHaveLength(1);
-    expect(chat.conversations[0]).toMatchObject({ channelId: 'u2', unreadCount: 2 });
+    chat.conversationError = 'previous error';
+    loadConversationSyncMock.mockResolvedValue(syncedConversations);
+
+    await chat.loadConversations({
+      uid: 'u1',
+      token: 'token',
+      deviceUuid: 'device',
+    });
+
+    expect(loadConversationSyncMock).toHaveBeenCalledWith({
+      uid: 'u1',
+      token: 'token',
+      deviceUuid: 'device',
+      config: runtimeConfig,
+    });
+    expect(chat.conversations).toEqual(syncedConversations);
+    expect(chat.conversationError).toBe('');
+    expect(chat.isLoadingConversations).toBe(false);
+  });
+
+  it('records live conversation sync failures without throwing', async () => {
+    const chat = useChatStore();
+
+    loadConversationSyncMock.mockRejectedValue(new Error('sync unavailable'));
+
+    await expect(
+      chat.loadConversations({
+        uid: 'u1',
+        token: 'token',
+        deviceUuid: 'device',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(chat.conversationError).toBe('sync unavailable');
+    expect(chat.isLoadingConversations).toBe(false);
+  });
+
+  it('clears conversations and records an error when live auth is missing', async () => {
+    const chat = useChatStore();
+
+    await chat.loadConversations(null);
+
+    expect(loadConversationSyncMock).not.toHaveBeenCalled();
+    expect(chat.conversations).toEqual([]);
+    expect(chat.conversationError).toBe('Conversation sync requires an active session.');
+    expect(chat.isLoadingConversations).toBe(false);
+  });
+
+  it('resets fake conversations and clears state in mock mode', async () => {
+    runtimeConfig.mode = 'mock';
+    const chat = useChatStore();
+
+    chat.conversations = [];
+    chat.conversationError = 'previous error';
+    chat.isLoadingConversations = true;
+
+    await chat.loadConversations(null);
+
+    expect(loadConversationSyncMock).not.toHaveBeenCalled();
+    expect(chat.conversations).toEqual(fakeConversations);
+    expect(chat.conversationError).toBe('');
+    expect(chat.isLoadingConversations).toBe(false);
+  });
+
+  it('does not expose a test-only live conversation mutator', () => {
+    const chat = useChatStore();
+
+    expect(chat).not.toHaveProperty('loadLiveConversationsForTest');
   });
 });

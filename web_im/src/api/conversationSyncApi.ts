@@ -114,8 +114,16 @@ export function mapConversationSyncRows(rows: unknown): Conversation[] {
 
     const latest = latestRecent(record.recents);
     const timestamp = readInt(latest, 'timestamp') ?? readInt(record, 'timestamp');
-    const lastMsgSeq = readInt(latest, 'message_seq') ?? readInt(latest, 'messageSeq');
-    const lastClientMsgNo = readString(latest, 'client_msg_no') ?? readString(latest, 'clientMsgNo');
+    const lastMsgSeq =
+      readInt(latest, 'message_seq') ??
+      readInt(latest, 'messageSeq') ??
+      readInt(record, 'last_msg_seq') ??
+      readInt(record, 'lastMsgSeq');
+    const lastClientMsgNo =
+      readString(latest, 'client_msg_no') ??
+      readString(latest, 'clientMsgNo') ??
+      readString(record, 'last_client_msg_no') ??
+      readString(record, 'lastClientMsgNo');
 
     return [
       {
