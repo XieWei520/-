@@ -61,44 +61,26 @@ const messageKey = (uid: string, channelKey: string, message: ImMessage): string
   `${uid}:${channelKey}:${message.timestamp}:${message.id}`;
 const draftKey = (uid: string, channelKey: string): string => `${uid}:${channelKey}`;
 
-function readAll<T>(store: IDBObjectStore): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    const request = store.getAll() as IDBRequest<T[]>;
-
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
-
-    request.onerror = () => {
-      reject(request.error ?? new Error('Failed to read IndexedDB rows'));
-    };
-  });
+function readAll<T>(store: IDBObjectStore): IDBRequest<T[]> {
+  return store.getAll() as IDBRequest<T[]>;
 }
 
-function writeRows<T extends { key: string }>(store: IDBObjectStore, rows: T[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (rows.length === 0) {
-      resolve();
-      return;
-    }
+function writeRows<T extends { key: string }>(store: IDBObjectStore, rows: T[]): void {
+  for (const row of rows) {
+    store.put(row);
+  }
+}
 
-    let remaining = rows.length;
+function putRow<T extends { key: string }>(store: IDBObjectStore, row: T): void {
+  store.put(row);
+}
 
-    for (const row of rows) {
-      const request = store.put(row);
+function clearStore(store: IDBObjectStore): void {
+  store.clear();
+}
 
-      request.onsuccess = () => {
-        remaining -= 1;
-        if (remaining === 0) {
-          resolve();
-        }
-      };
-
-      request.onerror = () => {
-        reject(request.error ?? new Error('Failed to write IndexedDB row'));
-      };
-    }
-  });
+function getRow<T>(store: IDBObjectStore, key: IDBValidKey): IDBRequest<T | undefined> {
+  return store.get(key) as IDBRequest<T | undefined>;
 }
 
 export function createImRepository(dbName = 'wk-web-im') {
@@ -157,31 +139,19 @@ export function createImRepository(dbName = 'wk-web-im') {
         text,
       };
 
-      return runStore(dbName, STORE_DRAFTS, 'readwrite', (store) =>
-        new Promise<void>((resolve, reject) => {
-          const request = store.put(row);
-
-          request.onsuccess = () => {
-            resolve();
-          };
-
-          request.onerror = () => {
-            reject(request.error ?? new Error('Failed to write IndexedDB draft'));
-          };
-        }),
-      );
+      return runStore(dbName, STORE_DRAFTS, 'readwrite', (store) => putRow(store, row));
     },
 
     async getDraft(uid: string, channelKey: string): Promise<string> {
       const key = draftKey(uid, channelKey);
-      const row = await runStore(dbName, STORE_DRAFTS, 'readonly', (store) => store.get(key) as IDBRequest<DraftRow | undefined>);
+      const row = await runStore(dbName, STORE_DRAFTS, 'readonly', (store) => getRow<DraftRow>(store, key));
       return row?.text ?? '';
     },
 
     async clearAll(): Promise<void> {
-      await runStore(dbName, STORE_CONVERSATIONS, 'readwrite', (store) => store.clear());
-      await runStore(dbName, STORE_MESSAGES, 'readwrite', (store) => store.clear());
-      await runStore(dbName, STORE_DRAFTS, 'readwrite', (store) => store.clear());
+      await runStore(dbName, STORE_CONVERSATIONS, 'readwrite', clearStore);
+      await runStore(dbName, STORE_MESSAGES, 'readwrite', clearStore);
+      await runStore(dbName, STORE_DRAFTS, 'readwrite', clearStore);
     },
   };
 }

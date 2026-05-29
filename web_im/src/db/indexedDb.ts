@@ -51,7 +51,7 @@ export async function runStore<T>(
   dbName: string,
   storeName: StoreName,
   mode: IDBTransactionMode,
-  operation: (store: IDBObjectStore) => IDBRequest<T> | Promise<T> | T,
+  operation: (store: IDBObjectStore) => IDBRequest<T> | T,
 ): Promise<T> {
   const db = await openDatabase(dbName);
 
@@ -71,22 +71,53 @@ export async function runStore<T>(
         reject(transaction.error ?? new Error(`IndexedDB transaction aborted for ${storeName}`));
       };
     });
+    let transactionError: unknown;
+    const observedTransactionDone = transactionDone.catch((error: unknown) => {
+      transactionError = error;
+    });
 
-    const result = operation(store);
-    const value =
-      result instanceof IDBRequest
-        ? await new Promise<T>((resolve, reject) => {
-            result.onsuccess = () => {
-              resolve(result.result);
-            };
+    let result: IDBRequest<T> | T;
 
-            result.onerror = () => {
-              reject(result.error ?? new Error(`IndexedDB request failed for ${storeName}`));
-            };
-          })
-        : await Promise.resolve(result);
+    try {
+      // IndexedDB transactions auto-close once the current task finishes.
+      // Callers must enqueue all IDB requests synchronously in this callback.
+      result = operation(store);
+    } catch (error) {
+      try {
+        transaction.abort();
+      } catch {
+        // The transaction may already be inactive; transactionDone is still observed below.
+      }
 
-    await transactionDone;
+      await observedTransactionDone;
+      throw error;
+    }
+
+    let value: T;
+
+    try {
+      value =
+        result instanceof IDBRequest
+          ? await new Promise<T>((resolve, reject) => {
+              result.onsuccess = () => {
+                resolve(result.result);
+              };
+
+              result.onerror = () => {
+                reject(result.error ?? new Error(`IndexedDB request failed for ${storeName}`));
+              };
+            })
+          : result;
+    } catch (error) {
+      await observedTransactionDone;
+      throw error;
+    }
+
+    await observedTransactionDone;
+    if (transactionError) {
+      throw transactionError;
+    }
+
     return value;
   } finally {
     db.close();
