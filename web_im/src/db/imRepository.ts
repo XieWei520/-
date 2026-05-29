@@ -1,5 +1,5 @@
-import { runStore } from './indexedDb';
-import { STORE_CONVERSATIONS, STORE_DRAFTS, STORE_MESSAGES } from './schema';
+import { type IndexedDbOperation, runStore } from './indexedDb';
+import { INDEX_MESSAGES_CHANNEL_SORT, STORE_CONVERSATIONS, STORE_DRAFTS, STORE_MESSAGES } from './schema';
 
 type ChannelType = 1 | 2;
 type MessageDirection = 'incoming' | 'outgoing';
@@ -42,6 +42,7 @@ interface MessageRow extends ImMessage {
   key: string;
   uid: string;
   channelKey: string;
+  channelSortKey: [string, string, number, string];
 }
 
 interface DraftRow {
@@ -59,6 +60,12 @@ const withoutKey = <T extends { key: string }>(row: T): Omit<T, 'key'> => {
 const conversationKey = (uid: string, conversationId: string): string => `${uid}:${conversationId}`;
 const messageKey = (uid: string, channelKey: string, message: ImMessage): string =>
   `${uid}:${channelKey}:${message.timestamp}:${message.id}`;
+const messageChannelSortKey = (uid: string, channelKey: string, message: ImMessage): MessageRow['channelSortKey'] => [
+  uid,
+  channelKey,
+  message.timestamp,
+  message.id,
+];
 const draftKey = (uid: string, channelKey: string): string => `${uid}:${channelKey}`;
 
 function readAll<T>(store: IDBObjectStore): IDBRequest<T[]> {
@@ -81,6 +88,36 @@ function clearStore(store: IDBObjectStore): void {
 
 function getRow<T>(store: IDBObjectStore, key: IDBValidKey): IDBRequest<T | undefined> {
   return store.get(key) as IDBRequest<T | undefined>;
+}
+
+function readMessageWindow(store: IDBObjectStore, uid: string, channelKey: string, limit: number): IndexedDbOperation<MessageRow[]> {
+  if (limit <= 0) {
+    return { result: Promise.resolve([]) };
+  }
+
+  const index = store.index(INDEX_MESSAGES_CHANNEL_SORT);
+  const range = IDBKeyRange.bound([uid, channelKey], [uid, channelKey, []]);
+  const request = index.openCursor(range, 'prev');
+  const rows: MessageRow[] = [];
+
+  return {
+    result: new Promise((resolve, reject) => {
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor || rows.length >= limit) {
+          resolve(rows.reverse());
+          return;
+        }
+
+        rows.push(cursor.value as MessageRow);
+        cursor.continue();
+      };
+
+      request.onerror = () => {
+        reject(request.error ?? new Error(`IndexedDB cursor failed for ${STORE_MESSAGES}`));
+      };
+    }),
+  };
 }
 
 export function createImRepository(dbName = 'wk-web-im') {
@@ -113,22 +150,21 @@ export function createImRepository(dbName = 'wk-web-im') {
         key: messageKey(uid, channelKey, message),
         uid,
         channelKey,
+        channelSortKey: messageChannelSortKey(uid, channelKey, message),
       }));
 
       return runStore(dbName, STORE_MESSAGES, 'readwrite', (store) => writeRows(store, rows));
     },
 
     async getMessages(uid: string, channelKey: string, options: { limit: number }): Promise<ImMessage[]> {
-      const rows = await runStore(dbName, STORE_MESSAGES, 'readonly', (store) => readAll<MessageRow>(store));
+      const rows = await runStore(dbName, STORE_MESSAGES, 'readonly', (store) =>
+        readMessageWindow(store, uid, channelKey, options.limit),
+      );
 
-      return rows
-        .filter((row) => row.uid === uid && row.channelKey === channelKey)
-        .sort((left, right) => left.timestamp - right.timestamp || left.key.localeCompare(right.key))
-        .slice(0, options.limit)
-        .map((row) => {
-          const { uid: _uid, channelKey: _channelKey, ...domain } = withoutKey(row);
-          return domain;
-        });
+      return rows.map((row) => {
+        const { uid: _uid, channelKey: _channelKey, channelSortKey: _channelSortKey, ...domain } = withoutKey(row);
+        return domain;
+      });
     },
 
     putDraft(uid: string, channelKey: string, text: string): Promise<void> {

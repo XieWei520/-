@@ -11,5 +11,12 @@
   "theme_color": "#0f766e",
   "description": "悟空 iOS PWA IM 客户端",
   "categories": ["communication", "productivity"],
-  "icons": []
+  "icons": [
+    {
+      "src": "/im/icons/wukong-im-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

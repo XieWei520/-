@@ -114,7 +114,7 @@ describe('imRepository', () => {
     await expect(repo.getDraft('u10', '2_group-product')).resolves.toBe('');
   });
 
-  it('orders messages by timestamp then key and applies limit after sorting', async () => {
+  it('returns the latest limited messages in ascending display order', async () => {
     const repo = createTestRepository('message-ordering');
     await repo.putMessages('u1', '2_group-product', [
       message({ id: 'm3', timestamp: 3 }),
@@ -124,7 +124,34 @@ describe('imRepository', () => {
     ]);
 
     const rows = await repo.getMessages('u1', '2_group-product', { limit: 3 });
-    expect(rows.map((item) => item.id)).toEqual(['m1', 'm2', 'm4']);
+    expect(rows.map((item) => item.id)).toEqual(['m2', 'm4', 'm3']);
+  });
+
+  it('does not full-scan messages when reading a channel window', async () => {
+    const repo = createTestRepository('message-window');
+    await repo.putMessages('u1', '2_group-product', [
+      message({ id: 'm1', timestamp: 1 }),
+      message({ id: 'm2', timestamp: 2 }),
+    ]);
+
+    const originalGetAll = IDBObjectStore.prototype.getAll;
+    IDBObjectStore.prototype.getAll = function patchedGetAll(
+      this: IDBObjectStore,
+      ...args: Parameters<IDBObjectStore['getAll']>
+    ) {
+      if (this.name === 'messages') {
+        throw new Error('messages store must not be full-scanned');
+      }
+
+      return originalGetAll.apply(this, args);
+    };
+
+    try {
+      const rows = await repo.getMessages('u1', '2_group-product', { limit: 1 });
+      expect(rows.map((item) => item.id)).toEqual(['m2']);
+    } finally {
+      IDBObjectStore.prototype.getAll = originalGetAll;
+    }
   });
 
   it('returns domain objects without internal persistence fields', async () => {
