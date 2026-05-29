@@ -19,7 +19,7 @@ const channelId = computed(() => {
   return typeof value === 'string' && value.trim() ? value : null;
 });
 const canOpenChannel = computed(() => Boolean(channelType.value && channelId.value));
-const title = computed(() => chat.activeConversation?.title || '聊天');
+const title = computed(() => (canOpenChannel.value ? chat.activeConversation?.title || '聊天' : '聊天'));
 
 watch(
   [channelType, channelId],

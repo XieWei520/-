@@ -30,6 +30,23 @@ describe('computeVirtualWindow', () => {
       }),
     ).toEqual({ start: 0, end: 0, beforeHeight: 0, afterHeight: 0 });
   });
+
+  it('renders the last rows when scrollTop is beyond content height', () => {
+    expect(
+      computeVirtualWindow({
+        itemCount: 10,
+        rowHeight: 72,
+        scrollTop: 99999,
+        viewportHeight: 216,
+        overscan: 2,
+      }),
+    ).toEqual({
+      start: 5,
+      end: 10,
+      beforeHeight: 360,
+      afterHeight: 0,
+    });
+  });
 });
 
 describe('preservePrependAnchor', () => {

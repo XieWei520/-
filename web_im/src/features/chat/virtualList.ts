@@ -34,8 +34,9 @@ export function computeVirtualWindow(input: VirtualWindowInput): VirtualWindow {
   const scrollTop = clampNonNegative(input.scrollTop);
   const viewportHeight = clampNonNegative(input.viewportHeight);
   const overscan = Math.floor(clampNonNegative(input.overscan));
-  const firstVisible = Math.floor(scrollTop / rowHeight);
-  const visibleCount = Math.ceil(viewportHeight / rowHeight);
+  const visibleCount = Math.max(1, Math.ceil(viewportHeight / rowHeight));
+  const maxFirstVisible = Math.max(0, itemCount - visibleCount);
+  const firstVisible = Math.min(maxFirstVisible, Math.floor(scrollTop / rowHeight));
   const start = Math.max(0, firstVisible - overscan);
   const end = Math.min(itemCount, firstVisible + visibleCount + overscan);
 

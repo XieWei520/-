@@ -4,6 +4,7 @@ import MessageBubble from './MessageBubble.vue';
 import { computeVirtualWindow, preservePrependAnchor } from './virtualList';
 import type { ChatMessage } from '../../models/im';
 
+// Phase 1 virtualizer assumes every message row is visually clamped to 72px.
 const ROW_HEIGHT = 72;
 const OVERSCAN = 6;
 

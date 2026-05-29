@@ -509,8 +509,9 @@ button.list-row:focus-visible,
 
 .message-row {
   display: flex;
-  min-height: 72px;
+  height: 72px;
   align-items: flex-start;
+  overflow: hidden;
   padding: 6px 0;
 }
 
@@ -524,8 +525,11 @@ button.list-row:focus-visible,
 
 .message-row__content {
   display: grid;
+  min-width: 0;
+  max-height: 60px;
   max-width: min(78%, 520px);
   gap: 4px;
+  overflow: hidden;
 }
 
 .message-row--outgoing .message-row__content {
@@ -546,13 +550,14 @@ button.list-row:focus-visible,
 
 .message-bubble {
   max-width: 100%;
-  min-height: 38px;
+  max-height: 44px;
+  min-height: 34px;
+  overflow: hidden;
   padding: 9px 11px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   color: #111827;
   background: #ffffff;
-  overflow-wrap: anywhere;
 }
 
 .message-row--outgoing .message-bubble {
@@ -561,8 +566,13 @@ button.list-row:focus-visible,
 }
 
 .message-bubble__text {
+  display: -webkit-box;
+  overflow: hidden;
   font-size: 0.95rem;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .message-media,
@@ -593,6 +603,7 @@ button.list-row:focus-visible,
 
 .message-media__text,
 .message-file__name {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
