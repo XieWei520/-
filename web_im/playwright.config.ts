@@ -7,6 +7,8 @@ const isLiveE2E = process.env.WK_WEB_IM_E2E_LIVE === '1';
 
 export default defineConfig({
   testDir: './tests',
+  testIgnore: isLiveE2E ? undefined : '**/live-auth-conversations.spec.ts',
+  testMatch: isLiveE2E ? '**/live-auth-conversations.spec.ts' : undefined,
   timeout: 30_000,
   use: {
     baseURL: 'http://127.0.0.1:5174/im/',
