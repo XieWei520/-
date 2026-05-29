@@ -31,7 +31,11 @@ body {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding:
+    max(24px, env(safe-area-inset-top))
+    max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom))
+    max(24px, env(safe-area-inset-left));
   background:
     radial-gradient(circle at top left, rgba(15, 118, 110, 0.14), transparent 36rem),
     linear-gradient(135deg, #ecfeff 0%, #f8fafc 52%, #f1f5f9 100%);
