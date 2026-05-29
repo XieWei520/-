@@ -19,10 +19,17 @@ assert.equal(
   true,
   'dist/icons/wukong-im-icon.svg must exist',
 );
+assert.equal(
+  existsSync(join(dist, 'icons', 'wukong-im-touch-180.png')),
+  true,
+  'dist/icons/wukong-im-touch-180.png must exist',
+);
 const index = readFileSync(join(dist, 'index.html'), 'utf8');
 const manifest = readFileSync(join(dist, 'manifest.webmanifest'), 'utf8');
 assert.match(index, /<div id="app"><\/div>/, 'index must keep Vue mount node');
 assert.match(index, /manifest\.webmanifest/, 'index must reference PWA manifest');
 assert.match(index, /apple-touch-icon/, 'index must reference iOS home screen icon');
+assert.match(index, /wukong-im-touch-180\.png/, 'iOS home screen icon must use PNG');
+assert.match(manifest, /wukong-im-touch-180\.png/, 'manifest must reference PNG PWA icon');
 assert.match(manifest, /wukong-im-icon\.svg/, 'manifest must reference PWA icon');
 assert.match(manifest, /"purpose":\s*"any maskable"/, 'manifest icon must support maskable purpose');
