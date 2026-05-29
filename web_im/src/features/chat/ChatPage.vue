@@ -21,6 +21,10 @@ const channelId = computed(() => {
 const canOpenChannel = computed(() => Boolean(channelType.value && channelId.value));
 const title = computed(() => (canOpenChannel.value ? chat.activeConversation?.title || '聊天' : '聊天'));
 
+function loadOlderMessages(): number {
+  return chat.isLiveConversationMode ? 0 : chat.prependOlderMessages();
+}
+
 watch(
   [channelType, channelId],
   ([nextType, nextId]) => {
@@ -40,7 +44,7 @@ watch(
     />
 
     <section v-if="canOpenChannel" class="chat-page__body" aria-label="聊天内容">
-      <VirtualMessageList :messages="chat.activeMessages" @load-older="chat.prependOlderMessages" />
+      <VirtualMessageList :messages="chat.activeMessages" @load-older="loadOlderMessages" />
       <section v-if="chat.isLiveConversationMode" class="chat-empty-state" role="status">
         <p class="chat-empty-state__title">Phase 2 只读会话</p>
         <p class="chat-empty-state__text">消息收发将在下一个阶段接入。</p>
