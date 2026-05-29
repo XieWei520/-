@@ -29,20 +29,20 @@ function openConversation(channelType: ChannelType, channelId: string) {
       <p>
         {{
           chat.isLiveConversationMode
-            ? 'Phase 2 只读会话，消息收发将在下一个阶段接入'
+            ? '正在显示后端同步的只读会话'
             : '本地假数据，仅用于 Phase 1 移动端壳验证'
         }}
       </p>
     </header>
 
-    <section v-if="chat.isLoadingConversations" class="status-list" role="status">姝ｅ湪鍔犺浇浼氳瘽...</section>
+    <section v-if="chat.isLoadingConversations" class="status-list" role="status">正在加载会话...</section>
 
     <section v-else-if="chat.conversationError" class="status-list" role="alert">
       <p>{{ chat.conversationError }}</p>
-      <button class="secondary-button" type="button" @click="retryLoad">閲嶈瘯</button>
+      <button class="secondary-button" type="button" @click="retryLoad">重试</button>
     </section>
 
-    <section v-else-if="chat.conversations.length === 0" class="status-list" role="status">鏆傛棤浼氳瘽</section>
+    <section v-else-if="chat.conversations.length === 0" class="status-list" role="status">暂无会话</section>
 
     <ul v-else class="list" aria-label="会话列表">
       <li v-for="item in chat.conversations" :key="item.id">

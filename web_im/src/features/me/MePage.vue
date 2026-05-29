@@ -35,7 +35,7 @@ async function logout() {
       <span class="avatar large-avatar" aria-hidden="true">{{ auth.user?.avatarText ?? '我' }}</span>
       <div class="row-main">
         <strong class="profile-name">{{ auth.user?.name ?? '未登录' }}</strong>
-        <span class="row-subtitle">{{ auth.user?.phone || auth.user?.uid || '鏆傛棤鎵嬫満鍙?' }}</span>
+        <span class="row-subtitle">{{ auth.user?.phone || auth.user?.uid || '暂无手机号' }}</span>
         <span v-if="auth.user?.uid" class="row-subtitle">UID: {{ auth.user.uid }}</span>
       </div>
     </section>
