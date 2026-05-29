@@ -144,12 +144,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = snapshot.user;
   }
 
-  function setLiveSessionForTest(snapshot: AuthSnapshot): void {
-    applyLiveSession(snapshot);
-    saveAuthSnapshot(snapshot);
-  }
-
-  async function restoreSessionForTest(loader?: (snapshot: AuthSnapshot) => Promise<CurrentUser> | CurrentUser): Promise<void> {
+  async function restoreSession(loader?: (snapshot: AuthSnapshot) => Promise<CurrentUser> | CurrentUser): Promise<void> {
     const existing = loadAuthSnapshot();
     if (!existing) {
       clearState();
@@ -180,7 +175,6 @@ export const useAuthStore = defineStore('auth', () => {
     sessionForConversationSync,
     login,
     logout,
-    setLiveSessionForTest,
-    restoreSessionForTest,
+    restoreSession,
   };
 });

@@ -41,12 +41,43 @@ function writeJson(key: string, value: unknown): void {
   } catch {}
 }
 
-export function loadAuthSnapshot(): AuthSnapshot | null {
-  const snapshot = readJson<AuthSnapshot>(authKey);
-  if (!snapshot?.uid || !snapshot.token) {
-    return null;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isValidCurrentUser(value: unknown): value is CurrentUser {
+  if (!isRecord(value)) {
+    return false;
   }
-  return snapshot;
+
+  return (
+    (isNonEmptyString(value.id) || isNonEmptyString(value.uid)) &&
+    isNonEmptyString(value.name) &&
+    isNonEmptyString(value.avatarText) &&
+    (value.connectionState === 'connected' || value.connectionState === 'connecting' || value.connectionState === 'offline')
+  );
+}
+
+function isValidAuthSnapshot(value: unknown): value is AuthSnapshot {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isNonEmptyString(value.uid) &&
+    isNonEmptyString(value.token) &&
+    isNonEmptyString(value.imToken) &&
+    isValidCurrentUser(value.user)
+  );
+}
+
+export function loadAuthSnapshot(): AuthSnapshot | null {
+  const snapshot = readJson<unknown>(authKey);
+  return isValidAuthSnapshot(snapshot) ? snapshot : null;
 }
 
 export function saveAuthSnapshot(snapshot: AuthSnapshot): void {

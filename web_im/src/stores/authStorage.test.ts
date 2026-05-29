@@ -21,6 +21,32 @@ describe('auth storage', () => {
     expect(loadAuthSnapshot()).toBeNull();
   });
 
+  it('returns null for malformed auth snapshots missing live auth fields', () => {
+    window.localStorage.setItem(
+      'wk_web_im_auth_v1',
+      JSON.stringify({
+        uid: 'u1',
+        token: 't1',
+        savedAt: 1,
+      }),
+    );
+
+    expect(loadAuthSnapshot()).toBeNull();
+
+    window.localStorage.setItem(
+      'wk_web_im_auth_v1',
+      JSON.stringify({
+        uid: 'u1',
+        token: 't1',
+        imToken: 'im1',
+        user: { id: 'u1', name: 'Alice' },
+        savedAt: 1,
+      }),
+    );
+
+    expect(loadAuthSnapshot()).toBeNull();
+  });
+
   it('does not throw when storage is blocked', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new DOMException('blocked', 'SecurityError');
