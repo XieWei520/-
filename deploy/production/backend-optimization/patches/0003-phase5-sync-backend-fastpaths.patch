@@ -113,15 +113,30 @@ index 8ae207d..8799c49 100644
 +}
 diff --git a/modules/message/sql/message-20260529-01.sql b/modules/message/sql/message-20260529-01.sql
 new file mode 100644
-index 0000000..6418366
+index 0000000..1f42cd8
 --- /dev/null
 +++ b/modules/message/sql/message-20260529-01.sql
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,23 @@
++-- +migrate Up
 +-- Phase 5: speed up GET /v1/message/prohibit_words/sync no-change checks.
 +-- The production table previously had only PRIMARY(id), while the hot query is:
 +-- SELECT * FROM prohibit_words WHERE version > ?
 +
-+CREATE INDEX idx_prohibit_words_version ON prohibit_words (version);
++SET @idx_exists := (
++    SELECT COUNT(1)
++    FROM information_schema.STATISTICS
++    WHERE TABLE_SCHEMA = DATABASE()
++      AND TABLE_NAME = 'prohibit_words'
++      AND INDEX_NAME = 'idx_prohibit_words_version'
++);
++SET @idx_sql := IF(
++    @idx_exists = 0,
++    'CREATE INDEX idx_prohibit_words_version ON prohibit_words (version)',
++    'SELECT 1'
++);
++PREPARE idx_stmt FROM @idx_sql;
++EXECUTE idx_stmt;
++DEALLOCATE PREPARE idx_stmt;
 +
-+-- Down:
-+-- DROP INDEX idx_prohibit_words_version ON prohibit_words;
++-- +migrate Down
++DROP INDEX idx_prohibit_words_version ON prohibit_words;

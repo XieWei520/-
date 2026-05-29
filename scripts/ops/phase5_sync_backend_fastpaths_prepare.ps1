@@ -29,7 +29,7 @@ $ExpectedManifestRows = @(
   'e11b13da33891b957bddea8ac5863c500705bd816fbdd3172248fa607d0d8c6e  modules/message/api.go',
   '9102376dd689cb8dc51e80fc61aa9e5ee47f8ffd5d0d8fc28a1c1d26fbed0327  modules/message/db.go',
   '41cf247710f7ebdebee936b1d5e07fcc196b129fa4c39bdc6b73748ada790700  modules/message/phase4_sync_load_test.go',
-  '774659348e7b760c40661ccc5e54ca198f62280e403bb82ce5c7200fcd3c469a  modules/message/sql/message-20260529-01.sql'
+  '567fea35b627640929a0dd90880a1b5788c11e6ef53c1f61ca32ca5f77562fbd  modules/message/sql/message-20260529-01.sql'
 )
 $DefaultPatchPath = 'deploy/production/backend-optimization/patches/0003-phase5-sync-backend-fastpaths.patch'
 

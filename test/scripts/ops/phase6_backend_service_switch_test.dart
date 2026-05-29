@@ -18,15 +18,15 @@ void main() {
     expect(content, contains('wait_for_health tsdd-api'));
     expect(content, contains('wait_for_health callgateway'));
     expect(content, contains(r'docker exec "$nginx_container_id" nginx -t'));
-    expect(content, contains(r'docker exec "$nginx_container_id" nginx -s reload'));
-    expect(content, contains(r'post_reload_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"'));
+    expect(content, contains('docker compose --env-file .env restart nginx'));
+    expect(content, contains(r'post_nginx_restart_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"'));
     expect(
       content,
       contains(r'curl -fsS --max-time "$probe_timeout" "$release_base_url/v1/ping"'),
     );
     expect(
       content,
-      contains(r'docker compose --env-file .env logs --since="$post_reload_since" nginx'),
+      contains(r'docker compose --env-file .env logs --since="$post_nginx_restart_since" nginx'),
     );
     expect(content, contains('phase6_backend_service_switch=completed'));
     expect(content, contains('phase6-remote-bash-'));
@@ -68,7 +68,7 @@ void main() {
     final output = result.stdout.toString();
     expect(output, contains('Dry run only'));
     expect(output, contains('tsdd-api callgateway'));
-    expect(output, contains('nginx -s reload'));
+    expect(output, contains('restart nginx'));
     expect(output, contains('https://infoequity.cn'));
     expect(output, contains('phase6_backend_service_switch=completed'));
   }, skip: !Platform.isWindows);

@@ -53,4 +53,25 @@ void main() {
     ]);
     expect(content, isNot(contains('lib/service/im')));
   });
+
+  test('phase5 migration is sql-migrate annotated and idempotent', () {
+    final migration = File(
+      '.codex-backend-work/src/modules/message/sql/message-20260529-01.sql',
+    );
+    expect(migration.existsSync(), isTrue);
+    final content = migration.readAsStringSync();
+
+    expect(content, contains('-- +migrate Up'));
+    expect(content, contains('-- +migrate Down'));
+    expect(content, contains('information_schema.STATISTICS'));
+    expect(content, contains('idx_prohibit_words_version'));
+
+    final patch = File(
+      'deploy/production/backend-optimization/patches/0003-phase5-sync-backend-fastpaths.patch',
+    );
+    final patchContent = patch.readAsStringSync();
+    expect(patchContent, contains('+-- +migrate Up'));
+    expect(patchContent, contains('+-- +migrate Down'));
+    expect(patchContent, contains('information_schema.STATISTICS'));
+  });
 }

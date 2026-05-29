@@ -159,20 +159,20 @@ docker compose --env-file .env up -d --no-deps --force-recreate tsdd-api callgat
 wait_for_health tsdd-api "$health_timeout"
 wait_for_health callgateway "$health_timeout"
 
-echo '== refresh nginx upstream cache =='
+echo '== restart nginx upstream cache =='
 nginx_container_id="$(docker compose --env-file .env ps -q nginx)"
 if [ -z "$nginx_container_id" ]; then
   echo 'nginx_container_missing=1' >&2
   exit 1
 fi
 docker exec "$nginx_container_id" nginx -t
-docker exec "$nginx_container_id" nginx -s reload
-post_reload_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+post_nginx_restart_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+docker compose --env-file .env restart nginx
 
 echo '== post-switch smoke =='
 external_ping="$(curl -fsS --max-time "$probe_timeout" "$release_base_url/v1/ping")"
 echo "external_ping=$external_ping"
-recent_502_count="$(docker compose --env-file .env logs --since="$post_reload_since" nginx 2>&1 | grep -c ' 502 ' || true)"
+recent_502_count="$(docker compose --env-file .env logs --since="$post_nginx_restart_since" nginx 2>&1 | grep -c ' 502 ' || true)"
 echo "nginx_recent_502_count=$recent_502_count"
 if [ "$recent_502_count" != '0' ]; then
   echo 'phase6_backend_service_switch=blocked_recent_nginx_502' >&2
@@ -196,7 +196,7 @@ $switchScript = $switchScriptTemplate.
   Replace('__PROBE_TIMEOUT__', [string]$ProbeTimeoutSeconds)
 
 if (-not $Run) {
-  Write-Host 'Dry run only. Add -Run -AllowProductionServiceSwitch to switch production backend services and reload nginx.'
+  Write-Host 'Dry run only. Add -Run -AllowProductionServiceSwitch to switch production backend services and restart nginx.'
   Write-Host "RemoteHost: $RemoteHost"
   Write-Host "RemoteRoot: $RemoteRoot"
   Write-Host "ReleaseBaseUrl: $ReleaseBaseUrl"
