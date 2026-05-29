@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the live backend boundary inside focused TypeScript modules under `web_im/src/config`, `web_im/src/api`, and `web_im/src/stores`. Runtime mode decides whether stores call fake data or signed live HTTP. Conversation rows are mapped into the existing UI model and cached by uid through the existing IndexedDB repository boundary.
 
-**Tech Stack:** Vue 3, TypeScript, Pinia, Vite, Vitest, Playwright, browser `crypto.subtle`, localStorage, IndexedDB.
+**Tech Stack:** Vue 3, TypeScript, Pinia, Vite, Vitest, Playwright, pure TypeScript MD5 signing helper, localStorage, IndexedDB.
 
 ---
 
@@ -15,7 +15,7 @@
 - Create `web_im/src/config/runtimeConfig.ts`: reads Vite env and exposes mock/live mode, API base URL, app id/key, device flag, and mode helpers.
 - Create `web_im/src/config/runtimeConfig.test.ts`: covers env normalization and default mock behavior.
 - Create `web_im/src/api/apiError.ts`: typed API error and helpers for unauthorized/retryable failures.
-- Create `web_im/src/api/signedHttpClient.ts`: JSON serialization, MD5 signing, signed fetch, response normalization.
+- Create `web_im/src/api/signedHttpClient.ts`: JSON serialization, pure TypeScript MD5 signing, signed fetch, response normalization.
 - Create `web_im/src/api/signedHttpClient.test.ts`: deterministic header/signature and request-body tests.
 - Create `web_im/src/api/authApi.ts`: login/current-user/logout-compatible HTTP functions and response parsers.
 - Create `web_im/src/api/authApi.test.ts`: login and current-user parsing tests, including direct and nested payload shapes.
@@ -379,17 +379,18 @@ function defaultNonce(): string {
   return Array.from({ length: 16 }, (_, index) => chars[(seed + index * 17) % chars.length]).join('');
 }
 
-async function md5Hex(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest('MD5', bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+function md5Hex(value: string): string {
+  // Implement MD5 in TypeScript here; do not use crypto.subtle because browsers
+  // do not support MD5 in Web Crypto. The helper must return a lowercase
+  // 32-character hex digest compatible with Flutter's crypto MD5 output.
+  return md5(value);
 }
 
 export async function createSignedHeaders(options: SignedHeaderOptions): Promise<Record<string, string>> {
   const timestamp = String(options.now?.() ?? Date.now());
   const noncestr = options.nonce?.() ?? defaultNonce();
   const body = options.body ?? '';
-  const sign = await md5Hex(`${body}${noncestr}${timestamp}${options.appKey}`);
+  const sign = md5Hex(`${body}${noncestr}${timestamp}${options.appKey}`);
 
   return {
     'Content-Type': 'application/json',
