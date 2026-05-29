@@ -16,6 +16,7 @@ const { runtimeConfig } = vi.hoisted(() => ({
 
 vi.mock('../config/runtimeConfig', () => ({
   runtimeConfig,
+  isLiveMode: vi.fn((config: { mode: string }) => config.mode === 'live'),
   isMockMode: vi.fn((config: { mode: string }) => config.mode === 'mock'),
 }));
 
@@ -103,6 +104,17 @@ describe('chat store unknown active channels', () => {
     expect(chat.conversations).toEqual(syncedConversations);
     expect(chat.conversationError).toBe('');
     expect(chat.isLoadingConversations).toBe(false);
+  });
+
+  it('exposes whether conversation data is using live mode', () => {
+    const chat = useChatStore();
+
+    expect(chat.isLiveConversationMode).toBe(true);
+
+    runtimeConfig.mode = 'mock';
+    setActivePinia(createPinia());
+
+    expect(useChatStore().isLiveConversationMode).toBe(false);
   });
 
   it('records live conversation sync failures without throwing', async () => {

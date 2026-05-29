@@ -1,9 +1,21 @@
 <script setup lang="ts">
+import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { fakeConversations } from '../../mocks/fakeImData';
+import { useAuthStore } from '../../stores/authStore';
+import { useChatStore } from '../../stores/chatStore';
 import type { ChannelType } from '../../models/im';
 
 const router = useRouter();
+const auth = useAuthStore();
+const chat = useChatStore();
+
+onMounted(() => {
+  void chat.loadConversations(auth.sessionForConversationSync);
+});
+
+function retryLoad() {
+  void chat.loadConversations(auth.sessionForConversationSync);
+}
 
 function openConversation(channelType: ChannelType, channelId: string) {
   router.push(`/chat/${channelType}/${channelId}`);
@@ -17,8 +29,17 @@ function openConversation(channelType: ChannelType, channelId: string) {
       <p>本地假数据，仅用于 Phase 1 移动端壳验证</p>
     </header>
 
-    <ul class="list" aria-label="会话列表">
-      <li v-for="item in fakeConversations" :key="item.id">
+    <section v-if="chat.isLoadingConversations" class="status-list" role="status">姝ｅ湪鍔犺浇浼氳瘽...</section>
+
+    <section v-else-if="chat.conversationError" class="status-list" role="alert">
+      <p>{{ chat.conversationError }}</p>
+      <button class="secondary-button" type="button" @click="retryLoad">閲嶈瘯</button>
+    </section>
+
+    <section v-else-if="chat.conversations.length === 0" class="status-list" role="status">鏆傛棤浼氳瘽</section>
+
+    <ul v-else class="list" aria-label="会话列表">
+      <li v-for="item in chat.conversations" :key="item.id">
         <button class="list-row" type="button" @click="openConversation(item.channelType, item.channelId)">
           <span class="avatar" aria-hidden="true">{{ item.avatarText }}</span>
           <span class="row-main">

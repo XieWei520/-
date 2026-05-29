@@ -34,7 +34,10 @@ watch(
 
 <template>
   <main class="chat-page">
-    <ChatHeader :title="title" status-text="假数据会话" />
+    <ChatHeader
+      :title="title"
+      :status-text="chat.isLiveConversationMode ? 'Phase 2 鍙浼氳瘽锛屾秷鎭敹鍙戝皢鍦ㄤ笅涓€闃舵鎺ュ叆' : '鍋囨暟鎹細璇?'"
+    />
 
     <section v-if="canOpenChannel" class="chat-page__body" aria-label="聊天内容">
       <VirtualMessageList :messages="chat.activeMessages" @load-older="chat.prependOlderMessages" />

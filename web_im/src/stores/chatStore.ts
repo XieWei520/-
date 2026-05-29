@@ -2,7 +2,7 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { loadConversationSync } from '../api/conversationSyncApi';
 import { toUserMessage } from '../api/apiError';
-import { isMockMode, runtimeConfig } from '../config/runtimeConfig';
+import { isLiveMode, isMockMode, runtimeConfig } from '../config/runtimeConfig';
 import { buildFakeMessages, fakeConversations, fakeCurrentUser } from '../mocks/fakeImData';
 import type { ChannelType, ChatMessage, Conversation } from '../models/im';
 
@@ -80,6 +80,7 @@ export const useChatStore = defineStore('chat', () => {
   const conversationError = ref('');
   const messagesByChannel = ref<Record<string, ChatMessage[]>>({});
   const activeChannelKey = ref<ChannelKey | null>(null);
+  const isLiveConversationMode = computed(() => isLiveMode(runtimeConfig));
   let localMessageSeq = 0;
 
   const activeMessages = computed(() => {
@@ -215,6 +216,7 @@ export const useChatStore = defineStore('chat', () => {
     conversations,
     isLoadingConversations,
     conversationError,
+    isLiveConversationMode,
     messagesByChannel,
     activeChannelKey,
     activeMessages,
