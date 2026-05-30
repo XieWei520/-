@@ -82,10 +82,10 @@ index dc94f6e..c19ed51 100644
  	loginUID := c.GetLoginUID()
  	var req deleteReq
 diff --git a/modules/message/api_conversation.go b/modules/message/api_conversation.go
-index 767dd95..e232694 100644
+index 767dd95..da303b2 100644
 --- a/modules/message/api_conversation.go
 +++ b/modules/message/api_conversation.go
-@@ -24,6 +24,19 @@ import (
+@@ -24,6 +24,26 @@ import (
  	"go.uber.org/zap"
  )
  
@@ -98,6 +98,13 @@ index 767dd95..e232694 100644
 +	return requested
 +}
 +
++func phase6ConversationExtraRequestedLimit(requested *uint64) (uint64, bool) {
++	if requested == nil {
++		return 0, false
++	}
++	return phase6ConversationExtraSyncLimit(*requested), true
++}
++
 +func phase6ConversationExtraNoChangeResponse() []*conversationExtraResp {
 +	return make([]*conversationExtraResp, 0)
 +}
@@ -105,22 +112,29 @@ index 767dd95..e232694 100644
  // Conversation 最近会话
  type Conversation struct {
  	ctx *config.Context
-@@ -128,7 +141,8 @@ func (co *Conversation) handleConversationDeleteEvent(data []byte, commit config
+@@ -128,7 +148,8 @@ func (co *Conversation) handleConversationDeleteEvent(data []byte, commit config
  // 最近会话扩展同步
  func (co *Conversation) conversationExtraSync(c *wkhttp.Context) {
  	var req struct {
 -		Version int64 `json:"version"`
-+		Version int64  `json:"version"`
-+		Limit   uint64 `json:"limit"`
++		Version int64   `json:"version"`
++		Limit   *uint64 `json:"limit"`
  	}
  	if err := c.BindJSON(&req); err != nil {
  		co.Error("数据格式有误！", zap.Error(err))
-@@ -137,12 +151,16 @@ func (co *Conversation) conversationExtraSync(c *wkhttp.Context) {
+@@ -137,12 +158,23 @@ func (co *Conversation) conversationExtraSync(c *wkhttp.Context) {
  	}
  	loginUID := c.GetLoginUID()
  
 -	conversationExtraModels, err := co.conversationExtraDB.sync(loginUID, req.Version)
-+	conversationExtraModels, err := co.conversationExtraDB.syncWithLimit(loginUID, req.Version, phase6ConversationExtraSyncLimit(req.Limit))
++	limit, limitRequested := phase6ConversationExtraRequestedLimit(req.Limit)
++	var conversationExtraModels []*conversationExtraModel
++	var err error
++	if limitRequested {
++		conversationExtraModels, err = co.conversationExtraDB.syncWithLimit(loginUID, req.Version, limit)
++	} else {
++		conversationExtraModels, err = co.conversationExtraDB.sync(loginUID, req.Version)
++	}
  	if err != nil {
  		co.Error("同步消息扩展失败！", zap.Error(err))
  		c.ResponseError(errors.New("同步消息扩展失败！"))
@@ -133,7 +147,7 @@ index 767dd95..e232694 100644
  	resps := make([]*conversationExtraResp, 0, len(conversationExtraModels))
  	for _, conversationExtraM := range conversationExtraModels {
  		resps = append(resps, newConversationExtraResp(conversationExtraM))
-@@ -581,6 +599,28 @@ func (co *Conversation) syncUserConversation(c *wkhttp.Context) {
+@@ -581,6 +613,28 @@ func (co *Conversation) syncUserConversation(c *wkhttp.Context) {
  	})
  }
  
@@ -163,19 +177,24 @@ index 767dd95..e232694 100644
  	return fmt.Sprintf("%s:%d:%d", channelID, channelType, lastMessageSeq)
  }
 diff --git a/modules/message/db_conversation_extra.go b/modules/message/db_conversation_extra.go
-index d7c8f81..346ca69 100644
+index d7c8f81..7e59209 100644
 --- a/modules/message/db_conversation_extra.go
 +++ b/modules/message/db_conversation_extra.go
-@@ -25,8 +25,17 @@ func (c *conversationExtraDB) insertOrUpdate(model *conversationExtraModel) erro
- }
+@@ -26,7 +26,22 @@ func (c *conversationExtraDB) insertOrUpdate(model *conversationExtraModel) erro
  
  func (c *conversationExtraDB) sync(uid string, version int64) ([]*conversationExtraModel, error) {
-+	return c.syncWithLimit(uid, version, phase6ConversationExtraDefaultLimit)
+ 	var models []*conversationExtraModel
+-	_, err := c.session.Select("*").From("conversation_extra").Where("uid=? and version>?", uid, version).Load(&models)
++	_, err := c.session.Select("*").
++		From("conversation_extra").
++		Where("uid=? and version>?", uid, version).
++		OrderAsc("version").
++		Load(&models)
++	return models, err
 +}
 +
 +func (c *conversationExtraDB) syncWithLimit(uid string, version int64, limit uint64) ([]*conversationExtraModel, error) {
- 	var models []*conversationExtraModel
--	_, err := c.session.Select("*").From("conversation_extra").Where("uid=? and version>?", uid, version).Load(&models)
++	var models []*conversationExtraModel
 +	_, err := c.session.Select("*").
 +		From("conversation_extra").
 +		Where("uid=? and version>?", uid, version).
@@ -185,6 +204,77 @@ index d7c8f81..346ca69 100644
  	return models, err
  }
  
+diff --git a/modules/message/phase6_conversation_extra_test.go b/modules/message/phase6_conversation_extra_test.go
+new file mode 100644
+index 0000000..26c531b
+--- /dev/null
++++ b/modules/message/phase6_conversation_extra_test.go
+@@ -0,0 +1,30 @@
++package message
++
++import (
++	"testing"
++
++	"github.com/stretchr/testify/require"
++)
++
++func TestPhase6ConversationExtraSyncLimit(t *testing.T) {
++	require.Equal(t, uint64(200), phase6ConversationExtraSyncLimit(0))
++	require.Equal(t, uint64(50), phase6ConversationExtraSyncLimit(50))
++	require.Equal(t, uint64(200), phase6ConversationExtraSyncLimit(5000))
++}
++
++func TestPhase6ConversationExtraRequestedLimitKeepsLegacyFullSyncWhenOmitted(t *testing.T) {
++	limit, requested := phase6ConversationExtraRequestedLimit(nil)
++	require.False(t, requested)
++	require.Equal(t, uint64(0), limit)
++
++	explicitZero := uint64(0)
++	limit, requested = phase6ConversationExtraRequestedLimit(&explicitZero)
++	require.True(t, requested)
++	require.Equal(t, uint64(200), limit)
++}
++
++func TestPhase6ConversationExtraNoChangeResponse(t *testing.T) {
++	resp := phase6ConversationExtraNoChangeResponse()
++	require.NotNil(t, resp)
++	require.Empty(t, resp)
++}
+diff --git a/modules/message/phase6_conversation_sync_test.go b/modules/message/phase6_conversation_sync_test.go
+new file mode 100644
+index 0000000..1df8a86
+--- /dev/null
++++ b/modules/message/phase6_conversation_sync_test.go
+@@ -0,0 +1,29 @@
++package message
++
++import (
++	"testing"
++
++	"github.com/TangSengDaoDao/TangSengDaoDaoServerLib/config"
++	"github.com/stretchr/testify/require"
++)
++
++func TestPhase6ConversationRecentMessageIDsDedupesAcrossConversations(t *testing.T) {
++	conversations := []*config.SyncUserConversationResp{
++		{
++			Recents: []*config.MessageResp{
++				{MessageID: 101},
++				{MessageID: 102},
++				{MessageID: 102},
++			},
++		},
++		nil,
++		{
++			Recents: []*config.MessageResp{
++				nil,
++				{MessageID: 103},
++			},
++		},
++	}
++
++	require.Equal(t, []string{"101", "102", "103"}, phase6ConversationRecentMessageIDs(conversations))
++}
 diff --git a/modules/message/phase6_message_sync_test.go b/modules/message/phase6_message_sync_test.go
 new file mode 100644
 index 0000000..b5d64ec
@@ -235,64 +325,4 @@ index 0000000..b5d64ec
 +	got := phase6MessageIDsFromSyncResponses(resps)
 +
 +	require.Equal(t, strconv.FormatInt(resps[0].MessageID, 10), got[0])
-+}
-diff --git a/modules/message/phase6_conversation_extra_test.go b/modules/message/phase6_conversation_extra_test.go
-new file mode 100644
-index 0000000..fdb8a72
---- /dev/null
-+++ b/modules/message/phase6_conversation_extra_test.go
-@@ -0,0 +1,19 @@
-+package message
-+
-+import (
-+	"testing"
-+
-+	"github.com/stretchr/testify/require"
-+)
-+
-+func TestPhase6ConversationExtraSyncLimit(t *testing.T) {
-+	require.Equal(t, uint64(200), phase6ConversationExtraSyncLimit(0))
-+	require.Equal(t, uint64(50), phase6ConversationExtraSyncLimit(50))
-+	require.Equal(t, uint64(200), phase6ConversationExtraSyncLimit(5000))
-+}
-+
-+func TestPhase6ConversationExtraNoChangeResponse(t *testing.T) {
-+	resp := phase6ConversationExtraNoChangeResponse()
-+	require.NotNil(t, resp)
-+	require.Empty(t, resp)
-+}
-diff --git a/modules/message/phase6_conversation_sync_test.go b/modules/message/phase6_conversation_sync_test.go
-new file mode 100644
-index 0000000..1df8a86
---- /dev/null
-+++ b/modules/message/phase6_conversation_sync_test.go
-@@ -0,0 +1,29 @@
-+package message
-+
-+import (
-+	"testing"
-+
-+	"github.com/TangSengDaoDao/TangSengDaoDaoServerLib/config"
-+	"github.com/stretchr/testify/require"
-+)
-+
-+func TestPhase6ConversationRecentMessageIDsDedupesAcrossConversations(t *testing.T) {
-+	conversations := []*config.SyncUserConversationResp{
-+		{
-+			Recents: []*config.MessageResp{
-+				{MessageID: 101},
-+				{MessageID: 102},
-+				{MessageID: 102},
-+			},
-+		},
-+		nil,
-+		{
-+			Recents: []*config.MessageResp{
-+				nil,
-+				{MessageID: 103},
-+			},
-+		},
-+	}
-+
-+	require.Equal(t, []string{"101", "102", "103"}, phase6ConversationRecentMessageIDs(conversations))
 +}

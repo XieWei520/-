@@ -27,15 +27,28 @@ $ReleaseFiles = @(
   'modules/message/phase6_conversation_sync_test.go'
 )
 
+$BuildContextRoots = @(
+  'go.mod',
+  'go.sum',
+  'main.go',
+  'assets',
+  'configs',
+  'internal',
+  'modules',
+  'pkg',
+  'serverlib'
+)
+
 $ExpectedManifestRows = @(
   'd0a5f3bd0a100ce91b46c3c0b7cf9b0a903550721068d59b83e9439061bfbb40  modules/message/api.go',
-  '72051603ee604716fdf85bc72ad09f099d4388014ff8250a850c91bd0a093c9d  modules/message/api_conversation.go',
-  'e486e958798a5595f8b54e6bed8030e738c424fea084ec3b637fffd17aaf4cec  modules/message/db_conversation_extra.go',
+  'd5bf39715ff86fad94f143171997f8480558dbcf093a43d33fd9b00f08342812  modules/message/api_conversation.go',
+  '369857fd6233e875364b6909622c33585696d0e40455663d33d5b272a50ddf23  modules/message/db_conversation_extra.go',
   '90072a98eb13b35897ee2c6a6135fbd06f42cc2e9316e128699fec506dc3c957  modules/message/phase6_message_sync_test.go',
-  '9da21ae6e3477c7695274120b69a7142c4219120a6e8ef049d7a6fdbf5c1e8bd  modules/message/phase6_conversation_extra_test.go',
+  'c0ece1c7727f2ebd0ac75cf986c84c3cfaad559c0e873c82c3a79301a3f2b9dc  modules/message/phase6_conversation_extra_test.go',
   '5c41e9eaf45fe632fef150bcbf7d278c5349a79e75718388c5b8495132ad5f8a  modules/message/phase6_conversation_sync_test.go'
 )
 $DefaultPatchPath = 'deploy/production/backend-optimization/patches/0004-phase6-sync-hot-path-optimization.patch'
+$DefaultBuildContextManifestPath = 'deploy/production/backend-optimization/phase6-sync-hot-path-build-context.manifest'
 
 function Quote-Bash {
   param([AllowEmptyString()][Parameter(Mandatory = $true)][string]$Value)
@@ -95,6 +108,20 @@ function Assert-SafeRelativePath {
   }
 }
 
+function Get-RelativePathFromRoot {
+  param(
+    [Parameter(Mandatory = $true)][string]$Root,
+    [Parameter(Mandatory = $true)][string]$Path
+  )
+
+  $rootFull = (Resolve-Path -LiteralPath $Root).Path.TrimEnd([char[]]@('\', '/'))
+  $pathFull = (Resolve-Path -LiteralPath $Path).Path
+  if (-not $pathFull.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Path is outside root: $Path"
+  }
+  return $pathFull.Substring($rootFull.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+}
+
 function Resolve-RepoRoot {
   return (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 }
@@ -114,6 +141,12 @@ function Resolve-PatchFile {
   $repoRoot = Resolve-RepoRoot
   $platformPatchPath = $DefaultPatchPath -replace '/', [System.IO.Path]::DirectorySeparatorChar
   return (Resolve-Path -LiteralPath (Join-Path $repoRoot $platformPatchPath)).Path
+}
+
+function Resolve-BuildContextManifestFile {
+  $repoRoot = Resolve-RepoRoot
+  $platformManifestPath = $DefaultBuildContextManifestPath -replace '/', [System.IO.Path]::DirectorySeparatorChar
+  return (Resolve-Path -LiteralPath (Join-Path $repoRoot $platformManifestPath)).Path
 }
 
 function Get-SshOptions {
@@ -197,6 +230,128 @@ function New-Manifest {
     $rows.Add("$hash  $relative")
   }
   return $rows
+}
+
+function Should-IncludeBuildContextPath {
+  param([Parameter(Mandatory = $true)][string]$RelativePath)
+
+  if ($RelativePath -match '(^|/)\.git(/|$)' -or
+      $RelativePath -match '(^|/)\.env(\.|/|$)' -or
+      $RelativePath -match '\.(pem|key|db|sqlite|sqlite3|log|gz|zip|tar|tgz|p12|pfx|jks|bak)$' -or
+      $RelativePath -match '(\.bak($|[._])|_bak_)' -or
+      $RelativePath -match '(^|/)__pycache__(/|$)' -or
+      $RelativePath -match '\.pyc$' -or
+      $RelativePath -match '(^|/)\.dart_tool(/|$)' -or
+      $RelativePath -match '(^|/)(build|dist|node_modules)(/|$)') {
+    return $false
+  }
+  return $true
+}
+
+function Get-BuildContextRelativeFiles {
+  param([Parameter(Mandatory = $true)][string]$BackendRoot)
+
+  $files = New-Object System.Collections.Generic.List[string]
+  foreach ($root in $BuildContextRoots) {
+    Assert-SafeRelativePath -Value $root
+    $localRoot = Join-Path $BackendRoot ($root -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (Test-Path -LiteralPath $localRoot -PathType Leaf) {
+      if (Should-IncludeBuildContextPath -RelativePath $root) {
+        $files.Add($root)
+      }
+      continue
+    }
+    if (-not (Test-Path -LiteralPath $localRoot -PathType Container)) {
+      continue
+    }
+    Get-ChildItem -LiteralPath $localRoot -Recurse -File | ForEach-Object {
+      $relative = Get-RelativePathFromRoot -Root $BackendRoot -Path $_.FullName
+      if (Should-IncludeBuildContextPath -RelativePath $relative) {
+        $files.Add($relative)
+      }
+    }
+  }
+  return @($files | Sort-Object -Unique)
+}
+
+function New-BuildContextManifest {
+  param(
+    [Parameter(Mandatory = $true)][string]$BackendRoot,
+    [Parameter(Mandatory = $true)][string[]]$RelativeFiles
+  )
+
+  $rows = New-Object System.Collections.Generic.List[string]
+  foreach ($relative in $RelativeFiles) {
+    Assert-SafeRelativePath -Value $relative
+    $localPath = Join-Path $BackendRoot ($relative -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -LiteralPath $localPath -PathType Leaf)) {
+      throw "Missing local build context file: $localPath"
+    }
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $localPath).Hash.ToLowerInvariant()
+    $rows.Add("$hash  $relative")
+  }
+  return $rows
+}
+
+function ConvertTo-ManifestMap {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$Rows,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+
+  $manifestMap = @{}
+  foreach ($row in $Rows) {
+    if ($row -notmatch '^([0-9a-f]{64})  (.+)$') {
+      throw "Invalid $Label manifest row: $row"
+    }
+    $path = $Matches[2]
+    Assert-SafeRelativePath -Value $path
+    if ($manifestMap.ContainsKey($path)) {
+      throw "Duplicate $Label manifest path: $path"
+    }
+    $manifestMap[$path] = $Matches[1]
+  }
+  return $manifestMap
+}
+
+function Read-ReviewedBuildContextManifest {
+  $manifestFile = Resolve-BuildContextManifestFile
+  return @(
+    Get-Content -LiteralPath $manifestFile |
+      ForEach-Object { $_.TrimEnd("`r") } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  )
+}
+
+function Assert-ReviewedBuildContextManifest {
+  param([Parameter(Mandatory = $true)][string[]]$ManifestRows)
+
+  $expectedRows = Read-ReviewedBuildContextManifest
+  $expectedMap = ConvertTo-ManifestMap -Rows $expectedRows -Label 'reviewed build context'
+  $actualMap = ConvertTo-ManifestMap -Rows $ManifestRows -Label 'local build context'
+  $hasFailure = $false
+
+  foreach ($path in @($actualMap.Keys | Sort-Object)) {
+    if (-not $expectedMap.ContainsKey($path)) {
+      Write-Host "phase6_sync_hot_path_build_context_unreviewed_local_file=$path"
+      $hasFailure = $true
+    } elseif ($actualMap[$path] -ne $expectedMap[$path]) {
+      Write-Host "phase6_sync_hot_path_build_context_unreviewed_local_file=$path"
+      Write-Host "phase6_sync_hot_path_build_context_hash_mismatch=$path"
+      $hasFailure = $true
+    }
+  }
+  foreach ($path in @($expectedMap.Keys | Sort-Object)) {
+    if (-not $actualMap.ContainsKey($path)) {
+      Write-Host "phase6_sync_hot_path_build_context_missing_local_file=$path"
+      $hasFailure = $true
+    }
+  }
+
+  if ($hasFailure) {
+    Write-Host 'phase6_sync_hot_path_build_context=unreviewed_local_change'
+    throw 'LocalBackendRoot build context does not match reviewed Phase 6 build context manifest.'
+  }
 }
 
 function Assert-ReviewedManifest {
@@ -305,11 +460,16 @@ if ($RunTests) {
 
 $manifestRows = New-Manifest -BackendRoot $backendRoot
 Assert-ReviewedManifest -ManifestRows $manifestRows
+$buildContextFiles = Get-BuildContextRelativeFiles -BackendRoot $backendRoot
+$buildContextManifestRows = New-BuildContextManifest -BackendRoot $backendRoot -RelativeFiles $buildContextFiles
+Assert-ReviewedBuildContextManifest -ManifestRows $buildContextManifestRows
 $remoteSourceArg = Quote-Bash -Value $RemoteSourceRoot
 $remoteProductionArg = Quote-Bash -Value $RemoteProductionRoot
 $remoteBackupArg = Quote-Bash -Value $RemoteBackupRoot
 $manifestText = ($manifestRows -join "`n")
 $manifestArg = Quote-Bash -Value $manifestText
+$buildContextManifestText = ($buildContextManifestRows -join "`n")
+$buildContextManifestArg = Quote-Bash -Value $buildContextManifestText
 
 if (-not $Run) {
   Write-Host 'Dry run only. Use -Run -AllowProductionSync -BuildImage -AllowProductionBuild for one-shot sync+build.'
@@ -324,6 +484,8 @@ if (-not $Run) {
   Write-Host 'phase6_sync_hot_path_sync_backup_dir=<created only when -Run -AllowProductionSync is used>'
   Write-Host 'Reviewed manifest: verified'
   Write-Host 'phase6_sync_hot_path_reviewed_manifest=verified'
+  Write-Host "phase6_sync_hot_path_build_context_files=$($buildContextFiles.Count)"
+  Write-Host 'phase6_sync_hot_path_build_context_manifest=verified'
   Write-Host ''
   Write-Host 'Files to sync:'
   $ReleaseFiles | ForEach-Object { Write-Host "  $_" }
@@ -362,6 +524,31 @@ try {
     Copy-ToRemote -LocalPath $localPath -RemotePath $remotePath
   }
 
+  $localBuildContextRoot = Join-Path ([System.IO.Path]::GetTempPath()) "phase6-sync-hot-path-build-context-$([guid]::NewGuid().ToString('N'))"
+  $buildContextArchive = Join-Path ([System.IO.Path]::GetTempPath()) "phase6-sync-hot-path-build-context-$([guid]::NewGuid().ToString('N')).tar.gz"
+  New-Item -ItemType Directory -Force -Path $localBuildContextRoot | Out-Null
+  try {
+    foreach ($relative in $buildContextFiles) {
+      $sourcePath = Join-Path $backendRoot ($relative -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+      $targetPath = Join-Path $localBuildContextRoot ($relative -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+      $targetDir = Split-Path -Path $targetPath -Parent
+      New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+      Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
+    }
+    & tar -C $localBuildContextRoot -czf $buildContextArchive .
+    if ($LASTEXITCODE -ne 0) {
+      throw "tar failed while packing reviewed build context '$localBuildContextRoot'."
+    }
+    Copy-ToRemote -LocalPath $buildContextArchive -RemotePath "$remoteTempDir/build-context-reviewed.tar.gz"
+  } finally {
+    if (Test-Path -LiteralPath $localBuildContextRoot) {
+      Remove-Item -LiteralPath $localBuildContextRoot -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $buildContextArchive) {
+      Remove-Item -LiteralPath $buildContextArchive -Force
+    }
+  }
+
   $manifestFile = Join-Path ([System.IO.Path]::GetTempPath()) "phase6-sync-hot-path-manifest-$([guid]::NewGuid().ToString('N')).txt"
   try {
     $manifestContent = (($manifestRows -join "`n") + "`n")
@@ -374,6 +561,18 @@ try {
     }
   }
 
+  $buildContextManifestFile = Join-Path ([System.IO.Path]::GetTempPath()) "phase6-sync-hot-path-build-context-manifest-$([guid]::NewGuid().ToString('N')).txt"
+  try {
+    $buildContextManifestContent = (($buildContextManifestRows -join "`n") + "`n")
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($buildContextManifestFile, $buildContextManifestContent, $utf8NoBom)
+    Copy-ToRemote -LocalPath $buildContextManifestFile -RemotePath "$remoteTempDir/.build-context.manifest"
+  } finally {
+    if (Test-Path -LiteralPath $buildContextManifestFile) {
+      Remove-Item -LiteralPath $buildContextManifestFile -Force
+    }
+  }
+
   $buildFlag = if ($BuildImage) { '1' } else { '0' }
   $applyScript = @"
 set -euo pipefail
@@ -382,6 +581,7 @@ remote_production=$remoteProductionArg
 remote_backup_root=$remoteBackupArg
 remote_tmp=$remoteTempArg
 manifest_text=$manifestArg
+build_context_manifest_text=$buildContextManifestArg
 build_image='$buildFlag'
 
 case "`$remote_source" in
@@ -420,48 +620,10 @@ case "`$canonical_backup_root" in
     ;;
 esac
 
-function should_include_build_context_path() {
-  case "`$1" in
-    .git|.git/*|*/.git|*/.git/*|\
-    .env|.env.*|*/.env|*/.env.*|\
-    *.pem|*.key|*.db|*.sqlite|*.sqlite3|*.log|*.gz|*.zip|*.tar|*.tgz|*.p12|*.pfx|*.jks|\
-    *.pyc|*/__pycache__/*|__pycache__/*|\
-    .dart_tool|.dart_tool/*|*/.dart_tool/*|\
-    build|build/*|*/build/*|dist|dist/*|*/dist/*|node_modules|node_modules/*|*/node_modules/*)
-      return 1
-      ;;
-  esac
-  return 0
-}
-
-copy_build_context_file_list() {
-  find go.mod go.sum main.go assets configs internal modules pkg serverlib -type f -print | while IFS= read -r path; do
-    if should_include_build_context_path "`$path"; then
-      printf '%s\n' "`$path"
-    fi
-  done
-}
-
-hash_build_context_file_list() {
-  while IFS= read -r path; do
-    [ -n "`$path" ] || continue
-    if [ ! -r "`$path" ]; then
-      echo "unreadable build context path: `$path" >&2
-      exit 1
-    fi
-    sha256sum "`$path"
-  done
-}
-
 cd "`$remote_source"
 test -f main.go
 test -d modules/message
 test -d serverlib
-build_context_before="`$remote_tmp/.build-context.before"
-build_context_after="`$remote_tmp/.build-context.after"
-release_paths_file="`$remote_tmp/.release_paths"
-printf '%s\n' "`$manifest_text" | awk '{print `$2}' > "`$release_paths_file"
-copy_build_context_file_list | hash_build_context_file_list | sort > "`$build_context_before"
 test -f "`$remote_tmp/.manifest"
 tr -d '\r' < "`$remote_tmp/.manifest" > "`$remote_tmp/.manifest.lf"
 mv "`$remote_tmp/.manifest.lf" "`$remote_tmp/.manifest"
@@ -469,6 +631,68 @@ if ! diff -u <(printf '%s\n' "`$manifest_text") "`$remote_tmp/.manifest"; then
   echo 'phase6_sync_hot_path_sync=manifest_mismatch' >&2
   exit 1
 fi
+test -f "`$remote_tmp/.build-context.manifest"
+tr -d '\r' < "`$remote_tmp/.build-context.manifest" > "`$remote_tmp/.build-context.manifest.lf"
+mv "`$remote_tmp/.build-context.manifest.lf" "`$remote_tmp/.build-context.manifest"
+if ! diff -u <(printf '%s\n' "`$build_context_manifest_text") "`$remote_tmp/.build-context.manifest"; then
+  echo 'phase6_sync_hot_path_build_context=manifest_mismatch' >&2
+  exit 1
+fi
+
+build_context_root="`$remote_tmp/build-context-reviewed"
+rm -rf "`$build_context_root"
+mkdir -p "`$build_context_root"
+tar -tzf "`$remote_tmp/build-context-reviewed.tar.gz" > "`$remote_tmp/.build-context.tar.list"
+if grep -E '(^/|(^|/)\.\.(/|`$))' "`$remote_tmp/.build-context.tar.list"; then
+  echo 'phase6_sync_hot_path_build_context=unsafe_tar_path' >&2
+  exit 1
+fi
+tar -xzf "`$remote_tmp/build-context-reviewed.tar.gz" -C "`$build_context_root"
+
+expected_build_context_paths="`$remote_tmp/.build-context.expected_paths"
+actual_build_context_paths="`$remote_tmp/.build-context.actual_paths"
+expected_build_context_manifest="`$remote_tmp/.build-context.expected_manifest"
+actual_build_context_manifest="`$remote_tmp/.build-context.actual_manifest"
+awk '{`$1=""; sub(/^  */, "", `$0); print `$0}' "`$remote_tmp/.build-context.manifest" | LC_ALL=C sort > "`$expected_build_context_paths"
+(
+  cd "`$build_context_root"
+  find . -type f -print | sed 's#^\./##' | LC_ALL=C sort
+) > "`$actual_build_context_paths"
+extra_build_context_files="`$(comm -13 "`$expected_build_context_paths" "`$actual_build_context_paths" || true)"
+if [ -n "`$extra_build_context_files" ]; then
+  printf '%s\n' "`$extra_build_context_files" | while IFS= read -r path; do
+    [ -n "`$path" ] || continue
+    echo "phase6_sync_hot_path_build_context_unreviewed_remote_file=`$path" >&2
+  done
+  exit 1
+fi
+missing_build_context_files="`$(comm -23 "`$expected_build_context_paths" "`$actual_build_context_paths" || true)"
+if [ -n "`$missing_build_context_files" ]; then
+  printf '%s\n' "`$missing_build_context_files" | while IFS= read -r path; do
+    [ -n "`$path" ] || continue
+    echo "phase6_sync_hot_path_build_context_missing_file=`$path" >&2
+  done
+  exit 1
+fi
+(
+  cd "`$build_context_root"
+  while IFS= read -r relative_path; do
+    [ -n "`$relative_path" ] || continue
+    case "`$relative_path" in
+      /*|*..*|*'\'*|'')
+        echo "unsafe build context file path: `$relative_path" >&2
+        exit 1
+        ;;
+    esac
+    sha256sum "`$relative_path"
+  done < "`$expected_build_context_paths"
+) | LC_ALL=C sort > "`$actual_build_context_manifest"
+LC_ALL=C sort "`$remote_tmp/.build-context.manifest" > "`$expected_build_context_manifest"
+if ! diff -u "`$expected_build_context_manifest" "`$actual_build_context_manifest"; then
+  echo 'phase6_sync_hot_path_build_context=hash_mismatch' >&2
+  exit 1
+fi
+echo 'phase6_sync_hot_path_build_context_manifest=verified'
 
 timestamp="`$(date +%Y%m%dT%H%M%S%z)"
 backup_dir="`$remote_backup_root/`$timestamp"
@@ -509,41 +733,12 @@ while IFS= read -r row; do
   fi
 done < "`$remote_tmp/.manifest"
 
-copy_build_context_file_list | hash_build_context_file_list | sort > "`$build_context_after"
-awk '{hash=`$1; `$1=""; sub(/^  */, "", `$0); print `$0 "\t" hash}' "`$build_context_before" | sort > "`$remote_tmp/.build-context.before.tsv"
-awk '{hash=`$1; `$1=""; sub(/^  */, "", `$0); print `$0 "\t" hash}' "`$build_context_after" | sort > "`$remote_tmp/.build-context.after.tsv"
-if ! awk -F '\t' 'NR==FNR {allowed[`$1]=1; next} {
-  path=`$1
-  sub(/^\.\//, "", path)
-  before[path]=`$2
-  seen[path]=1
-}
-END {
-  for (path in before) {
-    if (!(path in allowed)) {
-      print "phase6_sync_hot_path_build_context_unreviewed_change=" path > "/dev/stderr"
-      exit 1
-    }
-  }
-}' "`$release_paths_file" <(comm -3 "`$remote_tmp/.build-context.before.tsv" "`$remote_tmp/.build-context.after.tsv" | sed 's/^\t//'); then
-  echo 'phase6_sync_hot_path_build_context=unreviewed_change' >&2
-  exit 1
-fi
-echo 'phase6_sync_hot_path_build_context=verified'
-
 echo 'phase6_sync_hot_path_sync=applied'
 echo "phase6_sync_hot_path_sync_backup_dir=`$backup_dir"
 echo "phase6_sync_hot_path_absent_files_manifest=`$absent_manifest"
 echo 'phase6_sync_hot_path_reviewed_manifest=verified'
 
 if [ "`$build_image" = '1' ]; then
-  build_context_root="`$remote_tmp/build-context"
-  rm -rf "`$build_context_root"
-  mkdir -p "`$build_context_root"
-  copy_build_context_file_list | while IFS= read -r relative_path; do
-    mkdir -p "`$build_context_root/`$(dirname "`$relative_path")"
-    install -m 0644 "`$relative_path" "`$build_context_root/`$relative_path"
-  done
   cat > "`$build_context_root/Dockerfile.tsdd" <<'PHASE6_DOCKERFILE'
 FROM golang:1.20 AS build
 
