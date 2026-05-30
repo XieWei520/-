@@ -99,7 +99,7 @@ function Get-ChangedSqlMigrations {
   )
 
   return @(
-    @($changed + $staged + $untracked) |
+    @(@($changed) + @($staged) + @($untracked)) |
       Where-Object { $_ -match '^modules/.+/sql/[^/]+\.sql$' } |
       Sort-Object -Unique
   )
@@ -119,10 +119,10 @@ function Test-SqlMigration {
   }
 
   $content = Get-Content -LiteralPath $localPath -Raw
-  if ($content -notmatch '(?m)^-- \+migrate Up$') {
+  if ($content -notmatch '(?m)^-- \+migrate Up\r?$') {
     $failures.Add("$RelativePath missing Up marker -- +migrate Up")
   }
-  if ($content -notmatch '(?m)^-- \+migrate Down$') {
+  if ($content -notmatch '(?m)^-- \+migrate Down\r?$') {
     $failures.Add("$RelativePath missing Down marker -- +migrate Down")
   }
 

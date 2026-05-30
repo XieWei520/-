@@ -144,6 +144,111 @@ DROP INDEX `message_uid_idx` ON `message`;
   );
 
   test(
+    'phase6 SQL migration lint deduplicates staged and working tree overlap',
+    () async {
+      final tempRoot = await Directory.systemTemp.createTemp(
+        'phase6_sql_migration_lint_overlap_',
+      );
+      addTearDown(() async {
+        if (tempRoot.existsSync()) {
+          await tempRoot.delete(recursive: true);
+        }
+      });
+
+      final init = await Process.run(
+        'git',
+        ['init'],
+        workingDirectory: tempRoot.path,
+      );
+      expect(init.exitCode, 0, reason: init.stderr.toString());
+
+      final sqlDir = Directory(
+        '${tempRoot.path}${Platform.pathSeparator}modules'
+        '${Platform.pathSeparator}message${Platform.pathSeparator}sql',
+      );
+      await sqlDir.create(recursive: true);
+      final sqlFile = File(
+        '${sqlDir.path}${Platform.pathSeparator}message-20260529-01.sql',
+      );
+      await sqlFile.writeAsString('''
+-- +migrate Up
+SELECT 1;
+
+-- +migrate Down
+SELECT 1;
+''');
+
+      final addInitial = await Process.run(
+        'git',
+        ['add', 'modules/message/sql/message-20260529-01.sql'],
+        workingDirectory: tempRoot.path,
+      );
+      expect(addInitial.exitCode, 0, reason: addInitial.stderr.toString());
+
+      final commit = await Process.run(
+        'git',
+        [
+          '-c',
+          'user.email=test@example.invalid',
+          '-c',
+          'user.name=Test User',
+          'commit',
+          '-m',
+          'seed migration',
+        ],
+        workingDirectory: tempRoot.path,
+      );
+      expect(commit.exitCode, 0, reason: commit.stderr.toString());
+
+      await sqlFile.writeAsString('''
+-- +migrate Up
+SELECT 2;
+
+-- +migrate Down
+SELECT 2;
+''');
+
+      final addStaged = await Process.run(
+        'git',
+        ['add', 'modules/message/sql/message-20260529-01.sql'],
+        workingDirectory: tempRoot.path,
+      );
+      expect(addStaged.exitCode, 0, reason: addStaged.stderr.toString());
+
+      await sqlFile.writeAsString('''
+-- +migrate Up
+SELECT 3;
+
+-- +migrate Down
+SELECT 3;
+''');
+
+      final result = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-BackendRoot',
+        tempRoot.path,
+      ], workingDirectory: Directory.current.path);
+
+      expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');
+      final output = result.stdout.toString();
+      expect(output, contains('phase6_sql_migration_lint=pass'));
+      expect(output, contains('phase6_sql_migration_lint_files=1'));
+      expect(
+        RegExp(
+          r'^modules/message/sql/message-20260529-01\.sql$',
+          multiLine: true,
+        ).allMatches(output),
+        hasLength(1),
+      );
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test(
     'phase6 SQL migration lint rejects create table if not exists as index guard',
     () async {
       final tempRoot = await Directory.systemTemp.createTemp(
@@ -190,6 +295,57 @@ DROP TABLE `message_index_marker`;
       final output = '${result.stdout}\n${result.stderr}';
       expect(output, contains('CREATE INDEX requires'));
       expect(output, contains('phase6_sql_migration_lint=fail'));
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test(
+    'phase6 SQL migration lint accepts CRLF migrate markers',
+    () async {
+      final tempRoot = await Directory.systemTemp.createTemp(
+        'phase6_sql_migration_lint_crlf_',
+      );
+      addTearDown(() async {
+        if (tempRoot.existsSync()) {
+          await tempRoot.delete(recursive: true);
+        }
+      });
+
+      final sqlDir = Directory(
+        '${tempRoot.path}${Platform.pathSeparator}modules'
+        '${Platform.pathSeparator}message${Platform.pathSeparator}sql',
+      );
+      await sqlDir.create(recursive: true);
+      final sqlFile = File(
+        '${sqlDir.path}${Platform.pathSeparator}message-20260529-01.sql',
+      );
+      await sqlFile.writeAsString(
+        [
+          '-- +migrate Up',
+          'SELECT 1;',
+          '',
+          '-- +migrate Down',
+          'SELECT 1;',
+          '',
+        ].join('\r\n'),
+      );
+
+      final result = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-BackendRoot',
+        tempRoot.path,
+        '-All',
+      ], workingDirectory: Directory.current.path);
+
+      expect(result.exitCode, 0, reason: '${result.stdout}\n${result.stderr}');
+      expect(
+        result.stdout.toString(),
+        contains('phase6_sql_migration_lint=pass'),
+      );
     },
     skip: !Platform.isWindows,
   );
