@@ -106,6 +106,28 @@ describe('conversation title hydration api', () => {
     ]);
   });
 
+  it('hydrates group conversations with api titles that may still be stale fallback labels', async () => {
+    const request = vi.fn().mockResolvedValueOnce({ data: { name: 'Customer Success Room' } });
+
+    const result = await hydrateConversationTitles(
+      [
+        conversation({
+          id: '2:group-c63a',
+          channelId: 'group-c63a',
+          channelType: 2,
+          title: 'Stale Group Label',
+          titleSource: 'api',
+        }),
+      ],
+      { token: 'token', config, request },
+    );
+
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ path: '/v1/groups/group-c63a' }));
+    expect(result).toEqual([
+      expect.objectContaining({ channelId: 'group-c63a', title: 'Customer Success Room', avatarText: 'C', titleSource: 'hydrated' }),
+    ]);
+  });
+
   it('skips api-provided titles and preserves fallback titles on lookup failure', async () => {
     const request = vi.fn().mockRejectedValue(new Error('not found'));
     const apiProvided = conversation({

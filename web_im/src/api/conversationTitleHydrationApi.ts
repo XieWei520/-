@@ -69,7 +69,9 @@ export function mapConversationProfile(raw: unknown): ConversationProfile | null
 }
 
 function shouldHydrate(conversation: Conversation): boolean {
-  return conversation.titleSource === 'fallback' || isPlaceholderGroupTitle(conversation);
+  if (conversation.titleSource === 'fallback') return true;
+  if (conversation.channelType === 2 && conversation.titleSource !== 'hydrated') return true;
+  return isPlaceholderGroupTitle(conversation);
 }
 
 async function fetchConversationProfile(
