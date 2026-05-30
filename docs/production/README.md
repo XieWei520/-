@@ -16,6 +16,8 @@
 - Sensitive-word filtering: `docs/production/sensitive-word-filtering.md`
 - Release: `docs/production/backend-release-runbook.md`
 - Phase 5 release preflight: `docs/production/phase-5-release-preflight.md`
+- Phase 5 sync fast-path postmortem: `docs/production/phase5-sync-backend-fastpaths-postmortem.md`
+- Phase 6 sync hot path plan: `docs/superpowers/plans/2026-05-30-phase6-sync-hot-path-optimization.md`
 
 ## Current Constraints
 - The current production host is single-node and small (`4 vCPU / 7.5 GiB RAM`).
