@@ -18,6 +18,7 @@
 - Phase 5 release preflight: `docs/production/phase-5-release-preflight.md`
 - Phase 5 sync fast-path postmortem: `docs/production/phase5-sync-backend-fastpaths-postmortem.md`
 - Phase 6 sync hot path plan: `docs/superpowers/plans/2026-05-30-phase6-sync-hot-path-optimization.md`
+- Phase 6 sync hot path rollout: `docs/production/phase6-sync-hot-path-optimization-rollout.md`
 
 ## Current Constraints
 - The current production host is single-node and small (`4 vCPU / 7.5 GiB RAM`).
@@ -31,7 +32,7 @@
 3. `ops/monitoring/docker-compose.yml`
 4. `flutter test` and `dart analyze`
 5. `.github/workflows/flutter-android-ci.yml`
-6. `scripts/ops/deploy_backend_remote.ps1`
+6. For Phase 6 sync hot path changes, use `docs/production/phase6-sync-hot-path-optimization-rollout.md`; do not use `scripts/ops/deploy_backend_remote.ps1` for this release path.
 7. `ops/stress/README.md`
 
 ## Validation Order
