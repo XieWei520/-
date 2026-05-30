@@ -62,6 +62,34 @@ async function installBackendMocks(context: BrowserContext) {
       return;
     }
 
+    if (url.pathname === '/v1/users/120e9a7649e248428c9897a2464a2d6c') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          data: {
+            uid: '120e9a7649e248428c9897a2464a2d6c',
+            name: '李欣放',
+          },
+        }),
+      });
+      return;
+    }
+
+    if (url.pathname === '/v1/groups/group-8487') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          data: {
+            group_no: 'group-8487',
+            group_name: '项目交付群',
+          },
+        }),
+      });
+      return;
+    }
+
     if (url.pathname === '/v1/conversation/sync') {
       await route.fulfill({
         contentType: 'application/json',
@@ -81,6 +109,21 @@ async function installBackendMocks(context: BrowserContext) {
                     payload: {
                       type: 1,
                       content: '真实会话消息',
+                    },
+                  },
+                ],
+              },
+              {
+                channel_id: 'group-8487',
+                channel_type: 2,
+                unread: 1,
+                timestamp: 1717000000,
+                recents: [
+                  {
+                    message_seq: 8,
+                    timestamp: 1717000000,
+                    payload: {
+                      type: 2,
                     },
                   },
                 ],
@@ -119,7 +162,10 @@ test('live auth loads backend conversation sync results', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/im\/conversations$/);
   await expect(page.getByText('真实会话消息')).toBeVisible();
-  await expect(page.getByText('用户 2d6c')).toBeVisible();
+  await expect(page.getByText('李欣放')).toBeVisible();
+  await expect(page.getByText('项目交付群')).toBeVisible();
+  await expect(page.getByText('用户 2d6c')).toHaveCount(0);
+  await expect(page.getByText('群聊 8487')).toHaveCount(0);
   await expect(page.getByText('120e9a7649e248428c9897a2464a2d6c')).toHaveCount(0);
 
   const row = page.locator('button.list-row').filter({ hasText: '真实会话消息' }).first();

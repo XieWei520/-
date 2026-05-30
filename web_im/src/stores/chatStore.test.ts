@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useChatStore } from './chatStore';
 import { loadConversationSync } from '../api/conversationSyncApi';
+import { hydrateConversationTitles } from '../api/conversationTitleHydrationApi';
 import { fakeConversations } from '../mocks/fakeImData';
 
 const { runtimeConfig } = vi.hoisted(() => ({
@@ -24,12 +25,18 @@ vi.mock('../api/conversationSyncApi', () => ({
   loadConversationSync: vi.fn(),
 }));
 
+vi.mock('../api/conversationTitleHydrationApi', () => ({
+  hydrateConversationTitles: vi.fn(),
+}));
+
 const loadConversationSyncMock = vi.mocked(loadConversationSync);
+const hydrateConversationTitlesMock = vi.mocked(hydrateConversationTitles);
 
 describe('chat store unknown active channels', () => {
   beforeEach(() => {
     runtimeConfig.mode = 'live';
     loadConversationSyncMock.mockReset();
+    hydrateConversationTitlesMock.mockReset();
     setActivePinia(createPinia());
   });
 
@@ -127,6 +134,7 @@ describe('chat store unknown active channels', () => {
 
     chat.conversationError = 'previous error';
     loadConversationSyncMock.mockResolvedValue(syncedConversations);
+    hydrateConversationTitlesMock.mockResolvedValue(syncedConversations);
 
     await chat.loadConversations({
       uid: 'u1',
@@ -140,6 +148,97 @@ describe('chat store unknown active channels', () => {
       deviceUuid: 'device',
       config: runtimeConfig,
     });
+    expect(hydrateConversationTitlesMock).toHaveBeenCalledWith(syncedConversations, {
+      token: 'token',
+      cacheScope: 'u1',
+      config: runtimeConfig,
+    });
+    expect(chat.conversations).toEqual(syncedConversations);
+    expect(chat.conversationError).toBe('');
+    expect(chat.isLoadingConversations).toBe(false);
+  });
+
+  it('hydrates fallback live conversation titles without changing channel identity', async () => {
+    const chat = useChatStore();
+    const syncedConversations = [
+      {
+        id: '1:120e9a7649e248428c9897a2464a2d6c',
+        channelId: '120e9a7649e248428c9897a2464a2d6c',
+        channelType: 1 as const,
+        title: '用户 2d6c',
+        avatarText: '用',
+        lastMessage: '[图片]',
+        lastMessageAt: '昨天',
+        unreadCount: 39,
+        muted: false,
+        titleSource: 'fallback' as const,
+      },
+      {
+        id: '2:group-8487',
+        channelId: 'group-8487',
+        channelType: 2 as const,
+        title: '群聊 8487',
+        avatarText: '群',
+        lastMessage: '我也有白屏',
+        lastMessageAt: '昨天',
+        unreadCount: 1,
+        muted: false,
+        titleSource: 'fallback' as const,
+      },
+    ];
+    const hydratedConversations = [
+      { ...syncedConversations[0], title: '李欣放', avatarText: '李', titleSource: 'hydrated' as const },
+      { ...syncedConversations[1], title: '项目交付群', avatarText: '项', titleSource: 'hydrated' as const },
+    ];
+    loadConversationSyncMock.mockResolvedValue(syncedConversations);
+    hydrateConversationTitlesMock.mockResolvedValue(hydratedConversations);
+
+    await chat.loadConversations({
+      uid: 'u1',
+      token: 'token',
+      deviceUuid: 'device',
+    });
+
+    expect(chat.conversations).toEqual(hydratedConversations);
+    expect(chat.conversations[0]).toMatchObject({
+      channelId: '120e9a7649e248428c9897a2464a2d6c',
+      channelType: 1,
+      title: '李欣放',
+      avatarText: '李',
+    });
+    expect(chat.conversations[1]).toMatchObject({
+      channelId: 'group-8487',
+      channelType: 2,
+      title: '项目交付群',
+      avatarText: '项',
+    });
+  });
+
+  it('keeps synced fallback titles when title hydration fails', async () => {
+    const chat = useChatStore();
+    const syncedConversations = [
+      {
+        id: '1:120e9a7649e248428c9897a2464a2d6c',
+        channelId: '120e9a7649e248428c9897a2464a2d6c',
+        channelType: 1 as const,
+        title: '用户 2d6c',
+        avatarText: '用',
+        lastMessage: '[图片]',
+        lastMessageAt: '昨天',
+        unreadCount: 39,
+        muted: false,
+        titleSource: 'fallback' as const,
+      },
+    ];
+    loadConversationSyncMock.mockResolvedValue(syncedConversations);
+    hydrateConversationTitlesMock.mockRejectedValue(new Error('profile unavailable'));
+
+    await chat.loadConversations({
+      uid: 'u1',
+      token: 'token',
+      deviceUuid: 'device',
+    });
+
     expect(chat.conversations).toEqual(syncedConversations);
     expect(chat.conversationError).toBe('');
     expect(chat.isLoadingConversations).toBe(false);
@@ -170,6 +269,7 @@ describe('chat store unknown active channels', () => {
     ).resolves.toBeUndefined();
 
     expect(chat.conversationError).toBe('sync unavailable');
+    expect(hydrateConversationTitlesMock).not.toHaveBeenCalled();
     expect(chat.isLoadingConversations).toBe(false);
   });
 

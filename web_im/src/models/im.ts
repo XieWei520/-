@@ -20,6 +20,7 @@ export interface Conversation {
   channelType: ChannelType;
   title: string;
   avatarText: string;
+  titleSource?: 'api' | 'fallback' | 'hydrated';
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;

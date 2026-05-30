@@ -173,6 +173,7 @@ export function mapConversationSyncRows(rows: unknown): Conversation[] {
       readFirstString(record, ['channel_name', 'channelName', 'name', 'remark', 'display_name', 'displayName']) ??
       readFirstString(parsePayload(record.extra), ['channel_name', 'channelName', 'name', 'remark', 'display_name', 'displayName']);
     const title = rawTitle ?? channelFallbackTitle(channelId, channelType as ChannelType);
+    const titleSource = rawTitle ? 'api' : 'fallback';
 
     return [
       {
@@ -181,6 +182,7 @@ export function mapConversationSyncRows(rows: unknown): Conversation[] {
         channelType: channelType as ChannelType,
         title,
         avatarText: avatarTextFromTitle(title, channelType as ChannelType),
+        titleSource,
         lastMessage: latest ? summarizeRecentMessage(latest) : '[暂无消息]',
         lastMessageAt: formatConversationTimestamp(timestamp),
         unreadCount: readInt(record, 'unread') ?? readInt(record, 'unreadCount') ?? 0,

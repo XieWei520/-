@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 import { loadConversationSync } from '../api/conversationSyncApi';
+import { hydrateConversationTitles } from '../api/conversationTitleHydrationApi';
 import { toUserMessage } from '../api/apiError';
 import { isLiveMode, isMockMode, runtimeConfig } from '../config/runtimeConfig';
 import { buildFakeMessages, fakeConversations, fakeCurrentUser } from '../mocks/fakeImData';
@@ -207,12 +208,21 @@ export const useChatStore = defineStore('chat', () => {
     conversationError.value = '';
 
     try {
-      conversations.value = await loadConversationSync({
+      const syncedConversations = await loadConversationSync({
         uid: auth.uid,
         token: auth.token,
         deviceUuid: auth.deviceUuid,
         config: runtimeConfig,
       });
+      try {
+        conversations.value = await hydrateConversationTitles(syncedConversations, {
+          token: auth.token,
+          cacheScope: auth.uid,
+          config: runtimeConfig,
+        });
+      } catch {
+        conversations.value = syncedConversations;
+      }
     } catch (error) {
       conversationError.value = toUserMessage(error, 'Failed to load conversations.');
     } finally {
