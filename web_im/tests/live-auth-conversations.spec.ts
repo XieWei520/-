@@ -116,6 +116,7 @@ async function installBackendMocks(context: BrowserContext) {
               {
                 channel_id: 'group-8487',
                 channel_type: 2,
+                channel_name: '群聊 8487',
                 unread: 1,
                 timestamp: 1717000000,
                 recents: [

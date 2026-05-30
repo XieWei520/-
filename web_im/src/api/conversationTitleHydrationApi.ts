@@ -47,6 +47,20 @@ function readFirstString(record: Record<string, unknown> | null, keys: string[])
   return undefined;
 }
 
+function readableTail(value: string, length = 4): string {
+  return value.length <= length ? value : value.slice(-length);
+}
+
+function isPlaceholderGroupTitle(conversation: Conversation): boolean {
+  if (conversation.channelType !== 2) return false;
+
+  const title = conversation.title.trim();
+  const channelId = conversation.channelId.trim();
+  if (!title || !channelId) return false;
+
+  return title === channelId || title === `群聊 ${readableTail(channelId)}`;
+}
+
 export function mapConversationProfile(raw: unknown): ConversationProfile | null {
   const root = readRecord(raw);
   const data = readRecord(root?.data) ?? root;
@@ -55,7 +69,7 @@ export function mapConversationProfile(raw: unknown): ConversationProfile | null
 }
 
 function shouldHydrate(conversation: Conversation): boolean {
-  return conversation.titleSource === 'fallback';
+  return conversation.titleSource === 'fallback' || isPlaceholderGroupTitle(conversation);
 }
 
 async function fetchConversationProfile(

@@ -72,6 +72,40 @@ describe('conversation title hydration api', () => {
     ]);
   });
 
+  it('hydrates group conversations that still display placeholder titles from sync metadata', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { name: 'Project Delivery' } })
+      .mockResolvedValueOnce({ data: { name: 'Escalation Room' } });
+
+    const result = await hydrateConversationTitles(
+      [
+        conversation({
+          id: '2:group-8487',
+          channelId: 'group-8487',
+          channelType: 2,
+          title: '群聊 8487',
+          titleSource: 'api',
+        }),
+        conversation({
+          id: '2:group-raw-id',
+          channelId: 'group-raw-id',
+          channelType: 2,
+          title: 'group-raw-id',
+          titleSource: 'api',
+        }),
+      ],
+      { token: 'token', config, request },
+    );
+
+    expect(request).toHaveBeenNthCalledWith(1, expect.objectContaining({ path: '/v1/groups/group-8487' }));
+    expect(request).toHaveBeenNthCalledWith(2, expect.objectContaining({ path: '/v1/groups/group-raw-id' }));
+    expect(result).toEqual([
+      expect.objectContaining({ channelId: 'group-8487', title: 'Project Delivery', avatarText: 'P', titleSource: 'hydrated' }),
+      expect.objectContaining({ channelId: 'group-raw-id', title: 'Escalation Room', avatarText: 'E', titleSource: 'hydrated' }),
+    ]);
+  });
+
   it('skips api-provided titles and preserves fallback titles on lookup failure', async () => {
     const request = vi.fn().mockRejectedValue(new Error('not found'));
     const apiProvided = conversation({
