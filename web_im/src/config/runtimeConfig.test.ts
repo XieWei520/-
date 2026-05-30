@@ -9,7 +9,7 @@ describe('runtime config', () => {
     expect(config.apiBaseUrl).toBe('https://infoequity.cn');
     expect(config.appId).toBe('wukongchat');
     expect(config.appKey).toBe('25b002c6be2d539f264c');
-    expect(config.deviceFlag).toBe(5);
+    expect(config.deviceFlag).toBe(1);
     expect(isMockMode(config)).toBe(true);
     expect(isLiveMode(config)).toBe(false);
   });
@@ -44,7 +44,7 @@ describe('runtime config', () => {
     ).toMatchObject({
       mode: 'mock',
       apiBaseUrl: 'https://infoequity.cn',
-      deviceFlag: 5,
+      deviceFlag: 1,
     });
   });
 });

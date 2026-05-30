@@ -52,7 +52,7 @@ describe('auth api', () => {
     });
   });
 
-  it('posts phone login with 0086 username and configured device flag', async () => {
+  it('posts phone login with 0086 username and Web device flag', async () => {
     const request = vi.fn().mockResolvedValue({ uid: 'u1', token: 't1' });
     const result = await loginWithPhone({
       phone: '13800000000',
@@ -63,7 +63,7 @@ describe('auth api', () => {
         apiBaseUrl: 'https://infoequity.cn',
         appId: 'wukongchat',
         appKey: 'key',
-        deviceFlag: 5,
+        deviceFlag: 1,
       },
       device: {
         deviceId: 'web-device',
@@ -81,7 +81,7 @@ describe('auth api', () => {
         body: {
           username: '008613800000000',
           password: '123456',
-          flag: 5,
+          flag: 1,
           device: {
             device_id: 'web-device',
             device_install_id: 'install',
@@ -106,7 +106,7 @@ describe('auth api', () => {
           apiBaseUrl: 'https://infoequity.cn',
           appId: 'wukongchat',
           appKey: 'key',
-          deviceFlag: 5,
+          deviceFlag: 1,
         },
         device: {
           deviceId: 'web-device',

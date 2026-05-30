@@ -4,6 +4,7 @@ param(
     [string]$WebImDir = 'web_im',
     [string]$RemoteRoot = '/opt/wukongim-prod/src/deploy/production',
     [string]$ApiBaseUrl = 'https://infoequity.cn',
+    [string]$DeviceFlag = '1',
     [string]$SshKeyPath = ''
 )
 
@@ -84,10 +85,12 @@ if (-not (Test-Path -LiteralPath $buildScript -PathType Leaf)) {
 
 $previousMode = $env:VITE_WK_WEB_IM_MODE
 $previousApiBaseUrl = $env:VITE_WK_API_BASE_URL
+$previousDeviceFlag = $env:VITE_WK_DEVICE_FLAG
 try {
     Write-Host "[STEP] Building Web IM live release"
     $env:VITE_WK_WEB_IM_MODE = 'live'
     $env:VITE_WK_API_BASE_URL = $ApiBaseUrl
+    $env:VITE_WK_DEVICE_FLAG = $DeviceFlag
     & powershell -NoProfile -ExecutionPolicy Bypass -File $buildScript -WebImDir $WebImDir
     if ($LASTEXITCODE -ne 0) {
         throw "Web IM release build failed for '$resolvedWebImDir'."
@@ -96,6 +99,7 @@ try {
 finally {
     $env:VITE_WK_WEB_IM_MODE = $previousMode
     $env:VITE_WK_API_BASE_URL = $previousApiBaseUrl
+    $env:VITE_WK_DEVICE_FLAG = $previousDeviceFlag
 }
 
 $dist = Join-Path -Path $resolvedWebImDir -ChildPath 'dist'
