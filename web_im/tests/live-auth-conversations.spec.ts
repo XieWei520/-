@@ -19,6 +19,9 @@ async function installBackendMocks(context: BrowserContext) {
         username?: string;
         password?: string;
         flag?: number;
+        device?: {
+          device_model?: string;
+        };
       };
 
       expect(body).toEqual(expect.objectContaining({
@@ -26,6 +29,8 @@ async function installBackendMocks(context: BrowserContext) {
         password: '123456',
         flag: 1,
       }));
+      expect(body.device?.device_model).toMatch(/^(iOS|Windows) /);
+      expect(body.device?.device_model?.length).toBeLessThanOrEqual(32);
 
       await route.fulfill({
         contentType: 'application/json',

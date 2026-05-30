@@ -79,4 +79,39 @@ describe('auth storage', () => {
     expect(first.deviceInstallId).toBe(second.deviceInstallId);
     expect(first.deviceName).toBe('Web PWA');
   });
+
+  it('uses a short backend-safe device model instead of the full browser user agent', () => {
+    const longIosSafariUserAgent =
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
+    Object.defineProperty(window.navigator, 'userAgent', {
+      configurable: true,
+      value: longIosSafariUserAgent,
+    });
+
+    const identity = loadOrCreateDeviceIdentity();
+
+    expect(identity.deviceModel).toBe('iOS Safari');
+    expect(identity.deviceModel.length).toBeLessThanOrEqual(32);
+  });
+
+  it('normalizes previously stored full user-agent device models', () => {
+    const longIosSafariUserAgent =
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
+    window.localStorage.setItem(
+      'wk_web_im_device_v1',
+      JSON.stringify({
+        deviceId: 'web-existing',
+        deviceInstallId: 'install-existing',
+        deviceName: 'Web PWA',
+        deviceModel: longIosSafariUserAgent,
+      }),
+    );
+
+    const identity = loadOrCreateDeviceIdentity();
+
+    expect(identity.deviceId).toBe('web-existing');
+    expect(identity.deviceInstallId).toBe('install-existing');
+    expect(identity.deviceModel).toBe('iOS Safari');
+    expect(JSON.parse(window.localStorage.getItem('wk_web_im_device_v1') ?? '{}').deviceModel).toBe('iOS Safari');
+  });
 });

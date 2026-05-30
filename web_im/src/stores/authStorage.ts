@@ -17,6 +17,7 @@ export interface WebDeviceIdentity {
 
 const authKey = 'wk_web_im_auth_v1';
 const deviceKey = 'wk_web_im_device_v1';
+const maxDeviceModelLength = 32;
 
 function readJson<T>(key: string): T | null {
   if (typeof window === 'undefined') {
@@ -99,16 +100,63 @@ function createId(prefix: string): string {
   return `${prefix}-${random}`;
 }
 
+function detectWebDeviceModel(userAgent: string): string {
+  const ua = userAgent.toLowerCase();
+  const isIos = /\b(iphone|ipad|ipod)\b/.test(ua) || (ua.includes('macintosh') && ua.includes('mobile'));
+  const isAndroid = ua.includes('android');
+  const isWindows = ua.includes('windows');
+  const isMac = ua.includes('mac os x') || ua.includes('macintosh');
+  const isFirefox = ua.includes('firefox') || ua.includes('fxios');
+  const isEdge = ua.includes('edg/') || ua.includes('edgios');
+  const isChrome = ua.includes('chrome') || ua.includes('crios');
+  const isSafari = ua.includes('safari') && !isChrome && !isEdge && !ua.includes('android');
+
+  if (isIos && isFirefox) return 'iOS Firefox';
+  if (isIos && isEdge) return 'iOS Edge';
+  if (isIos && isChrome) return 'iOS Chrome';
+  if (isIos && isSafari) return 'iOS Safari';
+  if (isIos) return 'iOS Web';
+  if (isAndroid && isEdge) return 'Android Edge';
+  if (isAndroid && isChrome) return 'Android Chrome';
+  if (isAndroid && isFirefox) return 'Android Firefox';
+  if (isAndroid) return 'Android Web';
+  if (isWindows && isEdge) return 'Windows Edge';
+  if (isWindows && isChrome) return 'Windows Chrome';
+  if (isWindows && isFirefox) return 'Windows Firefox';
+  if (isWindows) return 'Windows Web';
+  if (isMac && isSafari) return 'macOS Safari';
+  if (isMac && isChrome) return 'macOS Chrome';
+  if (isMac && isFirefox) return 'macOS Firefox';
+  if (isMac) return 'macOS Web';
+  return 'Web Browser';
+}
+
+function normalizeDeviceModel(value: unknown): string {
+  const candidate = typeof value === 'string' ? value.trim() : '';
+  const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent || '';
+  const source = candidate || userAgent;
+  const normalized = detectWebDeviceModel(source);
+  return normalized.length <= maxDeviceModelLength ? normalized : normalized.slice(0, maxDeviceModelLength);
+}
+
 export function loadOrCreateDeviceIdentity(): WebDeviceIdentity {
   const existing = readJson<WebDeviceIdentity>(deviceKey);
   if (existing?.deviceId && existing.deviceInstallId) {
-    return existing;
+    const normalized = {
+      ...existing,
+      deviceName: existing.deviceName || 'Web PWA',
+      deviceModel: normalizeDeviceModel(existing.deviceModel),
+    };
+    if (normalized.deviceName !== existing.deviceName || normalized.deviceModel !== existing.deviceModel) {
+      writeJson(deviceKey, normalized);
+    }
+    return normalized;
   }
   const created: WebDeviceIdentity = {
     deviceId: createId('web'),
     deviceInstallId: createId('install'),
     deviceName: 'Web PWA',
-    deviceModel: typeof navigator === 'undefined' ? 'Web Browser' : navigator.userAgent || 'Web Browser',
+    deviceModel: normalizeDeviceModel(undefined),
   };
   writeJson(deviceKey, created);
   return created;
