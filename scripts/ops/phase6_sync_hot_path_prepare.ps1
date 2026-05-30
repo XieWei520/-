@@ -862,5 +862,3 @@ fi
 finally {
   Invoke-RemoteBash -Script ("set -euo pipefail`nrm -rf " + $remoteTempArg) | Out-Null
 }
-
-
