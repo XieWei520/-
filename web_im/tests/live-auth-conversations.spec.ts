@@ -24,7 +24,7 @@ async function installBackendMocks(context: BrowserContext) {
       expect(body).toEqual(expect.objectContaining({
         username: '008613800000000',
         password: '123456',
-        flag: 5,
+        flag: 1,
       }));
 
       await route.fulfill({

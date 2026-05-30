@@ -13,7 +13,7 @@ type RuntimeEnv = Partial<Record<string, string | boolean | undefined>>;
 const defaultApiBaseUrl = 'https://infoequity.cn';
 const defaultAppId = 'wukongchat';
 const defaultAppKey = '25b002c6be2d539f264c';
-const defaultDeviceFlag = 5;
+const defaultDeviceFlag = 1;
 
 export function normalizeMode(value: unknown): WebImRuntimeMode {
   return String(value ?? '').trim().toLowerCase() === 'live' ? 'live' : 'mock';

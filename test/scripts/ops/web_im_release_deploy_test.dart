@@ -17,6 +17,8 @@ void main() {
       expect(content, contains('build_web_im_release.ps1'));
       expect(content, contains(r"$env:VITE_WK_WEB_IM_MODE = 'live'"));
       expect(content, contains(r'$env:VITE_WK_API_BASE_URL = $ApiBaseUrl'));
+      expect(content, contains(r"[string]$DeviceFlag = '1'"));
+      expect(content, contains(r'$env:VITE_WK_DEVICE_FLAG = $DeviceFlag'));
       expect(content, contains('manifest.webmanifest'));
       expect(content, contains('sw.js'));
       expect(content, contains('offline.html'));
