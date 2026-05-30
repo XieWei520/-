@@ -31,6 +31,17 @@ void main() {
     expect(content, contains('phase6_prometheus_gate_report=completed'));
   });
 
+  test('phase6 prometheus gate report hardens prometheus curl URL', () {
+    expect(script.existsSync(), isTrue);
+    final content = script.readAsStringSync();
+
+    expect(content, contains('curl -fsS --'));
+    expect(content, contains('[System.Uri]::TryCreate'));
+    expect(content, contains("Absolute"));
+    expect(content, contains("'http'"));
+    expect(content, contains("'https'"));
+  });
+
   test(
     'phase6 prometheus gate report dry-run prints both windows',
     () async {
@@ -47,6 +58,28 @@ void main() {
       expect(output, contains('window=5m'));
       expect(output, contains('window=30m'));
       expect(output, contains('Dry run only'));
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test(
+    'phase6 prometheus gate report rejects non-http prometheus URL before ssh',
+    () async {
+      final result = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-Run',
+        '-PrometheusUrl',
+        'file:///tmp/x',
+      ], workingDirectory: Directory.current.path);
+
+      expect(result.exitCode, isNot(0));
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(output, contains('PrometheusUrl must be an absolute http/https URI'));
+      expect(output, isNot(contains('Prometheus query failed')));
     },
     skip: !Platform.isWindows,
   );

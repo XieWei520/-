@@ -44,6 +44,12 @@ if (-not $Run) {
   exit 0
 }
 
+$prometheusUri = $null
+if (-not [System.Uri]::TryCreate($PrometheusUrl, [System.UriKind]::Absolute, [ref]$prometheusUri) -or
+  $prometheusUri.Scheme -notin @('http', 'https')) {
+  throw 'PrometheusUrl must be an absolute http/https URI'
+}
+
 $trimmedPrometheusUrl = $PrometheusUrl.TrimEnd('/')
 
 foreach ($window in @('5m', '30m')) {
@@ -52,7 +58,7 @@ foreach ($window in @('5m', '30m')) {
     $query = $template.Replace('__WINDOW__', $window)
     $encodedQuery = [uri]::EscapeDataString($query)
     $queryUrl = "$trimmedPrometheusUrl/api/v1/query?query=$encodedQuery"
-    $remoteCommand = 'curl -fsS ' + (Quote-Bash -Value $queryUrl)
+    $remoteCommand = 'curl -fsS -- ' + (Quote-Bash -Value $queryUrl)
 
     Write-Host "query=$query"
     & ssh -- $RemoteHost $remoteCommand
