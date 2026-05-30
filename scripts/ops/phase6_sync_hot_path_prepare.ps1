@@ -757,7 +757,7 @@ RUN go mod download
 
 COPY . .
 
-RUN mkdir -p /out && CGO_ENABLED=0 GOOS=linux go build \
+RUN mkdir -p /out /src/assets && CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.Version=`${BUILD_VERSION} -X main.Commit=`${BUILD_COMMIT} -X main.CommitDate=`${BUILD_COMMIT_DATE} -X main.TreeState=`${BUILD_TREE_STATE}" \
     -o /out/app ./main.go
 

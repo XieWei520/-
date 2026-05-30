@@ -85,6 +85,14 @@ void main() {
     );
   });
 
+  test('phase6 generated Dockerfile tolerates missing assets directory', () {
+    final script = File('scripts/ops/phase6_sync_hot_path_prepare.ps1');
+    final content = script.readAsStringSync();
+
+    expect(content, contains(r'mkdir -p /out /src/assets && CGO_ENABLED=0 GOOS=linux go build'));
+    expect(content, contains('COPY --from=build /src/assets /home/assets'));
+  });
+
   test('phase6 prepare rejects unreviewed local build context files', () async {
     final temp = await Directory.systemTemp.createTemp('phase6-build-context-');
     try {
