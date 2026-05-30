@@ -54,6 +54,51 @@ export function parsePayload(value: unknown): Record<string, unknown> | null {
   return readRecord(value);
 }
 
+function readFirstString(record: Record<string, unknown> | null, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = readString(record, key);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function readableTail(value: string, length = 4): string {
+  return value.length <= length ? value : value.slice(-length);
+}
+
+function channelFallbackTitle(channelId: string, channelType: ChannelType): string {
+  return `${channelType === 2 ? '群聊' : '用户'} ${readableTail(channelId)}`;
+}
+
+function avatarTextFromTitle(title: string, channelType: ChannelType): string {
+  const first = Array.from(title.trim())[0];
+  return first || (channelType === 2 ? '群' : '用');
+}
+
+export function formatConversationTimestamp(timestamp?: number): string {
+  if (!timestamp) return '';
+
+  const date = new Date(timestamp * 1000);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayDelta = Math.round((startOfToday - startOfTarget) / 86_400_000);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  if (dayDelta === 0) return `${hours}:${minutes}`;
+  if (dayDelta === 1) return '昨天';
+
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${month}-${day}`;
+  }
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 export function summarizeRecentMessage(raw: unknown): string {
   const record = readRecord(raw);
   if (!record || Object.keys(record).length === 0) {
@@ -124,16 +169,20 @@ export function mapConversationSyncRows(rows: unknown): Conversation[] {
       readString(latest, 'clientMsgNo') ??
       readString(record, 'last_client_msg_no') ??
       readString(record, 'lastClientMsgNo');
+    const rawTitle =
+      readFirstString(record, ['channel_name', 'channelName', 'name', 'remark', 'display_name', 'displayName']) ??
+      readFirstString(parsePayload(record.extra), ['channel_name', 'channelName', 'name', 'remark', 'display_name', 'displayName']);
+    const title = rawTitle ?? channelFallbackTitle(channelId, channelType as ChannelType);
 
     return [
       {
         id: `${channelType}:${channelId}`,
         channelId,
         channelType: channelType as ChannelType,
-        title: channelId,
-        avatarText: channelId.charAt(0).toUpperCase(),
+        title,
+        avatarText: avatarTextFromTitle(title, channelType as ChannelType),
         lastMessage: latest ? summarizeRecentMessage(latest) : '[暂无消息]',
-        lastMessageAt: timestamp ? new Date(timestamp * 1000).toISOString() : '',
+        lastMessageAt: formatConversationTimestamp(timestamp),
         unreadCount: readInt(record, 'unread') ?? readInt(record, 'unreadCount') ?? 0,
         muted: false,
         lastMsgSeq,

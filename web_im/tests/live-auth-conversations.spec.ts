@@ -70,7 +70,7 @@ async function installBackendMocks(context: BrowserContext) {
           data: {
             conversations: [
               {
-                channel_id: 'u-customer-live',
+                channel_id: '120e9a7649e248428c9897a2464a2d6c',
                 channel_type: 1,
                 unread: 2,
                 timestamp: 1717000000,
@@ -119,5 +119,17 @@ test('live auth loads backend conversation sync results', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/im\/conversations$/);
   await expect(page.getByText('真实会话消息')).toBeVisible();
-  await expect(page.getByText('u-customer-live')).toBeVisible();
+  await expect(page.getByText('用户 2d6c')).toBeVisible();
+  await expect(page.getByText('120e9a7649e248428c9897a2464a2d6c')).toHaveCount(0);
+
+  const row = page.locator('button.list-row').filter({ hasText: '真实会话消息' }).first();
+  const titleBox = await row.locator('.row-title').boundingBox();
+  const timeBox = await row.locator('.time-text').boundingBox();
+  if (!titleBox || !timeBox) {
+    throw new Error('Conversation row title/time boxes were not measurable');
+  }
+  expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(timeBox.x);
+
+  await row.click();
+  await expect(page).toHaveURL(/\/im\/chat\/1\/120e9a7649e248428c9897a2464a2d6c$/);
 });

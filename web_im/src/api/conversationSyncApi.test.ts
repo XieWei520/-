@@ -26,6 +26,49 @@ describe('conversation sync api', () => {
     ]);
   });
 
+  it('formats live conversation titles and times for narrow mobile cards', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 4, 30, 14, 0, 0));
+      const yesterday = Math.floor(new Date(2026, 4, 29, 15, 24, 26).getTime() / 1000);
+      const older = Math.floor(new Date(2026, 4, 28, 6, 42, 21).getTime() / 1000);
+
+      const conversations = mapConversationSyncRows([
+        {
+          channel_id: '120e9a7649e248428c9897a2464a2d6c',
+          channel_type: 1,
+          unread: 39,
+          timestamp: yesterday,
+          recents: [{ message_seq: 8, timestamp: yesterday, payload: { type: 2 } }],
+        },
+        {
+          channel_id: 'a4056433146e479fb000000000000001',
+          channel_type: 2,
+          extra: JSON.stringify({ displayName: '项目交付群' }),
+          timestamp: older,
+          recents: [{ message_seq: 7, timestamp: older, payload: { type: 1, content: '新消息 **李欣放** 说...' } }],
+        },
+      ]);
+
+      expect(conversations[0]).toMatchObject({
+        title: '用户 2d6c',
+        avatarText: '用',
+        lastMessage: '[图片]',
+        lastMessageAt: '昨天',
+      });
+      expect(conversations[0].title).not.toContain('120e9a7649e248428c9897a2464a2d6c');
+      expect(conversations[0].lastMessageAt).not.toContain('T');
+
+      expect(conversations[1]).toMatchObject({
+        title: '项目交付群',
+        avatarText: '项',
+        lastMessageAt: '05-28',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('preserves row-level last message markers when recents are empty or absent', () => {
     const conversations = mapConversationSyncRows([
       {
