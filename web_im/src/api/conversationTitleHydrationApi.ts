@@ -30,6 +30,15 @@ const titleKeys = [
   'display_name',
   'displayName',
 ];
+const memberTitleKeys = [
+  'remark',
+  'name',
+  'username',
+  'member_name',
+  'memberName',
+  'display_name',
+  'displayName',
+];
 
 function cacheKey(conversation: Pick<Conversation, 'channelType' | 'channelId'>, cacheScope = 'default'): string {
   return `${cacheScope}:${conversation.channelType}:${conversation.channelId}`;
@@ -53,12 +62,26 @@ function readableTail(value: string, length = 4): string {
 
 function isPlaceholderGroupTitle(conversation: Conversation): boolean {
   if (conversation.channelType !== 2) return false;
+  return isPlaceholderTitle(conversation.title, conversation.channelId);
+}
 
-  const title = conversation.title.trim();
-  const channelId = conversation.channelId.trim();
+function isPlaceholderTitle(titleValue: string, channelIdValue: string): boolean {
+  const title = titleValue.trim();
+  const channelId = channelIdValue.trim();
   if (!title || !channelId) return false;
 
   return title === channelId || title === `群聊 ${readableTail(channelId)}`;
+}
+
+function mapGroupMembersProfile(raw: unknown): ConversationProfile | null {
+  const root = readRecord(raw);
+  const data = root?.data ?? raw;
+  const members = Array.isArray(data) ? data : Array.isArray(root?.members) ? root.members : [];
+  const names = members
+    .map((member) => readFirstString(readRecord(member), memberTitleKeys))
+    .filter((name): name is string => Boolean(name))
+    .slice(0, 9);
+  return names.length > 0 ? { title: names.join('、') } : null;
 }
 
 export function mapConversationProfile(raw: unknown): ConversationProfile | null {
@@ -91,7 +114,24 @@ async function fetchConversationProfile(
     path,
     method: 'GET',
   });
-  return mapConversationProfile(raw);
+  const profile = mapConversationProfile(raw);
+  if (
+    conversation.channelType !== 2 ||
+    !profile ||
+    !isPlaceholderTitle(profile.title, conversation.channelId)
+  ) {
+    return profile;
+  }
+
+  const membersRaw = await request({
+    baseUrl: options.config.apiBaseUrl,
+    appId: options.config.appId,
+    appKey: options.config.appKey,
+    token: options.token,
+    path: `/v1/groups/${encodeURIComponent(conversation.channelId)}/members?page=1&limit=9`,
+    method: 'GET',
+  });
+  return mapGroupMembersProfile(membersRaw) ?? profile;
 }
 
 export async function hydrateConversationTitles(

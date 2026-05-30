@@ -128,6 +128,42 @@ describe('conversation title hydration api', () => {
     ]);
   });
 
+  it('uses group member names when the group profile still returns a placeholder title', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { name: '群聊 8487' } })
+      .mockResolvedValueOnce({
+        data: [
+          { name: '李欣放' },
+          { remark: '张三' },
+          { username: '王五' },
+        ],
+      });
+
+    const result = await hydrateConversationTitles(
+      [
+        conversation({
+          id: '2:120e9a761fe2484192b31479a5248487',
+          channelId: '120e9a761fe2484192b31479a5248487',
+          channelType: 2,
+          title: '群聊 8487',
+          titleSource: 'api',
+        }),
+      ],
+      { token: 'token', config, request },
+    );
+
+    expect(request).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      path: '/v1/groups/120e9a761fe2484192b31479a5248487',
+    }));
+    expect(request).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      path: '/v1/groups/120e9a761fe2484192b31479a5248487/members?page=1&limit=9',
+    }));
+    expect(result).toEqual([
+      expect.objectContaining({ title: '李欣放、张三、王五', avatarText: '李', titleSource: 'hydrated' }),
+    ]);
+  });
+
   it('skips api-provided titles and preserves fallback titles on lookup failure', async () => {
     const request = vi.fn().mockRejectedValue(new Error('not found'));
     const apiProvided = conversation({
