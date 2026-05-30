@@ -159,6 +159,15 @@ docker compose --env-file .env up -d --no-deps --force-recreate tsdd-api callgat
 wait_for_health tsdd-api "$health_timeout"
 wait_for_health callgateway "$health_timeout"
 
+echo '== internal backend ping =='
+tsdd_container_id="$(docker compose --env-file .env ps -q tsdd-api)"
+internal_ping="$(docker exec "$tsdd_container_id" wget -q -O - --timeout="$probe_timeout" http://127.0.0.1:8090/v1/ping || true)"
+echo "internal_ping=$internal_ping"
+if ! printf '%s\n' "$internal_ping" | grep -q '"status":200'; then
+  echo 'phase6_backend_service_switch=blocked_internal_ping' >&2
+  exit 1
+fi
+
 echo '== restart nginx upstream cache =='
 nginx_container_id="$(docker compose --env-file .env ps -q nginx)"
 if [ -z "$nginx_container_id" ]; then
@@ -170,7 +179,10 @@ post_nginx_restart_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 docker compose --env-file .env restart nginx
 
 echo '== post-switch smoke =='
-external_ping="$(curl -fsS --max-time "$probe_timeout" "$release_base_url/v1/ping")"
+if ! external_ping="$(curl -fsS --max-time "$probe_timeout" "$release_base_url/v1/ping")"; then
+  echo 'phase6_backend_service_switch=blocked_external_ping' >&2
+  exit 1
+fi
 echo "external_ping=$external_ping"
 recent_502_count="$(docker compose --env-file .env logs --since="$post_nginx_restart_since" nginx 2>&1 | grep -c ' 502 ' || true)"
 echo "nginx_recent_502_count=$recent_502_count"

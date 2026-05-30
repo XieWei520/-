@@ -17,6 +17,10 @@ void main() {
     expect(content, contains('docker compose --env-file .env up -d --no-deps --force-recreate tsdd-api callgateway'));
     expect(content, contains('wait_for_health tsdd-api'));
     expect(content, contains('wait_for_health callgateway'));
+    expect(content, contains('internal_ping='));
+    expect(content, contains(r'docker exec "$tsdd_container_id" wget'));
+    expect(content, contains('external_ping='));
+    expect(content, contains('nginx_recent_502_count='));
     expect(content, contains(r'docker exec "$nginx_container_id" nginx -t'));
     expect(content, contains('docker compose --env-file .env restart nginx'));
     expect(content, contains(r'post_nginx_restart_since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"'));
@@ -28,6 +32,8 @@ void main() {
       content,
       contains(r'docker compose --env-file .env logs --since="$post_nginx_restart_since" nginx'),
     );
+    expect(content, contains('phase6_backend_service_switch=blocked_internal_ping'));
+    expect(content, contains('phase6_backend_service_switch=blocked_external_ping'));
     expect(content, contains('phase6_backend_service_switch=completed'));
     expect(content, contains('phase6-remote-bash-'));
     expect(content, contains(r'[System.Text.UTF8Encoding]::new($false)'));
