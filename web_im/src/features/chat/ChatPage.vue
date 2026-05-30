@@ -19,7 +19,12 @@ const channelId = computed(() => {
   return typeof value === 'string' && value.trim() ? value : null;
 });
 const canOpenChannel = computed(() => Boolean(channelType.value && channelId.value));
+const liveReadOnlyStatus = 'Phase 2 只读会话，消息收发将在下一阶段接入';
 const title = computed(() => (canOpenChannel.value ? chat.activeConversation?.title || '聊天' : '聊天'));
+
+function loadOlderMessages(): number {
+  return chat.isLiveConversationMode ? 0 : chat.prependOlderMessages();
+}
 
 watch(
   [channelType, channelId],
@@ -34,11 +39,18 @@ watch(
 
 <template>
   <main class="chat-page">
-    <ChatHeader :title="title" status-text="假数据会话" />
+    <ChatHeader
+      :title="title"
+      :status-text="chat.isLiveConversationMode ? liveReadOnlyStatus : '假数据会话'"
+    />
 
     <section v-if="canOpenChannel" class="chat-page__body" aria-label="聊天内容">
-      <VirtualMessageList :messages="chat.activeMessages" @load-older="chat.prependOlderMessages" />
-      <ChatComposer @send="chat.sendText" />
+      <VirtualMessageList :messages="chat.activeMessages" @load-older="loadOlderMessages" />
+      <section v-if="chat.isLiveConversationMode" class="chat-empty-state" role="status">
+        <p class="chat-empty-state__title">Phase 2 只读会话</p>
+        <p class="chat-empty-state__text">{{ liveReadOnlyStatus }}</p>
+      </section>
+      <ChatComposer v-else @send="chat.sendText" />
     </section>
 
     <section v-else class="chat-empty-state" role="status">

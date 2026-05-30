@@ -3,6 +3,7 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import { installPwaLifecycle } from './app/pwaLifecycle';
 import { router } from './app/router';
+import { restoreLiveSessionOnStartup } from './app/sessionRestore';
 import { installViewportHeightVariable } from './app/safeArea';
 import { usePwaStore } from './stores/pwaStore';
 import './styles/base.css';
@@ -17,6 +18,8 @@ app.use(router);
 app.mount('#app');
 
 const pwa = usePwaStore(pinia);
+
+void restoreLiveSessionOnStartup(pinia, router);
 
 installPwaLifecycle({
   onVisible: pwa.syncOnlineState,

@@ -38,7 +38,7 @@ async function submitLogin() {
   isSubmitting.value = true;
 
   try {
-    auth.login(phone.value, password.value);
+    await auth.login(phone.value, password.value);
     await router.replace('/conversations');
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试';

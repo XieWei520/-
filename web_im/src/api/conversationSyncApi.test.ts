@@ -1,0 +1,98 @@
+import { describe, expect, it, vi } from 'vitest';
+import { loadConversationSync, mapConversationSyncRows, summarizeRecentMessage } from './conversationSyncApi';
+
+describe('conversation sync api', () => {
+  it('maps valid rows and skips invalid rows', () => {
+    const conversations = mapConversationSyncRows([
+      {
+        channel_id: 'u2',
+        channel_type: 1,
+        unread: 3,
+        timestamp: 1717000000,
+        recents: [{ message_seq: 8, timestamp: 1717000001, payload: { type: 1, content: 'hello' } }],
+      },
+      { channel_id: '', channel_type: 1 },
+      { channel_id: 'bad', channel_type: 99 },
+    ]);
+
+    expect(conversations).toEqual([
+      expect.objectContaining({
+        id: '1:u2',
+        channelId: 'u2',
+        channelType: 1,
+        unreadCount: 3,
+        lastMessage: 'hello',
+      }),
+    ]);
+  });
+
+  it('preserves row-level last message markers when recents are empty or absent', () => {
+    const conversations = mapConversationSyncRows([
+      {
+        channel_id: 'u-empty',
+        channel_type: 1,
+        last_msg_seq: 42,
+        last_client_msg_no: 'client-empty',
+        recents: [],
+      },
+      {
+        channelId: 'g-absent',
+        channelType: 2,
+        lastMsgSeq: '84',
+        lastClientMsgNo: 'client-absent',
+      },
+    ]);
+
+    expect(conversations).toEqual([
+      expect.objectContaining({
+        channelId: 'u-empty',
+        lastMsgSeq: 42,
+        lastClientMsgNo: 'client-empty',
+      }),
+      expect.objectContaining({
+        channelId: 'g-absent',
+        lastMsgSeq: 84,
+        lastClientMsgNo: 'client-absent',
+      }),
+    ]);
+  });
+
+  it('summarizes malformed and media payloads safely', () => {
+    expect(summarizeRecentMessage({ payload: '{"type":2}' })).toBe('[图片]');
+    expect(summarizeRecentMessage({ payload: { type: 4 } })).toBe('[语音]');
+    expect(summarizeRecentMessage({ payload: '{bad json' })).toBe('[不支持的消息]');
+    expect(summarizeRecentMessage({})).toBe('[暂无消息]');
+  });
+
+  it('posts Flutter-compatible conversation sync body', async () => {
+    const request = vi.fn().mockResolvedValue({ conversations: [] });
+
+    await loadConversationSync({
+      uid: 'u1',
+      token: 't1',
+      deviceUuid: 'device',
+      config: {
+        mode: 'live',
+        apiBaseUrl: 'https://infoequity.cn',
+        appId: 'wukongchat',
+        appKey: 'key',
+        deviceFlag: 5,
+      },
+      request,
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/v1/conversation/sync',
+        method: 'POST',
+        token: 't1',
+        body: {
+          version: 0,
+          last_msg_seqs: '',
+          msg_count: 200,
+          device_uuid: 'device',
+        },
+      }),
+    );
+  });
+});

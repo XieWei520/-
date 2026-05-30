@@ -6,9 +6,11 @@ export type SendStatus = 'sent' | 'sending' | 'failed';
 
 export interface CurrentUser {
   id: string;
+  uid?: string;
   name: string;
   phone: string;
   avatarText: string;
+  avatarUrl?: string;
   connectionState: ConnectionState;
 }
 
@@ -22,6 +24,8 @@ export interface Conversation {
   lastMessageAt: string;
   unreadCount: number;
   muted: boolean;
+  lastMsgSeq?: number;
+  lastClientMsgNo?: string;
 }
 
 export interface Contact {
