@@ -82,6 +82,14 @@ function Get-ChangedSqlMigrations {
     '--',
     'modules/**/sql/*.sql'
   )
+  $staged = Invoke-GitPathList -Root $Root -Arguments @(
+    'diff',
+    '--cached',
+    '--name-only',
+    '--diff-filter=ACM',
+    '--',
+    'modules/**/sql/*.sql'
+  )
   $untracked = Invoke-GitPathList -Root $Root -Arguments @(
     'ls-files',
     '--others',
@@ -91,7 +99,7 @@ function Get-ChangedSqlMigrations {
   )
 
   return @(
-    @($changed + $untracked) |
+    @($changed + $staged + $untracked) |
       Where-Object { $_ -match '^modules/.+/sql/[^/]+\.sql$' } |
       Sort-Object -Unique
   )
@@ -120,12 +128,10 @@ function Test-SqlMigration {
 
   $isNewStyleDatedMigration = $RelativePath -match '^modules/.+/sql/.+-20[0-9]{6}-[0-9]{2}\.sql$'
   $createsIndex = $content -match '(?im)\bCREATE\s+(UNIQUE\s+)?INDEX\b'
-  $hasIdempotentIndexGuard =
-    $content -match '(?i)\binformation_schema\.STATISTICS\b' -or
-    $content -match '(?i)\bIF\s+NOT\s+EXISTS\b'
+  $hasIdempotentIndexGuard = $content -match '(?i)\binformation_schema\.STATISTICS\b'
 
   if ($isNewStyleDatedMigration -and $createsIndex -and -not $hasIdempotentIndexGuard) {
-    $failures.Add("$RelativePath CREATE INDEX requires information_schema.STATISTICS or IF NOT EXISTS")
+    $failures.Add("$RelativePath CREATE INDEX requires information_schema.STATISTICS guard")
   }
 
   return $failures

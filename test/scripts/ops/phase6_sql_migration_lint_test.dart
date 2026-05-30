@@ -83,6 +83,118 @@ void main() {
   );
 
   test(
+    'phase6 SQL migration lint rejects staged bare index migrations by default',
+    () async {
+      final tempRoot = await Directory.systemTemp.createTemp(
+        'phase6_sql_migration_lint_staged_',
+      );
+      addTearDown(() async {
+        if (tempRoot.existsSync()) {
+          await tempRoot.delete(recursive: true);
+        }
+      });
+
+      final init = await Process.run(
+        'git',
+        ['init'],
+        workingDirectory: tempRoot.path,
+      );
+      expect(init.exitCode, 0, reason: init.stderr.toString());
+
+      final sqlDir = Directory(
+        '${tempRoot.path}${Platform.pathSeparator}modules'
+        '${Platform.pathSeparator}message${Platform.pathSeparator}sql',
+      );
+      await sqlDir.create(recursive: true);
+      final sqlFile = File(
+        '${sqlDir.path}${Platform.pathSeparator}message-20260529-01.sql',
+      );
+      await sqlFile.writeAsString('''
+-- +migrate Up
+CREATE INDEX `message_uid_idx` ON `message` (`uid`);
+
+-- +migrate Down
+DROP INDEX `message_uid_idx` ON `message`;
+''');
+
+      final add = await Process.run(
+        'git',
+        ['add', 'modules/message/sql/message-20260529-01.sql'],
+        workingDirectory: tempRoot.path,
+      );
+      expect(add.exitCode, 0, reason: add.stderr.toString());
+
+      final result = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-BackendRoot',
+        tempRoot.path,
+      ], workingDirectory: Directory.current.path);
+
+      expect(result.exitCode, isNot(0));
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(output, contains('modules/message/sql/message-20260529-01.sql'));
+      expect(output, contains('CREATE INDEX requires'));
+      expect(output, contains('phase6_sql_migration_lint=fail'));
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test(
+    'phase6 SQL migration lint rejects create table if not exists as index guard',
+    () async {
+      final tempRoot = await Directory.systemTemp.createTemp(
+        'phase6_sql_migration_lint_table_guard_',
+      );
+      addTearDown(() async {
+        if (tempRoot.existsSync()) {
+          await tempRoot.delete(recursive: true);
+        }
+      });
+
+      final sqlDir = Directory(
+        '${tempRoot.path}${Platform.pathSeparator}modules'
+        '${Platform.pathSeparator}message${Platform.pathSeparator}sql',
+      );
+      await sqlDir.create(recursive: true);
+      final sqlFile = File(
+        '${sqlDir.path}${Platform.pathSeparator}message-20260529-01.sql',
+      );
+      await sqlFile.writeAsString('''
+-- +migrate Up
+CREATE TABLE IF NOT EXISTS `message_index_marker` (
+  `id` BIGINT NOT NULL PRIMARY KEY
+);
+CREATE INDEX `message_uid_idx` ON `message` (`uid`);
+
+-- +migrate Down
+DROP INDEX `message_uid_idx` ON `message`;
+DROP TABLE `message_index_marker`;
+''');
+
+      final result = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-BackendRoot',
+        tempRoot.path,
+        '-All',
+      ], workingDirectory: Directory.current.path);
+
+      expect(result.exitCode, isNot(0));
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(output, contains('CREATE INDEX requires'));
+      expect(output, contains('phase6_sql_migration_lint=fail'));
+    },
+    skip: !Platform.isWindows,
+  );
+
+  test(
     'phase6 SQL migration lint accepts annotated idempotent index migrations',
     () async {
       final tempRoot = await Directory.systemTemp.createTemp(
