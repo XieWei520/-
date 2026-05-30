@@ -1,0 +1,142 @@
+diff --git a/modules/message/api.go b/modules/message/api.go
+index cbaf453..dc94f6e 100644
+--- a/modules/message/api.go
++++ b/modules/message/api.go
+@@ -98,7 +98,7 @@ func phase4ConfigNoChangeVersion(clientVersion int64, currentVersion int64) int6
+ }
+ 
+ func phase4ShouldCacheConfigNoChange(endpoint string) bool {
+-	return endpoint == "sensitive_words"
++	return endpoint == "sensitive_words" || endpoint == "prohibit_words"
+ }
+ 
+ type phase4SensitiveWordsSyncResp struct {
+@@ -115,6 +115,13 @@ func phase4SensitiveWordsNoChangeResponse(version int64) *phase4SensitiveWordsSy
+ 	}
+ }
+ 
++func phase5ProhibitWordsNoChangeResponse() []*ProhibitWordResp {
++	return make([]*ProhibitWordResp, 0)
++}
++
++func phase5CanServeProhibitWordsNoChange(clientVersion int64, currentVersion int64) bool {
++	return clientVersion >= currentVersion
++}
+ 
+ // Message 消息相关API
+ type Message struct {
+@@ -1729,6 +1736,20 @@ func (m *Message) revoke(c *wkhttp.Context) {
+ func (m *Message) syncProhibitWords(c *wkhttp.Context) {
+ 	version := c.Query("version")
+ 	maxVersion, _ := strconv.ParseInt(version, 10, 64)
++	endpoint := "prohibit_words"
++	currentVersion, err := m.db.queryProhibitWordsMaxVersion()
++	if err != nil {
++		m.Error("查询违禁词版本错误", zap.Error(err))
++		c.ResponseError(errors.New("查询违禁词版本错误"))
++		return
++	}
++	cacheVersion := phase4ConfigNoChangeVersion(maxVersion, currentVersion)
++	cacheKey := phase4ConfigNoChangeKey(endpoint, c.GetLoginUID(), cacheVersion)
++	now := time.Now()
++	if phase4ShouldCacheConfigNoChange(endpoint) && phase5CanServeProhibitWordsNoChange(maxVersion, currentVersion) && phase4ConfigNoChangeCache.shouldServeNoChange(cacheKey, now) {
++		c.Response(phase5ProhibitWordsNoChangeResponse())
++		return
++	}
+ 	list, err := m.db.queryProhibitWordsWithVersion(maxVersion)
+ 	if err != nil {
+ 		m.Error("同步违禁词错误", zap.Error(err))
+@@ -1747,6 +1768,9 @@ func (m *Message) syncProhibitWords(c *wkhttp.Context) {
+ 			})
+ 		}
+ 	}
++	if phase4ShouldCacheConfigNoChange(endpoint) && phase5CanServeProhibitWordsNoChange(maxVersion, currentVersion) && len(result) == 0 {
++		phase4ConfigNoChangeCache.rememberNoChange(cacheKey, now)
++	}
+ 	c.Response(result)
+ }
+ 
+diff --git a/modules/message/db.go b/modules/message/db.go
+index e33a27e..18e6e10 100644
+--- a/modules/message/db.go
++++ b/modules/message/db.go
+@@ -36,6 +36,11 @@ func (d *DB) queryProhibitWordsWithVersion(version int64) ([]*ProhibitWordModel,
+ 	return list, err
+ }
+ 
++func (d *DB) queryProhibitWordsMaxVersion() (int64, error) {
++	var version int64
++	err := d.session.Select("IFNULL(MAX(`version`),0)").From("prohibit_words").LoadOne(&version)
++	return version, err
++}
+ 
+ // 新增消息
+ func (d *DB) insertMessage(m *messageModel) error {
+diff --git a/modules/message/phase4_sync_load_test.go b/modules/message/phase4_sync_load_test.go
+index 8ae207d..8799c49 100644
+--- a/modules/message/phase4_sync_load_test.go
++++ b/modules/message/phase4_sync_load_test.go
+@@ -47,9 +47,10 @@ func TestPhase4ConfigNoChangeVersionNormalizesFutureClientVersions(t *testing.T)
+ 	require.Equal(t, int64(5), phase4ConfigNoChangeVersion(99, 5))
+ }
+ 
+-func TestPhase4NoChangeCacheOnlyAllowsStaticConfigEndpoints(t *testing.T) {
++func TestNoChangeCacheRejectsUnlistedEndpoints(t *testing.T) {
+ 	require.True(t, phase4ShouldCacheConfigNoChange("sensitive_words"))
+-	require.False(t, phase4ShouldCacheConfigNoChange("prohibit_words"))
++	require.True(t, phase4ShouldCacheConfigNoChange("prohibit_words"))
++	require.False(t, phase4ShouldCacheConfigNoChange("message_extra"))
+ }
+ 
+ func TestPhase4ConfigNoChangeResponsesPreserveShapes(t *testing.T) {
+@@ -60,3 +61,21 @@ func TestPhase4ConfigNoChangeResponsesPreserveShapes(t *testing.T) {
+ 	require.Empty(t, sensitive.List)
+ }
+ 
++func TestPhase5NoChangeCacheAllowsProhibitWords(t *testing.T) {
++	require.True(t, phase4ShouldCacheConfigNoChange("sensitive_words"))
++	require.True(t, phase4ShouldCacheConfigNoChange("prohibit_words"))
++	require.False(t, phase4ShouldCacheConfigNoChange("conversation_extra"))
++}
++
++func TestPhase5ProhibitWordsNoChangeResponsePreservesShape(t *testing.T) {
++	prohibitWords := phase5ProhibitWordsNoChangeResponse()
++	require.NotNil(t, prohibitWords)
++	require.Empty(t, prohibitWords)
++}
++
++func TestPhase5ProhibitWordsNoChangeRequiresCurrentVersion(t *testing.T) {
++	require.True(t, phase5CanServeProhibitWordsNoChange(10, 10))
++	require.True(t, phase5CanServeProhibitWordsNoChange(11, 10))
++	require.True(t, phase5CanServeProhibitWordsNoChange(0, 0))
++	require.False(t, phase5CanServeProhibitWordsNoChange(9, 10))
++}
+diff --git a/modules/message/sql/message-20260529-01.sql b/modules/message/sql/message-20260529-01.sql
+new file mode 100644
+index 0000000..1f42cd8
+--- /dev/null
++++ b/modules/message/sql/message-20260529-01.sql
+@@ -0,0 +1,23 @@
++-- +migrate Up
++-- Phase 5: speed up GET /v1/message/prohibit_words/sync no-change checks.
++-- The production table previously had only PRIMARY(id), while the hot query is:
++-- SELECT * FROM prohibit_words WHERE version > ?
++
++SET @idx_exists := (
++    SELECT COUNT(1)
++    FROM information_schema.STATISTICS
++    WHERE TABLE_SCHEMA = DATABASE()
++      AND TABLE_NAME = 'prohibit_words'
++      AND INDEX_NAME = 'idx_prohibit_words_version'
++);
++SET @idx_sql := IF(
++    @idx_exists = 0,
++    'CREATE INDEX idx_prohibit_words_version ON prohibit_words (version)',
++    'SELECT 1'
++);
++PREPARE idx_stmt FROM @idx_sql;
++EXECUTE idx_stmt;
++DEALLOCATE PREPARE idx_stmt;
++
++-- +migrate Down
++DROP INDEX idx_prohibit_words_version ON prohibit_words;

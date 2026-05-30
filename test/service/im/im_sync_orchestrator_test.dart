@@ -12,6 +12,7 @@ import 'package:wukong_im_app/service/api/reminder_api.dart';
 import 'package:wukong_im_app/service/im/im_sync_orchestrator.dart';
 import 'package:wukong_im_app/service/im/im_word_sync_models.dart';
 import 'package:wukong_im_app/service/im/im_word_sync_store.dart';
+import 'package:wukong_im_app/service/im/sync_load_policy.dart';
 import 'package:wukongimfluttersdk/entity/conversation.dart';
 import 'package:wukongimfluttersdk/entity/msg.dart';
 import 'package:wukongimfluttersdk/entity/reminder.dart';
@@ -278,6 +279,209 @@ void main() {
       expect(calls, <String>['c1/1:first', 'c1/1:second']);
       expect(orchestrator.status.activeMessageExtraKeys, isEmpty);
     });
+
+    test(
+      'skips repeated no-change fanout tasks while cooldown is active',
+      () async {
+        final adapter = _RouteQueuedPlainAdapter(
+          payloadsByPath: <String, List<Object>>{
+            '/v1/message/reminder/sync': <Object>[
+              const <String, dynamic>{'data': <Map<String, dynamic>>[]},
+              const <String, dynamic>{'data': <Map<String, dynamic>>[]},
+            ],
+            '/v1/message/sync/sensitivewords': <Object>[
+              const <String, dynamic>{
+                'tips': '',
+                'version': 7,
+                'list': <String>[],
+              },
+              const <String, dynamic>{
+                'tips': '',
+                'version': 7,
+                'list': <String>[],
+              },
+            ],
+            '/v1/message/prohibit_words/sync': <Object>[
+              const <Map<String, dynamic>>[],
+              const <Map<String, dynamic>>[],
+            ],
+            '/v1/message/sync': <Object>[
+              const <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+              const <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+            ],
+          },
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        var now = DateTime(2026, 5, 28, 12);
+        final orchestrator = _orchestrator(
+          reminderStore: _FakeReminderStore(version: 5),
+          reminderChannelIdsLoader: () async => <String>['g1'],
+          wordStore: _FakeWordSyncStore(
+            sensitiveSnapshot: const SensitiveWordsSnapshot(version: 3),
+            maxProhibitWordVersion: 9,
+          ),
+          conversationDraftApi: _FakeConversationDraftStore(
+            syncedExtras: const <RemoteConversationDraft>[],
+          ),
+          conversationExtraStore: _FakeConversationExtraStore(maxVersion: 4),
+          syncLoadPolicy: const SyncLoadPolicy(
+            configurationCoalesceWindow: Duration(minutes: 5),
+          ),
+          now: () => now,
+        );
+
+        await orchestrator.handleSyncCompleted();
+        await orchestrator.handleSyncCompleted();
+
+        expect(
+          adapter.requests.map((request) => request.path),
+          unorderedEquals(<String>[
+            '/v1/message/reminder/sync',
+            '/v1/message/sync/sensitivewords',
+            '/v1/message/prohibit_words/sync',
+            '/v1/message/sync',
+          ]),
+        );
+
+        now = now.add(const Duration(minutes: 5));
+        await orchestrator.handleSyncCompleted();
+
+        expect(
+          adapter.requests.skip(4).map((request) => request.path),
+          unorderedEquals(<String>[
+            '/v1/message/reminder/sync',
+            '/v1/message/sync/sensitivewords',
+            '/v1/message/prohibit_words/sync',
+            '/v1/message/sync',
+          ]),
+        );
+      },
+    );
+
+    test(
+      'resumes non-configuration fanout tasks after empty-response backoff',
+      () async {
+        final adapter = _RouteQueuedPlainAdapter(
+          payloadsByPath: <String, List<Object>>{
+            '/v1/message/reminder/sync': <Object>[
+              const <String, dynamic>{'data': <Map<String, dynamic>>[]},
+              const <String, dynamic>{'data': <Map<String, dynamic>>[]},
+            ],
+            '/v1/message/sync/sensitivewords': <Object>[
+              const <String, dynamic>{
+                'tips': '',
+                'version': 7,
+                'list': <String>[],
+              },
+            ],
+            '/v1/message/prohibit_words/sync': <Object>[
+              const <Map<String, dynamic>>[],
+            ],
+            '/v1/message/sync': <Object>[
+              const <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+              const <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+            ],
+          },
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        var now = DateTime(2026, 5, 28, 12);
+        final orchestrator = _orchestrator(
+          reminderStore: _FakeReminderStore(version: 5),
+          reminderChannelIdsLoader: () async => <String>['g1'],
+          wordStore: _FakeWordSyncStore(
+            sensitiveSnapshot: const SensitiveWordsSnapshot(version: 3),
+            maxProhibitWordVersion: 9,
+          ),
+          conversationDraftApi: _FakeConversationDraftStore(
+            syncedExtras: const <RemoteConversationDraft>[],
+          ),
+          conversationExtraStore: _FakeConversationExtraStore(maxVersion: 4),
+          now: () => now,
+        );
+
+        await orchestrator.handleSyncCompleted();
+        now = now.add(const Duration(seconds: 1));
+        await orchestrator.handleSyncCompleted();
+
+        expect(
+          adapter.requests.map((request) => request.path),
+          unorderedEquals(<String>[
+            '/v1/message/reminder/sync',
+            '/v1/message/sync/sensitivewords',
+            '/v1/message/prohibit_words/sync',
+            '/v1/message/sync',
+          ]),
+        );
+
+        now = now.add(const Duration(seconds: 1));
+        await orchestrator.handleSyncCompleted();
+
+        expect(
+          adapter.requests.skip(4).map((request) => request.path),
+          unorderedEquals(<String>[
+            '/v1/message/reminder/sync',
+            '/v1/message/sync',
+          ]),
+        );
+      },
+    );
+
+    test(
+      'coalesces pending replay when the active fanout returns no changes',
+      () async {
+        final adapter = _RouteQueuedPlainAdapter(
+          payloadsByPath: <String, List<Object>>{
+            '/v1/message/reminder/sync': <Object>[
+              const <String, dynamic>{'data': <Map<String, dynamic>>[]},
+            ],
+            '/v1/message/sync/sensitivewords': <Object>[
+              const <String, dynamic>{
+                'tips': '',
+                'version': 7,
+                'list': <String>[],
+              },
+            ],
+            '/v1/message/prohibit_words/sync': <Object>[
+              const <Map<String, dynamic>>[],
+            ],
+            '/v1/message/sync': <Object>[
+              const <String, dynamic>{'messages': <Map<String, dynamic>>[]},
+            ],
+          },
+          gateFirstPath: '/v1/message/reminder/sync',
+        );
+        ApiClient.instance.dio.httpClientAdapter = adapter;
+        final orchestrator = _orchestrator(
+          reminderStore: _FakeReminderStore(version: 5),
+          reminderChannelIdsLoader: () async => <String>['g1'],
+          wordStore: _FakeWordSyncStore(
+            sensitiveSnapshot: const SensitiveWordsSnapshot(version: 3),
+            maxProhibitWordVersion: 9,
+          ),
+          conversationDraftApi: _FakeConversationDraftStore(
+            syncedExtras: const <RemoteConversationDraft>[],
+          ),
+          conversationExtraStore: _FakeConversationExtraStore(maxVersion: 4),
+          now: () => DateTime(2026, 5, 28, 12),
+        );
+
+        final first = orchestrator.handleSyncCompleted();
+        await adapter.waitForGateRequest();
+        final second = orchestrator.handleSyncCompleted();
+        adapter.releaseGate();
+        await Future.wait(<Future<void>>[first, second]);
+
+        expect(
+          adapter.requests.map((request) => request.path),
+          unorderedEquals(<String>[
+            '/v1/message/reminder/sync',
+            '/v1/message/sync/sensitivewords',
+            '/v1/message/prohibit_words/sync',
+            '/v1/message/sync',
+          ]),
+        );
+      },
+    );
   });
 
   group('ImSyncOrchestrator transport callbacks', () {
@@ -943,6 +1147,8 @@ ImSyncOrchestrator _orchestrator({
   ImConversationExtraStore? conversationExtraStore,
   ImMessageExtraStore? messageExtraStore,
   ImSyncDelay? syncDelay,
+  SyncLoadPolicy? syncLoadPolicy,
+  DateTime Function()? now,
 }) {
   return ImSyncOrchestrator(
     syncApi: IMSyncApi.instance,
@@ -957,6 +1163,8 @@ ImSyncOrchestrator _orchestrator({
     conversationExtraStore: conversationExtraStore,
     messageExtraStore: messageExtraStore,
     syncDelay: syncDelay,
+    syncLoadPolicy: syncLoadPolicy,
+    now: now,
   );
 }
 
@@ -1046,13 +1254,27 @@ class _QueuedPlainAdapter implements HttpClientAdapter {
 }
 
 class _RouteQueuedPlainAdapter implements HttpClientAdapter {
-  _RouteQueuedPlainAdapter({required Map<String, List<Object>> payloadsByPath})
-    : _payloadsByPath = payloadsByPath.map(
-        (path, payloads) => MapEntry(path, List<Object>.from(payloads)),
-      );
+  _RouteQueuedPlainAdapter({
+    required Map<String, List<Object>> payloadsByPath,
+    this.gateFirstPath,
+  }) : _payloadsByPath = payloadsByPath.map(
+         (path, payloads) => MapEntry(path, List<Object>.from(payloads)),
+       );
 
   final Map<String, List<Object>> _payloadsByPath;
+  final String? gateFirstPath;
   final List<RequestOptions> requests = <RequestOptions>[];
+  final Completer<void> _gateRequested = Completer<void>();
+  final Completer<void> _gateReleased = Completer<void>();
+  var _gateUsed = false;
+
+  Future<void> waitForGateRequest() => _gateRequested.future;
+
+  void releaseGate() {
+    if (!_gateReleased.isCompleted) {
+      _gateReleased.complete();
+    }
+  }
 
   @override
   Future<ResponseBody> fetch(
@@ -1061,6 +1283,13 @@ class _RouteQueuedPlainAdapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     requests.add(options);
+    if (!_gateUsed && gateFirstPath == options.path) {
+      _gateUsed = true;
+      if (!_gateRequested.isCompleted) {
+        _gateRequested.complete();
+      }
+      await _gateReleased.future;
+    }
     final payloads = _payloadsByPath[options.path];
     if (payloads == null || payloads.isEmpty) {
       throw StateError('No queued payload for ${options.path}');

@@ -1,0 +1,192 @@
+diff --git a/modules/message/api.go b/modules/message/api.go
+--- a/modules/message/api.go
++++ b/modules/message/api.go
+@@ -31,7 +31,89 @@ import (
+ 	"go.uber.org/zap"
+ )
+ 
+-const messageExtraVersionCacheTTL = 7 * 24 * time.Hour
++const (
++	messageExtraVersionCacheTTL = 7 * 24 * time.Hour
++	phase4NoChangeCacheTTL      = 5 * time.Minute
++)
++
++type versionedNoChangeCacheKey struct {
++	endpoint string
++	uid      string
++	version  int64
++}
++
++type versionedNoChangeCacheEntry struct {
++	expiresAt time.Time
++}
++
++type versionedNoChangeCache struct {
++	ttl     time.Duration
++	mu      sync.RWMutex
++	entries map[versionedNoChangeCacheKey]versionedNoChangeCacheEntry
++}
++
++func newVersionedNoChangeCache(ttl time.Duration) *versionedNoChangeCache {
++	return &versionedNoChangeCache{
++		ttl:     ttl,
++		entries: make(map[versionedNoChangeCacheKey]versionedNoChangeCacheEntry),
++	}
++}
++
++func (c *versionedNoChangeCache) shouldServeNoChange(key versionedNoChangeCacheKey, now time.Time) bool {
++	c.mu.RLock()
++	entry, ok := c.entries[key]
++	c.mu.RUnlock()
++	if !ok {
++		return false
++	}
++	if now.Before(entry.expiresAt) {
++		return true
++	}
++
++	c.mu.Lock()
++	if current, ok := c.entries[key]; ok && !now.Before(current.expiresAt) {
++		delete(c.entries, key)
++	}
++	c.mu.Unlock()
++	return false
++}
++
++func (c *versionedNoChangeCache) rememberNoChange(key versionedNoChangeCacheKey, now time.Time) {
++	c.mu.Lock()
++	c.entries[key] = versionedNoChangeCacheEntry{expiresAt: now.Add(c.ttl)}
++	c.mu.Unlock()
++}
++
++var phase4ConfigNoChangeCache = newVersionedNoChangeCache(phase4NoChangeCacheTTL)
++
++func phase4ConfigNoChangeKey(endpoint string, uid string, version int64) versionedNoChangeCacheKey {
++	return versionedNoChangeCacheKey{endpoint: endpoint, uid: uid, version: version}
++}
++
++func phase4ConfigNoChangeVersion(clientVersion int64, currentVersion int64) int64 {
++	if clientVersion >= currentVersion {
++		return currentVersion
++	}
++	return clientVersion
++}
++
++func phase4ShouldCacheConfigNoChange(endpoint string) bool {
++	return endpoint == "sensitive_words"
++}
++
++type phase4SensitiveWordsSyncResp struct {
++	Tips    string   `json:"tips"`
++	List    []string `json:"list"`
++	Version int64    `json:"version"`
++}
++
++func phase4SensitiveWordsNoChangeResponse(version int64) *phase4SensitiveWordsSyncResp {
++	return &phase4SensitiveWordsSyncResp{
++		Tips:    "",
++		List:    make([]string, 0),
++		Version: version,
++	}
++}
+ 
+ // Message 消息相关API
+ type Message struct {
+@@ -1669,19 +1751,25 @@ func (m *Message) syncProhibitWords(c *wkhttp.Context) {
+ 
+ // 同步敏感词
+ func (m *Message) syncSensitiveWords(c *wkhttp.Context) {
+-	type resp struct {
+-		Tips    string   `json:"tips"`
+-		List    []string `json:"list"`
+-		Version int64    `json:"version"`
+-	}
+ 	reqVersion, _ := strconv.ParseInt(c.Query("version"), 10, 64)
++	endpoint := "sensitive_words"
++	cacheVersion := phase4ConfigNoChangeVersion(reqVersion, sensitiveWordsVersion)
++	cacheKey := phase4ConfigNoChangeKey(endpoint, c.GetLoginUID(), cacheVersion)
++	now := time.Now()
++	if phase4ShouldCacheConfigNoChange(endpoint) && reqVersion >= sensitiveWordsVersion && phase4ConfigNoChangeCache.shouldServeNoChange(cacheKey, now) {
++		c.Response(phase4SensitiveWordsNoChangeResponse(sensitiveWordsVersion))
++		return
++	}
+ 	resultList := make([]string, 0)
+ 	tips := ""
+ 	if reqVersion < sensitiveWordsVersion {
+ 		resultList = sensitive_words
+ 		tips = "涉及私下交易、转账等资金问题，谨慎对待，谨防上当受骗，点击标题栏头像可投诉！"
+ 	}
+-	c.Response(&resp{
++	if phase4ShouldCacheConfigNoChange(endpoint) && len(resultList) == 0 && tips == "" {
++		phase4ConfigNoChangeCache.rememberNoChange(cacheKey, now)
++	}
++	c.Response(&phase4SensitiveWordsSyncResp{
+ 		Tips:    tips,
+ 		List:    resultList,
+ 		Version: sensitiveWordsVersion,
+diff --git a/modules/message/phase4_sync_load_test.go b/modules/message/phase4_sync_load_test.go
+new file mode 100644
+--- /dev/null
++++ b/modules/message/phase4_sync_load_test.go
+@@ -0,0 +1,61 @@
++package message
++
++import (
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/require"
++)
++
++func TestPhase4VersionedNoChangeCacheReturnsCachedEmptyResponse(t *testing.T) {
++	cache := newVersionedNoChangeCache(5 * time.Minute)
++	now := time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC)
++	key := versionedNoChangeCacheKey{endpoint: "prohibit_words", uid: "u1", version: 10}
++
++	require.False(t, cache.shouldServeNoChange(key, now))
++
++	cache.rememberNoChange(key, now)
++	require.True(t, cache.shouldServeNoChange(key, now.Add(4*time.Minute)))
++	require.False(t, cache.shouldServeNoChange(key, now.Add(5*time.Minute)))
++}
++
++func TestPhase4VersionedNoChangeCacheSeparatesEndpointUIDAndVersion(t *testing.T) {
++	cache := newVersionedNoChangeCache(5 * time.Minute)
++	now := time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC)
++	key := versionedNoChangeCacheKey{endpoint: "sensitive_words", uid: "u1", version: 1}
++	cache.rememberNoChange(key, now)
++
++	require.True(t, cache.shouldServeNoChange(key, now.Add(time.Minute)))
++	require.False(t, cache.shouldServeNoChange(versionedNoChangeCacheKey{endpoint: "prohibit_words", uid: "u1", version: 1}, now.Add(time.Minute)))
++	require.False(t, cache.shouldServeNoChange(versionedNoChangeCacheKey{endpoint: "sensitive_words", uid: "u2", version: 1}, now.Add(time.Minute)))
++	require.False(t, cache.shouldServeNoChange(versionedNoChangeCacheKey{endpoint: "sensitive_words", uid: "u1", version: 2}, now.Add(time.Minute)))
++}
++
++func TestPhase4ConfigNoChangeKeyUsesLoginUIDAndVersion(t *testing.T) {
++	got := phase4ConfigNoChangeKey("sensitive_words", "u1", 3)
++
++	require.Equal(t, versionedNoChangeCacheKey{
++		endpoint: "sensitive_words",
++		uid:      "u1",
++		version:  3,
++	}, got)
++}
++
++func TestPhase4ConfigNoChangeVersionNormalizesFutureClientVersions(t *testing.T) {
++	require.Equal(t, int64(4), phase4ConfigNoChangeVersion(4, 5))
++	require.Equal(t, int64(5), phase4ConfigNoChangeVersion(5, 5))
++	require.Equal(t, int64(5), phase4ConfigNoChangeVersion(99, 5))
++}
++
++func TestPhase4NoChangeCacheOnlyAllowsStaticConfigEndpoints(t *testing.T) {
++	require.True(t, phase4ShouldCacheConfigNoChange("sensitive_words"))
++	require.False(t, phase4ShouldCacheConfigNoChange("prohibit_words"))
++}
++
++func TestPhase4ConfigNoChangeResponsesPreserveShapes(t *testing.T) {
++	sensitive := phase4SensitiveWordsNoChangeResponse(99)
++	require.Equal(t, int64(99), sensitive.Version)
++	require.Empty(t, sensitive.Tips)
++	require.NotNil(t, sensitive.List)
++	require.Empty(t, sensitive.List)
++}
